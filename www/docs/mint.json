@@ -1,0 +1,97 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Astral Documentation",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#06b6d4",
+    "light": "#06b6d4",
+    "dark": "#0a0f1a",
+    "anchors": {
+      "from": "#06b6d4",
+      "to": "#3b82f6"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:support@astral.us"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Dashboard",
+    "url": "https://web.astral.us"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/astral-us"
+    },
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://discord.gg/astral"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "installation"
+      ]
+    },
+    {
+      "group": "Hardware",
+      "pages": [
+        "hardware/mothership",
+        "hardware/scout",
+        "hardware/setup",
+        "hardware/maintenance"
+      ]
+    },
+    {
+      "group": "SDK",
+      "pages": [
+        "sdk/overview",
+        "sdk/authentication",
+        "sdk/missions",
+        "sdk/telemetry",
+        "sdk/fleet-management"
+      ]
+    },
+    {
+      "group": "Mission Control",
+      "pages": [
+        "mission-control/overview",
+        "mission-control/planning",
+        "mission-control/simulation",
+        "mission-control/deployment"
+      ]
+    },
+    {
+      "group": "Integrations",
+      "pages": [
+        "integrations/overview",
+        "integrations/webhooks",
+        "integrations/custom-llms"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "twitter": "https://twitter.com/astral_us",
+    "github": "https://github.com/astral-us",
+    "linkedin": "https://linkedin.com/company/astral-us"
+  }
+}

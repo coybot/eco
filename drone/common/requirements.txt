@@ -1,0 +1,27 @@
+# AWS IoT SDK
+awsiotsdk>=1.27.0
+boto3>=1.42.0
+
+# MAVLink / Flight Controller
+pymavlink>=2.4.49
+pyserial>=3.5
+
+# Camera Support
+opencv-python-headless>=4.10.0
+numpy>=2.0.0
+pyrealsense2>=2.56.0  # Intel RealSense
+depthai>=3.0.0        # OAK-D cameras (optional)
+
+# Video Streaming (WebRTC)
+aiortc>=1.14.0
+websockets>=15.0.0
+av>=16.0.0
+
+# Utilities
+PyYAML>=6.0.0
+requests>=2.32.0
+
+# Model setup (setup_models.py)
+huggingface_hub>=0.20.0
+ultralytics>=8.0.0
+

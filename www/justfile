@@ -1,0 +1,22 @@
+# Astral Website Development Commands
+
+# Run the development server
+dev:
+    npm install
+    npm run dev
+
+# Build for production
+build:
+    npm run build
+
+# Start production server
+start:
+    npm run start
+
+# Run linting
+lint:
+    npm run lint
+
+# Install dependencies only
+install:
+    npm install

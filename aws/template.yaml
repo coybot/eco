@@ -1,0 +1,1373 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Drone Command API - Natural Language to Flight Code with User Auth
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+  DroneId:
+    Type: String
+    Default: drone-001
+  GoogleClientId:
+    Type: String
+    Default: "yourclientid.apps.googleusercontent.com"
+    Description: Google OAuth Client ID (replace with your iOS client ID)
+  AppleServicesId:
+    Type: String
+    Default: ""
+    Description: Apple Services ID (leave empty to skip Apple auth)
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.13
+    Tags:
+      Project: drone-api
+      Environment: !Ref Environment
+    Environment:
+      Variables:
+        STATUS_TTL_SECONDS: "30"
+        LOGS_TABLE: !Ref DroneLogsTable
+
+Resources:
+  # ============================================
+  # Cognito User Pool (Authentication)
+  # ============================================
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub drone-users-${Environment}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub drone-app-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs:
+        - droneoperator://callback
+        - http://localhost:3000/callback
+      LogoutURLs:
+        - droneoperator://logout
+        - http://localhost:3000/logout
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub drone-auth-${Environment}-${AWS::AccountId}
+      UserPoolId: !Ref UserPool
+
+  # ============================================
+  # Cognito Identity Pool (AWS Credentials for IoT)
+  # ============================================
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub drone_identity_${Environment}
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+      SupportedLoginProviders:
+        accounts.google.com: !Ref GoogleClientId
+
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt CognitoAuthRole.Arn
+
+  CognitoAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: authenticated
+      Policies:
+        - PolicyName: CognitoIoTAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iot:Connect
+                Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*'
+              - Effect: Allow
+                Action:
+                  - iot:Subscribe
+                Resource: 
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/status'
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/chat/*'
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/logs'
+              - Effect: Allow
+                Action:
+                  - iot:Receive
+                Resource: 
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/status'
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/chat/*'
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/logs'
+              - Effect: Allow
+                Action:
+                  - iot:Publish
+                Resource: 
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/command'
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/video/command'
+              # Kinesis Video Streams viewer access (same region as the stack)
+              - Effect: Allow
+                Action:
+                  - kinesisvideo:DescribeSignalingChannel
+                  - kinesisvideo:GetSignalingChannelEndpoint
+                  - kinesisvideo:ConnectAsViewer
+                  - kinesisvideo:GetIceServerConfig
+                Resource: !Sub 'arn:aws:kinesisvideo:${AWS::Region}:${AWS::AccountId}:channel/drone-*'
+
+  # IoT Policy for Cognito authenticated users
+  CognitoIoTPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: !Sub drone-cognito-policy-${Environment}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - iot:Connect
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - iot:Subscribe
+            Resource: 
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/status'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/chat/*'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/logs'
+          - Effect: Allow
+            Action:
+              - iot:Receive
+            Resource: 
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/status'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/chat/*'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/logs'
+          - Effect: Allow
+            Action:
+              - iot:Publish
+            Resource: 
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/video/command'
+
+  # ============================================
+  # DynamoDB Table (Drone Ownership)
+  # ============================================
+  DroneTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub drone-registry-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: droneId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: droneId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: droneId-index
+          KeySchema:
+            - AttributeName: droneId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ============================================
+  # API Gateway with Token Authorizer
+  # ============================================
+  DroneApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub drone-api-${Environment}
+      StageName: prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowMethods: "'GET, POST, DELETE, OPTIONS, PUT, PATCH'"
+        AllowHeaders: "'Content-Type, Authorization'"
+      Auth:
+        DefaultAuthorizer: TokenAuthorizer
+        Authorizers:
+          TokenAuthorizer:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            Identity:
+              Header: Authorization
+              ReauthorizeEvery: 300
+      Tags:
+        Project: drone-api
+        Environment: !Ref Environment
+
+  # Lambda Authorizer for Google/Apple tokens
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-authorizer-${Environment}
+      CodeUri: src/
+      Handler: authorizer.handler
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
+          USER_POOL_ID: !Ref UserPool
+          USER_POOL_REGION: !Ref AWS::Region
+  
+  AuthorizerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthorizerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DroneApi}/*"
+
+  # ============================================
+  # Lambda Functions
+  # ============================================
+  
+  # Command Function (updated with auth)
+  CommandFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-command-${Environment}
+      CodeUri: src/
+      Handler: handler.lambda_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !Sub '${DroneTable.Arn}/index/*'
+      Events:
+        Command:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /command
+            Method: POST
+
+  # Register Drone Function
+  RegisterDroneFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-register-${Environment}
+      CodeUri: src/
+      Handler: drones.register_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !Sub '${DroneTable.Arn}/index/*'
+      Events:
+        Register:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones
+            Method: POST
+
+  # List Drones Function
+  ListDronesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-list-${Environment}
+      CodeUri: src/
+      Handler: drones.list_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt DroneTable.Arn
+      Events:
+        List:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones
+            Method: GET
+
+  # Delete Drone Function
+  DeleteDroneFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-delete-${Environment}
+      CodeUri: src/
+      Handler: drones.delete_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          STATUS_TABLE: !Ref DroneStatusTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:DeleteItem
+                - dynamodb:GetItem
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !GetAtt DroneStatusTable.Arn
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/command'
+            - Effect: Allow
+              Action:
+                - iot:UpdateThingShadow
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:thing/*'
+      Events:
+        Delete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}
+            Method: DELETE
+
+  # Attach IoT Policy Function (for MQTT access)
+  AttachIoTPolicyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-attach-iot-policy-${Environment}
+      CodeUri: src/
+      Handler: drones.attach_iot_policy_handler
+      MemorySize: 128
+      Environment:
+        Variables:
+          IOT_POLICY_NAME: !Ref CognitoIoTPolicy
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - iot:AttachPolicy
+                - iot:ListAttachedPolicies
+              Resource: '*'
+      Events:
+        AttachPolicy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /auth/iot-policy
+            Method: POST
+
+  # Update Drone Function (rename)
+  UpdateDroneFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-update-${Environment}
+      CodeUri: src/
+      Handler: drones.update_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DroneTable.Arn
+      Events:
+        Update:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}
+            Method: PATCH
+
+  # Drone WiFi Get Function
+  GetDroneWifiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-wifi-get-${Environment}
+      CodeUri: src/
+      Handler: drones.wifi_get_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt DroneTable.Arn
+      Events:
+        GetWifi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/wifi
+            Method: GET
+
+  # Drone WiFi Put Function
+  PutDroneWifiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-wifi-put-${Environment}
+      CodeUri: src/
+      Handler: drones.wifi_put_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DroneTable.Arn
+            - Effect: Allow
+              Action:
+                - iot:UpdateThingShadow
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:thing/*'
+      Events:
+        PutWifi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/wifi
+            Method: PUT
+
+  # Drone Battery Config Get Function
+  GetDroneBatteryConfigFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-battery-get-${Environment}
+      CodeUri: src/
+      Handler: drones.battery_get_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt DroneTable.Arn
+      Events:
+        GetBattery:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/battery-config
+            Method: GET
+
+  # Drone Battery Config Put Function
+  PutDroneBatteryConfigFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-battery-put-${Environment}
+      CodeUri: src/
+      Handler: drones.battery_put_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DroneTable.Arn
+            - Effect: Allow
+              Action:
+                - iot:UpdateThingShadow
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:thing/*'
+      Events:
+        PutBattery:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/battery-config
+            Method: PUT
+
+  # Get Drone Status Function
+  GetDroneStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-status-${Environment}
+      CodeUri: src/
+      Handler: drones.status_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          STATUS_TABLE: !Ref DroneStatusTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !GetAtt DroneStatusTable.Arn
+      Events:
+        Status:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/status
+            Method: GET
+
+  # ============================================
+  # Conversation Functions
+  # ============================================
+  
+  # Create Conversation
+  CreateConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-conversation-create-${Environment}
+      CodeUri: src/
+      Handler: conversations.create_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:GetItem
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !GetAtt ConversationsTable.Arn
+      Events:
+        Create:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations
+            Method: POST
+
+  # Get Conversation History
+  GetConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-conversation-get-${Environment}
+      CodeUri: src/
+      Handler: conversations.get_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !GetAtt ConversationsTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub 'arn:aws:s3:::${DroneImagesBucket}/*'
+      Events:
+        Get:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}
+            Method: GET
+
+  # Send Chat Message (Agent)
+  ChatMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-chat-message-${Environment}
+      CodeUri: src/
+      Handler: conversations.message_handler
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          STATUS_TABLE: !Ref DroneStatusTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !GetAtt ConversationsTable.Arn
+                - !GetAtt DroneStatusTable.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub '${DroneImagesBucket.Arn}/*'
+      Events:
+        Message:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/messages
+            Method: POST
+
+  # Image Selection Handler
+  ImageSelectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-image-select-${Environment}
+      CodeUri: src/
+      Handler: conversations.select_handler
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !GetAtt ConversationsTable.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+      Events:
+        Select:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/select
+            Method: POST
+
+  # Get Upload URL for Images
+  GetUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-upload-url-${Environment}
+      CodeUri: src/
+      Handler: conversations.upload_url_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt DroneTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${DroneImagesBucket.Arn}/*'
+      Events:
+        Upload:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/upload-url
+            Method: POST
+
+  # ============================================
+  # Drone Status Table (for caching latest status)
+  # ============================================
+  DroneStatusTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub drone-status-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: droneId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: droneId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ============================================
+  # Conversations Table (for chat history)
+  # ============================================
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub drone-conversations-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: droneId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: droneId-index
+          KeySchema:
+            - AttributeName: droneId
+              KeyType: HASH
+            - AttributeName: SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ============================================
+  # S3 Bucket for Drone Images
+  # ============================================
+  DroneImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub drone-images-${Environment}-${AWS::Region}-${AWS::AccountId}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3600
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldImages
+            Status: Enabled
+            ExpirationInDays: 30
+
+  # IoT Rule to store status updates in DynamoDB
+  DroneStatusRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub drone_status_${Environment}
+      TopicRulePayload:
+        Sql: "SELECT *, topic(2) as droneId, timestamp() as receivedAt FROM 'drone/+/status'"
+        Actions:
+          - Lambda:
+              FunctionArn: !GetAtt StoreStatusFunction.Arn
+        RuleDisabled: false
+  # Lambda to store drone status
+  StoreStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-store-status-${Environment}
+      CodeUri: src/
+      Handler: drones.store_status_handler
+      MemorySize: 128
+      Environment:
+        Variables:
+          STATUS_TABLE: !Ref DroneStatusTable
+          STATUS_TTL_SECONDS: "30"
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt DroneStatusTable.Arn
+
+  StoreStatusFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StoreStatusFunction
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+      SourceArn: !GetAtt DroneStatusRule.Arn
+
+  # IoT Rule to store drone logs in DynamoDB
+  DroneLogsRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub drone_logs_${Environment}
+      TopicRulePayload:
+        Sql: "SELECT *, topic(2) as droneId, timestamp() as receivedAt FROM 'drone/+/logs'"
+        Actions:
+          - Lambda:
+              FunctionArn: !GetAtt StoreLogsFunction.Arn
+        RuleDisabled: false
+
+  # Lambda to store logs (with sequencing)
+  StoreLogsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-store-logs-${Environment}
+      CodeUri: src/
+      Handler: drones.store_logs_handler
+      MemorySize: 128
+      Environment:
+        Variables:
+          LOGS_TABLE: !Ref DroneLogsTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt DroneLogsTable.Arn
+
+  StoreLogsFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StoreLogsFunction
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+      SourceArn: !GetAtt DroneLogsRule.Arn
+
+  # Get Logs Function
+  GetLogsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-get-logs-${Environment}
+      CodeUri: src/
+      Handler: drones.get_logs_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          LOGS_TABLE: !Ref DroneLogsTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+              Resource:
+                - !GetAtt DroneTable.Arn
+                - !GetAtt DroneLogsTable.Arn
+      Events:
+        GetLogs:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/logs
+            Method: GET
+
+  # DynamoDB Table for Drone Logs
+  DroneLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub drone-logs-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: droneId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: droneId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # IoT Rule to handle chat responses from drones
+  DroneChatResponseRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub drone_chat_response_${Environment}
+      TopicRulePayload:
+        Sql: "SELECT * FROM 'drone/+/chat/+/response'"
+        Actions:
+          - Lambda:
+              FunctionArn: !GetAtt ChatResponseFunction.Arn
+        RuleDisabled: false
+
+  # Lambda to process drone chat responses
+  ChatResponseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-chat-response-${Environment}
+      CodeUri: src/
+      Handler: conversations.response_handler
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt ConversationsTable.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub '${DroneImagesBucket.Arn}/*'
+
+  ChatResponseFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ChatResponseFunction
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+      SourceArn: !GetAtt DroneChatResponseRule.Arn
+
+  IoTRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DynamoDBWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt DroneStatusTable.Arn
+
+  # ============================================
+  # IoT Endpoint Custom Resource
+  # ============================================
+  IotEndpointFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-iot-endpoint-${Environment}
+      Runtime: python3.13
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 30
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - iot:DescribeEndpoint
+              Resource: '*'
+      InlineCode: |
+        import boto3
+        import cfnresponse
+        def handler(event, context):
+            if event['RequestType'] == 'Delete':
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                return
+            client = boto3.client('iot')
+            endpoint = client.describe_endpoint(endpointType='iot:Data-ATS')['endpointAddress']
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {'IotEndpointAddress': endpoint})
+
+  IotEndpoint:
+    Type: Custom::IotEndpoint
+    Properties:
+      ServiceToken: !GetAtt IotEndpointFunction.Arn
+
+  # ============================================
+  # IoT Thing & Policy (for drones)
+  # ============================================
+  DroneThing:
+    Type: AWS::IoT::Thing
+    Properties:
+      ThingName: !Sub ${DroneId}-${Environment}
+      AttributePayload:
+        Attributes:
+          Environment: !Ref Environment
+
+  DroneIoTPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: !Sub drone-policy-${Environment}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - iot:Connect
+            Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*'
+          - Effect: Allow
+            Action:
+              - iot:Subscribe
+            Resource: 
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/command'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/chat/*/command'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/drone/*/video/command'
+              # Allow device to subscribe to its shadow topics (offline-safe decommission/reset)
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/$aws/things/*/shadow/*'
+          - Effect: Allow
+            Action:
+              - iot:Receive
+            Resource: 
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/command'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/chat/*/command'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/video/command'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/$aws/things/*/shadow/*'
+          - Effect: Allow
+            Action:
+              - iot:Publish
+            Resource: 
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/status'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/chat/*/response'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/logs'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/video/status'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/$aws/things/*/shadow/*'
+          # Allow credential provider access for S3 uploads
+          - Effect: Allow
+            Action:
+              - iot:AssumeRoleWithCertificate
+            Resource: !GetAtt DroneS3AccessRoleAlias.RoleAliasArn
+          # Allow credential provider access for video streaming
+          - Effect: Allow
+            Action:
+              - iot:AssumeRoleWithCertificate
+            Resource: !GetAtt DroneVideoRoleAlias.RoleAliasArn
+
+  # ============================================
+  # IoT Credential Provider (for drone S3 uploads)
+  # ============================================
+  
+  # IAM Role for drones to upload images to S3
+  DroneS3AccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: credentials.iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DroneS3UploadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub '${DroneImagesBucket.Arn}/*'
+
+  # IoT Role Alias - maps IoT certificates to the IAM role
+  DroneS3AccessRoleAlias:
+    Type: AWS::IoT::RoleAlias
+    Properties:
+      RoleAlias: !Sub drone-s3-access-role-alias-${Environment}
+      RoleArn: !GetAtt DroneS3AccessRole.Arn
+      CredentialDurationSeconds: 3600
+
+  # ============================================
+  # Kinesis Video Streams (Live Video Streaming)
+  # ============================================
+  
+  # Lambda to manage signaling channels per drone
+  VideoSignalingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-video-signaling-${Environment}
+      CodeUri: src/
+      Handler: video.signaling_handler
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          ENVIRONMENT: !Ref Environment
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !Sub '${DroneTable.Arn}/index/*'
+            - Effect: Allow
+              Action:
+                - kinesisvideo:CreateSignalingChannel
+                - kinesisvideo:DescribeSignalingChannel
+                - kinesisvideo:GetSignalingChannelEndpoint
+                - kinesisvideo:DeleteSignalingChannel
+                - kinesisvideo:ListSignalingChannels
+              Resource: '*'
+      Events:
+        GetSignaling:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/video/signaling
+            Method: GET
+
+  # Lambda to get WebRTC viewer credentials for iOS app
+  VideoViewerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-video-viewer-${Environment}
+      CodeUri: src/
+      Handler: video.viewer_handler
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          ENVIRONMENT: !Ref Environment
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: 
+                - !GetAtt DroneTable.Arn
+                - !Sub '${DroneTable.Arn}/index/*'
+            - Effect: Allow
+              Action:
+                - kinesisvideo:DescribeSignalingChannel
+                - kinesisvideo:GetSignalingChannelEndpoint
+                - kinesisvideo:ConnectAsViewer
+                - kinesisvideo:GetIceServerConfig
+              Resource: '*'
+      Events:
+        GetViewer:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/video/viewer
+            Method: GET
+
+  # IAM Role for drones to produce video via Kinesis
+  DroneVideoProducerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: credentials.iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DroneKinesisVideoPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesisvideo:DescribeSignalingChannel
+                  - kinesisvideo:GetSignalingChannelEndpoint
+                  - kinesisvideo:ConnectAsMaster
+                  - kinesisvideo:GetIceServerConfig
+                Resource: !Sub 'arn:aws:kinesisvideo:${AWS::Region}:${AWS::AccountId}:channel/drone-*'
+
+  # IoT Role Alias for drone video streaming
+  DroneVideoRoleAlias:
+    Type: AWS::IoT::RoleAlias
+    Properties:
+      RoleAlias: !Sub drone-video-role-alias-${Environment}
+      RoleArn: !GetAtt DroneVideoProducerRole.Arn
+      CredentialDurationSeconds: 3600
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${DroneApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
+  
+  IoTEndpoint:
+    Description: IoT Core endpoint for drone/app connection
+    Value: !GetAtt IotEndpoint.IotEndpointAddress
+  
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+  
+  IdentityPoolId:
+    Description: Cognito Identity Pool ID
+    Value: !Ref IdentityPool
+  
+  UserPoolDomain:
+    Description: Cognito User Pool Domain
+    Value: !Sub 'https://drone-auth-${Environment}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com'
+  
+  ThingName:
+    Description: IoT Thing name
+    Value: !Ref DroneThing
+  
+  PolicyName:
+    Description: IoT Policy name
+    Value: !Ref DroneIoTPolicy
+
+  DroneTableName:
+    Description: DynamoDB table for drone registry
+    Value: !Ref DroneTable
+  
+  ConversationsTableName:
+    Description: DynamoDB table for conversations
+    Value: !Ref ConversationsTable
+  
+  ImagesBucketName:
+    Description: S3 bucket for drone images
+    Value: !Ref DroneImagesBucket
+  
+  DroneS3RoleAlias:
+    Description: IoT Role Alias for drone S3 access
+    Value: !Ref DroneS3AccessRoleAlias
+  
+  DroneVideoRoleAlias:
+    Description: IoT Role Alias for drone video streaming
+    Value: !Ref DroneVideoRoleAlias

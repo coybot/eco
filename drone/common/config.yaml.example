@@ -1,0 +1,40 @@
+# Drone API Configuration
+# Copy this to config.yaml and fill in your values
+
+# Drone Identity (auto-generated if not set)
+# drone_id: "drone-abc123"
+
+# AWS IoT Configuration
+iot_endpoint: "YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com"  # Get from: aws iot describe-endpoint --endpoint-type iot:Data-ATS
+
+# AWS Region (match your deployed SAM stack)
+region: "us-west-2"
+
+# Flight Controller Connection
+serial_port: "/dev/ttyACM0"
+baud_rate: 115200
+
+# Battery Monitoring (auto-configured on PX4/ArduPilot)
+battery:
+  cells: 4                      # Number of cells (3S=3, 4S=4, 6S=6)
+  capacity_mah: 5000            # Battery capacity in mAh
+  low_voltage_per_cell: 3.5     # Low battery warning (V per cell)
+  critical_voltage_per_cell: 3.3 # Critical battery warning (V per cell)
+
+# Logging
+log_level: "INFO"
+
+# WiFi Provisioning (set automatically during setup)
+# user_id: "google_123456"
+
+# Provisioning Behavior
+provisioning_timeout: 60  # seconds to wait for setup (default: 60)
+
+# Video Streaming (Kinesis Video Streams WebRTC)
+video_role_alias: "drone-video-role-alias-dev"  # IoT role alias for Kinesis access
+credentials_endpoint: "YOUR_CREDENTIALS_ENDPOINT.credentials.iot.us-west-2.amazonaws.com"  # Get from: aws iot describe-endpoint --endpoint-type iot:CredentialProvider
+
+# S3 Image Upload
+s3_role_alias: "drone-s3-access-role-alias-dev"  # IoT role alias for S3 access
+images_bucket: "drone-images-dev-us-west-2-YOUR_ACCOUNT_ID"
+

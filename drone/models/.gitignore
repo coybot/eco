@@ -1,0 +1,18 @@
+# Model files (generated/downloaded - too large for git)
+*.onnx
+*.engine
+*.trt
+*.blob
+*.gguf
+*.bin
+*.safetensors
+
+# Symlinks created by setup script
+reasoning_llm.gguf
+
+# TensorRT-LLM engine directories
+*_trt/
+
+# Keep setup script and gitignore
+!setup_models.py
+!.gitignore

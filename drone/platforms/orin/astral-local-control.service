@@ -1,0 +1,16 @@
+[Unit]
+Description=Astral Local Control API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/orin-admin/drone-api
+ExecStart=/home/orin-admin/drone-api/venv/bin/python /home/orin-admin/drone-api/local_control_api.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

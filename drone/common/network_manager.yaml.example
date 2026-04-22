@@ -1,0 +1,14 @@
+model_name: "Orin"
+interface: null
+ap_password: null  # If null, a default "Astral<last4>!" is used
+ap_channel: 6
+ap_ip: "192.168.4.1"
+ap_subnet: "192.168.4.0/24"
+dhcp_range_start: "192.168.4.10"
+dhcp_range_end: "192.168.4.100"
+dhcp_lease: "12h"
+internet_check_interval_s: 5
+internet_stable_seconds: 20
+internet_failures_to_ap: 1
+known_ssids: []   # If empty, uses NetworkManager saved connections
+dry_run: false

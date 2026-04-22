@@ -1,0 +1,521 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 63;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F7EF5F138BEA331DC60973C2 /* WebRTC */; };
+		0D4C9A7E9D8A4E2E8E1C3F2B /* llama_3.1_coreml.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = 7C3F1A2B9B4E3C1D8A7E6F5C /* llama_3.1_coreml.mlmodelc */; };
+		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
+		2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */; };
+		3B8C7D6E5F4A3B2C1D0E9F8A /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */; };
+		108C2B667CC25044DED0793F /* DroneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */; };
+		2080601FFA5F70674A60C87A /* DroneSetupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */; };
+		3015A7361563077FBC2FAE44 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB16DB863897C31CEF2CACE /* APIClient.swift */; };
+		3037447B6B1D2DB6260AA36C /* DroneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */; };
+		3B6E4A9E2F8A4F3EB7E6C5A1 /* ConfigureTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */; };
+		43521145F3770AD6CD467509 /* AWSCore in Frameworks */ = {isa = PBXBuildFile; productRef = 525C477C1B0FB5F6D2FBF0A9 /* AWSCore */; };
+		45DEDDB47F4ACB8F4F995F3E /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57BAEA30533FDEB9448F8BF6 /* Logger.swift */; };
+		5E2E62FFFCA6F635DFC011CA /* AWSConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */; };
+		8E784835F0405EA03CD8C65B /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F92BA31E0CFB629DD79C76 /* AuthView.swift */; };
+		8F5DDE243D4076B597744222 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACB1AA8F7570A095FAED7A1 /* AuthService.swift */; };
+		94D6C905AB0BBD269EB7BCE7 /* VideoStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */; };
+		A2B93EC502C694E8F6B39E00 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA2F66D0AFC1F21096C2B128 /* User.swift */; };
+		A842CFC19F97A7E7D454F84D /* MQTTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D3CDBF14C7FA275224809B /* MQTTService.swift */; };
+		B97A51BA48BF59FE6DF221DA /* SetupDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100B1A7A36761E30F2A4500A /* SetupDroneView.swift */; };
+		CA1BD0798DEB15CFA164D9F2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */; };
+		CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */; };
+		D025012D892BA99D526B1A60 /* AddDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */; };
+		D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E698CDF3450F25420AF98 /* DroneChatView.swift */; };
+		E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5478F74C272118CF0A0A4F37 /* Drone.swift */; };
+		ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */; };
+		F2A7C8D9E1B24C3D9F0A1B2C /* WifiNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D2C3B4A5964788B9C0D1E2 /* WifiNetwork.swift */; };
+		FF7256D2350F95C6619AA7D3 /* AWSIoT in Frameworks */ = {isa = PBXBuildFile; productRef = 8F5B60C7D6A2D7B84AAE7C7E /* AWSIoT */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		100B1A7A36761E30F2A4500A /* SetupDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDroneView.swift; sourceTree = "<group>"; };
+		24F92BA31E0CFB629DD79C76 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		2B3E698CDF3450F25420AF98 /* DroneChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneChatView.swift; sourceTree = "<group>"; };
+		2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStreamView.swift; sourceTree = "<group>"; };
+		39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DroneOperator.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneListView.swift; sourceTree = "<group>"; };
+		4ACB1AA8F7570A095FAED7A1 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		5478F74C272118CF0A0A4F37 /* Drone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Drone.swift; sourceTree = "<group>"; };
+		57BAEA30533FDEB9448F8BF6 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
+		6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
+		6E3CA67B8321CF39FF4699E1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7C3F1A2B9B4E3C1D8A7E6F5C /* llama_3.1_coreml.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlmodelc; path = Models/llama_3.1_coreml.mlmodelc; sourceTree = "<group>"; };
+		8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionService.swift; sourceTree = "<group>"; };
+		778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DroneOperator.entitlements; sourceTree = "<group>"; };
+		85D3CDBF14C7FA275224809B /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
+		9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mission.swift; sourceTree = "<group>"; };
+		9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigureTabView.swift; sourceTree = "<group>"; };
+		B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddDroneView.swift; sourceTree = "<group>"; };
+		BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneSetupService.swift; sourceTree = "<group>"; };
+		C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneOperatorApp.swift; sourceTree = "<group>"; };
+		CEB16DB863897C31CEF2CACE /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneDetailView.swift; sourceTree = "<group>"; };
+		DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AWSConfig.swift; sourceTree = "<group>"; };
+		E1D2C3B4A5964788B9C0D1E2 /* WifiNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiNetwork.swift; sourceTree = "<group>"; };
+		F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
+		FA2F66D0AFC1F21096C2B128 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		EF4B6154F03DBD3E5A69408C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */,
+				FF7256D2350F95C6619AA7D3 /* AWSIoT in Frameworks */,
+				43521145F3770AD6CD467509 /* AWSCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1DACF4284ED086EA990DDB2C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				CEB16DB863897C31CEF2CACE /* APIClient.swift */,
+				4ACB1AA8F7570A095FAED7A1 /* AuthService.swift */,
+				BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */,
+				6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */,
+				57BAEA30533FDEB9448F8BF6 /* Logger.swift */,
+				85D3CDBF14C7FA275224809B /* MQTTService.swift */,
+				8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		368590727BEB1F6EFD38BB4D /* App */ = {
+			isa = PBXGroup;
+			children = (
+				3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */,
+				C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		5A7C9D1E2F3B4C5D6E7F809A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				7C3F1A2B9B4E3C1D8A7E6F5C /* llama_3.1_coreml.mlmodelc */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		56A3539E966CCEAFEE52AF88 /* Drones */ = {
+			isa = PBXGroup;
+			children = (
+				B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */,
+				9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */,
+				2B3E698CDF3450F25420AF98 /* DroneChatView.swift */,
+				CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */,
+				4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */,
+				100B1A7A36761E30F2A4500A /* SetupDroneView.swift */,
+				2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */,
+			);
+			path = Drones;
+			sourceTree = "<group>";
+		};
+		82CED843544E37DC5152F0A9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		91FC13B83B44E67890C38EC0 = {
+			isa = PBXGroup;
+			children = (
+				DFDD5F9CC92A007C94C975AE /* DroneOperator */,
+				82CED843544E37DC5152F0A9 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		980215AEAF9D37D5323BE896 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		BE97CDCBE34B4FED709FF517 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				24F92BA31E0CFB629DD79C76 /* AuthView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		C3C2106C2942B9F842296AD5 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */,
+				5478F74C272118CF0A0A4F37 /* Drone.swift */,
+				9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */,
+				FA2F66D0AFC1F21096C2B128 /* User.swift */,
+				E1D2C3B4A5964788B9C0D1E2 /* WifiNetwork.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		DF3F5F1B003A48877189B7D9 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				BE97CDCBE34B4FED709FF517 /* Auth */,
+				56A3539E966CCEAFEE52AF88 /* Drones */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		DFDD5F9CC92A007C94C975AE /* DroneOperator */ = {
+			isa = PBXGroup;
+			children = (
+				368590727BEB1F6EFD38BB4D /* App */,
+				980215AEAF9D37D5323BE896 /* Config */,
+				C3C2106C2942B9F842296AD5 /* Models */,
+				5A7C9D1E2F3B4C5D6E7F809A /* Resources */,
+				1DACF4284ED086EA990DDB2C /* Services */,
+				DF3F5F1B003A48877189B7D9 /* Views */,
+				778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */,
+				6E3CA67B8321CF39FF4699E1 /* Info.plist */,
+			);
+			path = DroneOperator;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B416D9FB34A02DBCC61BE35A /* DroneOperator */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D37380520CAA01DFE50CC3D /* Build configuration list for PBXNativeTarget "DroneOperator" */;
+			buildPhases = (
+				519092DAA02E0118FF00919A /* Sources */,
+				364FBBA745393F878DB6FE23 /* Resources */,
+				EF4B6154F03DBD3E5A69408C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DroneOperator;
+			packageProductDependencies = (
+				F7EF5F138BEA331DC60973C2 /* WebRTC */,
+				8F5B60C7D6A2D7B84AAE7C7E /* AWSIoT */,
+				525C477C1B0FB5F6D2FBF0A9 /* AWSCore */,
+			);
+			productName = DroneOperator;
+			productReference = 39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		296B157250891887B96C9351 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = B0D3E5FECC490A60D1AA7A47 /* Build configuration list for PBXProject "DroneOperator" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 91FC13B83B44E67890C38EC0;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */,
+				B4DDC5DB2E3F42F7B0A8A745 /* XCRemoteSwiftPackageReference "WebRTC" */,
+			);
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B416D9FB34A02DBCC61BE35A /* DroneOperator */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		364FBBA745393F878DB6FE23 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CA1BD0798DEB15CFA164D9F2 /* Assets.xcassets in Resources */,
+				0D4C9A7E9D8A4E2E8E1C3F2B /* llama_3.1_coreml.mlmodelc in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		519092DAA02E0118FF00919A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3015A7361563077FBC2FAE44 /* APIClient.swift in Sources */,
+				5E2E62FFFCA6F635DFC011CA /* AWSConfig.swift in Sources */,
+				D025012D892BA99D526B1A60 /* AddDroneView.swift in Sources */,
+				3B6E4A9E2F8A4F3EB7E6C5A1 /* ConfigureTabView.swift in Sources */,
+				8F5DDE243D4076B597744222 /* AuthService.swift in Sources */,
+				8E784835F0405EA03CD8C65B /* AuthView.swift in Sources */,
+				ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */,
+				E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */,
+				D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */,
+				3037447B6B1D2DB6260AA36C /* DroneDetailView.swift in Sources */,
+				108C2B667CC25044DED0793F /* DroneListView.swift in Sources */,
+				CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */,
+				2080601FFA5F70674A60C87A /* DroneSetupService.swift in Sources */,
+				1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */,
+				45DEDDB47F4ACB8F4F995F3E /* Logger.swift in Sources */,
+				3B8C7D6E5F4A3B2C1D0E9F8A /* Mission.swift in Sources */,
+				A842CFC19F97A7E7D454F84D /* MQTTService.swift in Sources */,
+				B97A51BA48BF59FE6DF221DA /* SetupDroneView.swift in Sources */,
+				A2B93EC502C694E8F6B39E00 /* User.swift in Sources */,
+				94D6C905AB0BBD269EB7BCE7 /* VideoStreamView.swift in Sources */,
+				2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */,
+				F2A7C8D9E1B24C3D9F0A1B2C /* WifiNetwork.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		07C8258A6B29693B2D46A355 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 64FVJWYNQ7;
+				INFOPLIST_FILE = DroneOperator/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.drone;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		322B14F78843DB574FCFB80D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		4DFEF26891786C207944EB7A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		CEBB51F0126B3DF4C657F193 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 64FVJWYNQ7;
+				INFOPLIST_FILE = DroneOperator/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.drone;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5D37380520CAA01DFE50CC3D /* Build configuration list for PBXNativeTarget "DroneOperator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CEBB51F0126B3DF4C657F193 /* Debug */,
+				07C8258A6B29693B2D46A355 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B0D3E5FECC490A60D1AA7A47 /* Build configuration list for PBXProject "DroneOperator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				322B14F78843DB574FCFB80D /* Debug */,
+				4DFEF26891786C207944EB7A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B4DDC5DB2E3F42F7B0A8A745 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 125.0.0;
+			};
+		};
+		FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aws-amplify/aws-sdk-ios-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.36.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		525C477C1B0FB5F6D2FBF0A9 /* AWSCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */;
+			productName = AWSCore;
+		};
+		8F5B60C7D6A2D7B84AAE7C7E /* AWSIoT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */;
+			productName = AWSIoT;
+		};
+		F7EF5F138BEA331DC60973C2 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B4DDC5DB2E3F42F7B0A8A745 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 296B157250891887B96C9351 /* Project object */;
+}

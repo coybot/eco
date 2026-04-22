@@ -1,0 +1,6 @@
+# This directory holds IoT certificates (not committed to git)
+# Required files:
+#   - device.pem    (device certificate)
+#   - private.key   (private key)
+#   - root-ca.pem   (Amazon Root CA - download from https://www.amazontrust.com/repository/AmazonRootCA1.pem)
+

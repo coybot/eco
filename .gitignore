@@ -1,0 +1,61 @@
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+.env
+.env.*
+
+# Node / frontend
+node_modules/
+.next/
+out/
+.sst/
+.open-next/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Secrets and per-device drone files (never commit)
+drone/common/config.yaml
+drone/common/certs/*.pem
+drone/common/certs/*.key
+drone/common/certs/*.crt
+drone/common/certs/thing-name.txt
+**/claim-private.key
+.drone-id
+
+# Large / generated model weights
+*.gguf
+*.onnx
+*.pt
+*.pth
+*.engine
+*.trt
+*.bin
+drone/models/*
+!drone/models/.gitignore
+!drone/models/README.md
+!drone/models/setup_models.py
+
+# Logs and local state
+*.log
+drone/common/logs/
+
+# iOS / Xcode
+**/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# macOS
+.AppleDouble

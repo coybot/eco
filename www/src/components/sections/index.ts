@@ -1,0 +1,8 @@
+export { HeroSection } from "./hero";
+export { SocialProofSection } from "./social-proof";
+export { ProductsSection } from "./products";
+export { SolutionsSection } from "./solutions";
+export { DeveloperSection } from "./developer";
+export { AppShowcaseSection } from "./app-showcase";
+export { BlogPreviewSection } from "./blog-preview";
+export { CTASection } from "./cta";
