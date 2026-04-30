@@ -77,7 +77,7 @@ const sections = [
     items: [
       { name: "Overview", href: "/docs/mission-control" },
       { name: "Mission Planning", href: "/docs/mission-control/planning" },
-      { name: "Simulation", href: "/docs/mission-control/simulation" },
+      { name: "Simulation", href: "/docs/simulation" },
       { name: "Deployment", href: "/docs/mission-control/deployment" },
     ],
   },
