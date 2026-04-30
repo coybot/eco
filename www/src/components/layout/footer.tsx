@@ -4,6 +4,8 @@ import { Separator } from "@/components/ui/separator";
 const footerLinks = {
   Products: [
     { name: "M1-A Quadcopter", href: "/products/m1a" },
+    { name: "M1-G Ground Rover", href: "/products/m1g" },
+    { name: "Compare", href: "/compare" },
     { name: "Accessories", href: "/products/accessories" },
   ],
   Solutions: [
@@ -16,6 +18,7 @@ const footerLinks = {
     { name: "Documentation", href: "/docs" },
     { name: "API Reference", href: "/docs/api" },
     { name: "SDK", href: "/docs/sdk" },
+    { name: "Run in Simulation", href: "/docs/simulation" },
   ],
   Company: [
     { name: "About", href: "/company" },

@@ -21,6 +21,16 @@ const products = [
     href: "/products/m1a",
     description: "Autonomous quadcopter with NDAA-compliant compute. GPS & comm-denied capable.",
   },
+  {
+    title: "M1-G Ground Rover",
+    href: "/products/m1g",
+    description: "Autonomous ground rover for long-range patrol. Heavier payload, all-weather mobility.",
+  },
+  {
+    title: "Compare",
+    href: "/compare",
+    description: "M1-A quadcopter vs M1-G rover, side-by-side.",
+  },
 ];
 
 const solutions = [
@@ -56,6 +66,11 @@ const developers = [
     title: "SDK & APIs",
     href: "/docs/sdk",
     description: "Build custom applications with our SDK.",
+  },
+  {
+    title: "Run in Simulation",
+    href: "/docs/simulation",
+    description: "Try the autonomy stack in Isaac Sim before hardware.",
   },
 ];
 
