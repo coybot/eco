@@ -95,6 +95,7 @@ drone.disconnect()
                       loop
                       playsInline
                       preload="metadata"
+                      poster="/docs/simulation/isaac-sim-scene-1.jpg"
                       aria-label="Simulated warehouse scene with aerial and ground vehicles"
                     >
                       <source
@@ -111,6 +112,7 @@ drone.disconnect()
                       loop
                       playsInline
                       preload="metadata"
+                      poster="/docs/simulation/isaac-sim-scene-2.jpg"
                       aria-label="Simulated outdoor scene with multiple autonomous vehicles"
                     >
                       <source
