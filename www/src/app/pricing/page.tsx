@@ -267,7 +267,7 @@ export default function PricingPage() {
                   },
                   {
                     q: "Do you offer volume discounts?",
-                    a: "Yes! Contact our enterprise team for custom pricing on orders of 5+ drones. We also offer financing options for qualified businesses.",
+                    a: "Yes — contact our enterprise team for custom pricing on orders of 5+ drones.",
                   },
                   {
                     q: "What's your return policy?",

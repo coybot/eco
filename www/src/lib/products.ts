@@ -12,7 +12,6 @@ export interface Product {
   price: number;
   image: string;
   badge: string;
-  stripeProductId?: string;
   specs: ProductSpec[];
   features: string[];
   includes: string[];

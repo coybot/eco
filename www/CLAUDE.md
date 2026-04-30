@@ -1,0 +1,90 @@
+# astral.us — deploy + git workflow
+
+This is the marketing site at https://astral.us. It is **informational only**: there is no cart, no checkout, no payment processing, no financing, no orders flow. Any agent (Claude, Cursor, future me) that wants to "add" any of those should stop and ask the user — they have been removed deliberately and should stay out.
+
+## What lives where
+
+| Concern | Location |
+|---|---|
+| Source code | `astral-us/eco` GitHub repo, this directory (`www/`) |
+| Production site | AWS, deployed via SST → CloudFront + Lambda + S3 |
+| Stage | `production` (live at https://astral.us) |
+| AWS profile | `astral` (account `041686205727`, IAM user `yusuf`) |
+| Git identity | `yusuf-astral <218167113+yusuf-astral@users.noreply.github.com>` (set as repo-local config) |
+
+## The single most important rule
+
+**Pushing to GitHub does not deploy the site.** There is no GitHub Actions / CI workflow for `eco`. A push updates only the repo. AWS prod is updated only when someone runs `sst deploy` from a working tree.
+
+This means GitHub `main` and prod can drift. When they do, the source of truth for *what users see* is prod, and the source of truth for *what's checked in* is `main`. Reconciling them is a deliberate action, not automatic.
+
+## Deploy
+
+From `www/`:
+
+```bash
+npm install                                          # if first time or deps changed
+AWS_PROFILE=astral npx sst deploy --stage prod
+```
+
+The deploy:
+1. Runs `next build` (OpenNext picks up the result).
+2. Uploads everything in `public/` to the AssetsBucket (S3) and serves via CloudFront.
+3. Updates the Next.js Lambda with the SSR/route handlers.
+4. Invalidates CloudFront paths that changed.
+
+Typical run: 4–8 min. Watch for Pulumi errors near the end — exit code 0 does not always mean success; scan the tail for `Error` or `Failed`.
+
+If the deploy errors talk about secrets (`StripeSecretKey`, etc.), the site has had Stripe re-added by mistake — see "What's deliberately not here" below.
+
+## What's deliberately not here
+
+Removed and should not return without explicit user request:
+
+- **Stripe** — no `stripe`, `@stripe/stripe-js`, no `infra/api.ts` Lambda for webhooks, no `src/lib/stripe.ts`, no `src/app/api/checkout` or `/api/webhooks/stripe`.
+- **Cart** — no `src/lib/cart.tsx`, no `<CartProvider>` in `layout.tsx`, no `/cart` page.
+- **Checkout** — no `/checkout` route, no checkout success page, no `addToCart` UI.
+- **Orders** — no DynamoDB `OrdersTable`, no `OrderProcessor` Lambda, no `@aws-sdk/client-dynamodb`/`-ses`/`-lib-dynamodb` deps, no `infra/database.ts`, no `infra/email.ts`.
+- **Financing** — pricing FAQ does not advertise financing.
+
+Product CTAs are "Request Info" → `/enterprise`. That's the entire commerce surface.
+
+## Static binary assets (videos, large images)
+
+`public/` files are committed to the repo (no LFS) and get uploaded to S3 by OpenNext on each deploy. Three gotchas:
+
+- **Don't put static assets under a public/ subdir whose name matches an SSR route prefix.** OpenNext scans `public/` and adds each top-level subdir to the CloudFront Function's "send to S3" prefix list. If you put videos under `public/docs/`, *all* `/docs/*` requests (including the SSR pages at `src/app/docs/...`) get routed to S3 and return 403. Use a neutral prefix like `public/media/`. Current pattern: `/media/simulation/*.{mp4,jpg}` referenced from the `/docs/simulation` page.
+- **MP4s for inline `<video>`**: re-mux with faststart so `moov` is at the front, otherwise the browser can't start playback until the full file downloads. ffmpeg one-liner (no re-encode):
+  ```
+  ffmpeg -i in.mp4 -c copy -movflags +faststart out.mp4
+  ```
+- **Posters**: extract a first-frame JPG and reference it via `poster="…"` on the `<video>` so the placeholder shows the scene rather than a black box.
+
+## Common confusions
+
+- **"The page is live but the videos 404"** → The Lambda was deployed (page.tsx) but the S3 upload was skipped or the assets weren't in `public/` at deploy time. Re-deploy from a working tree where the assets exist.
+- **"GitHub shows a recent commit but prod still looks old"** → Nobody ran `sst deploy` after the push. Run it.
+- **"Cursor's commit broke the deploy"** → Most likely Cursor re-added Stripe / cart / orders code that this site explicitly doesn't use. Strip it back out. See list above.
+- **"`AssetsBucketBucket` lifecycle_rule.0.enabled is required"** → AWS provider tightened the schema. Each `lifecycleRules[]` entry needs `enabled: true` and an `id`. `infra/storage.ts` has the working shape — copy from there.
+- **"astral.us page returns 403 from `server: AmazonS3` but `astral.us/...image.jpg` works"** → see the `public/` subdir gotcha above. Static files under `public/<route>/` shadow the SSR route `<route>`. Move them to `public/media/...` (or any subdir whose name isn't also a Next.js route).
+- **"astral.us SSL handshake fails (`*.cloudfront.net` cert returned)"** → `infra/web.ts` is missing the `domain` block, so SST stripped the alias and ACM cert from the CloudFront distribution on the last deploy. Re-add the `domain: { name: ..., redirects: [...] }` config and redeploy. (Status of the alias can be checked with `aws cloudfront get-distribution-config --id <prod-dist-id> --query 'DistributionConfig.Aliases'`.)
+
+## Git identity
+
+`~/.gitconfig` defaults to `<work-email>`, which is fine for other work but wrong for `astral-us` org commits. This repo has a local override set at clone time:
+
+```bash
+git config user.name "yusuf-astral"
+git config user.email "218167113+yusuf-astral@users.noreply.github.com"
+```
+
+If a fresh clone shows `Yusuf Saib <<work-email>>` in `git log -1`, the override is missing — set it before committing.
+
+## End-to-end checklist for a typical change
+
+1. Edit code in `www/`.
+2. `npm run build` — must succeed.
+3. `git add … && git commit` (yusuf-astral identity) and `git push origin main`.
+4. `AWS_PROFILE=astral npx sst deploy --stage prod`.
+5. Verify the change at https://astral.us/<route> with `curl -I` or a browser. Static assets at https://astral.us/<path>.
+6. If something looks wrong, the page is cached at the CloudFront edge — wait a minute or hard-refresh.

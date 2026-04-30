@@ -1,21 +1,8 @@
-// S3 bucket for product images and assets
+// S3 bucket for product images and static assets, served via CloudFront
 export const storage = {
   bucket: new sst.aws.Bucket("AssetsBucket", {
-    access: "cloudfront", // Serve via CloudFront for better performance
-    transform: {
-      bucket: {
-        lifecycleRules: [
-          {
-            // Clean up incomplete multipart uploads after 7 days
-            abortIncompleteMultipartUpload: {
-              daysAfterInitiation: 7,
-            },
-          },
-        ],
-      },
-    },
+    access: "cloudfront",
   }),
 };
 
-// Export for use in other stacks
 export const { bucket } = storage;

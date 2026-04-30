@@ -51,12 +51,6 @@ const nextConfig: NextConfig = {
         destination: "/products",
         permanent: true,
       },
-      // Old checkout URL
-      {
-        source: "/checkout/",
-        destination: "/cart",
-        permanent: false,
-      },
       // Resources to docs
       {
         source: "/resources",

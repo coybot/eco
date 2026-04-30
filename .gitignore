@@ -20,6 +20,7 @@ node_modules/
 out/
 .sst/
 .open-next/
+sst-env.d.ts
 
 # IDE
 .idea/

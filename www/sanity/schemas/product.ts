@@ -39,11 +39,6 @@ export const product = defineType({
       validation: (Rule) => Rule.required().positive(),
     }),
     defineField({
-      name: "stripeProductId",
-      title: "Stripe Product ID",
-      type: "string",
-    }),
-    defineField({
       name: "badge",
       title: "Badge",
       type: "string",
