@@ -7,7 +7,6 @@ The Astral.us website - autonomous drone platform. Built with Next.js 14, Tailwi
 - **Framework**: Next.js 14 (App Router)
 - **Styling**: Tailwind CSS + Shadcn/ui
 - **CMS**: Sanity.io
-- **E-commerce**: Stripe Checkout
 - **Infrastructure**: SST (AWS Lambda, CloudFront, S3, DynamoDB)
 - **Documentation**: Mintlify
 
@@ -41,11 +40,6 @@ npm run dev
 Create a `.env.local` file with:
 
 ```bash
-# Stripe
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
-
 # Sanity
 NEXT_PUBLIC_SANITY_PROJECT_ID=your-project-id
 NEXT_PUBLIC_SANITY_DATASET=production
@@ -64,7 +58,7 @@ astral-website/
 │   │   ├── layout/          # Header, Footer
 │   │   ├── sections/        # Homepage sections
 │   │   └── ui/              # Shadcn components
-│   └── lib/                 # Utilities, cart, products
+│   └── lib/                 # Utilities, products
 ├── infra/                   # SST infrastructure
 │   ├── api.ts               # Lambda functions
 │   ├── database.ts          # DynamoDB
@@ -87,16 +81,6 @@ npm run sst:dev
 ```
 
 ## Deployment
-
-### Set Secrets
-
-Before deploying, set the required secrets:
-
-```bash
-# Set Stripe secrets
-npx sst secret set StripeSecretKey sk_live_...
-npx sst secret set StripeWebhookSecret whsec_...
-```
 
 ### Deploy to AWS
 

@@ -1,13 +1,12 @@
 import { bucket } from "./storage";
 import { ordersTable } from "./database";
-import { secrets } from "./api";
 
 // Next.js website deployed to AWS via OpenNext
 export const web = new sst.aws.Nextjs("AstralWebsite", {
   path: ".", // Root of the project contains Next.js app
-  
+
   // Link AWS resources to Next.js (available as env vars)
-  link: [bucket, ordersTable, secrets.stripeSecretKey, secrets.stripeWebhookSecret],
+  link: [bucket, ordersTable],
   
   // Environment variables
   environment: {

@@ -6,6 +6,7 @@ export const storage = {
       bucket: {
         lifecycleRules: [
           {
+            enabled: true,
             // Clean up incomplete multipart uploads after 7 days
             abortIncompleteMultipartUpload: {
               daysAfterInitiation: 7,

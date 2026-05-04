@@ -51,11 +51,16 @@ const nextConfig: NextConfig = {
         destination: "/products",
         permanent: true,
       },
-      // Old checkout URL
+      // Old checkout URLs → products (no e-commerce on site)
       {
-        source: "/checkout/",
-        destination: "/cart",
-        permanent: false,
+        source: "/checkout/:path*",
+        destination: "/products",
+        permanent: true,
+      },
+      {
+        source: "/cart",
+        destination: "/products",
+        permanent: true,
       },
       // Resources to docs
       {

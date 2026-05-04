@@ -25,7 +25,6 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "@sanity/image-url": "^2.0.3",
-    "@stripe/stripe-js": "^8.6.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.29.2",
@@ -36,7 +35,6 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sanity": "^5.7.0",
-    "stripe": "^20.2.0",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
