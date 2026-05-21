@@ -1,0 +1,15 @@
+{
+  "name": "astral-drone-api",
+  "private": true,
+  "scripts": {
+    "deploy": "sst deploy",
+    "remove": "sst remove",
+    "unlock": "sst unlock"
+  },
+  "devDependencies": {
+    "@pulumi/command": "^1.0.2",
+    "@types/node": "^22.13.0",
+    "sst": "^3.17.38",
+    "typescript": "^5.7.3"
+  }
+}

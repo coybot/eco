@@ -1,0 +1,5 @@
+node_modules
+.sst
+.pulumi
+**/__pycache__
+.aws-sam
