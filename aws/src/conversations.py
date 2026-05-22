@@ -26,7 +26,7 @@ STATUS_TTL_SECONDS = int(os.environ.get("STATUS_TTL_SECONDS", "30"))
 
 # Bedrock model - Claude 4.5 Sonnet via cross-region inference profile
 BEDROCK_MODEL_ID = os.environ.get(
-    "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"
 )
 # Fallback model for code generation (faster, cheaper)
 BEDROCK_CODE_MODEL_ID = os.environ.get(

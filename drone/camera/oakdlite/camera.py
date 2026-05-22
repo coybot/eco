@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -33,8 +33,8 @@ class OakDLiteCamera(Camera):
         self,
         rgb_fps: int = 30,
         enable_depth: bool = True,
-        rgb_resolution: tuple[int, int] = (1920, 1080),
-        depth_resolution: tuple[int, int] = (640, 400),
+        rgb_resolution: Tuple[int, int] = (1920, 1080),
+        depth_resolution: Tuple[int, int] = (640, 400),
     ):
         """
         Initialize OAK-D Lite camera.
@@ -133,12 +133,12 @@ class OakDLiteCamera(Camera):
             return False
     
     @property
-    def resolution(self) -> tuple[int, int]:
+    def resolution(self) -> Tuple[int, int]:
         """Return (width, height) of the RGB camera."""
         return self._rgb_resolution
     
     @staticmethod
-    def list_devices() -> list[dict]:
+    def list_devices() -> List[Dict]:
         """
         List all connected OAK devices.
         

@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 
 
@@ -54,7 +54,7 @@ class Camera(ABC):
     
     @property
     @abstractmethod
-    def resolution(self) -> tuple[int, int]:
+    def resolution(self) -> Tuple[int, int]:
         """Return (width, height) of the RGB camera."""
         pass
     

@@ -245,6 +245,56 @@ def verify_drone_ownership(user_id: str, drone_id: str) -> bool:
         return False
 
 
+def start_handler(event, context):
+    """
+    POST /drones/{droneId}/video/start
+    Tells the drone to start (or stop) its video producer via IoT.
+    Body: { "action": "start" | "stop" }   (default: "start")
+    """
+    user_id = event.get('requestContext', {}).get('authorizer', {}).get('principalId') or \
+              event.get('requestContext', {}).get('authorizer', {}).get('userId')
+    if not user_id:
+        return {'statusCode': 401,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'Unauthorized'})}
+
+    drone_id = event.get('pathParameters', {}).get('droneId')
+    if not drone_id:
+        return {'statusCode': 400,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'Missing droneId'})}
+
+    if not verify_drone_ownership(user_id, drone_id):
+        return {'statusCode': 403,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'Drone not found or not owned by user'})}
+
+    try:
+        body = json.loads(event.get('body') or '{}')
+    except json.JSONDecodeError:
+        body = {}
+
+    action = body.get('action', 'start')
+
+    # Ensure the signaling channel exists before telling the drone to connect
+    if action == 'start':
+        try:
+            create_or_get_signaling_channel(drone_id)
+        except Exception as e:
+            print(f"Warning: could not pre-create signaling channel: {e}")
+
+    iot_client = boto3.client('iot-data', region_name=KVS_REGION)
+    iot_client.publish(
+        topic=f'drone/{drone_id}/video/command',
+        qos=1,
+        payload=json.dumps({'action': action})
+    )
+
+    return {'statusCode': 200,
+            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'status': 'sent', 'action': action})}
+
+
 def signaling_handler(event, context):
     """
     GET /drones/{droneId}/video/signaling
