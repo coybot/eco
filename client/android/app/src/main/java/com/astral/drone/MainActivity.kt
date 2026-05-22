@@ -302,6 +302,9 @@ private class ApiClient(private val tokenStore: TokenStore) {
                     return@withContext Result.failure(Exception("Session expired. Please log in again."))
                 }
                 val raw = resp.body?.string() ?: "{}"
+                if (!resp.isSuccessful) {
+                    return@withContext Result.failure(Exception("Server error (${resp.code}): $raw"))
+                }
                 val parsed = json.decodeFromString(DroneListResponse.serializer(), raw)
                 Result.success(parsed.drones)
             }
@@ -470,7 +473,12 @@ class DroneViewModel(context: Context) : ViewModel() {
     private val api = ApiClient(tokenStore)
 
     private val _state = MutableStateFlow(
-        UiState(screen = if (api.isLoggedIn()) Screen.Drones else Screen.Login)
+        // Start with isLoading=true if we're already logged in so the spinner
+        // shows immediately rather than flashing "No drones registered" first.
+        UiState(
+            screen = if (api.isLoggedIn()) Screen.Drones else Screen.Login,
+            isLoading = api.isLoggedIn()
+        )
     )
     val state = _state.asStateFlow()
 
@@ -496,7 +504,9 @@ class DroneViewModel(context: Context) : ViewModel() {
             _state.update { it.copy(isLoading = true, error = null) }
             val result = api.login(email, password)
             if (result.isSuccess) {
-                _state.update { it.copy(isLoading = false, screen = Screen.Drones) }
+                // Keep isLoading=true while we immediately fetch the drone list
+                // so the Drones screen shows a spinner rather than "No drones registered"
+                _state.update { it.copy(isLoading = true, screen = Screen.Drones) }
                 loadDrones()
             } else {
                 _state.update { it.copy(isLoading = false, error = result.exceptionOrNull()?.message) }
@@ -576,7 +586,7 @@ class DroneViewModel(context: Context) : ViewModel() {
 
     fun backToDrones() {
         pollJob?.cancel()
-        _state.update { it.copy(screen = Screen.Drones, messages = emptyList()) }
+        _state.update { it.copy(screen = Screen.Drones, messages = emptyList(), isLoading = true) }
         loadDrones()
     }
 
@@ -605,7 +615,7 @@ class DroneViewModel(context: Context) : ViewModel() {
     }
 
     fun backFromVideo() {
-        _state.update { it.copy(screen = Screen.Drones, videoConfig = null) }
+        _state.update { it.copy(screen = Screen.Drones, videoConfig = null, isLoading = true) }
         loadDrones()
     }
 
@@ -813,15 +823,32 @@ fun DronesScreen(state: UiState, vm: DroneViewModel) {
             } else if (state.drones.isEmpty()) {
                 Column(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("No drones registered", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Tap + to add your drone by ID",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (state.error != null) {
+                        Text(
+                            "Could not load drones",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            state.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Button(onClick = vm::loadDrones) { Text("Retry") }
+                    } else {
+                        Text("No drones registered", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Tap + to add your drone by ID",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedButton(onClick = vm::loadDrones) { Text("Refresh") }
+                    }
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -832,7 +859,8 @@ fun DronesScreen(state: UiState, vm: DroneViewModel) {
                 }
             }
 
-            if (state.error != null) {
+            // Error snackbar only shown when drones are already loaded (inline error handles empty state)
+            if (state.error != null && state.drones.isNotEmpty()) {
                 Snackbar(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
