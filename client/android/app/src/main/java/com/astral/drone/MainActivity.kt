@@ -390,6 +390,17 @@ private class ApiClient(private val tokenStore: TokenStore) {
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    suspend fun stopVideoStream(droneId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$API_BASE/drones/$droneId/video/start")
+                .addHeader("Authorization", authHeader())
+                .post("{\"action\":\"stop\"}".toRequestBody(JSON_MEDIA))
+                .build()
+            http.newCall(req).execute().use { Result.success(Unit) }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
     suspend fun getVideoViewer(droneId: String): Result<VideoViewerConfig> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
@@ -615,7 +626,11 @@ class DroneViewModel(context: Context) : ViewModel() {
     }
 
     fun backFromVideo() {
+        val drone = (_state.value.screen as? Screen.Video)?.drone
         _state.update { it.copy(screen = Screen.Drones, videoConfig = null, isLoading = true) }
+        if (drone != null) {
+            viewModelScope.launch { api.stopVideoStream(drone.droneId) }
+        }
         loadDrones()
     }
 
@@ -1272,6 +1287,7 @@ window.startKVSViewer=function(cfgJson){
 @Composable
 fun VideoScreen(state: UiState, vm: DroneViewModel, drone: Drone) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var pageLoaded by remember { mutableStateOf(false) }
 
     // Stop viewer when screen is disposed
     DisposableEffect(Unit) {
@@ -1280,10 +1296,13 @@ fun VideoScreen(state: UiState, vm: DroneViewModel, drone: Drone) {
         }
     }
 
-    // Inject config into WebView when it becomes available
-    LaunchedEffect(state.videoConfig, webViewRef) {
+    // Inject config once both the WebView's HTML is loaded AND we have a config.
+    // (Previously this fired before the inline <script> had parsed, so
+    // startKVSViewer was undefined and the offer was never sent.)
+    LaunchedEffect(state.videoConfig, webViewRef, pageLoaded) {
         val cfg = state.videoConfig ?: return@LaunchedEffect
         val wv = webViewRef ?: return@LaunchedEffect
+        if (!pageLoaded) return@LaunchedEffect
         val cfgJson = json.encodeToString(VideoViewerConfig.serializer(), cfg)
             .replace("\\", "\\\\").replace("'", "\\'")
         wv.post { wv.evaluateJavascript("startKVSViewer('$cfgJson')", null) }
@@ -1320,7 +1339,11 @@ fun VideoScreen(state: UiState, vm: DroneViewModel, drone: Drone) {
                                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             }
                             wv.webChromeClient = WebChromeClient()
-                            wv.webViewClient = WebViewClient()
+                            wv.webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    pageLoaded = true
+                                }
+                            }
                             wv.loadDataWithBaseURL(
                                 "https://localhost/",
                                 VIDEO_VIEWER_HTML,

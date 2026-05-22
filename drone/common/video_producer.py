@@ -300,19 +300,28 @@ async def run_signaling(signaling_info, credentials, ice_servers, region: str):
         print(f"  Warning: Camera SDK init failed: {e}")
         camera = None
 
-    # If SDK camera unavailable, fall back to V4L2 direct capture
-    # Priority: color streams first (video2/video5 on RealSense D435I), then loopbacks
+    # If SDK camera unavailable, fall back to V4L2 direct capture.
+    # Priority: D435i color (video4) → generic webcam color (video0) →
+    # v4l2-loopback → IR/depth nodes as last resort.
+    # We also reject monochrome frames so an IR stream isn't mistaken for color.
     if camera is None:
-        for dev_idx in [2, 5, 10, 11, 0, 1]:
+        def is_color_frame(f):
+            if f is None or f.ndim != 3 or f.shape[2] < 3:
+                return False
+            # IR/grayscale data dressed as 3-channel has R==G==B per pixel.
+            # Sample a few pixels; require meaningful variation between channels.
+            diff = np.abs(f[..., 0].astype(np.int16) - f[..., 2].astype(np.int16))
+            return diff.mean() > 2.0
+
+        for dev_idx in [4, 0, 10, 11, 2, 5]:
             try:
                 cap = cv2.VideoCapture(dev_idx)
                 if not cap.isOpened():
                     continue
-                # Flush stale frames
                 for _ in range(5):
                     cap.read()
                 ret, frame = cap.read()
-                if ret and frame is not None and frame.mean() > 5:
+                if ret and frame is not None and frame.mean() > 5 and is_color_frame(frame):
                     v4l2_cap = cap
                     print(f"  ✓ Using V4L2 /dev/video{dev_idx} ({frame.shape[1]}x{frame.shape[0]} mean={frame.mean():.0f})")
                     break
@@ -320,7 +329,7 @@ async def run_signaling(signaling_info, credentials, ice_servers, region: str):
             except Exception as e:
                 print(f"  video{dev_idx}: {e}")
         if v4l2_cap is None:
-            print("  Warning: No usable V4L2 device found, using test pattern")
+            print("  Warning: No usable color V4L2 device found, using test pattern")
     
     try:
         async with websockets.connect(signed_url, ssl=ssl.create_default_context()) as ws:
@@ -348,7 +357,19 @@ async def run_signaling(signaling_info, credentials, ice_servers, region: str):
                     
                     if msg_type == "SDP_OFFER":
                         print(f"\n  Viewer connected: {sender_id[:12]}...")
-                        
+
+                        # Close any existing peer connections before accepting a new offer.
+                        # Multiple CameraStreamTracks over the same V4L2 device race for
+                        # frames, and stale TURN allocations from a dead pc block the new
+                        # one from reaching 'connected'. Single-viewer model: drop the old.
+                        for old_id, old_pc in list(pcs.items()):
+                            try:
+                                await old_pc.close()
+                            except Exception as e:
+                                print(f"  Error closing old pc {old_id[:12]}: {e}")
+                        pcs.clear()
+                        camera_tracks.clear()
+
                         sdp = base64.b64decode(payload_b64).decode()
                         
                         # Create RTCConfiguration with ICE servers
