@@ -51,6 +51,9 @@ def get_region(config: dict) -> str:
 def get_iot_credentials(config):
     """Get AWS credentials via IoT credential provider."""
     drone_id = config.get("drone_id")
+    # iot_thing_name is the IoT Thing the device certs are provisioned for.
+    # It may differ from drone_id (which is used for channel/topic naming).
+    thing_name = config.get("iot_thing_name", drone_id)
     role_alias = config.get("video_role_alias", "drone-video-role-alias-dev")
     credentials_endpoint = config.get("credentials_endpoint")
     
@@ -63,7 +66,7 @@ def get_iot_credentials(config):
         url,
         cert=(str(cert_path), str(key_path)),
         verify=str(ca_path),
-        headers={"x-amzn-iot-thingname": drone_id}
+        headers={"x-amzn-iot-thingname": thing_name}
     )
     
     if response.status_code != 200:
@@ -92,9 +95,10 @@ def get_signaling_info(config, credentials):
         aws_session_token=credentials["session_token"]
     )
     
-    # Get channel ARN
+    # Describe the channel (created by the cloud API before this runs)
     response = kvs.describe_signaling_channel(ChannelName=channel_name)
     channel_arn = response["ChannelInfo"]["ChannelARN"]
+    print(f"  Channel: {channel_name}")
     
     # Get endpoints
     endpoints = kvs.get_signaling_channel_endpoint(
@@ -201,35 +205,43 @@ def create_presigned_url(wss_endpoint, channel_arn, credentials, region):
 
 class CameraStreamTrack(VideoStreamTrack):
     """Video track that captures from auto-detected camera (RealSense, OAK-D, etc.)."""
-    
+
     kind = "video"
-    
-    def __init__(self, camera=None):
+
+    def __init__(self, camera=None, v4l2_cap=None):
         super().__init__()
-        self._camera = camera  # Auto-detected camera instance
+        self._camera = camera      # Auto-detected camera instance (pyrealsense2/depthai)
+        self._v4l2_cap = v4l2_cap  # OpenCV VideoCapture fallback (V4L2 loopback)
         self._frame_count = 0
         self._last_frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-    
+
     async def recv(self):
         pts, time_base = await self.next_timestamp()
-        
+
         if self._camera:
             try:
-                # Get frame from auto-detected camera
                 frame_data = self._camera.get_frame(timeout_ms=100)
                 if frame_data and frame_data.rgb is not None:
-                    # Convert RGB to BGR for video encoding
                     bgr_frame = cv2.cvtColor(frame_data.rgb, cv2.COLOR_RGB2BGR)
-                    # Resize to 1280x720 if needed
                     if bgr_frame.shape[:2] != (720, 1280):
                         bgr_frame = cv2.resize(bgr_frame, (1280, 720))
                     self._last_frame = bgr_frame
             except Exception as e:
                 if self._frame_count % 30 == 0:
                     print(f"    Frame error: {e}")
+        elif self._v4l2_cap:
+            try:
+                ret, bgr_frame = self._v4l2_cap.read()
+                if ret and bgr_frame is not None:
+                    if bgr_frame.shape[:2] != (720, 1280):
+                        bgr_frame = cv2.resize(bgr_frame, (1280, 720))
+                    self._last_frame = bgr_frame
+            except Exception as e:
+                if self._frame_count % 30 == 0:
+                    print(f"    V4L2 frame error: {e}")
         else:
             # No camera - show test pattern
-            cv2.putText(self._last_frame, f"Frame {self._frame_count}", (50, 360), 
+            cv2.putText(self._last_frame, f"Frame {self._frame_count}", (50, 360),
                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
         
         frame = VideoFrame.from_ndarray(self._last_frame, format="bgr24")
@@ -259,30 +271,56 @@ async def run_signaling(signaling_info, credentials, ice_servers, region: str):
     
     # Initialize camera using auto-detection (RealSense, OAK-D, etc.)
     camera = None
+    v4l2_cap = None
     try:
         import sys
-        # Add the script directory to path (camera module is a sibling folder)
         sys.path.insert(0, str(SCRIPT_DIR))
         from camera import get_camera, list_available_cameras
-        
+
         available = list_available_cameras()
         if available:
             print(f"  Available cameras: {[c['name'] for c in available]}")
-            camera = get_camera(rgb_fps=30, enable_depth=False)
-            if camera:
-                camera.start()
-                print("  Warming up camera...")
-                for _ in range(15):
-                    camera.get_frame(timeout_ms=500)
-                print(f"  ✓ Camera ready ({camera.CAMERA_TYPE})")
-            else:
-                print("  Warning: Failed to initialize camera")
+            try:
+                cam = get_camera(rgb_fps=30, enable_depth=False)
+                if cam:
+                    cam.start()
+                    print("  Warming up camera...")
+                    for _ in range(15):
+                        cam.get_frame(timeout_ms=500)
+                    print(f"  ✓ Camera ready ({cam.CAMERA_TYPE})")
+                    camera = cam
+                else:
+                    print("  Warning: Failed to initialize camera via SDK")
+            except Exception as e:
+                print(f"  Warning: Camera SDK start failed: {e} — will try V4L2")
+                camera = None  # ensure V4L2 fallback runs
         else:
-            print("  Warning: No cameras detected")
+            print("  Warning: No cameras detected via SDK")
     except Exception as e:
-        print(f"  Warning: Camera init failed: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"  Warning: Camera SDK init failed: {e}")
+        camera = None
+
+    # If SDK camera unavailable, fall back to V4L2 direct capture
+    # Priority: color streams first (video2/video5 on RealSense D435I), then loopbacks
+    if camera is None:
+        for dev_idx in [2, 5, 10, 11, 0, 1]:
+            try:
+                cap = cv2.VideoCapture(dev_idx)
+                if not cap.isOpened():
+                    continue
+                # Flush stale frames
+                for _ in range(5):
+                    cap.read()
+                ret, frame = cap.read()
+                if ret and frame is not None and frame.mean() > 5:
+                    v4l2_cap = cap
+                    print(f"  ✓ Using V4L2 /dev/video{dev_idx} ({frame.shape[1]}x{frame.shape[0]} mean={frame.mean():.0f})")
+                    break
+                cap.release()
+            except Exception as e:
+                print(f"  video{dev_idx}: {e}")
+        if v4l2_cap is None:
+            print("  Warning: No usable V4L2 device found, using test pattern")
     
     try:
         async with websockets.connect(signed_url, ssl=ssl.create_default_context()) as ws:
@@ -314,7 +352,13 @@ async def run_signaling(signaling_info, credentials, ice_servers, region: str):
                         sdp = base64.b64decode(payload_b64).decode()
                         
                         # Create RTCConfiguration with ICE servers
-                        config = RTCConfiguration(iceServers=ice_servers)
+                        # Add Google STUN so ICE can find a direct path — KVS TURN
+                        # sometimes gives 403 on CHANNEL_BIND for NATed hosts
+                        all_ice = list(ice_servers) + [
+                            RTCIceServer(urls="stun:stun.l.google.com:19302"),
+                            RTCIceServer(urls="stun:stun1.l.google.com:19302"),
+                        ]
+                        config = RTCConfiguration(iceServers=all_ice)
                         pc = RTCPeerConnection(configuration=config)
                         pcs[sender_id] = pc
                         
@@ -326,7 +370,7 @@ async def run_signaling(signaling_info, credentials, ice_servers, region: str):
                                 print("  ✓ STREAMING VIDEO!")
                         
                         # Create fresh video track for this connection (using shared camera)
-                        camera_track = CameraStreamTrack(camera=camera)
+                        camera_track = CameraStreamTrack(camera=camera, v4l2_cap=v4l2_cap)
                         camera_tracks[sender_id] = camera_track
                         
                         # Add video track

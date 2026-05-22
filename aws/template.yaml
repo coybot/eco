@@ -1287,6 +1287,46 @@ Resources:
             Path: /drones/{droneId}/video/viewer
             Method: GET
 
+  # Lambda to send start/stop video command to drone via IoT
+  VideoStartFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-video-start-${Environment}
+      CodeUri: src/
+      Handler: video.start_handler
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          ENVIRONMENT: !Ref Environment
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt DroneTable.Arn
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/video/command'
+            - Effect: Allow
+              Action:
+                - kinesisvideo:CreateSignalingChannel
+                - kinesisvideo:DescribeSignalingChannel
+                - kinesisvideo:GetSignalingChannelEndpoint
+                - kinesisvideo:ListSignalingChannels
+                - kinesisvideo:TagResource
+              Resource: '*'
+      Events:
+        StartVideo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/video/start
+            Method: POST
+
   # IAM Role for drones to produce video via Kinesis
   DroneVideoProducerRole:
     Type: AWS::IAM::Role

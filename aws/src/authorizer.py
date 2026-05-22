@@ -65,82 +65,92 @@ def int_from_bytes(b: bytes) -> int:
 def verify_rs256_signature(token: str, jwks: dict) -> bool:
     """
     Verify RS256 JWT signature using JWKS.
-    
+
     This is a minimal RS256 verification without external crypto libraries.
     Uses Python's built-in pow() for RSA verification.
     """
+    import secrets
+    import traceback as _tb
     try:
         parts = token.split('.')
         if len(parts) != 3:
             return False
-        
+
         header_b64, payload_b64, signature_b64 = parts
-        
+
         # Decode header to get kid
         header = json.loads(base64url_decode(header_b64))
         kid = header.get('kid')
         alg = header.get('alg')
-        
+
         if alg != 'RS256':
             print(f"Unsupported algorithm: {alg}")
             return False
-        
+
         # Find matching key in JWKS
         key = None
         for k in jwks.get('keys', []):
             if k.get('kid') == kid and k.get('kty') == 'RSA':
                 key = k
                 break
-        
+
         if not key:
             print(f"No matching key found for kid: {kid}")
             return False
-        
+
         # Extract RSA public key components
-        n = int_from_bytes(base64url_decode(key['n']))
-        e = int_from_bytes(base64url_decode(key['e']))
-        
+        n_bytes = base64url_decode(key['n'])
+        e_bytes = base64url_decode(key['e'])
+        n = int_from_bytes(n_bytes)
+        e = int_from_bytes(e_bytes)
+
         # Decode signature
-        signature = int_from_bytes(base64url_decode(signature_b64))
-        
+        sig_bytes = base64url_decode(signature_b64)
+        signature = int_from_bytes(sig_bytes)
+
         # RSA verification: signature^e mod n
         decrypted = pow(signature, e, n)
-        
-        # Convert to bytes (fixed 256 bytes for RS256)
-        decrypted_bytes = decrypted.to_bytes(256, byteorder='big')
-        
+
+        # Use actual key size in bytes (avoids hardcoded 256 for non-2048-bit keys)
+        key_size = len(n_bytes)
+        decrypted_bytes = decrypted.to_bytes(key_size, byteorder='big')
+
         # PKCS#1 v1.5 padding check
         # Format: 0x00 0x01 [padding 0xFF bytes] 0x00 [DigestInfo + Hash]
         if decrypted_bytes[0:2] != b'\x00\x01':
             return False
-        
+
         # Find the 0x00 separator
         separator_idx = decrypted_bytes.find(b'\x00', 2)
         if separator_idx == -1:
             return False
-        
+
         # SHA-256 DigestInfo prefix for PKCS#1 v1.5
         sha256_digest_info = bytes([
             0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
             0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
             0x00, 0x04, 0x20
         ])
-        
+
         digest_info_and_hash = decrypted_bytes[separator_idx + 1:]
-        
+
         if not digest_info_and_hash.startswith(sha256_digest_info):
             return False
-        
-        extracted_hash = digest_info_and_hash[len(sha256_digest_info):]
-        
-        # Compute expected hash
-        message = f"{header_b64}.{payload_b64}".encode('utf-8')
-        expected_hash = hashlib.sha256(message).digest()
-        
-        return hmac.compare_digest(extracted_hash, expected_hash)
-        
+
+        extracted_hash = bytes(digest_info_and_hash[len(sha256_digest_info):])
+
+        # Compute expected hash over the JWT signing input (header.payload as ASCII bytes)
+        message = (header_b64 + '.' + payload_b64).encode('ascii')
+        expected_hash = bytes(hashlib.sha256(message).digest())
+
+        if len(extracted_hash) != len(expected_hash):
+            return False
+
+        return secrets.compare_digest(extracted_hash, expected_hash)
+
     except Exception as e:
         print(f"Signature verification error: {e}")
+        print(_tb.format_exc())
         return False
 
 

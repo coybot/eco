@@ -13,6 +13,7 @@ import sys
 import os
 import logging
 import tempfile
+from typing import Optional
 import subprocess
 import yaml
 import time
@@ -166,7 +167,7 @@ _mqtt_connection = None
 # Video streaming state
 _video_process = None
 _video_last_heartbeat = 0
-VIDEO_HEARTBEAT_TIMEOUT = 10  # Stop streaming if no heartbeat for 10 seconds
+VIDEO_HEARTBEAT_TIMEOUT = 120  # Stop streaming if no heartbeat for 120 seconds
 
 # Status TTL in seconds (prevents offline flapping during transient MQTT drops)
 STATUS_TTL_SECONDS = 30
@@ -469,7 +470,7 @@ def _write_factory_reset_pending(nonce: str, reason: str, source: str):
         logger.warning(f"Failed to persist pending factory reset: {e}")
 
 
-def _read_factory_reset_pending() -> dict | None:
+def _read_factory_reset_pending() -> Optional[dict]:
     try:
         if not FACTORY_RESET_PENDING_PATH.exists():
             return None
@@ -487,7 +488,7 @@ def _clear_factory_reset_pending():
         logger.warning(f"Failed deleting pending factory reset file: {e}")
 
 
-def _read_wifi_config_applied() -> dict | None:
+def _read_wifi_config_applied() -> Optional[dict]:
     try:
         if not WIFI_CONFIG_APPLIED_PATH.exists():
             return None
@@ -497,7 +498,7 @@ def _read_wifi_config_applied() -> dict | None:
         return None
 
 
-def _write_wifi_config_applied(nonce: str, status: str, error: str | None = None):
+def _write_wifi_config_applied(nonce: str, status: str, error: Optional[str] = None):
     try:
         WIFI_CONFIG_APPLIED_PATH.write_text(json.dumps({
             "nonce": nonce,
@@ -759,7 +760,7 @@ def ack_factory_reset_if_pending():
         _clear_factory_reset_pending()
 
 
-def _handle_decommission(action: str, reason: str, nonce: str | None, source: str):
+def _handle_decommission(action: str, reason: str, nonce: Optional[str], source: str):
     if action != "factory_reset":
         logger.warning(f"Ignoring unknown decommission action: {action}")
         return
@@ -1148,14 +1149,19 @@ def start_video_streaming():
     
     logger.info("Starting video streaming...")
     video_script = DRONE_DIR / 'video_producer.py'
-    
+
     if not video_script.exists():
         logger.error(f"Video producer script not found: {video_script}")
         return False
-    
+
+    # Prefer the venv Python (has aiortc, boto3, opencv) over sys.executable
+    venv_python = DRONE_DIR / 'venv' / 'bin' / 'python'
+    python_exe = str(venv_python) if venv_python.exists() else sys.executable
+    logger.info(f"Using Python: {python_exe}")
+
     try:
         _video_process = subprocess.Popen(
-            [sys.executable, str(video_script)],
+            [python_exe, str(video_script)],
             cwd=str(DRONE_DIR),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

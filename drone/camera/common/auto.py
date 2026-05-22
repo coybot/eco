@@ -1,6 +1,6 @@
 """Auto-detection and factory for camera implementations."""
 
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 from .base import Camera
 
 
@@ -25,7 +25,7 @@ def _check_realsense_available() -> bool:
         return False
 
 
-def list_available_cameras() -> list[dict]:
+def list_available_cameras() -> List[Dict]:
     """
     List all available cameras.
     
@@ -68,7 +68,7 @@ def get_camera(
     preferred_type: Optional[str] = None,
     rgb_fps: int = 30,
     enable_depth: bool = True,
-    rgb_resolution: tuple[int, int] = (1280, 720),
+    rgb_resolution: Tuple[int, int] = (1280, 720),
 ) -> Optional[Camera]:
     """
     Get a camera instance, auto-detecting the available hardware.
@@ -104,7 +104,7 @@ def get_camera(
     return None
 
 
-def _try_oakd(rgb_fps: int, enable_depth: bool, rgb_resolution: tuple[int, int]) -> Optional[Camera]:
+def _try_oakd(rgb_fps: int, enable_depth: bool, rgb_resolution: Tuple[int, int]) -> Optional[Camera]:
     """Try to create an OAK-D camera instance."""
     if not _check_oakd_available():
         return None
@@ -121,7 +121,7 @@ def _try_oakd(rgb_fps: int, enable_depth: bool, rgb_resolution: tuple[int, int])
         return None
 
 
-def _try_realsense(rgb_fps: int, enable_depth: bool, rgb_resolution: tuple[int, int]) -> Optional[Camera]:
+def _try_realsense(rgb_fps: int, enable_depth: bool, rgb_resolution: Tuple[int, int]) -> Optional[Camera]:
     """Try to create a RealSense camera instance."""
     if not _check_realsense_available():
         return None

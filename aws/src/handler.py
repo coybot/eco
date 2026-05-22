@@ -4,7 +4,7 @@ import boto3
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
 BEDROCK_MODEL_ID = os.environ.get(
-    "BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"
 )
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
 bedrock = boto3.client('bedrock-runtime', region_name=AWS_REGION)

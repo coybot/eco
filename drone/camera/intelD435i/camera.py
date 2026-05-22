@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -44,8 +44,8 @@ class RealSenseCamera(Camera):
         self,
         rgb_fps: int = 30,
         enable_depth: bool = True,
-        rgb_resolution: tuple[int, int] = (1280, 720),
-        depth_resolution: tuple[int, int] = (640, 480),
+        rgb_resolution: Tuple[int, int] = (1280, 720),
+        depth_resolution: Tuple[int, int] = (640, 480),
     ):
         """
         Initialize RealSense D435i camera.
@@ -250,12 +250,12 @@ class RealSenseCamera(Camera):
             return False
     
     @property
-    def resolution(self) -> tuple[int, int]:
+    def resolution(self) -> Tuple[int, int]:
         """Return (width, height) of the RGB camera."""
         return self._rgb_resolution
     
     @staticmethod
-    def list_devices() -> list[dict]:
+    def list_devices() -> List[Dict]:
         """
         List all connected RealSense devices.
         
