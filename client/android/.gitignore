@@ -1,0 +1,8 @@
+# Android / Gradle local state — must not be committed
+local.properties
+.gradle/
+build/
+.idea/
+*.iml
+.cxx/
+captures/
