@@ -637,8 +637,10 @@ def is_armed():
     Drains any stale queued heartbeats first, then waits for the next one
     from the FC so the result reflects current state, not buffered state.
     """
-    conn = _get_connection()
-    if conn is None:
+    try:
+        with _mavlink_lock:
+            conn = _connect()
+    except Exception:
         return False
     # Drain anything already in the buffer so we read a fresh heartbeat
     deadline = time.time() + 3.0
