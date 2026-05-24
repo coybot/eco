@@ -347,6 +347,11 @@ def arm():
         _log("Already armed!")
         return True
     
+    # Ensure DISARM_DELAY is long enough to survive waits between arm and takeoff
+    _mav_send(lambda m: m.mav.param_set_send(
+        m.target_system, m.target_component,
+        b"DISARM_DELAY", 30.0, mavutil.mavlink.MAV_PARAM_TYPE_INT8))
+
     # Set STABILIZE mode first (required for arming)
     _mav_send(lambda m: m.set_mode(0))  # 0 = STABILIZE
     time.sleep(0.5)
@@ -627,13 +632,34 @@ def get_battery():
 
 
 def is_armed():
-    """Check if the vehicle is armed. Returns True/False."""
-    start = time.time()
-    while time.time() - start < 3:
-        msg = _mav_recv('HEARTBEAT', timeout=0.5)
-        if msg:
-            return (msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
-    return False
+    """Check if the vehicle is armed using a fresh heartbeat.
+
+    Drains any stale queued heartbeats first, then waits for the next one
+    from the FC so the result reflects current state, not buffered state.
+    """
+    conn = _get_connection()
+    if conn is None:
+        return False
+    # Drain anything already in the buffer so we read a fresh heartbeat
+    deadline = time.time() + 3.0
+    last = None
+    while time.time() < deadline:
+        msg = conn.recv_match(type='HEARTBEAT', blocking=False)
+        if msg is None:
+            if last is not None:
+                # Buffer drained — last heartbeat is the freshest we have
+                break
+            # Nothing queued yet — block briefly for the next one
+            msg = conn.recv_match(type='HEARTBEAT', blocking=True, timeout=0.5)
+            if msg:
+                last = msg
+                # Keep draining in case more are queued
+                continue
+        else:
+            last = msg
+    if last is None:
+        return False
+    return (last.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
 
 
 def get_flight_mode():
