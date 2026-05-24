@@ -346,6 +346,18 @@ def execute_code(code: str, conversation_id: str = None) -> dict:
         # Add conversation ID if provided
         if conversation_id:
             exec_globals['CONVERSATION_ID'] = conversation_id
+
+        # Pre-populate home position so LLM code can use home_lat/home_lon/home_alt
+        # without needing to call get_position() first
+        try:
+            _home = drone_sdk.get_position()
+            exec_globals['home_lat'] = _home[0]
+            exec_globals['home_lon'] = _home[1]
+            exec_globals['home_alt'] = _home[2]
+        except Exception:
+            exec_globals['home_lat'] = 0.0
+            exec_globals['home_lon'] = 0.0
+            exec_globals['home_alt'] = 0.0
         
         # SAFETY LAYER 5: Start execution watchdog timer
         watchdog = ExecutionWatchdog(MAX_EXECUTION_TIME)
