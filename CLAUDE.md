@@ -25,6 +25,55 @@ Install scripts copy `drone/common/*.py` flat into `~/drone-api/` (or your chose
 - Prefer conservative throttle and duration for ESC checks.
 - Always use a stable serial by-id path, not a reorder-sensitive `/dev/ttyACM*`.
 
+## Deployment
+
+Three targets, two deploy steps. Mobile (iOS) has no deploy step unless the app itself changed.
+
+### AWS Lambda (`aws/src/handler.py`, `conversations.py`, etc.)
+
+```bash
+cd eco/aws
+PATH="/opt/homebrew/bin:$PATH" AWS_PROFILE=astral sam build && AWS_PROFILE=astral sam deploy
+```
+
+**Do NOT use `sst deploy` for `eco/aws`.** The `sst.config.ts` uses a `create`-only Pulumi command resource — SST only runs SAM on the very first deploy and silently skips it on all subsequent ones (exits 0, deploys nothing). Always run SAM directly.
+
+SAM CLI is at `/opt/homebrew/bin/sam` (installed via Homebrew). If changes aren't being picked up, clear the build cache first: `rm -rf .aws-sam`.
+
+### Drone on-device (`daemon.py`, `drone_sdk.py`, or any `drone/common/*.py`)
+
+Files are installed flat into `~/drone-api/` on the companion computer. Copy changed files and restart the service:
+
+```bash
+DRONE=astral@quadcopter   # or your host/IP
+
+sshpass -p "$DRONE_SSH_PASSWORD" scp \
+  -o PreferredAuthentications=password \
+  -o PubkeyAuthentication=no \
+  -o StrictHostKeyChecking=accept-new \
+  eco/drone/common/daemon.py \
+  eco/drone/common/drone_sdk.py \
+  "$DRONE":~/drone-api/
+
+sshpass -p "$DRONE_SSH_PASSWORD" ssh \
+  -o PreferredAuthentications=password \
+  -o PubkeyAuthentication=no \
+  -o StrictHostKeyChecking=accept-new \
+  "$DRONE" 'sudo systemctl restart drone-api'
+```
+
+See the root `CLAUDE.md` for the full SSH options (password-only, `StrictHostKeyChecking`).
+
+### Adding a new SDK function
+
+1. Add it to `drone/common/drone_sdk.py`
+2. Update `SYSTEM_PROMPT` in `aws/src/handler.py`
+3. Deploy both targets above (AWS + drone)
+
+### Safety gate (`daemon.py` blocked patterns)
+
+`daemon.py` regex-blocks LLM-generated code containing `\bdisarm\s*(` — use `safe_disarm()` for ground disarm or `land()` for in-flight. If you add a new safe wrapper that contains a blocked keyword, verify the regex won't match it (word-boundary `\b` respects `_`).
+
 ## Tooling
 
 - Prefer `uv` for Python environments where applicable (see team conventions).

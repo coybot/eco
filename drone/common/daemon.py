@@ -251,7 +251,7 @@ def execute_code(code: str, conversation_id: str = None) -> dict:
 
     # Safety gate: block dangerous operations
     BLOCKED_PATTERNS = [
-        (r"\bdisarm\s*\(", "disarm() - use land() instead"),
+        (r"\bdisarm\s*\(", "disarm() - use safe_disarm() on ground or land() in flight"),
         (r"MAV_CMD_COMPONENT_ARM_DISARM", "direct arm/disarm commands"),
         (r"\b__import__\s*\(", "__import__() - dynamic imports not allowed"),
         (r"\beval\s*\(", "eval() - not allowed"),
