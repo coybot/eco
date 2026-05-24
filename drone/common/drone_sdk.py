@@ -415,9 +415,29 @@ def disarm():
     return success
 
 
+def safe_disarm():
+    """Disarm motors — only when on the ground (relative altitude < 1 m).
+
+    Raises RuntimeError if the drone appears airborne. Use land() first when flying.
+    """
+    _mav_send(lambda m: m.mav.request_data_stream_send(
+        1, 1, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 4, 1))
+    start = time.time()
+    rel_alt = None
+    while time.time() - start < 3:
+        msg = _mav_recv('GLOBAL_POSITION_INT', timeout=0.5)
+        if msg:
+            rel_alt = msg.relative_alt / 1000.0  # mm → m
+            break
+    if rel_alt is not None and rel_alt > 1.0:
+        raise RuntimeError(
+            f"safe_disarm() refused: drone is {rel_alt:.1f}m above ground — call land() first")
+    return disarm()
+
+
 def takeoff(altitude_m):
     """Take off to specified altitude in meters. Arms automatically if needed.
-    
+
     SAFETY: Altitude is clamped to MIN_ALTITUDE..MAX_ALTITUDE range.
     
     Returns:
@@ -445,10 +465,9 @@ def takeoff(altitude_m):
         _log("Continuing despite warnings...")
     
     # Check if armed using fresh heartbeat (not cached state)
-    needs_arm = not is_armed()
-    _log(f"Armed check: {'already armed' if not needs_arm else 'needs arming'}")
-    
-    if needs_arm:
+    if is_armed():
+        _log("Already armed, skipping arm step")
+    else:
         _log("Arming (normal)...")
         ack_ok, result = _mav_command(
             lambda m: m.mav.command_long_send(
@@ -456,7 +475,7 @@ def takeoff(altitude_m):
                 mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
                 0, 1, 0, 0, 0, 0, 0, 0
             ), 400)
-        
+
         if not ack_ok:
             _log("Normal arm failed, trying force-arm...")
             _drain_statustext(timeout=1)
@@ -466,27 +485,20 @@ def takeoff(altitude_m):
                     mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
                     0, 1, 21196, 0, 0, 0, 0, 0
                 ), 400)
-            
+
             if not ack_ok:
                 _log(f"Force arm also failed! (result={result})")
                 _drain_statustext()
                 return False
-        
+
         _log("Arm ACK received, waiting for motors...")
-        time.sleep(2)
-        
-        # Verify we're actually armed
+        time.sleep(0.3)
+
         if not is_armed():
             _log("ERROR: Arm command ACK'd but drone not armed!")
             _drain_statustext()
             return False
         _log("Armed confirmed!")
-    
-    # Final armed check before takeoff
-    if not is_armed():
-        _log("ERROR: Cannot takeoff - not armed!")
-        _drain_statustext()
-        return False
     
     # Send takeoff command atomically
     _log(f"Sending takeoff to {altitude_m}m...")

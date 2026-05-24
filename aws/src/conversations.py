@@ -264,8 +264,9 @@ CODE_SYSTEM_PROMPT = """You generate Python code for drone control. The code run
 
 AVAILABLE FUNCTIONS:
 - motor_test(motor_num, throttle_pct=15, duration_sec=2)
-- arm() / disarm()
-- takeoff(altitude_m) / land()
+- arm() - Arm motors
+- safe_disarm() - Disarm motors (only when on the ground; raises error if airborne)
+- takeoff(altitude_m) / land() - land() handles disarming automatically
 - goto(lat, lon, alt)
 - set_velocity(vx, vy, vz)
 - set_yaw(angle_deg, relative=False)
@@ -277,9 +278,10 @@ RULES:
 1. Use ONLY these SDK functions
 2. Do NOT import anything - all functions are pre-imported
 3. ALWAYS call arm() before takeoff(), then wait(2) for motors to spin up
-4. ALWAYS call land() at the end of flight. NEVER call disarm().
-5. Keep throttle under 30%, altitude under 20m
-6. The variable CONVERSATION_ID is available for upload_photo()
+4. "disarm" always means safe_disarm() — never substitute land(). "land" means land().
+5. For flight: arm() → takeoff() → ... → land(). land() handles disarming automatically.
+6. Keep throttle under 30%, altitude under 20m
+7. The variable CONVERSATION_ID is available for upload_photo()
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
@@ -544,13 +546,19 @@ def generate_code(instruction, conversation_id):
             if (stripped.startswith('#') or 
                 stripped.startswith('import ') or
                 stripped.startswith('from ') or
-                any(stripped.startswith(f'{func}(') for func in ['motor_test', 'arm', 'disarm', 'takeoff', 'land', 'goto', 'wait', 'get_position', 'capture_photo', 'set_velocity', 'set_yaw']) or
+                any(stripped.startswith(f'{func}(') for func in ['motor_test', 'arm', 'safe_disarm', 'disarm', 'takeoff', 'land', 'goto', 'wait', 'get_position', 'capture_photo', 'set_velocity', 'set_yaw']) or
                 stripped.startswith('CONVERSATION_ID')):
                 code_start = i
                 break
-        
+
         code = '\n'.join(lines[code_start:]).strip()
-        
+
+        # If the user said "disarm" (but not "land"), replace any land() the LLM
+        # generated with safe_disarm() — the LLM stubbornly maps disarm→land().
+        import re as _re
+        if 'disarm' in instruction.lower() and 'land' not in instruction.lower():
+            code = _re.sub(r'\bland\s*\(\s*\)', 'safe_disarm()', code)
+
         return code
         
     except Exception as e:
@@ -1151,7 +1159,8 @@ def message_handler(event, context):
             'action': 'execute',
             'code': code,
             'conversation_id': conversation_id,
-            'original_message': message
+            'original_message': message,
+            'message_id': loading_msg['id']
         })
         
         return json_response(200, {

@@ -18,9 +18,9 @@ SYSTEM_PROMPT = """You generate Python code for drone control. The code runs on 
 AVAILABLE FUNCTIONS (use these, do NOT import anything):
 - motor_test(motor_num=None, throttle_pct=15, duration_sec=2) - Test motor 1-4 (or all if no motor_num)
 - arm() - Arm motors
-- disarm() - Disarm motors
+- safe_disarm() - Disarm motors (only when on the ground; raises error if airborne)
 - takeoff(altitude_m) - Take off
-- land() - Land
+- land() - Land (handles disarming automatically)
 - goto(lat, lon, alt) - Fly to GPS position
 - set_velocity(vx, vy, vz) - Set velocity m/s
 - set_yaw(angle_deg, relative=False) - Set heading
@@ -34,9 +34,10 @@ RULES:
 1. Use ONLY these SDK functions - they handle MAVLink internally
 2. Do NOT import anything
 3. For motor tests, use motor_test() to test all motors, or motor_test(1) for a specific motor
-4. For flight, call arm() first, end with land() only (NEVER call disarm())
-5. Keep throttle under 30%, altitude under 20m
-6. When asked to "see", "look", or "what do you see", use look_around() or capture_photo()
+4. "disarm" always means safe_disarm() — never substitute land(). "land" means land().
+5. For flight: arm() → takeoff() → ... → land(). land() handles disarming automatically.
+6. Keep throttle under 30%, altitude under 20m
+7. When asked to "see", "look", or "what do you see", use look_around() or capture_photo()
 
 Output ONLY Python code. No markdown, no imports, no comments."""
 
