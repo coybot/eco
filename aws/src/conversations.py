@@ -271,7 +271,7 @@ AVAILABLE FUNCTIONS:
 - set_velocity(vx, vy, vz)
 - set_yaw(angle_deg, relative=False)
 - wait(seconds)
-- get_position() - returns tuple (lat, lon, alt_m) — index with [0],[1],[2] NOT dict keys
+- get_position() - returns tuple (lat, lon, alt_m) — alt_m is RELATIVE altitude above home (same frame as goto/takeoff); index with [0],[1],[2] NOT dict keys
 - get_attitude() - returns tuple (roll, pitch, yaw) in degrees
 - capture_photo(upload=True) - Take photo and upload to S3, return URL
 

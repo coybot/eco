@@ -595,13 +595,17 @@ def wait(seconds):
 
 
 def get_position():
-    """Get current GPS position. Returns (lat, lon, alt_m)."""
+    """Get current GPS position. Returns (lat, lon, alt_m).
+
+    alt_m is altitude above home (relative), matching the frame used by
+    goto() — so get_position()[2] can be passed directly to goto().
+    """
     _mav_send(lambda m: m.mav.request_data_stream_send(1, 1, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 4, 1))
     start = time.time()
     while time.time() - start < 3:
         msg = _mav_recv('GLOBAL_POSITION_INT', timeout=0.5)
         if msg:
-            return (msg.lat / 1e7, msg.lon / 1e7, msg.alt / 1000)
+            return (msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000)
     return (0, 0, 0)
 
 
