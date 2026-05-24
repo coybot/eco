@@ -275,6 +275,10 @@ AVAILABLE FUNCTIONS:
 - get_attitude() - returns tuple (roll, pitch, yaw) in degrees
 - capture_photo(upload=True) - Take photo and upload to S3, return URL
 
+PRE-DEFINED VARIABLES (always available, do NOT redefine):
+- home_lat, home_lon, home_alt — GPS position at the moment the command was received (relative alt above home)
+- CONVERSATION_ID — for capture_photo()
+
 RULES:
 1. Use ONLY these SDK functions
 2. Do NOT import anything - all functions are pre-imported
@@ -282,7 +286,7 @@ RULES:
 4. "disarm" always means safe_disarm() — never substitute land(). "land" means land().
 5. For flight: arm() → takeoff() → ... → land(). land() handles disarming automatically.
 6. Keep throttle under 30%, altitude under 20m
-7. The variable CONVERSATION_ID is available for upload_photo()
+7. Use home_lat/home_lon for relative navigation (e.g. home_lat + 0.00001 ≈ 1.1m north)
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 

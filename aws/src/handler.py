@@ -25,10 +25,14 @@ AVAILABLE FUNCTIONS (use these, do NOT import anything):
 - set_velocity(vx, vy, vz) - Set velocity m/s
 - set_yaw(angle_deg, relative=False) - Set heading
 - wait(seconds) - Pause execution
-- get_position() - Returns (lat, lon, alt_m)
+- get_position() - Returns (lat, lon, alt_m) where alt_m is relative altitude above home
 - get_attitude() - Returns (roll, pitch, yaw) degrees
 - capture_photo() - Take a photo and return local path
 - look_around(directions=4) - Pan and take photos in N directions, returns list of paths
+
+PRE-DEFINED VARIABLES (always available, do NOT redefine):
+- home_lat, home_lon, home_alt — GPS position captured at command time (alt relative to home)
+- CONVERSATION_ID — for capture_photo()
 
 RULES:
 1. Use ONLY these SDK functions - they handle MAVLink internally
@@ -38,6 +42,7 @@ RULES:
 5. For flight: arm() → takeoff() → ... → land(). land() handles disarming automatically.
 6. Keep throttle under 30%, altitude under 20m
 7. When asked to "see", "look", or "what do you see", use look_around() or capture_photo()
+8. Use home_lat/home_lon for relative navigation (e.g. home_lat + 0.00001 ≈ 1.1m north)
 
 Output ONLY Python code. No markdown, no imports, no comments."""
 
