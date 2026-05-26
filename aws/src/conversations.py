@@ -87,76 +87,70 @@ IMAGES_BUCKET = os.environ.get('IMAGES_BUCKET', 'drone-images-dev')
 IOT_ENDPOINT = os.environ.get('IOT_ENDPOINT', '')
 
 # Mission system prompt - For AGX drones with VLM (Qwen3-VL)
-MISSION_SYSTEM_PROMPT = """You are an AI mission planner for an autonomous drone with onboard vision intelligence.
+MISSION_SYSTEM_PROMPT = """You are an AI mission planner for an autonomous drone with onboard vision intelligence and full obstacle avoidance.
 
-The drone has Qwen3-VL running on NVIDIA Jetson Orin AGX, giving it:
-- Real-time visual understanding (sees through camera, understands scenes)
-- Spatial reasoning (can point to objects, estimate distances)
-- Autonomous navigation (Nav2 + cuVSLAM for obstacle avoidance)
+The drone has Qwen3-VL on NVIDIA Jetson Orin AGX and Nav2 navigation. All movement uses obstacle avoidance — the drone will never fly into something.
 
-You design MISSIONS with multiple phases. The drone's VLM handles tactical decisions.
+PHASE TYPES — each phase in the "phases" array is one of:
+
+1. TYPED PRIMITIVES (use for metric/GPS commands):
+   {"type": "arm_and_takeoff", "altitude_m": 5}
+   {"type": "nav", "north_m": 10.0, "east_m": 0.0, "alt_m": 5, "description": "fly 10m north"}
+   {"type": "go_to_gps", "lat": 37.7749, "lon": -122.4194, "alt_m": 15, "description": "123 Main St"}
+   {"type": "fly_circle", "radius_m": 10, "altitude_m": 5, "waypoints": 8}
+   {"type": "look_around", "directions": 4}
+   {"type": "capture_photo", "description": "what to capture"}
+   {"type": "return_home"}
+   {"type": "land"}
+
+2. VLM PHASES (use for visual/search tasks — drone's AI figures out how):
+   {"objective": "Find the red car", "success": "Car located and photographed"}
+   {"objective": "Survey trees for the most interesting one", "success": "Best tree identified", "evaluation_criteria": "shape and foliage"}
+
+RULES:
+- Always start with arm_and_takeoff, always end with return_home then land
+- Use "nav" for any explicit distance/direction ("go 10m north", "move 5m east")
+- Use "fly_circle" for radius/orbit commands ("look around a 10m radius", "circle the area")
+- Use "go_to_gps" when you can resolve an address/landmark to approximate coordinates; include your best GPS estimate
+- Use VLM phases for open-ended visual tasks ("find the nearest person", "photograph the prettiest tree")
+- Mix typed and VLM phases freely in the same mission
+- Keep altitude under 20m; use 15m+ for outdoor GPS navigation
+- ceiling and forward obstacle avoidance are always active — no need to mention them
 
 RESPONSE FORMAT:
-Always respond with a JSON object:
+{"action": "mission", "mission": {"phases": [...]}, "message": "Brief message to user"}
+OR: {"action": "respond", "message": "..."}
+OR: {"action": "ask", "message": "..."}
 
-{
-  "action": "mission",
-  "mission": {
-    "phases": [
-      {
-        "objective": "What to accomplish in this phase",
-        "success": "How to know this phase is complete",
-        "evaluation_criteria": "For subjective judgments (optional)"
-      }
-    ]
-  },
-  "message": "Brief message to user about what drone will attempt"
-}
+EXAMPLES:
 
-OR for simple responses:
-{"action": "respond", "message": "Your response"}
+User: "Look around a 10 meter radius"
+{"action": "mission", "mission": {"phases": [
+  {"type": "arm_and_takeoff", "altitude_m": 5},
+  {"type": "fly_circle", "radius_m": 10, "altitude_m": 5, "waypoints": 8},
+  {"type": "look_around", "directions": 4},
+  {"type": "return_home"},
+  {"type": "land"}
+]}, "message": "I'll orbit a 10m radius, look around, and return."}
 
-OR for clarifying questions:
-{"action": "ask", "message": "Your question"}
+User: "Go to 123 Main St and take a photo"
+{"action": "mission", "mission": {"phases": [
+  {"type": "arm_and_takeoff", "altitude_m": 15},
+  {"type": "go_to_gps", "lat": 37.7751, "lon": -122.4183, "alt_m": 15, "description": "123 Main St"},
+  {"type": "capture_photo", "description": "street view"},
+  {"type": "return_home"},
+  {"type": "land"}
+]}, "message": "Flying to 123 Main St, taking a photo, and returning."}
 
-EXAMPLE MISSIONS:
-
-User: "Go to the forest and find the prettiest tree, take a picture of it"
-{
-  "action": "mission",
-  "mission": {
-    "phases": [
-      {"objective": "Navigate to forested area", "success": "Multiple trees visible"},
-      {"objective": "Survey trees and evaluate beauty", "success": "Best tree identified", "evaluation_criteria": "aesthetic appeal: shape, foliage fullness, interesting features"},
-      {"objective": "Navigate to selected tree", "success": "Tree centered in view at close range"},
-      {"objective": "Photograph the tree", "success": "Photo captured"},
-      {"objective": "Return to start", "success": "Back at launch position"}
-    ]
-  },
-  "message": "I'll fly to the forest, find the most beautiful tree, photograph it, and return."
-}
-
-User: "Fly into that house and count the cats"
-{
-  "action": "mission",
-  "mission": {
-    "phases": [
-      {"objective": "Find entrance to building", "success": "Door or window located"},
-      {"objective": "Enter building safely", "success": "Inside the building"},
-      {"objective": "Systematically explore all rooms while counting cats", "success": "All accessible areas surveyed", "evaluation_criteria": "cat detection - any feline animal"},
-      {"objective": "Report cat count and exit", "success": "Outside building with count reported"}
-    ]
-  },
-  "message": "I'll find an entrance, explore inside, count any cats I see, and report back."
-}
-
-GUIDELINES:
-1. Break complex tasks into logical phases
-2. Each phase should have clear success criteria
-3. Include evaluation_criteria for subjective judgments (prettiest, best, most interesting)
-4. The drone figures out HOW to accomplish each phase - don't over-specify
-5. Trust the drone's visual intelligence for navigation and object detection
-6. Consider safety - include phases for safe entry/exit when needed
+User: "Find the prettiest tree in the backyard and photograph it"
+{"action": "mission", "mission": {"phases": [
+  {"type": "arm_and_takeoff", "altitude_m": 5},
+  {"objective": "Fly to backyard area", "success": "Multiple trees visible"},
+  {"objective": "Survey trees and select the most visually interesting", "success": "Best tree identified", "evaluation_criteria": "shape, foliage, symmetry"},
+  {"objective": "Approach and photograph selected tree", "success": "Photo captured"},
+  {"type": "return_home"},
+  {"type": "land"}
+]}, "message": "I'll find the prettiest tree in the backyard, photograph it, and return."}
 
 Output ONLY the JSON object, no markdown or extra text."""
 
@@ -997,16 +991,17 @@ def message_handler(event, context):
     movement_request = is_movement_request(message)
     visual_request = is_visual_request(message)
     
-    # SAFETY NET: Override to 'look' for pure visual requests (no movement)
-    if action in ('respond', 'ask') and visual_request and not movement_request:
+    # SAFETY NET: Override to 'look' for pure visual requests (no movement) on non-VLM drones
+    if not has_vlm and action in ('respond', 'ask') and visual_request and not movement_request:
         print(f"⚠️ Overriding action from '{action}' to 'look' - detected visual request: {message}")
         action = 'look'
         agent_response['action'] = 'look'
         agent_response['message'] = 'Let me take a look...'
         publish_log(drone_id, "INFO", f"Overrode action from '{action}' to look (visual request without movement)")
 
-    # SAFETY NET: Force execution for explicit movement requests
-    if movement_request:
+    # SAFETY NET: Force execution for explicit movement requests on non-VLM drones only.
+    # VLM/AGX drones use the mission planner which routes all movement through Nav2 obstacle avoidance.
+    if movement_request and not has_vlm:
         if action in ('respond', 'look'):
             print(f"⚠️ Overriding action from '{action}' to 'execute' - detected movement request: {message}")
         else:
@@ -1014,7 +1009,7 @@ def message_handler(event, context):
         action = 'execute'
         agent_response['action'] = 'execute'
         agent_response['message'] = 'Executing flight command...'
-        publish_log(drone_id, "INFO", f"Forced action=execute (movement request), prev={action}")
+        publish_log(drone_id, "INFO", f"Forced action=execute (movement request, non-VLM), prev={action}")
     
     # Check if drone is online before sending commands
     drone_online = is_drone_online(drone_id)
