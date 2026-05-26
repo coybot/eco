@@ -12,6 +12,7 @@ Runs on Orin Nano, NX, and AGX (variant-specific VLM chosen at install).
 import sys
 import time
 import json
+import math
 import threading
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List
@@ -38,6 +39,13 @@ except ImportError:
     pass
 
 from perception import PerceptionService
+
+DRONE_SDK_AVAILABLE = False
+try:
+    import drone_sdk as _drone_sdk
+    DRONE_SDK_AVAILABLE = True
+except ImportError:
+    pass
 
 
 @dataclass
@@ -151,6 +159,9 @@ class MissionLoop:
         self._history: List[str] = []
         self._findings: List[str] = []
         self._photos: List[str] = []
+        self._home_lat: Optional[float] = None
+        self._home_lon: Optional[float] = None
+        self._home_alt: Optional[float] = None
     
     def _get_vlm(self) -> Optional[VLMService]:
         """Lazy-load VLM service."""
@@ -185,26 +196,32 @@ class MissionLoop:
             MissionResult describing what happened
         """
         mission.start_time = time.time()
-        self._current_mission = mission  # Store for progress reporting
+        self._current_mission = mission
         self._history = []
         self._findings = []
         self._photos = []
+        self._home_lat = None
+        self._home_lon = None
+        self._home_alt = None
         actions_taken = 0
-        
+
         self._report_progress(f"Starting mission: {mission.original_message or 'Unknown'}", phase=0)
         self._report_progress(f"Phases: {len(mission.phases)}")
-        
-        # Check VLM availability
-        vlm = self._get_vlm()
-        if vlm is None or not vlm.is_available():
-            return MissionResult(
-                success=False,
-                summary="VLM not available",
-                phases_completed=0,
-                total_phases=len(mission.phases),
-                failure_reason="Qwen3-VL not loaded - run setup_models.py",
-            )
-        
+
+        # Capture home position for GPS/offset navigation
+        if DRONE_SDK_AVAILABLE:
+            try:
+                self._home_lat, self._home_lon, self._home_alt = _drone_sdk.get_position()
+            except Exception:
+                pass
+
+        # Ceiling guard runs for the entire mission as a safety thread
+        if DRONE_SDK_AVAILABLE:
+            try:
+                _drone_sdk.start_ceiling_guard()
+            except Exception:
+                pass
+
         try:
             # Execute each phase
             while not mission.is_complete():
@@ -292,25 +309,162 @@ class MissionLoop:
             )
         
         finally:
+            if DRONE_SDK_AVAILABLE:
+                try:
+                    _drone_sdk.stop_ceiling_guard()
+                except Exception:
+                    pass
             self._cleanup()
     
     def _execute_phase(self, phase: Dict[str, Any], mission: Mission) -> Dict[str, Any]:
-        """
-        Execute a single mission phase.
-        
-        Args:
-            phase: Phase definition with objective, success criteria
-            mission: Parent mission
-        
-        Returns:
-            Dict with 'success', 'failed', 'reason', 'actions'
-        """
+        """Dispatch a phase to the appropriate executor based on its type field."""
+        phase_type = phase.get('type')
+        if phase_type == 'arm_and_takeoff':
+            return self._exec_arm_and_takeoff(phase)
+        elif phase_type == 'nav':
+            return self._exec_nav(phase)
+        elif phase_type == 'go_to_gps':
+            return self._exec_go_to_gps(phase)
+        elif phase_type == 'fly_circle':
+            return self._exec_fly_circle(phase)
+        elif phase_type == 'look_around':
+            return self._exec_look_around(phase)
+        elif phase_type == 'capture_photo':
+            return self._exec_capture_photo(phase)
+        elif phase_type == 'return_home':
+            return self._exec_return_home(phase)
+        elif phase_type == 'land':
+            return self._exec_land(phase)
+        else:
+            return self._exec_vlm_phase(phase, mission)
+
+    # ------------------------------------------------------------------ #
+    # Typed phase executors — all navigation goes through Nav2             #
+    # ------------------------------------------------------------------ #
+
+    def _exec_arm_and_takeoff(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        alt = phase.get('altitude_m', 5.0)
+        self._report_progress(f"Arming and taking off to {alt}m")
+        if not DRONE_SDK_AVAILABLE:
+            return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
+        try:
+            _drone_sdk.arm()
+            _drone_sdk.takeoff(alt)
+            return {'success': True, 'actions': 1}
+        except Exception as e:
+            return {'failed': True, 'reason': str(e), 'actions': 1}
+
+    def _exec_nav(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        north_m = phase.get('north_m', 0.0)
+        east_m = phase.get('east_m', 0.0)
+        alt_m = phase.get('alt_m', 5.0)
+        desc = phase.get('description', f'N={north_m}m E={east_m}m')
+        self._report_progress(f"Navigating: {desc}")
+        nav = self._get_nav()
+        if nav is None:
+            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
+        result = nav.navigate_to_offset(north_m, east_m, alt_m)
+        if result.status == NavigationStatus.FAILED:
+            return {'failed': True, 'reason': result.message, 'actions': 1}
+        return {'success': True, 'actions': 1}
+
+    def _exec_go_to_gps(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        lat = phase.get('lat')
+        lon = phase.get('lon')
+        alt_m = phase.get('alt_m', 15.0)
+        desc = phase.get('description', f'{lat},{lon}')
+        self._report_progress(f"Flying to GPS: {desc}")
+        nav = self._get_nav()
+        if nav is None:
+            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
+        if lat is None or lon is None:
+            return {'failed': True, 'reason': 'Missing GPS coordinates in phase', 'actions': 0}
+        if self._home_lat is None:
+            return {'failed': True, 'reason': 'Home position unknown — GPS fix required', 'actions': 0}
+        result = nav.navigate_to_gps(lat, lon, alt_m, self._home_lat, self._home_lon)
+        if result.status == NavigationStatus.FAILED:
+            return {'failed': True, 'reason': result.message, 'actions': 1}
+        return {'success': True, 'actions': 1}
+
+    def _exec_fly_circle(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        radius_m = phase.get('radius_m', 10.0)
+        alt_m = phase.get('altitude_m', 5.0)
+        n_waypoints = phase.get('waypoints', 8)
+        self._report_progress(f"Flying circle: radius={radius_m}m altitude={alt_m}m")
+        nav = self._get_nav()
+        if nav is None:
+            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
+        for i in range(n_waypoints):
+            angle = (2 * math.pi * i) / n_waypoints
+            north_m = radius_m * math.cos(angle)
+            east_m = radius_m * math.sin(angle)
+            self._report_progress(f"Circle waypoint {i + 1}/{n_waypoints}")
+            result = nav.navigate_to_offset(north_m, east_m, alt_m)
+            if result.status == NavigationStatus.FAILED:
+                return {'failed': True, 'reason': f'Waypoint {i + 1} blocked: {result.message}', 'actions': i + 1}
+        return {'success': True, 'actions': n_waypoints}
+
+    def _exec_look_around(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        directions = phase.get('directions', 4)
+        self._report_progress(f"Looking around ({directions} directions)")
+        if not DRONE_SDK_AVAILABLE:
+            return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
+        try:
+            urls = _drone_sdk.look_around(directions=directions)
+            if urls:
+                self._photos.extend(urls)
+            return {'success': True, 'actions': 1}
+        except Exception as e:
+            return {'failed': True, 'reason': str(e), 'actions': 1}
+
+    def _exec_capture_photo(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        self._report_progress("Capturing photo")
+        if not DRONE_SDK_AVAILABLE:
+            return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
+        try:
+            url = _drone_sdk.capture_photo(upload=True)
+            if url:
+                self._photos.append(url)
+            return {'success': True, 'actions': 1}
+        except Exception as e:
+            return {'failed': True, 'reason': str(e), 'actions': 1}
+
+    def _exec_return_home(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        alt_m = phase.get('alt_m', 5.0)
+        self._report_progress("Returning home")
+        nav = self._get_nav()
+        if nav is None:
+            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
+        result = nav.navigate_to_offset(0.0, 0.0, alt_m)
+        if result.status == NavigationStatus.FAILED:
+            return {'failed': True, 'reason': result.message, 'actions': 1}
+        return {'success': True, 'actions': 1}
+
+    def _exec_land(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        self._report_progress("Landing")
+        if not DRONE_SDK_AVAILABLE:
+            return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
+        try:
+            _drone_sdk.land()
+            return {'success': True, 'actions': 1}
+        except Exception as e:
+            return {'failed': True, 'reason': str(e), 'actions': 1}
+
+    # ------------------------------------------------------------------ #
+    # VLM phase executor (open-ended: perceive → decide → act loop)        #
+    # ------------------------------------------------------------------ #
+
+    def _exec_vlm_phase(self, phase: Dict[str, Any], mission: Mission) -> Dict[str, Any]:
+        """Execute an open-ended phase using the onboard VLM perception-action loop."""
         vlm = self._get_vlm()
+        if vlm is None or not vlm.is_available():
+            return {'failed': True, 'reason': 'VLM not available (Qwen3-VL not loaded)', 'actions': 0}
+
         nav = self._get_nav()
         perception = self._get_perception()
-        
+
         phase_actions = 0
-        
+
         while phase_actions < self.MAX_PHASE_ACTIONS:
             # 1. Capture current frame
             try:

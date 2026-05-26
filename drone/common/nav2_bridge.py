@@ -356,6 +356,37 @@ class Nav2Bridge:
         goal = NavigationGoal(x=x, y=y, z=z, yaw=yaw, source="direct")
         return self.navigate_to_goal(goal)
     
+    def navigate_to_offset(
+        self,
+        north_m: float,
+        east_m: float,
+        alt_m: float,
+    ) -> NavigationResult:
+        """
+        Navigate to a position offset from home in meters (North/East/Up).
+
+        Home is the Nav2 map origin (0, 0). ROS ENU convention: x=east, y=north, z=up.
+        """
+        goal = NavigationGoal(x=east_m, y=north_m, z=alt_m, source="offset")
+        return self.navigate_to_goal(goal)
+
+    def navigate_to_gps(
+        self,
+        lat: float,
+        lon: float,
+        alt_m: float,
+        home_lat: float,
+        home_lon: float,
+    ) -> NavigationResult:
+        """
+        Navigate to GPS coordinates by converting to local map-frame offset from home.
+
+        Uses a flat-earth approximation valid for distances up to ~a few km.
+        """
+        north_m = (lat - home_lat) * 111320.0
+        east_m = (lon - home_lon) * 111320.0 * math.cos(math.radians(home_lat))
+        return self.navigate_to_offset(north_m, east_m, alt_m)
+
     def navigate_to_goal(self, goal: NavigationGoal) -> NavigationResult:
         """
         Navigate to a NavigationGoal.

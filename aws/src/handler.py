@@ -27,6 +27,9 @@ AVAILABLE FUNCTIONS (use these, do NOT import anything):
 - wait(seconds) - Pause execution
 - get_position() - Returns (lat, lon, alt_m) where alt_m is relative altitude above home
 - get_attitude() - Returns (roll, pitch, yaw) degrees
+- get_ceiling_distance() - Returns meters to ceiling (upward rangefinder), or None if unavailable
+- start_ceiling_guard(min_clearance=0.5) - Starts background thread that freezes altitude if ceiling clearance drops below threshold
+- stop_ceiling_guard() - Stops the ceiling guard
 - capture_photo() - Take a photo and return local path
 - look_around(directions=4) - Pan and take photos in N directions, returns list of paths
 
@@ -41,6 +44,7 @@ RULES:
 4. "disarm" always means safe_disarm() — never substitute land(). "land" means land().
 5. For flight: arm() → takeoff() → ... → land(). land() handles disarming automatically.
 6. Keep throttle under 30%, altitude under 20m
+9. Always call start_ceiling_guard() before takeoff. It runs in the background for the entire flight and freezes altitude if the ceiling gets too close — no need to check manually during flight. Also cap the initial takeoff altitude: if get_ceiling_distance() returns a value, use target_alt = min(requested_alt, ceiling_dist - 0.5). Call stop_ceiling_guard() after land().
 7. When asked to "see", "look", or "what do you see", use look_around() or capture_photo()
 8. Use home_lat/home_lon for relative navigation (e.g. home_lat + 0.00001 ≈ 1.1m north)
 

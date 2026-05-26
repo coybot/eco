@@ -61,6 +61,10 @@ _mavlink_lock = threading.RLock()  # Lock for serial port access (pymavlink isn'
 # Camera instance (lazy loaded)
 _camera = None
 
+# Ceiling guard state
+_ceiling_guard_thread = None
+_ceiling_guard_stop = threading.Event()
+
 
 # =============================================================================
 # Thread-safe MAVLink I/O primitives
@@ -609,6 +613,94 @@ def get_position():
     return (0, 0, 0)
 
 
+def get_ceiling_distance():
+    """Distance from drone to ceiling via upward-facing rangefinder, in meters.
+
+    Returns None if no sensor reading is available (sensor absent or out of range).
+    """
+    start = time.time()
+    while time.time() - start < 2:
+        msg = _mav_recv('DISTANCE_SENSOR', timeout=0.5)
+        if msg and msg.orientation == 25:  # MAV_SENSOR_ROTATION_PITCH_90 = upward
+            if msg.current_distance < msg.max_distance:
+                return msg.current_distance / 100.0  # cm → m
+    return None
+
+
+def _ceiling_guard_loop(min_clearance):
+    """Background thread: if clearance drops below threshold, freeze altitude in place."""
+    global _ceiling_guard_stop
+    _log(f"Ceiling guard started (min clearance={min_clearance}m)")
+    clamped = False
+
+    while not _ceiling_guard_stop.is_set():
+        try:
+            with _mavlink_lock:
+                conn = _connect()
+                # Drain the buffer for a fresh DISTANCE_SENSOR reading
+                dist_msg = None
+                deadline = time.time() + 0.3
+                while time.time() < deadline:
+                    m = conn.recv_match(type='DISTANCE_SENSOR', blocking=False)
+                    if m and m.orientation == 25 and m.current_distance < m.max_distance:
+                        dist_msg = m
+                        break
+                    time.sleep(0.01)
+
+                if dist_msg is None:
+                    clamped = False
+                    time.sleep(0.1)
+                    continue
+
+                clearance = dist_msg.current_distance / 100.0
+
+                if clearance < min_clearance:
+                    if not clamped:
+                        _log(f"CEILING GUARD: {clearance:.2f}m clearance — holding altitude")
+                        clamped = True
+                    # Read current position and re-issue it as a hold target (stops ascent)
+                    pos = conn.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=0.3)
+                    if pos:
+                        conn.mav.set_position_target_global_int_send(
+                            0,
+                            conn.target_system, conn.target_component,
+                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                            0b0000111111111000,  # position only, ignore velocity/accel/yaw
+                            pos.lat, pos.lon, pos.relative_alt / 1000.0,
+                            0, 0, 0, 0, 0, 0, 0, 0
+                        )
+                else:
+                    if clamped:
+                        _log(f"CEILING GUARD: clearance restored ({clearance:.2f}m), resuming")
+                        clamped = False
+
+        except Exception as e:
+            _log(f"Ceiling guard error: {e}")
+
+        time.sleep(0.1)
+
+    _log("Ceiling guard stopped")
+
+
+def start_ceiling_guard(min_clearance=0.5):
+    """Start background ceiling guard. Freezes altitude if clearance drops below min_clearance (m)."""
+    global _ceiling_guard_thread, _ceiling_guard_stop
+    if _ceiling_guard_thread and _ceiling_guard_thread.is_alive():
+        _log("Ceiling guard already running")
+        return
+    _ceiling_guard_stop.clear()
+    _ceiling_guard_thread = threading.Thread(
+        target=_ceiling_guard_loop, args=(min_clearance,), daemon=True
+    )
+    _ceiling_guard_thread.start()
+
+
+def stop_ceiling_guard():
+    """Stop the ceiling guard thread."""
+    global _ceiling_guard_stop
+    _ceiling_guard_stop.set()
+
+
 def get_attitude():
     """Get current attitude. Returns (roll, pitch, yaw) in degrees."""
     _mav_send(lambda m: m.mav.request_data_stream_send(1, 1, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 4, 1))
@@ -1146,6 +1238,25 @@ def capture_photo(save_path=None, upload=True):
         # Release camera even on error
         release_camera()
         return None
+
+
+def look_around(directions=4):
+    """
+    Rotate to N evenly-spaced headings and capture a photo at each.
+
+    Returns a list of S3 URLs (or local paths if upload fails).
+    Rotates relative to current heading so it always completes a full 360°.
+    """
+    urls = []
+    angle_step = 360.0 / directions
+    for i in range(directions):
+        if i > 0:
+            set_yaw(angle_step, relative=True)
+            wait(1.5)  # stabilise after rotation
+        url = capture_photo(upload=True)
+        if url:
+            urls.append(url)
+    return urls
 
 
 def upload_photo(local_path, conversation_id):
