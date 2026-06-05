@@ -1,0 +1,67 @@
+# Ishmael scene catalog — maps described scenes to loadable USD references.
+#
+# Three kinds of source:
+#   builtin    — NVIDIA Isaac CDN URLs (always resolvable, no extra config)
+#   urban      — Yonder OSM-derived city scenes  (r2: simulator-environments/urban-envs/<sid>/scene.usd)
+#   wilderness — Yonder procedural biome scenes   (r2: simulator-environments/wilderness-envs/<sid>/scene.usd)
+#
+# Yonder (urban/wilderness) USDs resolve against ISHMAEL_R2_BASE (a public r2.dev
+# base URL or a local mirror dir). When that env var is unset, the resolver falls
+# back to the keyword's `fallback` builtin + a ground plane, so a run never blocks.
+#
+# `confidence: low` marks a stand-in (no exact asset exists, e.g. castle/stadium);
+# the resolver routes low-confidence scenes to the generative hook when one is wired.
+
+builtins:
+  office: "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Environments/Office/office.usd"
+  warehouse: "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Environments/Simple_Warehouse/warehouse_with_forklifts.usd"
+  hospital: "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Environments/Hospital/hospital.usd"
+
+r2_prefix:
+  urban: "simulator-environments/urban-envs"
+  wilderness: "simulator-environments/wilderness-envs"
+
+# keyword -> {category, sid, fallback builtin, optional confidence}
+keywords:
+  # --- Isaac built-in interiors (exact) ---
+  office:    {category: builtin, sid: office}
+  workplace: {category: builtin, sid: office}
+  room:      {category: builtin, sid: office}
+  indoor:    {category: builtin, sid: office}
+  warehouse: {category: builtin, sid: warehouse}
+  hangar:    {category: builtin, sid: warehouse}
+  factory:   {category: builtin, sid: warehouse}
+  depot:     {category: builtin, sid: warehouse}
+  hospital:  {category: builtin, sid: hospital}
+  clinic:    {category: builtin, sid: hospital}
+
+  # --- Yonder wilderness (exact biomes) ---
+  forest:    {category: wilderness, sid: forest-seed00,   fallback: warehouse}
+  woods:     {category: wilderness, sid: forest-seed00,   fallback: warehouse}
+  jungle:    {category: wilderness, sid: forest-seed00,   fallback: warehouse}
+  desert:    {category: wilderness, sid: desert-seed00,   fallback: warehouse}
+  mountain:  {category: wilderness, sid: mountain-seed00, fallback: warehouse}
+  hill:      {category: wilderness, sid: mountain-seed00, fallback: warehouse}
+  coast:     {category: wilderness, sid: coast-seed00,    fallback: warehouse}
+  beach:     {category: wilderness, sid: coast-seed00,    fallback: warehouse}
+  canyon:    {category: wilderness, sid: canyon-seed00,   fallback: warehouse}
+  valley:    {category: wilderness, sid: canyon-seed00,   fallback: warehouse}
+  outdoor:   {category: wilderness, sid: forest-seed00,   fallback: warehouse}
+
+  # --- Yonder urban (exact / near) ---
+  city:      {category: urban, sid: nyc-wallst,     fallback: warehouse}
+  downtown:  {category: urban, sid: chicago-loop,   fallback: warehouse}
+  street:    {category: urban, sid: paris-marais,   fallback: warehouse}
+  town:      {category: urban, sid: naperville-il,  fallback: warehouse}
+  village:   {category: urban, sid: levittown-ny,   fallback: warehouse}
+  suburb:    {category: urban, sid: levittown-ny,   fallback: warehouse}
+  neighborhood: {category: urban, sid: naperville-il, fallback: warehouse}
+
+  # --- no exact asset: nearest stand-in, flagged for the generative hook ---
+  castle:    {category: urban, sid: rome-centro,    fallback: warehouse, confidence: low}
+  palace:    {category: urban, sid: rome-centro,    fallback: warehouse, confidence: low}
+  stadium:   {category: urban, sid: chicago-loop,   fallback: warehouse, confidence: low}
+  arena:     {category: urban, sid: chicago-loop,   fallback: warehouse, confidence: low}
+  cafe:      {category: builtin, sid: office,        fallback: office,    confidence: low}
+  restaurant: {category: builtin, sid: office,       fallback: office,    confidence: low}
+  shop:      {category: builtin, sid: office,        fallback: office,    confidence: low}

@@ -60,6 +60,7 @@ class TestResult:
     videos: list[str] = field(default_factory=list)
     responses: list[dict] = field(default_factory=list)
     fleet_proc_pid: Optional[int] = None
+    scene_ref: object = None
     ok: bool = False
     notes: list[str] = field(default_factory=list)
 
@@ -89,6 +90,14 @@ def run(spec: TestSpec, cfg: Optional[DirectorConfig] = None) -> TestResult:
     roster = parse_roster(spec.fleet_arg())
     result.roster = roster
     result.log(f"roster: {[r['id'] for r in roster]}")
+
+    # resolve the described scene to a loadable USD (library now, generative later)
+    from .scene_resolver import resolve_scene
+    scene_ref = resolve_scene(spec.scene)
+    result.scene_ref = scene_ref
+    result.log(f"scene '{spec.scene}' -> {scene_ref.category}/{scene_ref.sid} "
+               f"(conf={scene_ref.confidence})"
+               + (f"; {scene_ref.notes}" if scene_ref.notes else ""))
 
     if cfg.dry_run:
         result.log("dry-run: stopping before launch")
@@ -146,9 +155,10 @@ def _launch_fleet(spec: TestSpec, cfg: DirectorConfig, result: TestResult):
     """Spawn launch_fleet.py as a child process. Returns the Popen or None."""
     import subprocess
     launcher = _SIM_DIR / "launch_fleet.py"
+    env_value = result.scene_ref.launch_value() if result.scene_ref else spec.scene
     cmd = [cfg.python, str(launcher),
            "--fleet", spec.fleet_arg(),
-           "--env", spec.scene,
+           "--env", env_value,
            "--certs-base", cfg.certs_base]
     env = dict(os.environ)
     env.setdefault("ISHMAEL_HARNESS",
