@@ -62,12 +62,17 @@ def _dispatch(req: dict) -> dict:
             return {"ok": True, "name": name}
         if op == "grab_vantage":
             import cv2
+            # Reads from the continuously-fed FrameBus — fast, no Isaac-thread wait.
             rgb = WORKER.request_vantage_frame(req["name"])
             if rgb is None:
                 return {"ok": True, "jpg": None}
             ok, jpg = cv2.imencode(".jpg", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
-                                   [cv2.IMWRITE_JPEG_QUALITY, 85])
+                                   [cv2.IMWRITE_JPEG_QUALITY, 92])
             return {"ok": True, "jpg": base64.b64encode(jpg.tobytes()).decode() if ok else None}
+        if op == "list_vantages":
+            with WORKER._vantage_lock:
+                names = list(WORKER._vantage_buses.keys())
+            return {"ok": True, "names": names}
     except Exception as e:
         return {"ok": False, "error": str(e)}
     return {"ok": False, "error": f"unknown op {op}"}

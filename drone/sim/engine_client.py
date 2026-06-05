@@ -70,6 +70,10 @@ class EngineClient:
         r = self._call({"op": "auto_overhead", "name": name})
         return r.get("name", name)
 
+    def list_vantages(self) -> list:
+        r = self._call({"op": "list_vantages"})
+        return r.get("names", [])
+
     def grab_vantage_jpeg(self, name) -> bytes | None:
         r = self._call({"op": "grab_vantage", "name": name})
         j = r.get("jpg")

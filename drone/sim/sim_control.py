@@ -105,17 +105,47 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
         return urls
 
     def record_video(seconds=5.0, description="", fps=15):
-        """Record an mp4 from this drone's camera and return an S3 URL."""
-        from video_record import record_mp4
+        """Record mp4 from this drone's camera and upload to S3.
+
+        For rovers (which are typically stationary when called): performs a slow
+        180° yaw pan during recording so the video shows motion and sweeps the
+        scene — a static parked rover is useless as a video.
+        For quadcopters already in flight: no pan, they're moving naturally.
+        """
+        import threading
+        import cv2
+        import numpy as np
+        from video_record import record_frames, encode_mp4
+
+        stop_evt = threading.Event()
+
+        def _pan():
+            """Rotate 180° over the recording window (rover only)."""
+            if not is_rover:
+                return
+            steps     = max(6, int(float(seconds) * 1.5))
+            step_deg  = 180.0 / steps
+            step_secs = float(seconds) / steps
+            for _ in range(steps):
+                if stop_evt.is_set():
+                    break
+                set_yaw(step_deg, relative=True)
+                time.sleep(max(0.05, step_secs - 0.15))
+
+        pan_t = threading.Thread(target=_pan, daemon=True)
+        pan_t.start()
+
         def _grab():
             jpg = engine.grab_jpeg(did)
             if not jpg:
                 return None
-            import cv2
-            import numpy as np
             arr = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
             return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB) if arr is not None else None
-        mp4 = record_mp4(_grab, seconds=float(seconds), fps=int(fps))
+
+        frames = record_frames(_grab, seconds=float(seconds), fps=int(fps))
+        stop_evt.set()
+        pan_t.join(timeout=5)
+        mp4 = encode_mp4(frames, fps=int(fps))
         if not mp4 or not upload_conf:
             return ""
         try:
@@ -135,17 +165,22 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
         return record_video(seconds=seconds)
 
     def record_vantage(name="overhead", seconds=5.0, fps=15):
-        """Record an mp4 from a fixed vantage camera and return an S3 URL."""
+        """Record mp4 from a pre-created vantage camera and return an S3 URL.
+
+        The overhead and side cameras exist from engine startup, so frames are
+        available immediately. Falls back to auto-create if somehow missing.
+        """
         from video_record import record_mp4
-        # Ensure the vantage exists (engine auto-places overhead)
-        if name == "overhead":
+        import cv2, numpy as np
+        # Verify camera exists; create if missing
+        known = engine.list_vantages()
+        if name not in known:
             engine.auto_overhead(name)
+            time.sleep(1.0)  # let the FrameBus warm up with a few ticks
         def _grab():
             jpg = engine.grab_vantage_jpeg(name)
             if not jpg:
                 return None
-            import cv2
-            import numpy as np
             arr = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
             return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB) if arr is not None else None
         mp4 = record_mp4(_grab, seconds=float(seconds), fps=int(fps))

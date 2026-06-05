@@ -97,15 +97,84 @@ class DroneDaemon:
                 continue
             if not code:
                 self._respond(conv, original, {"success": True, "stdout": "ack (sim).",
-                                               "error": None, "image_urls": []})
+                                               "error": None, "image_urls": [],
+                                               "video_urls": []})
                 continue
             print(f"[{self.id}] exec on conv {conv}", flush=True)
+
+            # Auto-record from ALL vantage cameras for the duration of this mission.
+            # Two parallel recording threads start NOW (before mission code runs), so
+            # they capture both drones moving simultaneously regardless of what the
+            # mission code does.  Results are merged into the response video_urls.
+            stop_evt  = threading.Event()
+            auto_urls = []
+            vantage_threads = []
+            for vname in (self.engine.list_vantages() or []):
+                t = threading.Thread(
+                    target=self._auto_vantage_worker,
+                    args=(conv, vname, stop_evt, auto_urls),
+                    daemon=True, name=f"vantage-{vname}")
+                t.start()
+                vantage_threads.append(t)
+
             res = run_command(self.engine, self.id, self.vtype, conv, code,
                               self.upload_conf, self.armed)
+
+            # Signal recorders to finish (they'll encode + upload whatever they have)
+            stop_evt.set()
+            for t in vantage_threads:
+                t.join(timeout=45)
+
+            # Merge vantage URLs into mission result (don't overwrite drone-cam URLs)
+            combined_vids = list(res.get("video_urls") or []) + auto_urls
             self._respond(conv, original, {
                 "success": res.get("success", False), "stdout": res.get("stdout", ""),
                 "error": res.get("error"), "image_urls": res.get("image_urls", []),
-                "video_urls": res.get("video_urls", [])})
+                "video_urls": combined_vids})
+
+    def _auto_vantage_worker(self, conv: str, vname: str,
+                             stop_evt: threading.Event, urls_out: list) -> None:
+        """Record from one vantage camera for the duration of the mission."""
+        import cv2
+        import numpy as np
+        from video_record import record_frames, encode_mp4
+
+        def _grab():
+            jpg = self.engine.grab_vantage_jpeg(vname)
+            if not jpg:
+                return None
+            arr = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+            return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB) if arr is not None else None
+
+        fps     = 10
+        frames  = []
+        interval = 1.0 / fps
+        while not stop_evt.is_set():
+            t0  = time.time()
+            rgb = _grab()
+            if rgb is not None:
+                frames.append(rgb)
+            wait = interval - (time.time() - t0)
+            if wait > 0:
+                stop_evt.wait(timeout=wait)   # wakes immediately when stop fires
+
+        if not frames or not self.upload_conf:
+            return
+        mp4 = encode_mp4(frames, fps=fps)
+        if not mp4:
+            return
+        try:
+            from cloud_creds import iot_credentials, upload_mp4_to_s3
+            c = self.upload_conf
+            creds = iot_credentials(c["certs_dir"], c["credentials_endpoint"],
+                                    c["s3_role_alias"], c["thing_name"])
+            url = upload_mp4_to_s3(creds, c["images_bucket"], c["region"],
+                                   self.id, conv, mp4, label=f"vantage_{vname}")
+            urls_out.append(url)
+            print(f"[{self.id}] auto vantage '{vname}' → {url} "
+                  f"({len(frames)} frames)", flush=True)
+        except Exception as e:
+            print(f"[{self.id}] auto vantage '{vname}' upload failed: {e}", flush=True)
 
     def _respond(self, conv, original, result):
         self.client.publish(f"drone/{self.id}/chat/{conv}/response", json.dumps({

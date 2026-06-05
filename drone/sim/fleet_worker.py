@@ -39,13 +39,20 @@ class FleetWorker(threading.Thread):
         self.ready = threading.Event()
         self._running = True
         self._frame_reqs: "queue.Queue[tuple]" = queue.Queue()
-        self._isaac_ops: "queue.Queue[tuple]" = queue.Queue()  # vantage add/grab etc.
+        self._isaac_ops: "queue.Queue[tuple]" = queue.Queue()  # misc Isaac-thread ops
         self._watched: dict[str, FrameBus] = {}
         self._watch_lock = threading.Lock()
+        # Vantage cameras: pre-created at startup, fed continuously in the tick loop.
+        # Keys are camera names ("overhead", "corner", …).
+        self._vantage_buses: dict[str, FrameBus] = {}
+        self._vantage_lock = threading.Lock()
 
     # -- lifecycle --------------------------------------------------------------
     def run(self) -> None:
         self.bridge.setup(self.environment, self.roster)
+        # Pre-create overhead + corner vantage cameras on the Isaac thread NOW,
+        # before ready.set(), so they are guaranteed available when missions run.
+        self._setup_default_vantages()
         self.ready.set()
         print(f"[fleet-worker] ready: {len(self.roster)} vehicles in "
               f"{self.environment}", flush=True)
@@ -77,6 +84,13 @@ class FleetWorker(threading.Thread):
                 rgb = self.bridge.grab_frame(drone_id)
                 if rgb is not None:
                     bus.set(rgb)
+            # continuous frames from vantage cameras
+            with self._vantage_lock:
+                vantages = list(self._vantage_buses.items())
+            for vname, bus in vantages:
+                rgb = self.bridge.grab_vantage_frame(vname)
+                if rgb is not None:
+                    bus.set(rgb)
             self.bridge.step_simulation(self.STEPS_PER_TICK, render=True)
             # Yield the GIL so the awscrt MQTT event loop can invoke our Python
             # subscribe callbacks. Without this the tight loop starves message
@@ -99,21 +113,72 @@ class FleetWorker(threading.Thread):
         ev.wait(timeout=timeout)
         return holder.get("r")
 
-    def add_vantage(self, name, position, look_at) -> None:
-        self._run_on_isaac(
-            lambda: self.bridge.add_vantage_camera(name, position, look_at))
+    def _setup_default_vantages(self) -> None:
+        """Called on the Isaac thread during startup — create 4 corner-view cameras.
 
-    def request_vantage_frame(self, name, timeout: float = 5.0):
+        Camera placement rules:
+        - FIXED 5 m offset from vehicle spawn centre (never derived from scene radius,
+          so it never overshoots into a wall regardless of how many vehicles).
+        - Height 3 m: below any Isaac indoor ceiling (~4 m) and above all vehicles
+          (z = 0–2 m).  Works the same in outdoor scenes.
+        - 90° hFOV: 2 * 7 m * tan(45°) ≈ 14 m visible width — easily frames both
+          vehicles (spawn grid ≤ 6 m wide for small fleets).
+        - Four cameras at SW / SE / NE / NW diagonals give full stereo coverage.
+          All four are registered as continuous FrameBuses.
+        """
+        center, _ = self.bridge.scene_center_and_extent()
+        cx, cy    = float(center[0]), float(center[1])
+        cam_h     = 3.0
+        d         = 5.0          # fixed 5 m — always inside any Isaac scene
+        look      = np.array([cx, cy, 0.5])   # floor-level cluster centre
+
+        configs = [
+            ("cam_sw", np.array([cx - d, cy - d, cam_h])),
+            ("cam_se", np.array([cx + d, cy - d, cam_h])),
+            ("cam_ne", np.array([cx + d, cy + d, cam_h])),
+            ("cam_nw", np.array([cx - d, cy + d, cam_h])),
+        ]
+        with self._vantage_lock:
+            for name, pos in configs:
+                self.bridge.add_vantage_camera(name, pos, look,
+                                               resolution=(1280, 720), hfov_deg=90.0)
+                self._vantage_buses[name] = FrameBus()
+                print(f"[fleet-worker] vantage {name} at {pos.tolist()} -> {look.tolist()}",
+                      flush=True)
+
+    def add_vantage(self, name, position, look_at) -> None:
+        """Add a custom vantage camera from a daemon/IPC request."""
+        def _add():
+            self.bridge.add_vantage_camera(name, position, look_at)
+            with self._vantage_lock:
+                self._vantage_buses[name] = FrameBus()
+        self._run_on_isaac(_add)
+
+    def request_vantage_frame(self, name: str, timeout: float = 5.0):
+        """Return the latest RGB frame from a vantage camera bus (no IPC roundtrip)."""
+        with self._vantage_lock:
+            bus = self._vantage_buses.get(name)
+        if bus is None:
+            return None
+        frame = bus.get()
+        if frame is not None:
+            return frame
+        # Bus empty (camera just created) — fall back to one-shot Isaac op
         return self._run_on_isaac(lambda: self.bridge.grab_vantage_frame(name), timeout)
 
-    def auto_overhead_vantage(self, name: str = "overhead"):
-        """Add (once) an overhead camera framing all vehicles. Returns its name."""
+    def auto_overhead_vantage(self, name: str = "overhead") -> str:
+        """Return the overhead vantage bus name (already created at startup)."""
+        with self._vantage_lock:
+            if name in self._vantage_buses:
+                return name
+        # Not yet created — set up now via Isaac thread
         def _add():
             import numpy as _np
             center, radius = self.bridge.scene_center_and_extent()
-            pos = center + _np.array([0.0, 0.0, max(8.0, radius * 1.5)])
+            pos = center + _np.array([0.0, 0.0, max(10.0, radius * 2.5)])
             self.bridge.add_vantage_camera(name, pos, center)
-            return True
+            with self._vantage_lock:
+                self._vantage_buses[name] = FrameBus()
         self._run_on_isaac(_add)
         return name
 
@@ -225,15 +290,33 @@ def build_vehicle_namespace(worker: FleetWorker, drone_id: str,
         return urls
 
     def record_video(seconds=5.0, description="", fps=15):
-        """Record mp4 from this drone's camera and return an S3 URL."""
-        from video_record import record_mp4
-        def _grab():
-            return worker.request_frame(drone_id)
-        mp4 = record_mp4(_grab, seconds=float(seconds), fps=int(fps))
+        """Record mp4 from this drone's camera; rovers pan 180° for motion."""
+        import threading
+        from video_record import record_frames, encode_mp4
+
+        stop_evt = threading.Event()
+
+        def _pan():
+            if not is_rover:
+                return
+            steps    = max(6, int(float(seconds) * 1.5))
+            step_deg = 180.0 / steps
+            step_s   = float(seconds) / steps
+            for _ in range(steps):
+                if stop_evt.is_set():
+                    break
+                set_yaw(step_deg, relative=True)
+                time.sleep(max(0.05, step_s - 0.15))
+
+        pan_t = threading.Thread(target=_pan, daemon=True)
+        pan_t.start()
+        frames = record_frames(lambda: worker.request_frame(drone_id),
+                               seconds=float(seconds), fps=int(fps))
+        stop_evt.set(); pan_t.join(timeout=5)
+        mp4 = encode_mp4(frames, fps=int(fps))
         if not mp4 or not upload_conf:
             return ""
         try:
-            import cv2
             from cloud_creds import iot_credentials, upload_mp4_to_s3
             c = upload_conf
             creds = iot_credentials(c["certs_dir"], c["credentials_endpoint"],

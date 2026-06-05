@@ -221,7 +221,16 @@ class IsaacVehicleBridge:
         fwd = target - pos
         n = float(np.linalg.norm(fwd))
         fwd = fwd / n if n > 1e-6 else np.array([1.0, 0.0, 0.0])
-        # Map the camera's default optical axis (+X) onto fwd, keeping world +Z up.
+
+        # Use align_vectors([fwd, up], [[1,0,0], [0,0,1]]) — empirically verified to
+        # produce correct camera orientation in Isaac Sim.  Guard against the
+        # near-vertical degenerate case (fwd ≈ [0,0,±1]) by ensuring there is always
+        # at least 15 % horizontal component before calling align_vectors.
+        horiz = float(np.sqrt(fwd[0]**2 + fwd[1]**2))
+        if horiz < 0.15:
+            # Add a small +X nudge and re-normalise so align_vectors is well-conditioned
+            fwd = fwd + np.array([0.15, 0.0, 0.0])
+            fwd = fwd / float(np.linalg.norm(fwd))
         rot, _ = Rotation.align_vectors([fwd, [0, 0, 1]], [[1, 0, 0], [0, 0, 1]])
         q_xyzw = rot.as_quat()
         q_wxyz = np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]])
