@@ -72,11 +72,14 @@ class TestResult:
 def _mission_command(spec: TestSpec) -> str:
     """Phrase the objective as a user would type it to the drone."""
     obj = spec.objective or (f"search for a {spec.target}" if spec.target else "explore")
+    parts = [obj]
     if spec.mobile_action == "send_video":
-        return f"{obj}, then record and send the video"
-    if spec.mobile_action == "send_picture":
-        return f"{obj}, then take a picture and send it"
-    return obj
+        parts.append("record and send the video")
+    elif spec.mobile_action == "send_picture":
+        parts.append("take a picture and send it")
+    if spec.vantage:
+        parts.append("also record an overhead vantage video with record_vantage()")
+    return ", then ".join(parts)
 
 
 def run(spec: TestSpec, cfg: Optional[DirectorConfig] = None) -> TestResult:
@@ -140,8 +143,8 @@ def run(spec: TestSpec, cfg: Optional[DirectorConfig] = None) -> TestResult:
         responses = client.send_mission(command, timeout=cfg.mission_timeout_s)
         result.responses = responses
         for r in responses:
-            result.images.extend(r.get("image_urls", []))
-            result.videos.extend(r.get("video_urls", []))
+            result.images.extend(r.get("image_urls") or [])
+            result.videos.extend(r.get("video_urls") or [])
         saved = client.download_media(result.images + result.videos)
         result.log(f"received {len(result.images)} image(s), "
                    f"{len(result.videos)} video(s); saved -> {cfg.out_dir}")
