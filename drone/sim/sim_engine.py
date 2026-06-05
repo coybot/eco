@@ -99,12 +99,18 @@ def main():
     ap.add_argument("--env", default="office")
     ap.add_argument("--sock", default="/tmp/sim_engine.sock")
     ap.add_argument("--gui", action="store_true")
+    ap.add_argument("--photoreal", action="store_true",
+                    help="Use high-fidelity USD assets and RTX path-tracing")
     args = ap.parse_args()
 
     roster = parse_roster(args.fleet)
-    print(f"== sim engine == {len(roster)} vehicles env={args.env} sock={args.sock}",
-          flush=True)
-    WORKER = FleetWorker(environment=args.env, roster=roster, headless=not args.gui)
+    if args.photoreal:
+        for entry in roster:
+            entry["photoreal"] = True
+    print(f"== sim engine == {len(roster)} vehicles env={args.env} sock={args.sock}"
+          f"{' [photoreal]' if args.photoreal else ''}", flush=True)
+    WORKER = FleetWorker(environment=args.env, roster=roster, headless=not args.gui,
+                         photoreal=args.photoreal)
 
     def serve():
         WORKER.ready.wait()
