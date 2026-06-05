@@ -91,8 +91,13 @@ def run(spec: TestSpec, cfg: Optional[DirectorConfig] = None) -> TestResult:
 
     from fleet import parse_roster  # noqa: E402  (sibling module)
     roster = parse_roster(spec.fleet_arg())
+    # Propagate photoreal flag so IsaacVehicleBridge loads high-fidelity assets.
+    if spec.photoreal:
+        for entry in roster:
+            entry["photoreal"] = True
     result.roster = roster
-    result.log(f"roster: {[r['id'] for r in roster]}")
+    result.log(f"roster: {[r['id'] for r in roster]}"
+               + (" [photoreal]" if spec.photoreal else ""))
 
     # resolve the described scene to a loadable USD (library now, generative later)
     from .scene_resolver import resolve_scene
@@ -163,6 +168,8 @@ def _launch_fleet(spec: TestSpec, cfg: DirectorConfig, result: TestResult):
            "--fleet", spec.fleet_arg(),
            "--env", env_value,
            "--certs-base", cfg.certs_base]
+    if spec.photoreal:
+        cmd.append("--photoreal")
     env = dict(os.environ)
     env.setdefault("ISHMAEL_HARNESS",
                    os.path.expanduser("~/code/ishmael/swarm_eval/harness"))

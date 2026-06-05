@@ -113,7 +113,14 @@ class IsaacVehicleBridge:
             raise RuntimeError("Could not resolve Isaac assets root")
         return root
 
-    def _vehicle_usd(self, vtype: str, root: str) -> str:
+    def _vehicle_usd(self, vtype: str, root: str, photoreal: bool = False) -> str:
+        # Photorealistic path: delegate to the Ishmael asset registry.
+        if photoreal:
+            try:
+                from ishmael.assets import vehicle_usd
+                return vehicle_usd(vtype, photoreal=True, assets_root=root)
+            except Exception:
+                pass  # fall through to standard assets
         if vtype == "rover":
             from omni.isaac.core.utils.nucleus import is_file
             for rel in _ROVER_USD_RELS:
@@ -161,11 +168,12 @@ class IsaacVehicleBridge:
         cells = self._grid(len(roster))
         for i, spec in enumerate(roster):
             vtype = spec["type"]
+            photoreal = bool(spec.get("photoreal", False))
             gx, gy = cells[i]
             z = 0.0 if vtype == "rover" else 1.0
             spawn = np.array([gx, gy, z])
             prim_path = f"/World/veh_{i}"
-            add_reference_to_stage(usd_path=self._vehicle_usd(vtype, root),
+            add_reference_to_stage(usd_path=self._vehicle_usd(vtype, root, photoreal),
                                    prim_path=prim_path)
             v = _Vehicle(spec["id"], vtype, spawn, prim_path)
             v.prim = XFormPrim(prim_path)

@@ -30,11 +30,13 @@ class FleetWorker(threading.Thread):
     PHYSICS_DT = 1.0 / 240.0
     REACHED = 0.2  # meters
 
-    def __init__(self, environment: str, roster: list[dict], headless: bool = True):
+    def __init__(self, environment: str, roster: list[dict], headless: bool = True,
+                 photoreal: bool = False):
         super().__init__(name="fleet-worker", daemon=True)
         self.environment = environment
         self.roster = roster
         self.headless = headless
+        self.photoreal = photoreal
         self.bridge = IsaacVehicleBridge(headless=headless, physics_dt=self.PHYSICS_DT)
         self.ready = threading.Event()
         self._running = True
@@ -46,6 +48,10 @@ class FleetWorker(threading.Thread):
     # -- lifecycle --------------------------------------------------------------
     def run(self) -> None:
         self.bridge.setup(self.environment, self.roster)
+        if self.photoreal:
+            from ishmael.assets import set_rtx_path_tracing
+            set_rtx_path_tracing(True)
+            print("[fleet-worker] RTX path-tracing ON (photoreal mode)", flush=True)
         self.ready.set()
         print(f"[fleet-worker] ready: {len(self.roster)} vehicles in "
               f"{self.environment}", flush=True)
