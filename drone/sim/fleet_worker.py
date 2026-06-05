@@ -113,25 +113,37 @@ class FleetWorker(threading.Thread):
         ev.wait(timeout=timeout)
         return holder.get("r")
 
+    # Scenes that are enclosed buildings — vantage cameras need smaller offsets
+    # to stay inside the interior (otherwise they end up on the exterior wall or roof).
+    _ENCLOSED_SCENES = {"office", "hospital", "clinic"}
+
     def _setup_default_vantages(self) -> None:
         """Called on the Isaac thread during startup — create 4 corner-view cameras.
 
-        Camera placement rules:
-        - FIXED 5 m offset from vehicle spawn centre (never derived from scene radius,
-          so it never overshoots into a wall regardless of how many vehicles).
-        - Height 3 m: below any Isaac indoor ceiling (~4 m) and above all vehicles
-          (z = 0–2 m).  Works the same in outdoor scenes.
-        - 90° hFOV: 2 * 7 m * tan(45°) ≈ 14 m visible width — easily frames both
-          vehicles (spawn grid ≤ 6 m wide for small fleets).
-        - Four cameras at SW / SE / NE / NW diagonals give full stereo coverage.
-          All four are registered as continuous FrameBuses.
+        Uses a smaller offset (d=2m, h=2m) for enclosed indoor scenes so cameras
+        stay inside the building, and the standard larger offset (d=5m, h=3m) for
+        open scenes like warehouse and outdoor/wilderness environments.
         """
         center, _ = self.bridge.scene_center_and_extent()
         cx, cy    = float(center[0]), float(center[1])
-        cam_h     = 3.0
-        d         = 5.0          # fixed 5 m — always inside any Isaac scene
-        look      = np.array([cx, cy, 0.5])   # floor-level cluster centre
 
+        scene_key = self.environment.lower().split("/")[-1].replace(".usd", "").split("_")[0]
+        enclosed  = any(k in scene_key for k in self._ENCLOSED_SCENES)
+
+        # For outdoor/wilderness scenes, cameras must be above the terrain.
+        # IsaacVehicleBridge stores the outdoor z_base on the bridge object.
+        outdoor_z = getattr(self.bridge, '_outdoor_z_base', None)
+
+        if enclosed:
+            d, cam_h, hfov = 2.0, 2.0, 100.0    # tight — stay inside rooms
+        elif outdoor_z is not None:
+            d, cam_h, hfov = 8.0, outdoor_z + 6.0, 90.0  # above terrain
+        else:
+            d, cam_h, hfov = 5.0, 3.0, 90.0     # standard open scene (warehouse)
+
+        # Look at the vehicles' actual height, not a hardcoded floor z.
+        # For warehouse (z≈0) this is ~0.5; for wilderness (z≈14) this is ~14.
+        look = np.array([cx, cy, float(center[2])])
         configs = [
             ("cam_sw", np.array([cx - d, cy - d, cam_h])),
             ("cam_se", np.array([cx + d, cy - d, cam_h])),
@@ -141,10 +153,10 @@ class FleetWorker(threading.Thread):
         with self._vantage_lock:
             for name, pos in configs:
                 self.bridge.add_vantage_camera(name, pos, look,
-                                               resolution=(1280, 720), hfov_deg=90.0)
+                                               resolution=(1280, 720), hfov_deg=hfov)
                 self._vantage_buses[name] = FrameBus()
-                print(f"[fleet-worker] vantage {name} at {pos.tolist()} -> {look.tolist()}",
-                      flush=True)
+        print(f"[fleet-worker] vantage cameras x4 d={d}m h={cam_h}m "
+              f"({'enclosed' if enclosed else 'open'} scene: {scene_key})", flush=True)
 
     def add_vantage(self, name, position, look_at) -> None:
         """Add a custom vantage camera from a daemon/IPC request."""

@@ -163,12 +163,57 @@ class IsaacVehicleBridge:
             logger.warning("Scene load failed (%s); ground plane", e)
             self._world.scene.add_default_ground_plane()
 
+        # Wilderness / infinigen / custom outdoor scenes have no lights — add them.
+        # Isaac built-in scenes (office/warehouse/hospital) already contain lighting;
+        # we only inject when the env is a file path (not a CDN/s3 URL) OR explicitly
+        # an outdoor type.  Adding extra lights to an already-lit scene is harmless
+        # (slight overexposure at worst).
+        _needs_light = (
+            env_url.startswith("/") or          # local file path → custom/wilderness
+            "wilderness" in env_url or
+            "infinigen"  in env_url or
+            "outdoor"    in env_url.lower()
+        )
+        if _needs_light:
+            self._add_default_lighting()
+
         root = self._assets_root()
         cells = self._grid(len(roster))
+
+        # Determine per-scene spawn adjustments.
+        env_key = environment.lower().split("/")[-1].replace(".usd", "")
+        # Office: origin is a dark entry corridor — shift +5 m into the main area.
+        xy_offset = np.array([5.0, 0.0]) if "office" in env_key else np.zeros(2)
+
+        # Wilderness / infinigen: terrain z_range is [-14, +14]. Spawn above max.
+        # Read the manifest if present; fall back to +20 m for safety.
+        spawn_z_base = 0.0
+        if environment.startswith("/") and ("wilderness" in environment or
+                                            "infinigen" in environment):
+            import os as _os, json as _json
+            manifest_path = _os.path.join(_os.path.dirname(environment), "manifest.json")
+            try:
+                with open(manifest_path) as _f:
+                    _m = _json.load(_f)
+                spawn_z_base = float(_m["z_range"][1]) + 2.0   # 2 m above max terrain
+            except Exception:
+                spawn_z_base = 20.0
+            print(f"[isaac] outdoor scene: spawn base z={spawn_z_base:.1f} m "
+                  f"(above terrain)", flush=True)
+            # Store for vantage camera height calculation
+            self._outdoor_z_base = spawn_z_base
+        else:
+            self._outdoor_z_base = None
+
         for i, spec in enumerate(roster):
             vtype = spec["type"]
             gx, gy = cells[i]
-            z = 0.0 if vtype == "rover" else 1.0
+            gx += xy_offset[0]; gy += xy_offset[1]
+            if spawn_z_base > 0:
+                # Outdoor: both rover and quad float above terrain (kinematic sim)
+                z = spawn_z_base
+            else:
+                z = 0.0 if vtype == "rover" else 1.0
             spawn = np.array([gx, gy, z])
             prim_path = f"/World/veh_{i}"
             photoreal = bool(spec.get("photoreal", False))
@@ -190,10 +235,51 @@ class IsaacVehicleBridge:
         self._world.reset()
         for v in self.vehicles.values():
             self._apply_pose(v)
-        for _ in range(30):
+
+        # RTX warmup: outdoor/wilderness scenes with many CDN-referenced vegetation
+        # instances (12 500+ trees) need far more render passes to converge than
+        # the simple built-in scenes (warehouse, office).  30 steps ≈ 0.5 s — fine
+        # for warehouse; for a forest with Omniverse CDN trees, allow up to 300 steps
+        # so the renderer has time to stream and composite the assets.
+        n_warmup = 300 if _needs_light else 30
+        print(f"[isaac] warmup: {n_warmup} render steps …", flush=True)
+        for _ in range(n_warmup):
             self._world.step(render=True)
         logger.info("IsaacVehicleBridge ready: %d vehicles in %s",
                     len(self.vehicles), environment)
+
+    # -- lighting ---------------------------------------------------------------
+    def _add_default_lighting(self) -> None:
+        """Add a sun + sky dome to scenes that ship without any lights (wilderness/outdoor)."""
+        try:
+            from pxr import UsdLux, Gf
+            stage = self._world.scene.stage
+
+            # Sun — directional light at 45° elevation from NW
+            dl_path = "/World/_IshmaeL_DistantLight"
+            if not stage.GetPrimAtPath(dl_path):
+                dl = UsdLux.DistantLight.Define(stage, dl_path)
+                dl.CreateIntensityAttr(3000.0)
+                dl.CreateAngleAttr(0.53)          # solar disc angular diameter
+                dl.CreateColorAttr(Gf.Vec3f(1.0, 0.95, 0.85))  # warm sunlight
+                xform = dl.GetPrim().GetAttribute("xformOp:rotateXYZ")
+                if not xform:
+                    from pxr import UsdGeom
+                    xform_api = UsdGeom.XformCommonAPI(dl.GetPrim())
+                    xform_api.SetRotate(Gf.Vec3f(-45.0, 0.0, -45.0))
+                else:
+                    xform.Set(Gf.Vec3f(-45.0, 0.0, -45.0))
+
+            # Sky dome — ambient fill from all directions
+            dome_path = "/World/_IshmaeL_DomeLight"
+            if not stage.GetPrimAtPath(dome_path):
+                dome = UsdLux.DomeLight.Define(stage, dome_path)
+                dome.CreateIntensityAttr(800.0)
+                dome.CreateColorAttr(Gf.Vec3f(0.6, 0.75, 1.0))  # blue sky tint
+
+            print("[isaac] default lighting injected (sun + sky dome)", flush=True)
+        except Exception as e:
+            logger.warning("Could not add default lighting: %s", e)
 
     # -- camera (Isaac thread only) ---------------------------------------------
     def ensure_camera(self, drone_id: str) -> None:

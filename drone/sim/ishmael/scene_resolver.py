@@ -122,6 +122,22 @@ _DEFAULT_CATALOG = {
 
 
 def _r2_url(prefix: str, sid: str) -> Optional[str]:
+    """Resolve a Yonder scene USD.
+
+    Priority:
+    1. ``ISHMAEL_LOCAL_SCENES_DIR`` — a local directory already populated with
+       wilderness-envs / urban-envs subdirs (e.g. /home/yusuf on Hoopoe).
+       Path: <local_dir>/<last-segment-of-prefix>/<sid>/scene.usd
+    2. ``ISHMAEL_R2_BASE`` — a public HTTPS base URL (r2.dev or similar).
+    3. Neither set → return None (caller falls back to built-in Isaac scene).
+    """
+    local_dir = os.environ.get("ISHMAEL_LOCAL_SCENES_DIR", "").rstrip("/")
+    if local_dir:
+        # prefix is like "simulator-environments/wilderness-envs" → last part is the dir name
+        subdir = prefix.rstrip("/").split("/")[-1]  # e.g. "wilderness-envs"
+        candidate = os.path.join(local_dir, subdir, sid, "scene.usd")
+        if os.path.exists(candidate):
+            return candidate
     base = os.environ.get("ISHMAEL_R2_BASE", "").rstrip("/")
     if not base:
         return None
