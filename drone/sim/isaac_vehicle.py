@@ -113,7 +113,13 @@ class IsaacVehicleBridge:
             raise RuntimeError("Could not resolve Isaac assets root")
         return root
 
-    def _vehicle_usd(self, vtype: str, root: str) -> str:
+    def _vehicle_usd(self, vtype: str, root: str, photoreal: bool = False) -> str:
+        if photoreal:
+            try:
+                from ishmael.assets import vehicle_usd
+                return vehicle_usd(vtype, photoreal=True, assets_root=root)
+            except Exception:
+                pass
         if vtype == "rover":
             from omni.isaac.core.utils.nucleus import is_file
             for rel in _ROVER_USD_RELS:
@@ -165,12 +171,21 @@ class IsaacVehicleBridge:
             z = 0.0 if vtype == "rover" else 1.0
             spawn = np.array([gx, gy, z])
             prim_path = f"/World/veh_{i}"
-            add_reference_to_stage(usd_path=self._vehicle_usd(vtype, root),
+            photoreal = bool(spec.get("photoreal", False))
+            add_reference_to_stage(usd_path=self._vehicle_usd(vtype, root, photoreal),
                                    prim_path=prim_path)
             v = _Vehicle(spec["id"], vtype, spawn, prim_path)
             v.prim = XFormPrim(prim_path)
+            # Scale quadcopters to a visible size. The Crazyflie CF2X asset is ~10 cm
+            # — invisible in vantage recordings at 5–10 m. 8× gives ~80 cm, visible
+            # and representative of a small inspection drone. Skip when photoreal=True
+            # (the photoreal asset is already a full-size model).
+            if vtype == "quadcopter" and not photoreal:
+                v.prim.set_local_scale(np.array([8.0, 8.0, 8.0]))
             self.vehicles[spec["id"]] = v
-            print(f"[isaac] spawned {spec['id']} ({vtype}) at {spawn.tolist()}", flush=True)
+            print(f"[isaac] spawned {spec['id']} ({vtype}) at {spawn.tolist()}"
+                  f"{' [8× scale]' if vtype == 'quadcopter' and not photoreal else ''}",
+                  flush=True)
 
         self._world.reset()
         for v in self.vehicles.values():
