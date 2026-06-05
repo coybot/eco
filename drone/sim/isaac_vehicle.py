@@ -92,6 +92,7 @@ class IsaacVehicleBridge:
         self._physics_dt = physics_dt
         self._world = None
         self.vehicles: dict[str, _Vehicle] = {}
+        self.vantages: dict[str, object] = {}   # name -> Camera (fixed world cameras)
 
     # -- app / assets -----------------------------------------------------------
     @classmethod
@@ -200,6 +201,65 @@ class IsaacVehicleBridge:
             self._world.step(render=True)
         v.camera = cam
         print(f"[isaac] camera ready for {drone_id}", flush=True)
+
+    # -- vantage cameras (fixed world viewpoints, Isaac thread only) ------------
+    def add_vantage_camera(self, name: str, position, look_at,
+                           resolution=(1280, 720), hfov_deg: float = 60.0) -> None:
+        """Create a fixed camera at ``position`` aimed at ``look_at`` (world coords).
+
+        Unlike per-vehicle cameras, vantage cameras are not parented to anything —
+        they observe the whole scene (e.g. an overhead or corner shot of the drones).
+        Idempotent: re-adding a name is a no-op.
+        """
+        if name in self.vantages:
+            return
+        import math as m
+        from omni.isaac.sensor import Camera
+        from scipy.spatial.transform import Rotation
+        pos = np.asarray(position, dtype=float)
+        target = np.asarray(look_at, dtype=float)
+        fwd = target - pos
+        n = float(np.linalg.norm(fwd))
+        fwd = fwd / n if n > 1e-6 else np.array([1.0, 0.0, 0.0])
+        # Map the camera's default optical axis (+X) onto fwd, keeping world +Z up.
+        rot, _ = Rotation.align_vectors([fwd, [0, 0, 1]], [[1, 0, 0], [0, 0, 1]])
+        q_xyzw = rot.as_quat()
+        q_wxyz = np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]])
+        cam = Camera(prim_path=f"/World/vantage_{name}", position=pos,
+                     resolution=resolution, orientation=q_wxyz)
+        cam.initialize()
+        hfov = m.radians(hfov_deg)
+        focal = cam.get_focal_length() or 24.0
+        h_ap = 2.0 * focal * m.tan(hfov / 2.0)
+        cam.set_horizontal_aperture(h_ap)
+        cam.set_vertical_aperture(h_ap * resolution[1] / resolution[0])
+        for _ in range(3):
+            self._world.step(render=True)
+        self.vantages[name] = cam
+        print(f"[isaac] vantage camera '{name}' at {pos.tolist()} -> {target.tolist()}",
+              flush=True)
+
+    def grab_vantage_frame(self, name: str):
+        """Return latest RGB (H,W,3) for a vantage camera. Isaac thread only."""
+        cam = self.vantages.get(name)
+        if cam is None:
+            return None
+        try:
+            rgba = cam.get_rgba()
+            if rgba is not None and rgba.size:
+                return np.ascontiguousarray(rgba[:, :, :3])
+        except Exception:
+            pass
+        return None
+
+    def scene_center_and_extent(self) -> tuple[np.ndarray, float]:
+        """Rough center + radius of the spawned vehicles, for auto-placing vantages."""
+        if not self.vehicles:
+            return np.zeros(3), 5.0
+        pts = np.array([v.position for v in self.vehicles.values()])
+        center = pts.mean(axis=0)
+        radius = float(np.max(np.linalg.norm(pts - center, axis=1))) + 5.0
+        return center, radius
 
     def grab_frame(self, drone_id: str):
         """Return latest RGB (H,W,3) for a vehicle. Isaac thread only."""

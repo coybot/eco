@@ -76,6 +76,8 @@ class TestSpec:
     objective: str = ""
     target: Optional[str] = None
     mobile_action: str = "send_picture"
+    vantage: bool = False        # also record an overhead vantage video
+    photoreal: bool = False      # request photorealistic rendering (branch 4)
     raw: str = ""
 
     # -- helpers used by the director ------------------------------------------
@@ -106,7 +108,10 @@ class TestSpec:
         return TestSpec(vehicles=vehicles, scene=scene,
                         objective=self.objective.strip(),
                         target=(self.target or None),
-                        mobile_action=action, raw=self.raw)
+                        mobile_action=action,
+                        vantage=self.vantage,
+                        photoreal=self.photoreal,
+                        raw=self.raw)
 
 
 def _snap_scene(scene: str) -> str:
@@ -167,6 +172,10 @@ def _parse_rule_based(text: str) -> TestSpec:
         else:
             objective = f"{verb} the {scene}"
 
+    # record_vantage intent: "from above", "from a vantage", "overhead shot"
+    vantage = bool(re.search(
+        r"\b(vantage|overhead|bird.?s.?eye|from above|wide.?shot|exterior shot)\b", low))
+
     # mobile action
     if re.search(r"\b(video|footage|recording|record)\b", low):
         mobile_action = "send_video"
@@ -175,8 +184,12 @@ def _parse_rule_based(text: str) -> TestSpec:
     else:
         mobile_action = "send_picture"
 
+    photoreal = bool(re.search(r"\b(photorealistic|photoreal|realistic|lifelike|cinematic)\b",
+                               low))
+
     return TestSpec(vehicles=vehicles, scene=scene, objective=objective,
-                    target=target, mobile_action=mobile_action, raw=text).normalized()
+                    target=target, mobile_action=mobile_action,
+                    vantage=vantage, photoreal=photoreal, raw=text).normalized()
 
 
 # --- vLLM backend -------------------------------------------------------------
