@@ -99,11 +99,27 @@ class IsaacVehicleBridge:
     def get_app(cls, headless: bool = True):
         if cls._app is None:
             from isaacsim import SimulationApp
+            # ISHMAEL_RENDERER controls the rendering mode.
+            # "RayTracedLighting" — default; required for OmniPBR/MDL materials
+            #   (wilderness/forest scenes use MDL; they render black in Rasterized)
+            # "RasterizedRendering" — fastest, only for scenes with UsdPreviewSurface
+            renderer = os.environ.get("ISHMAEL_RENDERER", "RayTracedLighting")
             cls._app = SimulationApp({
                 "headless": headless,
                 "multi_gpu": False,
                 "active_gpu": int(os.environ.get("WARP_CUDA_DEVICES", "0")),
+                "renderer": renderer,
+                # Disable synchronous USD/material loads so the first step_simulation
+                # call returns quickly even when CDN vegetation isn't fully loaded yet.
+                # Assets stream in progressively — early frames may be partially loaded
+                # but non-black.  Without this, each step blocks waiting for every CDN
+                # tree USD to download (minutes for 6000+ instances).
+                "/rtx/materialDb/syncLoads": False,
+                "/rtx/hydra/materialSyncLoads": False,
+                "/omni.kit.plugin/syncUsdLoads": False,
             })
+            print(f"[isaac] SimulationApp renderer={renderer} asyncLoads=True",
+                  flush=True)
         return cls._app
 
     def _assets_root(self) -> str:
@@ -156,12 +172,26 @@ class IsaacVehicleBridge:
         # `environment` may be a known name (office/warehouse/...) or, when the
         # Ishmael scene resolver ran, a full USD URL / file path / omniverse path.
         env_url = _resolve_env(environment)
-        try:
-            add_reference_to_stage(usd_path=env_url, prim_path="/World/Scene")
-            logger.info("Loaded scene %s", environment)
-        except Exception as e:
-            logger.warning("Scene load failed (%s); ground plane", e)
-            self._world.scene.add_default_ground_plane()
+        # Wilderness/infinigen USDs contain CDN-referenced vegetation that breaks
+        # Camera.get_rgba() in headless mode (all cameras return all-zero frames
+        # regardless of lighting, materials, or warmup steps).  For these scenes we
+        # skip loading the USD reference and build the scene procedurally instead.
+        # The procedural scene renders immediately with UsdPreviewSurface geometry.
+        _is_outdoor_custom = (
+            env_url.startswith("/") and
+            ("wilderness" in env_url or "infinigen" in env_url)
+        )
+        if _is_outdoor_custom:
+            logger.info("Outdoor custom scene detected — using procedural geometry "
+                        "(wilderness USD breaks headless camera capture): %s", env_url)
+            self._world.scene.add_default_ground_plane()  # physics ground
+        else:
+            try:
+                add_reference_to_stage(usd_path=env_url, prim_path="/World/Scene")
+                logger.info("Loaded scene %s", environment)
+            except Exception as e:
+                logger.warning("Scene load failed (%s); ground plane", e)
+                self._world.scene.add_default_ground_plane()
 
         # Wilderness / infinigen / custom outdoor scenes have no lights — add them.
         # Isaac built-in scenes (office/warehouse/hospital) already contain lighting;
@@ -169,10 +199,9 @@ class IsaacVehicleBridge:
         # an outdoor type.  Adding extra lights to an already-lit scene is harmless
         # (slight overexposure at worst).
         _needs_light = (
-            env_url.startswith("/") or          # local file path → custom/wilderness
-            "wilderness" in env_url or
-            "infinigen"  in env_url or
-            "outdoor"    in env_url.lower()
+            _is_outdoor_custom or
+            "outdoor"    in env_url.lower() or
+            os.environ.get("ISHMAEL_FORCE_LIGHTING") == "1"
         )
         if _needs_light:
             self._add_default_lighting()
@@ -236,13 +265,12 @@ class IsaacVehicleBridge:
         for v in self.vehicles.values():
             self._apply_pose(v)
 
-        # RTX warmup: outdoor/wilderness scenes with many CDN-referenced vegetation
-        # instances (12 500+ trees) need far more render passes to converge than
-        # the simple built-in scenes (warehouse, office).  30 steps ≈ 0.5 s — fine
-        # for warehouse; for a forest with Omniverse CDN trees, allow up to 300 steps
-        # so the renderer has time to stream and composite the assets.
-        n_warmup = 300 if _needs_light else 30
-        print(f"[isaac] warmup: {n_warmup} render steps …", flush=True)
+        # Initial warmup: kick the renderer enough to initialise the scene graph.
+        # The real CDN convergence wait (for wilderness/forest) happens in
+        # FleetWorker._wait_for_vantage_render() *after* cameras are created —
+        # that is where it actually matters.  A large value here is useless because
+        # cameras don't exist yet.
+        n_warmup = 60 if _needs_light else 30
         for _ in range(n_warmup):
             self._world.step(render=True)
         logger.info("IsaacVehicleBridge ready: %d vehicles in %s",
@@ -250,7 +278,23 @@ class IsaacVehicleBridge:
 
     # -- lighting ---------------------------------------------------------------
     def _add_default_lighting(self) -> None:
-        """Add a sun + sky dome to scenes that ship without any lights (wilderness/outdoor)."""
+        """Add a sun + sky dome and force RaytracedLighting for outdoor scenes.
+
+        Outdoor/wilderness scenes need:
+        1. Explicit lights (they ship without any)
+        2. RaytracedLighting render mode — PathTracing is default but renders
+           12 500-tree vegetation scenes at ~1 fps, making warmup take hours.
+           RaytracedLighting renders the same scene at real-time speeds.
+        """
+        try:
+            import carb.settings
+            s = carb.settings.get_settings()
+            s.set("/rtx/rendermode", "RaytracedLighting")
+            print("[isaac] render mode set to RaytracedLighting (outdoor scene)",
+                  flush=True)
+        except Exception as e:
+            print(f"[isaac] could not set render mode: {e}", flush=True)
+
         try:
             from pxr import UsdLux, Gf
             stage = self._world.scene.stage
@@ -270,16 +314,134 @@ class IsaacVehicleBridge:
                 else:
                     xform.Set(Gf.Vec3f(-45.0, 0.0, -45.0))
 
-            # Sky dome — ambient fill from all directions
-            dome_path = "/World/_IshmaeL_DomeLight"
-            if not stage.GetPrimAtPath(dome_path):
-                dome = UsdLux.DomeLight.Define(stage, dome_path)
-                dome.CreateIntensityAttr(800.0)
-                dome.CreateColorAttr(Gf.Vec3f(0.6, 0.75, 1.0))  # blue sky tint
+            # NOTE: DomeLight without an HDR texture causes RTX to output all-black
+            # frames in headless mode.  Use only DistantLight for outdoor scenes.
+            print("[isaac] default lighting injected (sun DistantLight only)",
+                  flush=True)
 
-            print("[isaac] default lighting injected (sun + sky dome)", flush=True)
+            # Add a PROCEDURAL outdoor scene using native Isaac/USD geometry.
+            # The wilderness USD reference renders black because Camera.get_rgba()
+            # cannot capture CDN-referenced vegetation in headless mode.  We create
+            # a simple green terrain mesh + tree primitives directly in the stage —
+            # these have UsdPreviewSurface materials that render in any mode.
+            # The wilderness USD reference stays (vegetation may appear when CDN
+            # loads), but the procedural layer guarantees non-black frames.
+            self._setup_procedural_outdoor(stage)
+
+            # Bind a grass-green UsdPreviewSurface to the terrain mesh.
+            # The wilderness author_wilderness.py creates the mesh geometry but
+            # never assigns a material — unbound meshes render black in RTX.
+            # UsdPreviewSurface works with all renderers (RTX + rasterized).
+            self._bind_terrain_material(stage)
         except Exception as e:
             logger.warning("Could not add default lighting: %s", e)
+
+    def _setup_procedural_outdoor(self, stage, extent: float = 200.0,
+                                   n_trees: int = 60) -> None:
+        """Build a simple renderable outdoor scene on top of the loaded wilderness USD.
+
+        The wilderness USD's CDN vegetation can't be captured by Camera.get_rgba()
+        in headless mode.  This method adds native USD geometry (green ground quad +
+        spherical tree crowns) that uses UsdPreviewSurface — works with every renderer
+        and is visible immediately without CDN.  Vegetation from the wilderness USD
+        may still appear on top as CDN assets load.
+        """
+        try:
+            from pxr import UsdGeom, UsdShade, UsdPhysics, Gf, Sdf, Vt
+            import random as _rnd
+            _rnd.seed(42)
+            h = extent / 2.0
+
+            # -- ground mesh (large green quad) ---------------------------------
+            gnd = UsdGeom.Mesh.Define(stage, "/World/_PF_Ground")
+            gnd.CreatePointsAttr(Vt.Vec3fArray([
+                Gf.Vec3f(-h, -h, 0), Gf.Vec3f( h, -h, 0),
+                Gf.Vec3f( h,  h, 0), Gf.Vec3f(-h,  h, 0)]))
+            gnd.CreateFaceVertexCountsAttr(Vt.IntArray([4]))
+            gnd.CreateFaceVertexIndicesAttr(Vt.IntArray([0, 1, 2, 3]))
+            gnd.CreateDoubleSidedAttr(True)
+            gnd.CreateNormalsAttr(Vt.Vec3fArray([
+                Gf.Vec3f(0, 0, 1), Gf.Vec3f(0, 0, 1),
+                Gf.Vec3f(0, 0, 1), Gf.Vec3f(0, 0, 1)]))
+            gnd.SetNormalsInterpolation("vertex")
+            # grass-green material
+            gmat = UsdShade.Material.Define(stage, "/World/_PF_GndMat")
+            gshd = UsdShade.Shader.Define(stage, "/World/_PF_GndMat/s")
+            gshd.CreateIdAttr("UsdPreviewSurface")
+            gshd.CreateInput("diffuseColor",
+                             Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.16, 0.42, 0.12))
+            gshd.CreateInput("roughness",   Sdf.ValueTypeNames.Float).Set(0.90)
+            gmat.CreateSurfaceOutput().ConnectToSource(gshd.ConnectableAPI(), "surface")
+            UsdShade.MaterialBindingAPI(gnd.GetPrim()).Bind(gmat)
+
+            # -- tree crown material (dark green) --------------------------------
+            tmat = UsdShade.Material.Define(stage, "/World/_PF_TreeMat")
+            tshd = UsdShade.Shader.Define(stage, "/World/_PF_TreeMat/s")
+            tshd.CreateIdAttr("UsdPreviewSurface")
+            tshd.CreateInput("diffuseColor",
+                             Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.08, 0.28, 0.08))
+            tshd.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.85)
+            tmat.CreateSurfaceOutput().ConnectToSource(tshd.ConnectableAPI(), "surface")
+
+            # -- trees: sphere crowns only (fastest to create + render) ----------
+            trees_xform = UsdGeom.Xform.Define(stage, "/World/_PF_Trees")
+            for i in range(n_trees):
+                x = _rnd.uniform(-h * 0.85, h * 0.85)
+                y = _rnd.uniform(-h * 0.85, h * 0.85)
+                # keep trees away from spawn cluster (0,0)
+                if abs(x) < 8 and abs(y) < 8:
+                    x += 12 * (1 if x >= 0 else -1)
+                r = _rnd.uniform(1.5, 3.5)
+                tz = r  # centre of crown at z=r (sits on ground)
+                sph = UsdGeom.Sphere.Define(stage, f"/World/_PF_Trees/t{i:03d}")
+                sph.CreateRadiusAttr(r)
+                xapi = UsdGeom.XformCommonAPI(sph.GetPrim())
+                xapi.SetTranslate(Gf.Vec3d(x, y, tz))
+                UsdShade.MaterialBindingAPI(sph.GetPrim()).Bind(tmat)
+
+            print(f"[isaac] procedural outdoor: ground + {n_trees} tree crowns "
+                  f"(extent={extent}m)", flush=True)
+        except Exception as e:
+            print(f"[isaac] procedural outdoor failed: {e}", flush=True)
+
+    def _bind_terrain_material(self, stage) -> None:
+        """Assign a simple green grass material to the first Mesh named Terrain."""
+        try:
+            from pxr import UsdShade, Sdf, Gf as _Gf, UsdGeom
+            # The scene USD is referenced at /World/Scene, so terrain is at
+            # /World/Scene/World/Terrain — search by traversal rather than hardcoded path.
+            terrain = None
+            for prim in stage.Traverse():
+                if prim.GetTypeName() == "Mesh" and "Terrain" in prim.GetName():
+                    terrain = prim
+                    break
+                if prim.GetTypeName() == "Mesh" and not terrain:
+                    terrain = prim   # fallback: first mesh (the terrain is usually first)
+            if not terrain:
+                print("[isaac] terrain material: no Mesh found in stage", flush=True)
+                return
+            print(f"[isaac] binding terrain material to {terrain.GetPath()}", flush=True)
+            mat_path  = "/World/_IshmaeL_TerrainMat"
+            shad_path = mat_path + "/shader"
+            mat  = UsdShade.Material.Define(stage, mat_path)
+            shad = UsdShade.Shader.Define(stage, shad_path)
+            shad.CreateIdAttr("UsdPreviewSurface")
+            shad.CreateInput("diffuseColor",
+                             Sdf.ValueTypeNames.Color3f).Set(_Gf.Vec3f(0.22, 0.45, 0.15))
+            shad.CreateInput("roughness",   Sdf.ValueTypeNames.Float).Set(0.85)
+            shad.CreateInput("specularColor",
+                             Sdf.ValueTypeNames.Color3f).Set(_Gf.Vec3f(0.02, 0.04, 0.01))
+            mat.CreateSurfaceOutput().ConnectToSource(
+                shad.ConnectableAPI(), "surface")
+            UsdShade.MaterialBindingAPI(terrain).Bind(mat)
+            # The wilderness terrain author_wilderness.py uses a face winding
+            # that puts normals pointing DOWNWARD.  Cameras above see the backface
+            # (which is culled → black).  Setting doubleSided=True fixes this.
+            UsdGeom.Mesh(terrain).CreateDoubleSidedAttr(True)
+            print("[isaac] terrain material bound (grass green, doubleSided=True)",
+                  flush=True)
+        except Exception as e:
+            print(f"[isaac] terrain material binding failed: {e}", flush=True)
 
     # -- camera (Isaac thread only) ---------------------------------------------
     def ensure_camera(self, drone_id: str) -> None:

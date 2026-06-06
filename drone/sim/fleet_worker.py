@@ -53,9 +53,60 @@ class FleetWorker(threading.Thread):
         # Pre-create overhead + corner vantage cameras on the Isaac thread NOW,
         # before ready.set(), so they are guaranteed available when missions run.
         self._setup_default_vantages()
+        # Outdoor/CDN scenes (forest, wilderness): Isaac's syncLoads=True kit flag
+        # makes step_simulation block until EVERY CDN vegetation USD is downloaded
+        # (~6 000–12 500 tree instances).  Waiting here would delay ready for
+        # minutes.  Instead, mark ready immediately and let the natural simulation
+        # tick loop load assets progressively.  The auto-vantage recorder that
+        # starts when a mission command arrives will capture non-black frames once
+        # assets have loaded (typically 30–90 s into the first mission).
         self.ready.set()
         print(f"[fleet-worker] ready: {len(self.roster)} vehicles in "
               f"{self.environment}", flush=True)
+        # For outdoor CDN scenes: run freely for 60 seconds so vegetation assets
+        # load in the background (syncLoads blocks per-asset, not per-step).
+        if getattr(self.bridge, '_outdoor_z_base', None) is not None:
+            print("[fleet-worker] outdoor scene: free-running 60 s for CDN asset "
+                  "loading…", flush=True)
+            import time as _time
+            _t0 = _time.time()
+            while _time.time() - _t0 < 60.0 and self._running:
+                self.bridge.step_simulation(self.STEPS_PER_TICK, render=True)
+                with self._vantage_lock:
+                    for name, bus in self._vantage_buses.items():
+                        rgb = self.bridge.grab_vantage_frame(name)
+                        if rgb is not None:
+                            bus.set(rgb)
+            # Re-initialize all cameras after the free-run — the forest USD's stage
+            # modifications (DistantLight, material binding, ground plane) may have
+            # disconnected cameras from the render pipeline.  Re-calling initialize()
+            # reconnects them without re-creating the prim.
+            try:
+                app = self.bridge.get_app()
+                for v in self.bridge.vehicles.values():
+                    if v.camera is not None:
+                        v.camera.initialize()
+                for cam in self.bridge.vantages.values():
+                    cam.initialize()
+                # Use app.update() which flushes the full Kit/RTX render pipeline,
+                # not just the physics step.  step_simulation uses world.step() which
+                # may skip camera rendering if the renderer is in a deferred state.
+                for _ in range(30):
+                    app.update()
+                print("[fleet-worker] cameras re-initialized + app.update() x30",
+                      flush=True)
+            except Exception as e:
+                print(f"[fleet-worker] camera re-init failed: {e}", flush=True)
+
+            import numpy as _np
+            with self._vantage_lock:
+                for name, bus in self._vantage_buses.items():
+                    f = bus.get()
+                    if f is not None:
+                        b = float(_np.mean(f))
+                        print(f"[fleet-worker] outdoor warm-up done: "
+                              f"'{name}' brightness={b:.1f}", flush=True)
+                        break
         while self._running:
             # one-shot frame requests (capture_photo)
             try:
@@ -106,6 +157,47 @@ class FleetWorker(threading.Thread):
         self._frame_reqs.put((drone_id, holder, ev))
         ev.wait(timeout=timeout)
         return holder.get("rgb")
+
+    def _wait_for_vantage_render(self, max_steps: int = 6000) -> None:
+        """Render until at least one vantage camera returns a non-black frame.
+
+        For outdoor scenes with CDN-referenced vegetation (wilderness, forest) the
+        assets stream asynchronously from Omniverse CDN.  Calling get_rgba() too
+        early returns a black frame.  This loop runs on the Isaac thread, keeps
+        stepping the world, and checks each vantage camera until we see pixel
+        brightness above 8 (out of 255).  Times out after max_steps with a warning.
+        """
+        import numpy as np
+        print("[fleet-worker] waiting for CDN/outdoor render to converge …",
+              flush=True)
+        for step in range(max_steps):
+            self.bridge.step_simulation(self.STEPS_PER_TICK, render=True)
+            # Every 10 steps check all vantage cameras
+            if step % 10 != 0:
+                continue
+            with self._vantage_lock:
+                names = list(self._vantage_buses.keys())
+            for name in names:
+                rgb = self.bridge.grab_vantage_frame(name)
+                if rgb is None:
+                    continue
+                brightness = float(np.mean(rgb))
+                if brightness > 8.0:
+                    print(f"[fleet-worker] render converged at step {step}, "
+                          f"camera '{name}' brightness={brightness:.1f}",
+                          flush=True)
+                    # Warm up all buses with this first valid frame
+                    with self._vantage_lock:
+                        for n, bus in self._vantage_buses.items():
+                            f = self.bridge.grab_vantage_frame(n)
+                            if f is not None:
+                                bus.set(f)
+                    return
+            if step % 500 == 0:
+                print(f"[fleet-worker] render warmup … step {step}/{max_steps}",
+                      flush=True)
+        print("[fleet-worker] render warmup timed out — proceeding anyway",
+              flush=True)
 
     def _run_on_isaac(self, fn, timeout: float = 10.0):
         holder, ev = {}, threading.Event()
