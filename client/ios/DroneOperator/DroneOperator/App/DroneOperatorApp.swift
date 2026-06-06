@@ -81,7 +81,12 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Drones", systemImage: "location.viewfinder")
                 }
-            
+
+            GroupListView()
+                .tabItem {
+                    Label("Fleets", systemImage: "rectangle.3.group")
+                }
+
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")

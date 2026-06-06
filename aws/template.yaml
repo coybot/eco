@@ -796,6 +796,179 @@ Resources:
             Method: POST
 
   # ============================================
+  # Group Functions
+  # ============================================
+
+  GroupCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-group-create-${Environment}
+      CodeUri: src/
+      Handler: groups.create_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          GROUPS_TABLE: !Ref GroupsTable
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:GetItem
+              Resource:
+                - !GetAtt GroupsTable.Arn
+                - !GetAtt DroneTable.Arn
+      Events:
+        Create:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /groups
+            Method: POST
+
+  GroupListFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-group-list-${Environment}
+      CodeUri: src/
+      Handler: groups.list_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          GROUPS_TABLE: !Ref GroupsTable
+          DRONE_TABLE: !Ref DroneTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt GroupsTable.Arn
+      Events:
+        List:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /groups
+            Method: GET
+
+  GroupDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-group-delete-${Environment}
+      CodeUri: src/
+      Handler: groups.delete_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          GROUPS_TABLE: !Ref GroupsTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:DeleteItem
+              Resource: !GetAtt GroupsTable.Arn
+      Events:
+        Delete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /groups/{groupId}
+            Method: DELETE
+
+  GroupMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-group-message-${Environment}
+      CodeUri: src/
+      Handler: groups.message_handler
+      MemorySize: 512
+      Timeout: 120
+      Environment:
+        Variables:
+          GROUPS_TABLE: !Ref GroupsTable
+          DRONE_TABLE: !Ref DroneTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          STATUS_TABLE: !Ref DroneStatusTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt GroupsTable.Arn
+                - !GetAtt DroneTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt ConversationsTable.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub '${DroneImagesBucket.Arn}/*'
+      Events:
+        Message:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /groups/{groupId}/conversations/{conversationId}/messages
+            Method: POST
+
+  GroupHistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-group-history-${Environment}
+      CodeUri: src/
+      Handler: groups.history_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          GROUPS_TABLE: !Ref GroupsTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt GroupsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt ConversationsTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub 'arn:aws:s3:::${DroneImagesBucket}/*'
+      Events:
+        History:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /groups/{groupId}/conversations/{conversationId}
+            Method: GET
+
+  # ============================================
   # Drone Status Table (for caching latest status)
   # ============================================
   DroneStatusTable:
@@ -845,6 +1018,25 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
+
+  # ============================================
+  # Groups Table (for fleet/group management)
+  # ============================================
+  GroupsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub drone-groups-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: groupId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: groupId
+          KeyType: RANGE
 
   # ============================================
   # S3 Bucket for Drone Images

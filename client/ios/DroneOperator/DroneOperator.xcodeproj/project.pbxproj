@@ -8,7 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F7EF5F138BEA331DC60973C2 /* WebRTC */; };
-		0D4C9A7E9D8A4E2E8E1C3F2B /* llama_3.1_coreml.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = 7C3F1A2B9B4E3C1D8A7E6F5C /* llama_3.1_coreml.mlmodelc */; };
+		AA11BB22CC33DD44EE55FF66 /* Group.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF67 /* Group.swift */; };
+		AA11BB22CC33DD44EE55FF68 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */; };
+		AA11BB22CC33DD44EE55FF70 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */; };
 		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
 		2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */; };
 		3B8C7D6E5F4A3B2C1D0E9F8A /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */; };
@@ -49,7 +51,9 @@
 		57BAEA30533FDEB9448F8BF6 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		6E3CA67B8321CF39FF4699E1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		7C3F1A2B9B4E3C1D8A7E6F5C /* llama_3.1_coreml.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlmodelc; path = Models/llama_3.1_coreml.mlmodelc; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF67 /* Group.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Group.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatView.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
 		8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionService.swift; sourceTree = "<group>"; };
 		778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DroneOperator.entitlements; sourceTree = "<group>"; };
 		85D3CDBF14C7FA275224809B /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
@@ -106,7 +110,6 @@
 		5A7C9D1E2F3B4C5D6E7F809A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				7C3F1A2B9B4E3C1D8A7E6F5C /* llama_3.1_coreml.mlmodelc */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -119,6 +122,8 @@
 				2B3E698CDF3450F25420AF98 /* DroneChatView.swift */,
 				CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */,
 				4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */,
+				AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */,
+				AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */,
 				100B1A7A36761E30F2A4500A /* SetupDroneView.swift */,
 				2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */,
 			);
@@ -162,6 +167,7 @@
 			children = (
 				F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */,
 				5478F74C272118CF0A0A4F37 /* Drone.swift */,
+				AA11BB22CC33DD44EE55FF67 /* Group.swift */,
 				9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */,
 				FA2F66D0AFC1F21096C2B128 /* User.swift */,
 				E1D2C3B4A5964788B9C0D1E2 /* WifiNetwork.swift */,
@@ -255,7 +261,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				CA1BD0798DEB15CFA164D9F2 /* Assets.xcassets in Resources */,
-				0D4C9A7E9D8A4E2E8E1C3F2B /* llama_3.1_coreml.mlmodelc in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -267,6 +272,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				3015A7361563077FBC2FAE44 /* APIClient.swift in Sources */,
+				AA11BB22CC33DD44EE55FF66 /* Group.swift in Sources */,
+				AA11BB22CC33DD44EE55FF68 /* GroupChatView.swift in Sources */,
+				AA11BB22CC33DD44EE55FF70 /* GroupListView.swift in Sources */,
 				5E2E62FFFCA6F635DFC011CA /* AWSConfig.swift in Sources */,
 				D025012D892BA99D526B1A60 /* AddDroneView.swift in Sources */,
 				3B6E4A9E2F8A4F3EB7E6C5A1 /* ConfigureTabView.swift in Sources */,
