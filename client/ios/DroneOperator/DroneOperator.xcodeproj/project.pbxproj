@@ -8,17 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F7EF5F138BEA331DC60973C2 /* WebRTC */; };
-		AA11BB22CC33DD44EE55FF66 /* Group.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF67 /* Group.swift */; };
-		AA11BB22CC33DD44EE55FF68 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */; };
-		AA11BB22CC33DD44EE55FF70 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */; };
-		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
-		2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */; };
-		3B8C7D6E5F4A3B2C1D0E9F8A /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */; };
 		108C2B667CC25044DED0793F /* DroneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */; };
+		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
 		2080601FFA5F70674A60C87A /* DroneSetupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */; };
+		2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */; };
 		3015A7361563077FBC2FAE44 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB16DB863897C31CEF2CACE /* APIClient.swift */; };
 		3037447B6B1D2DB6260AA36C /* DroneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */; };
 		3B6E4A9E2F8A4F3EB7E6C5A1 /* ConfigureTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */; };
+		3B8C7D6E5F4A3B2C1D0E9F8A /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */; };
 		43521145F3770AD6CD467509 /* AWSCore in Frameworks */ = {isa = PBXBuildFile; productRef = 525C477C1B0FB5F6D2FBF0A9 /* AWSCore */; };
 		45DEDDB47F4ACB8F4F995F3E /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57BAEA30533FDEB9448F8BF6 /* Logger.swift */; };
 		5E2E62FFFCA6F635DFC011CA /* AWSConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */; };
@@ -27,6 +24,10 @@
 		94D6C905AB0BBD269EB7BCE7 /* VideoStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */; };
 		A2B93EC502C694E8F6B39E00 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA2F66D0AFC1F21096C2B128 /* User.swift */; };
 		A842CFC19F97A7E7D454F84D /* MQTTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D3CDBF14C7FA275224809B /* MQTTService.swift */; };
+		AA11BB22CC33DD44EE55FF60 /* ChatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF61 /* ChatsView.swift */; };
+		AA11BB22CC33DD44EE55FF66 /* Group.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF67 /* Group.swift */; };
+		AA11BB22CC33DD44EE55FF68 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */; };
+		AA11BB22CC33DD44EE55FF70 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */; };
 		B97A51BA48BF59FE6DF221DA /* SetupDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100B1A7A36761E30F2A4500A /* SetupDroneView.swift */; };
 		CA1BD0798DEB15CFA164D9F2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */; };
 		CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */; };
@@ -51,14 +52,15 @@
 		57BAEA30533FDEB9448F8BF6 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		6E3CA67B8321CF39FF4699E1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DroneOperator.entitlements; sourceTree = "<group>"; };
+		85D3CDBF14C7FA275224809B /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
+		8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionService.swift; sourceTree = "<group>"; };
+		9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigureTabView.swift; sourceTree = "<group>"; };
+		9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mission.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF61 /* ChatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatsView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF67 /* Group.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Group.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
-		8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionService.swift; sourceTree = "<group>"; };
-		778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DroneOperator.entitlements; sourceTree = "<group>"; };
-		85D3CDBF14C7FA275224809B /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
-		9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mission.swift; sourceTree = "<group>"; };
-		9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigureTabView.swift; sourceTree = "<group>"; };
 		B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddDroneView.swift; sourceTree = "<group>"; };
 		BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneSetupService.swift; sourceTree = "<group>"; };
 		C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneOperatorApp.swift; sourceTree = "<group>"; };
@@ -107,17 +109,11 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		5A7C9D1E2F3B4C5D6E7F809A /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
 		56A3539E966CCEAFEE52AF88 /* Drones */ = {
 			isa = PBXGroup;
 			children = (
 				B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */,
+				AA11BB22CC33DD44EE55FF61 /* ChatsView.swift */,
 				9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */,
 				2B3E698CDF3450F25420AF98 /* DroneChatView.swift */,
 				CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */,
@@ -128,6 +124,13 @@
 				2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */,
 			);
 			path = Drones;
+			sourceTree = "<group>";
+		};
+		5A7C9D1E2F3B4C5D6E7F809A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		82CED843544E37DC5152F0A9 /* Products */ = {
@@ -272,6 +275,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3015A7361563077FBC2FAE44 /* APIClient.swift in Sources */,
+				AA11BB22CC33DD44EE55FF60 /* ChatsView.swift in Sources */,
 				AA11BB22CC33DD44EE55FF66 /* Group.swift in Sources */,
 				AA11BB22CC33DD44EE55FF68 /* GroupChatView.swift in Sources */,
 				AA11BB22CC33DD44EE55FF70 /* GroupListView.swift in Sources */,
@@ -310,7 +314,7 @@
 				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 64FVJWYNQ7;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = DroneOperator/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -452,7 +456,7 @@
 				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 64FVJWYNQ7;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = DroneOperator/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
