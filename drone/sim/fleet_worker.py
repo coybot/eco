@@ -229,10 +229,13 @@ class FleetWorker(threading.Thread):
         if enclosed:
             d, cam_h, hfov = 2.0, 2.0, 100.0    # tight — stay inside rooms
         elif outdoor_z is not None:
-            # Procedural forest: drones at z=2, tallest trees ~22 m.
-            # Place cameras above the canopy (25 m) and well back (15 m offset)
-            # so the frame shows the forest canopy + drones below it.
-            d, cam_h, hfov = 15.0, 25.0, 80.0
+            # Procedural forest: billboard trees extend from z=0 to z≈6 m.
+            # Billboards are vertical planes — they MUST be viewed horizontally
+            # (from the side) to show the tree face.  Camera at z=6 m, d=20 m
+            # gives a "flying through trees" eye-level vantage — the tree trunks
+            # and canopy fill the frame the same way a drone pilot would see them.
+            # (Cameras at 25 m above just see the top edges of the planes.)
+            d, cam_h, hfov = 20.0, 6.0, 85.0
         else:
             d, cam_h, hfov = 5.0, 3.0, 90.0     # standard open scene (warehouse)
 

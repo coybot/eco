@@ -377,38 +377,40 @@ class IsaacVehicleBridge:
             root.GetPrim().GetReferences().AddReference(TREE_SRC)
             stage.SetDefaultPrim(root.GetPrim())
 
-            # UV primvar reader
+            # UsdPreviewSurface material with textured bark.
+            # UsdUVTexture file paths must be resolvable by the USD asset resolver;
+            # in headless Isaac this means they must be either absolute POSIX paths
+            # with the leading "@" asset notation or embedded in the layer.
+            # We use UsdUVTexture + UsdPrimvarReader_float2 for the st primvar.
             mat_path = "/gant_tree/_Mat"
             mat = UsdShade.Material.Define(stage, mat_path)
+
             uv = UsdShade.Shader.Define(stage, mat_path + "/uv")
             uv.CreateIdAttr("UsdPrimvarReader_float2")
             uv.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
             uv.CreateOutput("result", Sdf.ValueTypeNames.Float2)
 
-            def _tex(name, file_path):
-                t = UsdShade.Shader.Define(stage, f"{mat_path}/{name}")
-                t.CreateIdAttr("UsdUVTexture")
-                t.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(file_path)
-                t.CreateInput("wrapS", Sdf.ValueTypeNames.Token).Set("repeat")
-                t.CreateInput("wrapT", Sdf.ValueTypeNames.Token).Set("repeat")
-                t.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-                    uv.ConnectableAPI(), "result")
-                t.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
-                t.CreateOutput("r",   Sdf.ValueTypeNames.Float)
-                return t
-
-            diffuse_t = _tex("diffuse", BARK_TEX)
-            rough_t   = _tex("rough",   ROUGH_TEX)
+            diff_tex = UsdShade.Shader.Define(stage, mat_path + "/diffTex")
+            diff_tex.CreateIdAttr("UsdUVTexture")
+            diff_tex.CreateInput(
+                "file", Sdf.ValueTypeNames.Asset).Set(BARK_TEX)
+            diff_tex.CreateInput("wrapS", Sdf.ValueTypeNames.Token).Set("repeat")
+            diff_tex.CreateInput("wrapT", Sdf.ValueTypeNames.Token).Set("repeat")
+            diff_tex.CreateInput(
+                "st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                uv.ConnectableAPI(), "result")
+            diff_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
             shd = UsdShade.Shader.Define(stage, mat_path + "/pbr")
             shd.CreateIdAttr("UsdPreviewSurface")
+            # Primary: textured bark.  If texture load fails in headless the
+            # renderer falls back to diffuseColor; set it to bark-brown so
+            # even without the texture the tree reads as brown, not white.
             shd.CreateInput("diffuseColor",
                             Sdf.ValueTypeNames.Color3f).ConnectToSource(
-                diffuse_t.ConnectableAPI(), "rgb")
-            shd.CreateInput("roughness",
-                            Sdf.ValueTypeNames.Float).ConnectToSource(
-                rough_t.ConnectableAPI(), "r")
-            shd.CreateInput("metallic",  Sdf.ValueTypeNames.Float).Set(0.0)
+                diff_tex.ConnectableAPI(), "rgb")
+            shd.CreateInput("roughness",  Sdf.ValueTypeNames.Float).Set(0.88)
+            shd.CreateInput("metallic",   Sdf.ValueTypeNames.Float).Set(0.0)
             mat.CreateSurfaceOutput().ConnectToSource(shd.ConnectableAPI(), "surface")
 
             # Override material binding on the mesh prim
@@ -479,10 +481,13 @@ class IsaacVehicleBridge:
                 if abs(x) < 14 and abs(y) < 14:
                     x += 20 * (1 if x >= 0 else -1)
 
-                # Scale: gant_tree bbox is ~28 m wide; target 8–14 m per tree
-                sc = _rnd.uniform(0.30, 0.50)
-                # Random yaw so cross-billboard faces different directions
-                yaw_deg = _rnd.uniform(0, 180)   # 180° repeats a billboard cross
+                # gant_tree bbox: 28.6 m wide × 6.4 m tall at 1× scale.
+                # Scale 0.7–1.0 → 4.5–6.4 m tall trees, 20–28 m wide groups.
+                # The wide footprint is expected (it's a street-tree row asset);
+                # each instance is rotated so the billboard faces different angles.
+                sc = _rnd.uniform(0.70, 1.00)
+                # Random yaw — 0–180° covers both billboard planes in the cross
+                yaw_deg = _rnd.uniform(0, 180)
 
                 tree_path = f"/World/_PF_Trees/t{i:03d}"
                 xform = UsdGeom.Xform.Define(stage, tree_path)
