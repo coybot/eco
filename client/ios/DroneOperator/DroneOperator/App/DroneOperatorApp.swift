@@ -77,14 +77,9 @@ struct ContentView: View {
 struct MainTabView: View {
     var body: some View {
         TabView {
-            DroneListView()
+            ChatsView()
                 .tabItem {
-                    Label("Drones", systemImage: "location.viewfinder")
-                }
-
-            GroupListView()
-                .tabItem {
-                    Label("Fleets", systemImage: "rectangle.3.group")
+                    Label("Missions", systemImage: "paperplane")
                 }
 
             SettingsView()

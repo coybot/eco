@@ -10,6 +10,7 @@ struct User: Codable {
     enum AuthProvider: String, Codable {
         case google = "google"
         case apple = "apple"
+        case cognito = "cognito"
     }
     
     var displayName: String {
