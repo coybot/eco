@@ -214,22 +214,16 @@ class IsaacVehicleBridge:
         # Office: origin is a dark entry corridor — shift +5 m into the main area.
         xy_offset = np.array([5.0, 0.0]) if "office" in env_key else np.zeros(2)
 
-        # Wilderness / infinigen: terrain z_range is [-14, +14]. Spawn above max.
-        # Read the manifest if present; fall back to +20 m for safety.
+        # Wilderness / infinigen: when _is_outdoor_custom we build a procedural scene
+        # whose ground plane is at z=0.  Spawn at z=2 (low hover/drive height).
+        # Do NOT read manifest z_range — that was for the real wilderness USD terrain
+        # which we no longer load.
         spawn_z_base = 0.0
-        if environment.startswith("/") and ("wilderness" in environment or
-                                            "infinigen" in environment):
-            import os as _os, json as _json
-            manifest_path = _os.path.join(_os.path.dirname(environment), "manifest.json")
-            try:
-                with open(manifest_path) as _f:
-                    _m = _json.load(_f)
-                spawn_z_base = float(_m["z_range"][1]) + 2.0   # 2 m above max terrain
-            except Exception:
-                spawn_z_base = 20.0
-            print(f"[isaac] outdoor scene: spawn base z={spawn_z_base:.1f} m "
-                  f"(above terrain)", flush=True)
-            # Store for vantage camera height calculation
+        if _is_outdoor_custom:
+            spawn_z_base = 2.0
+            print(f"[isaac] procedural forest: spawn base z={spawn_z_base:.1f} m",
+                  flush=True)
+            # Store for vantage camera height calculation (trees are 7-22 m tall)
             self._outdoor_z_base = spawn_z_base
         else:
             self._outdoor_z_base = None
@@ -336,23 +330,38 @@ class IsaacVehicleBridge:
         except Exception as e:
             logger.warning("Could not add default lighting: %s", e)
 
-    def _setup_procedural_outdoor(self, stage, extent: float = 200.0,
-                                   n_trees: int = 60) -> None:
-        """Build a simple renderable outdoor scene on top of the loaded wilderness USD.
+    def _setup_procedural_outdoor(self, stage, extent: float = 250.0,
+                                   n_trees: int = 120) -> None:
+        """Build a realistic procedural pine forest using USD geometry primitives.
 
-        The wilderness USD's CDN vegetation can't be captured by Camera.get_rgba()
-        in headless mode.  This method adds native USD geometry (green ground quad +
-        spherical tree crowns) that uses UsdPreviewSurface — works with every renderer
-        and is visible immediately without CDN.  Vegetation from the wilderness USD
-        may still appear on top as CDN assets load.
+        Each tree is a brown Cylinder trunk + 3 stacked Cones (wide at base, narrow
+        apex) — the classic conifer silhouette.  Three crown colour variants add visual
+        diversity.  Ground uses a dark mossy forest-floor tone.  All materials are
+        UsdPreviewSurface so they render in every headless mode without CDN.
+
+        UsdGeom.Cone orientation: apex at +Z, base at -Z (i.e. pointy top naturally),
+        so no rotation is needed for a tree crown.
         """
         try:
-            from pxr import UsdGeom, UsdShade, UsdPhysics, Gf, Sdf, Vt
+            from pxr import UsdGeom, UsdShade, Gf, Sdf, Vt
             import random as _rnd
             _rnd.seed(42)
             h = extent / 2.0
 
-            # -- ground mesh (large green quad) ---------------------------------
+            # ── helper: create a UsdPreviewSurface material ─────────────────────
+            def _mat(path: str, rgb: tuple, roughness: float = 0.90):
+                mat  = UsdShade.Material.Define(stage, path)
+                shd  = UsdShade.Shader.Define(stage, path + "/s")
+                shd.CreateIdAttr("UsdPreviewSurface")
+                shd.CreateInput("diffuseColor",
+                                Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*rgb))
+                shd.CreateInput("roughness",
+                                Sdf.ValueTypeNames.Float).Set(roughness)
+                mat.CreateSurfaceOutput().ConnectToSource(
+                    shd.ConnectableAPI(), "surface")
+                return mat
+
+            # ── ground: dark mossy forest floor ─────────────────────────────────
             gnd = UsdGeom.Mesh.Define(stage, "/World/_PF_Ground")
             gnd.CreatePointsAttr(Vt.Vec3fArray([
                 Gf.Vec3f(-h, -h, 0), Gf.Vec3f( h, -h, 0),
@@ -360,49 +369,90 @@ class IsaacVehicleBridge:
             gnd.CreateFaceVertexCountsAttr(Vt.IntArray([4]))
             gnd.CreateFaceVertexIndicesAttr(Vt.IntArray([0, 1, 2, 3]))
             gnd.CreateDoubleSidedAttr(True)
-            gnd.CreateNormalsAttr(Vt.Vec3fArray([
-                Gf.Vec3f(0, 0, 1), Gf.Vec3f(0, 0, 1),
-                Gf.Vec3f(0, 0, 1), Gf.Vec3f(0, 0, 1)]))
+            gnd.CreateNormalsAttr(Vt.Vec3fArray(
+                [Gf.Vec3f(0, 0, 1)] * 4))
             gnd.SetNormalsInterpolation("vertex")
-            # grass-green material
-            gmat = UsdShade.Material.Define(stage, "/World/_PF_GndMat")
-            gshd = UsdShade.Shader.Define(stage, "/World/_PF_GndMat/s")
-            gshd.CreateIdAttr("UsdPreviewSurface")
-            gshd.CreateInput("diffuseColor",
-                             Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.16, 0.42, 0.12))
-            gshd.CreateInput("roughness",   Sdf.ValueTypeNames.Float).Set(0.90)
-            gmat.CreateSurfaceOutput().ConnectToSource(gshd.ConnectableAPI(), "surface")
-            UsdShade.MaterialBindingAPI(gnd.GetPrim()).Bind(gmat)
+            gnd_mat = _mat("/World/_PF_GndMat",
+                           (0.09, 0.16, 0.06), roughness=0.97)   # dark mossy
+            UsdShade.MaterialBindingAPI(gnd.GetPrim()).Bind(gnd_mat)
 
-            # -- tree crown material (dark green) --------------------------------
-            tmat = UsdShade.Material.Define(stage, "/World/_PF_TreeMat")
-            tshd = UsdShade.Shader.Define(stage, "/World/_PF_TreeMat/s")
-            tshd.CreateIdAttr("UsdPreviewSurface")
-            tshd.CreateInput("diffuseColor",
-                             Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.08, 0.28, 0.08))
-            tshd.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.85)
-            tmat.CreateSurfaceOutput().ConnectToSource(tshd.ConnectableAPI(), "surface")
+            # ── materials ───────────────────────────────────────────────────────
+            trunk_mat = _mat("/World/_PF_TrunkMat",
+                             (0.32, 0.20, 0.09), roughness=0.95)  # bark brown
+            crown_mats = [
+                _mat("/World/_PF_CrownA",
+                     (0.05, 0.20, 0.06), roughness=0.88),   # deep forest green
+                _mat("/World/_PF_CrownB",
+                     (0.07, 0.26, 0.09), roughness=0.85),   # mid green
+                _mat("/World/_PF_CrownC",
+                     (0.04, 0.16, 0.10), roughness=0.88),   # blue-green spruce
+            ]
 
-            # -- trees: sphere crowns only (fastest to create + render) ----------
-            trees_xform = UsdGeom.Xform.Define(stage, "/World/_PF_Trees")
+            # ── pine trees: trunk cylinder + 3 stacked cones ────────────────────
+            UsdGeom.Xform.Define(stage, "/World/_PF_Trees")
             for i in range(n_trees):
-                x = _rnd.uniform(-h * 0.85, h * 0.85)
-                y = _rnd.uniform(-h * 0.85, h * 0.85)
-                # keep trees away from spawn cluster (0,0)
-                if abs(x) < 8 and abs(y) < 8:
-                    x += 12 * (1 if x >= 0 else -1)
-                r = _rnd.uniform(1.5, 3.5)
-                tz = r  # centre of crown at z=r (sits on ground)
-                sph = UsdGeom.Sphere.Define(stage, f"/World/_PF_Trees/t{i:03d}")
-                sph.CreateRadiusAttr(r)
-                xapi = UsdGeom.XformCommonAPI(sph.GetPrim())
-                xapi.SetTranslate(Gf.Vec3d(x, y, tz))
-                UsdShade.MaterialBindingAPI(sph.GetPrim()).Bind(tmat)
+                x = _rnd.uniform(-h * 0.88, h * 0.88)
+                y = _rnd.uniform(-h * 0.88, h * 0.88)
+                # keep a clear spawn pad around the origin
+                if abs(x) < 12 and abs(y) < 12:
+                    x += 18 * (1 if x >= 0 else -1)
 
-            print(f"[isaac] procedural outdoor: ground + {n_trees} tree crowns "
-                  f"(extent={extent}m)", flush=True)
+                cmat = crown_mats[i % 3]
+                trunk_h = _rnd.uniform(5.0, 12.0)
+                trunk_r = _rnd.uniform(0.18, 0.28)
+
+                # trunk
+                trunk = UsdGeom.Cylinder.Define(
+                    stage, f"/World/_PF_Trees/t{i:03d}_trunk")
+                trunk.CreateRadiusAttr(trunk_r)
+                trunk.CreateHeightAttr(trunk_h)
+                UsdGeom.XformCommonAPI(trunk.GetPrim()).SetTranslate(
+                    Gf.Vec3d(x, y, trunk_h * 0.5))
+                UsdShade.MaterialBindingAPI(trunk.GetPrim()).Bind(trunk_mat)
+
+                # 3 stacked conifer tiers (bottom = widest, each ~55 % overlap)
+                base_r   = _rnd.uniform(2.2, 3.8)
+                tier_h   = trunk_h * _rnd.uniform(0.55, 0.70)  # each cone height
+                z_cursor = trunk_h   # start cones at top of trunk
+                for tier in range(3):
+                    r_scale = 1.0 - tier * 0.30   # 1.0 → 0.70 → 0.40
+                    h_scale = 1.0 - tier * 0.18   # tiers get shorter toward apex
+                    cr  = base_r * r_scale
+                    ch  = tier_h * h_scale
+                    # cone centre = z_cursor + ch/2  (base at z_cursor, apex above)
+                    cz  = z_cursor + ch * 0.5
+                    cone = UsdGeom.Cone.Define(
+                        stage, f"/World/_PF_Trees/t{i:03d}_c{tier}")
+                    cone.CreateRadiusAttr(cr)
+                    cone.CreateHeightAttr(ch)
+                    UsdGeom.XformCommonAPI(cone.GetPrim()).SetTranslate(
+                        Gf.Vec3d(x, y, cz))
+                    UsdShade.MaterialBindingAPI(cone.GetPrim()).Bind(cmat)
+                    # next tier starts 55 % of the way up this cone (overlap)
+                    z_cursor += ch * 0.55
+
+            # ── low undergrowth: small dark-green spheres near ground ────────────
+            under_mat = _mat("/World/_PF_UnderMat",
+                             (0.06, 0.14, 0.04), roughness=0.95)
+            UsdGeom.Xform.Define(stage, "/World/_PF_Under")
+            for j in range(80):
+                ux = _rnd.uniform(-h * 0.80, h * 0.80)
+                uy = _rnd.uniform(-h * 0.80, h * 0.80)
+                if abs(ux) < 10 and abs(uy) < 10:
+                    ux += 14 * (1 if ux >= 0 else -1)
+                ur = _rnd.uniform(0.4, 1.0)
+                usph = UsdGeom.Sphere.Define(
+                    stage, f"/World/_PF_Under/u{j:03d}")
+                usph.CreateRadiusAttr(ur)
+                UsdGeom.XformCommonAPI(usph.GetPrim()).SetTranslate(
+                    Gf.Vec3d(ux, uy, ur * 0.6))   # half-buried in ground
+                UsdShade.MaterialBindingAPI(usph.GetPrim()).Bind(under_mat)
+
+            print(
+                f"[isaac] procedural forest: {n_trees} pine trees + 80 undergrowth "
+                f"(extent={extent} m)", flush=True)
         except Exception as e:
-            print(f"[isaac] procedural outdoor failed: {e}", flush=True)
+            print(f"[isaac] procedural forest failed: {e}", flush=True)
 
     def _bind_terrain_material(self, stage) -> None:
         """Assign a simple green grass material to the first Mesh named Terrain."""

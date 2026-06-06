@@ -229,13 +229,17 @@ class FleetWorker(threading.Thread):
         if enclosed:
             d, cam_h, hfov = 2.0, 2.0, 100.0    # tight — stay inside rooms
         elif outdoor_z is not None:
-            d, cam_h, hfov = 8.0, outdoor_z + 6.0, 90.0  # above terrain
+            # Procedural forest: drones at z=2, tallest trees ~22 m.
+            # Place cameras above the canopy (25 m) and well back (15 m offset)
+            # so the frame shows the forest canopy + drones below it.
+            d, cam_h, hfov = 15.0, 25.0, 80.0
         else:
             d, cam_h, hfov = 5.0, 3.0, 90.0     # standard open scene (warehouse)
 
-        # Look at the vehicles' actual height, not a hardcoded floor z.
-        # For warehouse (z≈0) this is ~0.5; for wilderness (z≈14) this is ~14.
-        look = np.array([cx, cy, float(center[2])])
+        # Look-at target: vehicle spawn height.  For outdoor/forest scenes, drones
+        # spawn at outdoor_z (z=2); for others use the scene centre z.
+        look_z = float(outdoor_z) if outdoor_z is not None else float(center[2])
+        look = np.array([cx, cy, look_z])
         configs = [
             ("cam_sw", np.array([cx - d, cy - d, cam_h])),
             ("cam_se", np.array([cx + d, cy - d, cam_h])),
