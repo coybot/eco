@@ -1050,6 +1050,117 @@ ssh orin-admin@100.69.83.8 "tail -50 /home/orin-admin/astral/logs/drone.log"
 
 ---
 
+---
+
+## Ishmael — Isaac Sim Test Platform
+
+Ishmael is the Astral simulation layer: it runs real Astral software (same MQTT protocol,
+same SDK, same cloud stack) against simulated drones in NVIDIA Isaac Sim, driven by a
+single English sentence.
+
+```
+"2 rovers and 1 quad search the office for a chair and send a picture"
+        │
+        ▼
+  NLP parse (Qwen vLLM)
+        │
+        ▼
+  TestSpec { vehicles, scene, objective, mobile_action }
+        │
+        ├── scene_resolver  →  USD asset path
+        ├── register fleet  →  DynamoDB
+        ├── launch_fleet.py →  Isaac Sim (Hoopoe, dual RTX 5090)
+        │       ├── Crazyflie cf2x (quadcopter)
+        │       └── Nova Carter (rover)
+        │
+        ├── wait for MQTT heartbeats (same IoT Core as real drones)
+        ├── dispatch mission via headless mobile client
+        └── collect image/video URLs from S3
+```
+
+### Running Ishmael
+
+```bash
+# One-liner: sentence → running test
+cd ~/code/ishmael/eco_sim
+python -m ishmael.cli "1 rover and 1 quadcopter search the office for a chair"
+
+# Flags
+python -m ishmael.cli "..." --parse-only    # show TestSpec, don't launch
+python -m ishmael.cli "..." --dry-run       # launch but don't dispatch mission
+python -m ishmael.cli "..." --no-llm        # use rule-based parser only
+```
+
+### Launching a fleet directly (no NLP)
+
+```bash
+python launch_fleet.py \
+  --fleet rover:1,quad:2 \
+  --certs-base ~/eco-certs-fleet \
+  --env office          # or warehouse, hospital, or a USD file path
+```
+
+### Supported scenes
+
+| Keyword | Asset |
+|---------|-------|
+| `office` | Isaac Simple Office |
+| `warehouse` | Isaac Warehouse (with forklifts) |
+| `hospital` | Isaac Hospital |
+| Any `.usd` / `.usda` path | Loaded verbatim |
+
+### Simulated SDK verbs
+
+The sim drone exposes the same surface as the real `drone_sdk.py`:
+
+| Verb | Sim behaviour |
+|------|---------------|
+| `arm()` / `disarm()` | State flag |
+| `takeoff(alt)` / `land()` | Kinematic vertical move |
+| `goto(lat, lon, alt)` | Converted to sim XY via home anchor |
+| `set_velocity(vx, vy, vz)` | Direct pose integration |
+| `set_yaw(deg)` | Rotation around Z |
+| `capture_photo()` | Renders Isaac frame → S3 → returns URL |
+| `look_around()` | Sweeps yaw 360°, returns image URLs |
+| `record_video(seconds)` | Encodes mp4 → S3 → returns URL |
+| `get_position()` / `get_altitude()` | Returns current sim pose |
+
+### Vantage cameras
+
+Four cameras auto-placed at scene corners. Grab frames from a running fleet:
+
+```python
+from engine_client import EngineClient
+c = EngineClient("/tmp/sim_engine.sock")
+jpeg = c.grab_vantage_jpeg("cam_sw")   # cam_sw, cam_se, cam_ne, cam_nw
+```
+
+### Ishmael branches
+
+All live on `astral-us/eco`, stacked `01 → 02 → 03 → 04 → 05`:
+
+| Branch | What it adds |
+|--------|-------------|
+| `ishmael/01-nlp-orchestrator` | NLP parse, director, headless mobile client |
+| `ishmael/02-scene-resolver` | Scene keyword → USD library (+ generative stub) |
+| `ishmael/03-video` | `record_video()` SDK verb, overhead vantage cameras, mp4 → S3 |
+| `ishmael/04-photoreal` | High-fidelity drone USDs, RTX path-trace toggle for recorded video |
+| `ishmael/05-e2e-test` | Full pytest suite: office+chair, YOLO detection, video check, mobile client receive |
+
+### Environment variables
+
+```bash
+ISHMAEL_VLLM_URL       # vLLM endpoint (default: http://localhost:8000/v1)
+ISHMAEL_API_BASE       # Cloud API base URL
+ISHMAEL_API_TOKEN      # Cognito ID token
+ISHMAEL_USER_SUB       # Cognito user sub (fleet owner)
+ISHMAEL_IOT_ENDPOINT   # IoT ATS data endpoint
+ISHMAEL_MOBILE_CERTS   # device certs dir (default: ~/eco-certs)
+ISHMAEL_SIM_PYTHON     # Isaac venv python path
+```
+
+---
+
 ## License
 
 Copyright 2026 Astral AI, Inc.
