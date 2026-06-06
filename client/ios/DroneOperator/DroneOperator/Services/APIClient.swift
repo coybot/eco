@@ -203,6 +203,12 @@ final class APIClient {
         return response.group
     }
 
+    func renameGroup(groupId: String, name: String, members: [String]) async throws -> DroneGroup {
+        let body = CreateGroupRequest(name: name, members: members, groupId: groupId)
+        let response: GroupCreateResponse = try await request(method: "POST", path: "/groups", body: body)
+        return response.group
+    }
+
     func deleteGroup(groupId: String) async throws {
         let _: EmptyResponse = try await request(method: "DELETE", path: "/groups/\(groupId)")
     }
@@ -397,6 +403,7 @@ private struct ChatMessageRequest: Encodable {
 private struct CreateGroupRequest: Encodable {
     let name: String
     let members: [String]
+    var groupId: String?
 }
 
 private struct ImageSelectionRequest: Encodable {

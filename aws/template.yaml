@@ -11,8 +11,13 @@ Parameters:
     Default: drone-001
   GoogleClientId:
     Type: String
-    Default: "yourclientid.apps.googleusercontent.com"
-    Description: Google OAuth Client ID (replace with your iOS client ID)
+    Default: "1023808862480-0meugvago280fchkbguebfb2e6ll17sp.apps.googleusercontent.com"
+    Description: Google OAuth Web Client ID for Cognito federation (must be Web type, not iOS)
+  GoogleClientSecret:
+    Type: String
+    Default: "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"
+    NoEcho: true
+    Description: Google OAuth Web Client Secret for Cognito federation
   AppleServicesId:
     Type: String
     Default: ""
@@ -58,8 +63,23 @@ Resources:
           - Name: verified_email
             Priority: 1
 
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "email openid profile"
+      AttributeMapping:
+        email: email
+        name: name
+
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    DependsOn: GoogleIdentityProvider
     Properties:
       ClientName: !Sub drone-app-${Environment}
       UserPoolId: !Ref UserPool
@@ -70,11 +90,14 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
       SupportedIdentityProviders:
         - COGNITO
+        - Google
       CallbackURLs:
         - droneoperator://callback
+        - com.astral.drone://callback
         - http://localhost:3000/callback
       LogoutURLs:
         - droneoperator://logout
+        - com.astral.drone://logout
         - http://localhost:3000/logout
       AllowedOAuthFlows:
         - code
