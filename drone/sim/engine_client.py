@@ -1,0 +1,76 @@
+"""Thin IPC client to the sim engine (Unix socket, newline-JSON).
+
+Used by each per-drone daemon process to control its vehicle and grab camera
+frames from the shared Isaac world. Keeps the daemon free of Isaac/GPU and of
+the GIL contention that killed many MQTT connections in one process.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import socket
+import threading
+
+
+class EngineClient:
+    def __init__(self, sock_path: str):
+        self._path = sock_path
+        self._lock = threading.Lock()
+        self._connect()
+
+    def _connect(self):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(self._path)
+        self._sock = s
+        self._f = s.makefile("rwb")
+
+    def _call(self, req: dict) -> dict:
+        with self._lock:
+            try:
+                self._f.write((json.dumps(req) + "\n").encode())
+                self._f.flush()
+                line = self._f.readline()
+            except (BrokenPipeError, OSError):
+                self._connect()
+                self._f.write((json.dumps(req) + "\n").encode())
+                self._f.flush()
+                line = self._f.readline()
+        if not line:
+            return {"ok": False, "error": "no response"}
+        return json.loads(line)
+
+    def state(self, did: str) -> dict:
+        r = self._call({"op": "get_state", "id": did})
+        return {"position": r.get("position", [0, 0, 0]), "yaw": r.get("yaw", 0.0)}
+
+    def set_goal(self, did, xyz):
+        self._call({"op": "set_goal", "id": did, "p": list(xyz)})
+
+    def set_velocity(self, did, v):
+        self._call({"op": "set_velocity", "id": did, "v": list(v)})
+
+    def clear_velocity(self, did):
+        self._call({"op": "clear_velocity", "id": did})
+
+    def set_yaw(self, did, yaw_rad):
+        self._call({"op": "set_yaw", "id": did, "yaw": float(yaw_rad)})
+
+    def grab_jpeg(self, did) -> bytes | None:
+        r = self._call({"op": "grab_frame", "id": did})
+        j = r.get("jpg")
+        return base64.b64decode(j) if j else None
+
+    # -- vantage cameras (fixed world viewpoints) -------------------------------
+    def add_vantage(self, name, position, look_at):
+        self._call({"op": "add_vantage", "name": name,
+                    "p": list(position), "look": list(look_at)})
+
+    def auto_overhead(self, name="overhead") -> str:
+        r = self._call({"op": "auto_overhead", "name": name})
+        return r.get("name", name)
+
+    def grab_vantage_jpeg(self, name) -> bytes | None:
+        r = self._call({"op": "grab_vantage", "name": name})
+        j = r.get("jpg")
+        return base64.b64decode(j) if j else None
