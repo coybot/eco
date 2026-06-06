@@ -330,36 +330,119 @@ class IsaacVehicleBridge:
         except Exception as e:
             logger.warning("Could not add default lighting: %s", e)
 
+    # Hoopoe path to the pre-built patched tree USD (real mesh, UsdPreviewSurface materials).
+    # Created by _patch_tree_usd() on first use and cached here.
+    _PATCHED_TREE_USD: Optional[str] = None
+
+    def _patch_tree_usd(self) -> Optional[str]:
+        """Create /tmp/gant_tree_patched.usda: real gant_tree geometry + UsdPreviewSurface.
+
+        The drive-sim staging gant_tree_inst.usd has a real 664-face tree mesh with
+        UV-mapped bark texture, but uses MDL/SimPBR shaders which render black in
+        headless Isaac.  This method creates a thin USD wrapper that references the
+        original geometry and overrides the material binding with UsdPreviewSurface
+        shaders pointing to the same local texture files.
+        Returns the path on success, None if assets are missing.
+        """
+        import os
+        TREE_SRC = (
+            "/home/yusuf/drive-sim-staging/scene_herrenberg_urban/"
+            "scene_assets/road_runner/props/gant_tree_inst.usd"
+        )
+        TEX_DIR = (
+            "/home/yusuf/drive-sim-staging/scene_herrenberg_urban/"
+            "scene_assets/road_runner/props/materials/textures"
+        )
+        BARK_TEX  = os.path.join(TEX_DIR, "gant_tree_basecolor.png")
+        ROUGH_TEX = os.path.join(TEX_DIR, "gant_tree_roughness.png")
+        OUT = "/tmp/gant_tree_patched.usda"
+
+        if not os.path.exists(TREE_SRC) or not os.path.exists(BARK_TEX):
+            print("[isaac] gant_tree assets not found — skipping real tree mesh",
+                  flush=True)
+            return None
+
+        if os.path.exists(OUT):
+            return OUT  # already built this session
+
+        try:
+            from pxr import Usd, UsdGeom, UsdShade, Sdf, Gf
+
+            stage = Usd.Stage.CreateNew(OUT)
+            stage.SetMetadata("metersPerUnit", 1.0)
+            stage.SetMetadata("upAxis", "Z")
+
+            # Root references the real tree — real 664-face mesh comes in here
+            root = UsdGeom.Xform.Define(stage, "/gant_tree")
+            root.GetPrim().GetReferences().AddReference(TREE_SRC)
+            stage.SetDefaultPrim(root.GetPrim())
+
+            # UV primvar reader
+            mat_path = "/gant_tree/_Mat"
+            mat = UsdShade.Material.Define(stage, mat_path)
+            uv = UsdShade.Shader.Define(stage, mat_path + "/uv")
+            uv.CreateIdAttr("UsdPrimvarReader_float2")
+            uv.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+            uv.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
+            def _tex(name, file_path):
+                t = UsdShade.Shader.Define(stage, f"{mat_path}/{name}")
+                t.CreateIdAttr("UsdUVTexture")
+                t.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(file_path)
+                t.CreateInput("wrapS", Sdf.ValueTypeNames.Token).Set("repeat")
+                t.CreateInput("wrapT", Sdf.ValueTypeNames.Token).Set("repeat")
+                t.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                    uv.ConnectableAPI(), "result")
+                t.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+                t.CreateOutput("r",   Sdf.ValueTypeNames.Float)
+                return t
+
+            diffuse_t = _tex("diffuse", BARK_TEX)
+            rough_t   = _tex("rough",   ROUGH_TEX)
+
+            shd = UsdShade.Shader.Define(stage, mat_path + "/pbr")
+            shd.CreateIdAttr("UsdPreviewSurface")
+            shd.CreateInput("diffuseColor",
+                            Sdf.ValueTypeNames.Color3f).ConnectToSource(
+                diffuse_t.ConnectableAPI(), "rgb")
+            shd.CreateInput("roughness",
+                            Sdf.ValueTypeNames.Float).ConnectToSource(
+                rough_t.ConnectableAPI(), "r")
+            shd.CreateInput("metallic",  Sdf.ValueTypeNames.Float).Set(0.0)
+            mat.CreateSurfaceOutput().ConnectToSource(shd.ConnectableAPI(), "surface")
+
+            # Override material binding on the mesh prim
+            mesh_ovr = stage.OverridePrim("/gant_tree/gant_tree_01")
+            UsdShade.MaterialBindingAPI(mesh_ovr).Bind(mat)
+
+            stage.GetRootLayer().Save()
+            print(f"[isaac] patched tree USD → {OUT}", flush=True)
+            return OUT
+        except Exception as e:
+            print(f"[isaac] tree USD patch failed: {e}", flush=True)
+            return None
+
     def _setup_procedural_outdoor(self, stage, extent: float = 250.0,
-                                   n_trees: int = 120) -> None:
-        """Build a realistic procedural pine forest using USD geometry primitives.
+                                   n_trees: int = 80) -> None:
+        """Build a forest using the real gant_tree mesh with UsdPreviewSurface materials.
 
-        Each tree is a brown Cylinder trunk + 3 stacked Cones (wide at base, narrow
-        apex) — the classic conifer silhouette.  Three crown colour variants add visual
-        diversity.  Ground uses a dark mossy forest-floor tone.  All materials are
-        UsdPreviewSurface so they render in every headless mode without CDN.
+        The gant_tree_inst.usd from NVIDIA's drive-sim staging contains a real 664-face
+        tree mesh with UV-mapped bark texture.  Its MDL/SimPBR shader is replaced by a
+        UsdPreviewSurface wrapper pointing to the same local texture files — these
+        render correctly in headless Isaac.  If the drive-sim assets are not present,
+        falls back to a dark green ground plane (no geometry trees).
 
-        UsdGeom.Cone orientation: apex at +Z, base at -Z (i.e. pointy top naturally),
-        so no rotation is needed for a tree crown.
+        Each instance is placed at a random XY position with varied Z-rotation and
+        scale so the forest doesn't look like a tiled copy.  The gant_tree asset is
+        ~28 m wide at 1× scale (it is a billboard-cross group); we scale it to
+        ~0.35× to get individual trees ~8–12 m wide.
         """
         try:
             from pxr import UsdGeom, UsdShade, Gf, Sdf, Vt
             import random as _rnd
+            import math as _math
             _rnd.seed(42)
             h = extent / 2.0
-
-            # ── helper: create a UsdPreviewSurface material ─────────────────────
-            def _mat(path: str, rgb: tuple, roughness: float = 0.90):
-                mat  = UsdShade.Material.Define(stage, path)
-                shd  = UsdShade.Shader.Define(stage, path + "/s")
-                shd.CreateIdAttr("UsdPreviewSurface")
-                shd.CreateInput("diffuseColor",
-                                Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*rgb))
-                shd.CreateInput("roughness",
-                                Sdf.ValueTypeNames.Float).Set(roughness)
-                mat.CreateSurfaceOutput().ConnectToSource(
-                    shd.ConnectableAPI(), "surface")
-                return mat
 
             # ── ground: dark mossy forest floor ─────────────────────────────────
             gnd = UsdGeom.Mesh.Define(stage, "/World/_PF_Ground")
@@ -369,90 +452,51 @@ class IsaacVehicleBridge:
             gnd.CreateFaceVertexCountsAttr(Vt.IntArray([4]))
             gnd.CreateFaceVertexIndicesAttr(Vt.IntArray([0, 1, 2, 3]))
             gnd.CreateDoubleSidedAttr(True)
-            gnd.CreateNormalsAttr(Vt.Vec3fArray(
-                [Gf.Vec3f(0, 0, 1)] * 4))
+            gnd.CreateNormalsAttr(Vt.Vec3fArray([Gf.Vec3f(0, 0, 1)] * 4))
             gnd.SetNormalsInterpolation("vertex")
-            gnd_mat = _mat("/World/_PF_GndMat",
-                           (0.09, 0.16, 0.06), roughness=0.97)   # dark mossy
+            gnd_mat = UsdShade.Material.Define(stage, "/World/_PF_GndMat")
+            gnd_shd = UsdShade.Shader.Define(stage, "/World/_PF_GndMat/s")
+            gnd_shd.CreateIdAttr("UsdPreviewSurface")
+            gnd_shd.CreateInput("diffuseColor",
+                                Sdf.ValueTypeNames.Color3f).Set(
+                Gf.Vec3f(0.08, 0.14, 0.05))   # dark forest floor
+            gnd_shd.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.97)
+            gnd_mat.CreateSurfaceOutput().ConnectToSource(
+                gnd_shd.ConnectableAPI(), "surface")
             UsdShade.MaterialBindingAPI(gnd.GetPrim()).Bind(gnd_mat)
 
-            # ── materials ───────────────────────────────────────────────────────
-            trunk_mat = _mat("/World/_PF_TrunkMat",
-                             (0.32, 0.20, 0.09), roughness=0.95)  # bark brown
-            crown_mats = [
-                _mat("/World/_PF_CrownA",
-                     (0.05, 0.20, 0.06), roughness=0.88),   # deep forest green
-                _mat("/World/_PF_CrownB",
-                     (0.07, 0.26, 0.09), roughness=0.85),   # mid green
-                _mat("/World/_PF_CrownC",
-                     (0.04, 0.16, 0.10), roughness=0.88),   # blue-green spruce
-            ]
+            # ── real tree mesh ───────────────────────────────────────────────────
+            tree_usd = self._patch_tree_usd()
+            if not tree_usd:
+                print("[isaac] No tree USD — forest ground only", flush=True)
+                return
 
-            # ── pine trees: trunk cylinder + 3 stacked cones ────────────────────
             UsdGeom.Xform.Define(stage, "/World/_PF_Trees")
             for i in range(n_trees):
                 x = _rnd.uniform(-h * 0.88, h * 0.88)
                 y = _rnd.uniform(-h * 0.88, h * 0.88)
-                # keep a clear spawn pad around the origin
-                if abs(x) < 12 and abs(y) < 12:
-                    x += 18 * (1 if x >= 0 else -1)
+                # keep spawn pad clear
+                if abs(x) < 14 and abs(y) < 14:
+                    x += 20 * (1 if x >= 0 else -1)
 
-                cmat = crown_mats[i % 3]
-                trunk_h = _rnd.uniform(5.0, 12.0)
-                trunk_r = _rnd.uniform(0.18, 0.28)
+                # Scale: gant_tree bbox is ~28 m wide; target 8–14 m per tree
+                sc = _rnd.uniform(0.30, 0.50)
+                # Random yaw so cross-billboard faces different directions
+                yaw_deg = _rnd.uniform(0, 180)   # 180° repeats a billboard cross
 
-                # trunk
-                trunk = UsdGeom.Cylinder.Define(
-                    stage, f"/World/_PF_Trees/t{i:03d}_trunk")
-                trunk.CreateRadiusAttr(trunk_r)
-                trunk.CreateHeightAttr(trunk_h)
-                UsdGeom.XformCommonAPI(trunk.GetPrim()).SetTranslate(
-                    Gf.Vec3d(x, y, trunk_h * 0.5))
-                UsdShade.MaterialBindingAPI(trunk.GetPrim()).Bind(trunk_mat)
-
-                # 3 stacked conifer tiers (bottom = widest, each ~55 % overlap)
-                base_r   = _rnd.uniform(2.2, 3.8)
-                tier_h   = trunk_h * _rnd.uniform(0.55, 0.70)  # each cone height
-                z_cursor = trunk_h   # start cones at top of trunk
-                for tier in range(3):
-                    r_scale = 1.0 - tier * 0.30   # 1.0 → 0.70 → 0.40
-                    h_scale = 1.0 - tier * 0.18   # tiers get shorter toward apex
-                    cr  = base_r * r_scale
-                    ch  = tier_h * h_scale
-                    # cone centre = z_cursor + ch/2  (base at z_cursor, apex above)
-                    cz  = z_cursor + ch * 0.5
-                    cone = UsdGeom.Cone.Define(
-                        stage, f"/World/_PF_Trees/t{i:03d}_c{tier}")
-                    cone.CreateRadiusAttr(cr)
-                    cone.CreateHeightAttr(ch)
-                    UsdGeom.XformCommonAPI(cone.GetPrim()).SetTranslate(
-                        Gf.Vec3d(x, y, cz))
-                    UsdShade.MaterialBindingAPI(cone.GetPrim()).Bind(cmat)
-                    # next tier starts 55 % of the way up this cone (overlap)
-                    z_cursor += ch * 0.55
-
-            # ── low undergrowth: small dark-green spheres near ground ────────────
-            under_mat = _mat("/World/_PF_UnderMat",
-                             (0.06, 0.14, 0.04), roughness=0.95)
-            UsdGeom.Xform.Define(stage, "/World/_PF_Under")
-            for j in range(80):
-                ux = _rnd.uniform(-h * 0.80, h * 0.80)
-                uy = _rnd.uniform(-h * 0.80, h * 0.80)
-                if abs(ux) < 10 and abs(uy) < 10:
-                    ux += 14 * (1 if ux >= 0 else -1)
-                ur = _rnd.uniform(0.4, 1.0)
-                usph = UsdGeom.Sphere.Define(
-                    stage, f"/World/_PF_Under/u{j:03d}")
-                usph.CreateRadiusAttr(ur)
-                UsdGeom.XformCommonAPI(usph.GetPrim()).SetTranslate(
-                    Gf.Vec3d(ux, uy, ur * 0.6))   # half-buried in ground
-                UsdShade.MaterialBindingAPI(usph.GetPrim()).Bind(under_mat)
+                tree_path = f"/World/_PF_Trees/t{i:03d}"
+                xform = UsdGeom.Xform.Define(stage, tree_path)
+                xform.GetPrim().GetReferences().AddReference(tree_usd)
+                api = UsdGeom.XformCommonAPI(xform.GetPrim())
+                api.SetTranslate(Gf.Vec3d(x, y, 0.0))
+                api.SetRotate(Gf.Vec3f(0.0, 0.0, yaw_deg))
+                api.SetScale(Gf.Vec3f(sc, sc, sc))
 
             print(
-                f"[isaac] procedural forest: {n_trees} pine trees + 80 undergrowth "
-                f"(extent={extent} m)", flush=True)
+                f"[isaac] forest: {n_trees} real tree meshes (gant_tree) "
+                f"extent={extent} m", flush=True)
         except Exception as e:
-            print(f"[isaac] procedural forest failed: {e}", flush=True)
+            print(f"[isaac] forest setup failed: {e}", flush=True)
 
     def _bind_terrain_material(self, stage) -> None:
         """Assign a simple green grass material to the first Mesh named Terrain."""
