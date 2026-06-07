@@ -77,11 +77,11 @@ struct ContentView: View {
 struct MainTabView: View {
     var body: some View {
         TabView {
-            DroneListView()
+            ChatsView()
                 .tabItem {
-                    Label("Drones", systemImage: "location.viewfinder")
+                    Label("Missions", systemImage: "paperplane")
                 }
-            
+
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")
