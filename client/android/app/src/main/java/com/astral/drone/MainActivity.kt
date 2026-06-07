@@ -5,9 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -61,6 +64,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.util.concurrent.TimeUnit
+import androidx.core.net.toUri
 
 // ============================================================
 // Constants
@@ -69,6 +73,8 @@ private const val API_BASE = "https://03bnj3wwef.execute-api.us-west-2.amazonaws
 private const val COGNITO_REGION = "us-west-2"
 private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
 private const val COGNITO_URL = "https://cognito-idp.$COGNITO_REGION.amazonaws.com/"
+private const val COGNITO_HOSTED_UI = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"
+private const val OAUTH_REDIRECT_URI = "com.astral.drone://callback"
 private const val PREFS_NAME = "astral_drone_prefs"
 
 // ============================================================
@@ -262,6 +268,36 @@ private data class SendMessageRequest(val message: String)
 
 @Serializable
 private data class ImageSelectionRequest(@SerialName("option_id") val optionId: String)
+
+// ── Groups ──
+
+@Serializable
+data class DroneGroup(
+    val userId: String = "",
+    val groupId: String,
+    val name: String,
+    val members: List<String> = emptyList(),
+    val createdAt: String = ""
+)
+
+@Serializable
+private data class GroupsResponse(val groups: List<DroneGroup> = emptyList())
+
+@Serializable
+private data class CreateGroupRequest(
+    val name: String,
+    val members: List<String>,
+    val groupId: String? = null
+)
+
+@Serializable
+private data class CreateGroupResponse(val group: DroneGroup)
+
+@Serializable
+private data class GroupMessageResponse(
+    val groupId: String = "",
+    val orders: Map<String, String> = emptyMap()
+)
 
 // ============================================================
 // Token store
@@ -543,6 +579,66 @@ private class ApiClient(private val tokenStore: TokenStore) {
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    // --- Groups ---
+
+    suspend fun listGroups(): Result<List<DroneGroup>> = withContext(Dispatchers.IO) {
+        try {
+            exec { Request.Builder().url("$API_BASE/groups").header("Authorization", authHeader()).get().build() }
+                .use { resp ->
+                    val raw = resp.body?.string() ?: "{}"
+                    if (!resp.isSuccessful) return@withContext Result.failure(Exception("Load failed (${resp.code})"))
+                    Result.success(json.decodeFromString<GroupsResponse>(raw).groups)
+                }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun createGroup(name: String, members: List<String>, groupId: String? = null): Result<DroneGroup> = withContext(Dispatchers.IO) {
+        try {
+            val body = json.encodeToString(CreateGroupRequest.serializer(), CreateGroupRequest(name, members, groupId))
+            exec { Request.Builder().url("$API_BASE/groups").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
+                .use { resp ->
+                    val raw = resp.body?.string() ?: ""
+                    if (!resp.isSuccessful) return@withContext Result.failure(Exception("Create failed (${resp.code}): $raw"))
+                    Result.success(json.decodeFromString<CreateGroupResponse>(raw).group)
+                }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun deleteGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            exec { Request.Builder().url("$API_BASE/groups/$groupId").header("Authorization", authHeader()).delete().build() }
+                .use { resp ->
+                    if (!resp.isSuccessful) return@withContext Result.failure(Exception("Delete failed (${resp.code})"))
+                    Result.success(Unit)
+                }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun sendGroupMessage(groupId: String, conversationId: String, message: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val body = json.encodeToString(SendMessageRequest.serializer(), SendMessageRequest(message))
+            exec { Request.Builder().url("$API_BASE/groups/$groupId/conversations/$conversationId/messages").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
+                .use { resp ->
+                    if (!resp.isSuccessful) {
+                        val raw = resp.body?.string() ?: ""
+                        return@withContext Result.failure(Exception("Send failed (${resp.code}): $raw"))
+                    }
+                    Result.success(Unit)
+                }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun getGroupMessages(groupId: String, conversationId: String): Result<List<ConversationMessage>> = withContext(Dispatchers.IO) {
+        try {
+            exec { Request.Builder().url("$API_BASE/groups/$groupId/conversations/$conversationId").header("Authorization", authHeader()).get().build() }
+                .use { resp ->
+                    if (!resp.isSuccessful) return@withContext Result.failure(Exception("Poll failed (${resp.code})"))
+                    val raw = resp.body?.string() ?: ""
+                    Result.success(json.decodeFromString<ConversationResponse>(raw).messages)
+                }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
     suspend fun startVideoStream(droneId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             exec { Request.Builder().url("$API_BASE/drones/$droneId/video/start").header("Authorization", authHeader()).post("{\"action\":\"start\"}".toRequestBody(JSON_MEDIA)).build() }
@@ -569,20 +665,87 @@ private class ApiClient(private val tokenStore: TokenStore) {
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    suspend fun signUp(email: String, password: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val body = """{"ClientId":"$COGNITO_CLIENT_ID","Username":"$email","Password":"$password","UserAttributes":[{"Name":"email","Value":"$email"}]}"""
+            val req = Request.Builder().url(COGNITO_URL)
+                .addHeader("X-Amz-Target", "AWSCognitoIdentityProviderService.SignUp")
+                .addHeader("Content-Type", "application/x-amz-json-1.1")
+                .post(body.toRequestBody(COGNITO_MEDIA)).build()
+            http.newCall(req).execute().use { resp ->
+                val raw = resp.body?.string() ?: ""
+                val parsed = runCatching { json.decodeFromString(CognitoInitiateAuthResponse.serializer(), raw) }.getOrNull()
+                if (!resp.isSuccessful) return@withContext Result.failure(Exception(parsed?.message ?: "Sign-up failed (${resp.code})"))
+                Result.success(Unit)
+            }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun confirmSignUp(email: String, code: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val body = """{"ClientId":"$COGNITO_CLIENT_ID","Username":"$email","ConfirmationCode":"$code"}"""
+            val req = Request.Builder().url(COGNITO_URL)
+                .addHeader("X-Amz-Target", "AWSCognitoIdentityProviderService.ConfirmSignUp")
+                .addHeader("Content-Type", "application/x-amz-json-1.1")
+                .post(body.toRequestBody(COGNITO_MEDIA)).build()
+            http.newCall(req).execute().use { resp ->
+                val raw = resp.body?.string() ?: ""
+                val parsed = runCatching { json.decodeFromString(CognitoInitiateAuthResponse.serializer(), raw) }.getOrNull()
+                if (!resp.isSuccessful) return@withContext Result.failure(Exception(parsed?.message ?: "Confirmation failed (${resp.code})"))
+                Result.success(Unit)
+            }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun exchangeOAuthCode(code: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val bodyStr = "grant_type=authorization_code&client_id=$COGNITO_CLIENT_ID&code=$code&redirect_uri=${OAUTH_REDIRECT_URI.encodeUrl()}"
+            val req = Request.Builder().url("$COGNITO_HOSTED_UI/oauth2/token")
+                .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                .post(bodyStr.toRequestBody("application/x-www-form-urlencoded".toMediaType())).build()
+            http.newCall(req).execute().use { resp ->
+                val raw = resp.body?.string() ?: ""
+                if (!resp.isSuccessful) return@withContext Result.failure(Exception("Token exchange failed (${resp.code})"))
+                val j = json.parseToJsonElement(raw).let { it as? kotlinx.serialization.json.JsonObject }
+                val idToken = j?.get("id_token")?.toString()?.trim('"') ?: return@withContext Result.failure(Exception("No id_token"))
+                val refreshToken = j["refresh_token"]?.toString()?.trim('"') ?: ""
+                tokenStore.idToken = idToken
+                if (refreshToken.isNotBlank()) tokenStore.refreshToken = refreshToken
+                // Extract email from JWT payload
+                val parts = idToken.split(".")
+                if (parts.size >= 2) {
+                    val padded = parts[1].padEnd((parts[1].length + 3) / 4 * 4, '=')
+                    val payload = android.util.Base64.decode(padded, android.util.Base64.DEFAULT).toString(Charsets.UTF_8)
+                    val emailMatch = Regex("\"email\":\"([^\"]+)\"").find(payload)
+                    emailMatch?.groupValues?.get(1)?.let { tokenStore.userEmail = it }
+                }
+                Result.success(Unit)
+            }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
     fun isLoggedIn() = tokenStore.idToken.isNotBlank()
 }
+
+private fun String.encodeUrl() = java.net.URLEncoder.encode(this, "UTF-8")
+
+// ============================================================
+// Auth Mode
+// ============================================================
+enum class AuthMode { SIGN_IN, SIGN_UP, CONFIRM }
 
 // ============================================================
 // Navigation & State
 // ============================================================
 sealed interface Screen {
     data object Login : Screen
-    data object Drones : Screen
+    data object Chats : Screen
     data class DroneDetail(val drone: Drone, val conversationId: String) : Screen
+    data class GroupChat(val group: DroneGroup, val conversationId: String) : Screen
 }
 
 enum class MainTab(val label: String, val icon: ImageVector) {
-    Drones("Drones", Icons.Filled.Home),
+    Chats("Missions", Icons.Filled.RocketLaunch),
     Settings("Settings", Icons.Filled.Settings)
 }
 
@@ -599,12 +762,16 @@ data class UiState(
     val isLoading: Boolean = false,
     val error: String? = null,
 
-    // Login
-    val emailInput: String = "harun@astral.test",
-    val passwordInput: String = "AstralTest1!",
+    // Login / Sign-up
+    val emailInput: String = "",
+    val passwordInput: String = "",
+    val confirmPasswordInput: String = "",
+    val authMode: AuthMode = AuthMode.SIGN_IN,
+    val confirmationCode: String = "",
+    val pendingEmail: String = "",
 
     // Main nav
-    val mainTab: MainTab = MainTab.Drones,
+    val mainTab: MainTab = MainTab.Chats,
     val userEmail: String = "",
 
     // Drone list
@@ -613,6 +780,19 @@ data class UiState(
     val showAddDrone: Boolean = false,
     val addDroneId: String = "",
     val addDroneName: String = "",
+
+    // Groups
+    val groups: List<DroneGroup> = emptyList(),
+    val showCreateGroup: Boolean = false,
+    val createGroupName: String = "",
+    val createGroupMemberIds: Set<String> = emptySet(),
+    val renamingGroup: DroneGroup? = null,
+    val renameGroupText: String = "",
+
+    // Group chat
+    val groupMessages: List<ConversationMessage> = emptyList(),
+    val groupMessageInput: String = "",
+    val isGroupSending: Boolean = false,
 
     // Drone detail tabs
     val detailTab: DroneDetailTab = DroneDetailTab.Overview,
@@ -656,7 +836,7 @@ class DroneViewModel(context: Context) : ViewModel() {
 
     private val _state = MutableStateFlow(
         UiState(
-            screen = if (api.isLoggedIn()) Screen.Drones else Screen.Login,
+            screen = if (api.isLoggedIn()) Screen.Chats else Screen.Login,
             isLoading = api.isLoggedIn(),
             userEmail = tokenStore.userEmail
         )
@@ -664,14 +844,23 @@ class DroneViewModel(context: Context) : ViewModel() {
     val state = _state.asStateFlow()
 
     private var pollJob: Job? = null
+    private var groupPollJob: Job? = null
     private var statusPollJob: Job? = null
     private var telemetryJob: Job? = null
 
-    init { if (api.isLoggedIn()) loadDrones() }
+    init { if (api.isLoggedIn()) loadAll() }
 
-    // --- Login ---
+    private fun loadAll() {
+        loadDrones()
+        loadGroups()
+    }
+
+    // --- Auth ---
     fun setEmail(v: String) = _state.update { it.copy(emailInput = v, error = null) }
     fun setPassword(v: String) = _state.update { it.copy(passwordInput = v, error = null) }
+    fun setConfirmPassword(v: String) = _state.update { it.copy(confirmPasswordInput = v, error = null) }
+    fun setConfirmationCode(v: String) = _state.update { it.copy(confirmationCode = v, error = null) }
+    fun setAuthMode(m: AuthMode) = _state.update { it.copy(authMode = m, error = null) }
 
     fun login() {
         val email = _state.value.emailInput.trim()
@@ -685,8 +874,61 @@ class DroneViewModel(context: Context) : ViewModel() {
             val result = api.login(email, password)
             if (result.isSuccess) {
                 tokenStore.userEmail = email
-                _state.update { it.copy(isLoading = true, screen = Screen.Drones, userEmail = email) }
-                loadDrones()
+                _state.update { it.copy(isLoading = true, screen = Screen.Chats, userEmail = email) }
+                loadAll()
+            } else {
+                _state.update { it.copy(isLoading = false, error = result.exceptionOrNull()?.message) }
+            }
+        }
+    }
+
+    fun signUp() {
+        val email = _state.value.emailInput.trim()
+        val password = _state.value.passwordInput
+        val confirm = _state.value.confirmPasswordInput
+        if (email.isBlank() || password.isBlank()) { _state.update { it.copy(error = "Email and password required") }; return }
+        if (password != confirm) { _state.update { it.copy(error = "Passwords do not match") }; return }
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val result = api.signUp(email, password)
+            if (result.isSuccess) {
+                _state.update { it.copy(isLoading = false, authMode = AuthMode.CONFIRM, pendingEmail = email) }
+            } else {
+                _state.update { it.copy(isLoading = false, error = result.exceptionOrNull()?.message) }
+            }
+        }
+    }
+
+    fun confirmSignUp() {
+        val email = _state.value.pendingEmail
+        val code = _state.value.confirmationCode.trim()
+        if (code.isBlank()) { _state.update { it.copy(error = "Enter the verification code") }; return }
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val result = api.confirmSignUp(email, code)
+            if (result.isSuccess) {
+                // Auto sign-in after confirmation
+                val loginResult = api.login(email, _state.value.passwordInput)
+                if (loginResult.isSuccess) {
+                    tokenStore.userEmail = email
+                    _state.update { it.copy(isLoading = false, screen = Screen.Chats, userEmail = email) }
+                    loadAll()
+                } else {
+                    _state.update { it.copy(isLoading = false, authMode = AuthMode.SIGN_IN, error = "Account confirmed — please sign in") }
+                }
+            } else {
+                _state.update { it.copy(isLoading = false, error = result.exceptionOrNull()?.message) }
+            }
+        }
+    }
+
+    fun handleOAuthCallback(code: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val result = api.exchangeOAuthCode(code)
+            if (result.isSuccess) {
+                _state.update { it.copy(isLoading = true, screen = Screen.Chats, userEmail = tokenStore.userEmail) }
+                loadAll()
             } else {
                 _state.update { it.copy(isLoading = false, error = result.exceptionOrNull()?.message) }
             }
@@ -695,6 +937,7 @@ class DroneViewModel(context: Context) : ViewModel() {
 
     fun logout() {
         pollJob?.cancel()
+        groupPollJob?.cancel()
         statusPollJob?.cancel()
         telemetryJob?.cancel()
         tokenStore.clear()
@@ -790,6 +1033,7 @@ class DroneViewModel(context: Context) : ViewModel() {
 
     fun backToList() {
         pollJob?.cancel()
+        groupPollJob?.cancel()
         telemetryJob?.cancel()
         val drone = (_state.value.screen as? Screen.DroneDetail)?.drone
         if (drone != null && _state.value.videoConfig != null) {
@@ -797,8 +1041,9 @@ class DroneViewModel(context: Context) : ViewModel() {
         }
         _state.update {
             it.copy(
-                screen = Screen.Drones,
+                screen = Screen.Chats,
                 messages = emptyList(),
+                groupMessages = emptyList(),
                 telemetry = null,
                 videoConfig = null,
                 logs = emptyList(),
@@ -807,7 +1052,120 @@ class DroneViewModel(context: Context) : ViewModel() {
                 isLoading = true
             )
         }
-        loadDrones()
+        loadAll()
+    }
+
+    // --- Groups ---
+
+    fun loadGroups() {
+        viewModelScope.launch {
+            api.listGroups().getOrNull()?.let { g ->
+                _state.update { it.copy(groups = g) }
+            }
+        }
+    }
+
+    fun showCreateGroup(show: Boolean) = _state.update {
+        it.copy(showCreateGroup = show, createGroupName = "", createGroupMemberIds = emptySet(), error = null)
+    }
+
+    fun setCreateGroupName(v: String) = _state.update { it.copy(createGroupName = v) }
+
+    fun toggleGroupMember(droneId: String) = _state.update {
+        val ids = it.createGroupMemberIds.toMutableSet()
+        if (!ids.add(droneId)) ids.remove(droneId)
+        it.copy(createGroupMemberIds = ids)
+    }
+
+    fun createGroup() {
+        val name = _state.value.createGroupName.trim()
+        val members = _state.value.createGroupMemberIds.toList()
+        if (name.isBlank()) { _state.update { it.copy(error = "Fleet name required") }; return }
+        if (members.isEmpty()) { _state.update { it.copy(error = "Select at least one drone") }; return }
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val result = api.createGroup(name, members)
+            if (result.isSuccess) {
+                _state.update { it.copy(isLoading = false, showCreateGroup = false, groups = it.groups + result.getOrThrow()) }
+            } else {
+                _state.update { it.copy(isLoading = false, error = result.exceptionOrNull()?.message) }
+            }
+        }
+    }
+
+    fun deleteGroup(groupId: String) {
+        viewModelScope.launch {
+            api.deleteGroup(groupId)
+            _state.update { it.copy(groups = it.groups.filter { g -> g.groupId != groupId }) }
+        }
+    }
+
+    fun startRenameGroup(group: DroneGroup) =
+        _state.update { it.copy(renamingGroup = group, renameGroupText = group.name) }
+
+    fun setRenameGroupText(v: String) = _state.update { it.copy(renameGroupText = v) }
+
+    fun confirmRenameGroup() {
+        val group = _state.value.renamingGroup ?: return
+        val newName = _state.value.renameGroupText.trim()
+        if (newName.isBlank()) { _state.update { it.copy(renamingGroup = null) }; return }
+        _state.update { st ->
+            st.copy(
+                renamingGroup = null,
+                groups = st.groups.map { if (it.groupId == group.groupId) it.copy(name = newName) else it }
+            )
+        }
+        viewModelScope.launch {
+            api.createGroup(newName, group.members, group.groupId)
+        }
+    }
+
+    fun openGroupChat(group: DroneGroup) {
+        val convId = java.util.UUID.randomUUID().toString()
+        _state.update { it.copy(screen = Screen.GroupChat(group, convId), groupMessages = emptyList()) }
+        startGroupPolling(group.groupId, convId)
+    }
+
+    private fun startGroupPolling(groupId: String, conversationId: String) {
+        groupPollJob?.cancel()
+        groupPollJob = viewModelScope.launch {
+            while (isActive) {
+                api.getGroupMessages(groupId, conversationId).getOrNull()?.let { msgs ->
+                    _state.update { it.copy(groupMessages = msgs) }
+                }
+                delay(3000)
+            }
+        }
+    }
+
+    fun setGroupMessageInput(v: String) = _state.update { it.copy(groupMessageInput = v) }
+
+    fun cancelRenameGroup() = _state.update { it.copy(renamingGroup = null) }
+
+    fun deleteDroneFromList(droneId: String) {
+        viewModelScope.launch {
+            api.deleteDrone(droneId)
+            _state.update { it.copy(drones = it.drones.filter { d -> d.droneId != droneId }) }
+        }
+    }
+
+    fun sendGroupMessage() {
+        val screen = _state.value.screen as? Screen.GroupChat ?: return
+        val text = _state.value.groupMessageInput.trim()
+        if (text.isBlank() || _state.value.isGroupSending) return
+        _state.update { it.copy(groupMessageInput = "", isGroupSending = true, error = null) }
+        viewModelScope.launch {
+            val result = api.sendGroupMessage(screen.group.groupId, screen.conversationId, text)
+            if (result.isFailure) {
+                _state.update { it.copy(isGroupSending = false, error = result.exceptionOrNull()?.message) }
+            } else {
+                delay(600)
+                api.getGroupMessages(screen.group.groupId, screen.conversationId).getOrNull()?.let { msgs ->
+                    _state.update { it.copy(groupMessages = msgs) }
+                }
+                _state.update { it.copy(isGroupSending = false) }
+            }
+        }
     }
 
     fun switchDetailTab(tab: DroneDetailTab) = _state.update { it.copy(detailTab = tab, error = null) }
@@ -1009,14 +1367,30 @@ class DroneViewModelFactory(private val context: Context) : ViewModelProvider.Fa
 // Activity
 // ============================================================
 class MainActivity : ComponentActivity() {
+    private lateinit var vm: DroneViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             MaterialTheme {
-                val vm: DroneViewModel = viewModel(factory = DroneViewModelFactory(applicationContext))
+                vm = viewModel(factory = DroneViewModelFactory(applicationContext))
                 DroneApp(vm)
             }
+        }
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent) {
+        val data = intent.data ?: return
+        if (data.scheme == "com.astral.drone" && data.host == "callback") {
+            val code = data.getQueryParameter("code") ?: return
+            vm.handleOAuthCallback(code)
         }
     }
 }
@@ -1029,8 +1403,9 @@ fun DroneApp(vm: DroneViewModel) {
     val state by vm.state.collectAsState()
     when (val screen = state.screen) {
         Screen.Login -> LoginScreen(state, vm)
-        Screen.Drones -> MainScreen(state, vm)
+        Screen.Chats -> MainScreen(state, vm)
         is Screen.DroneDetail -> DroneDetailScreen(state, vm, screen.drone, screen.conversationId)
+        is Screen.GroupChat -> GroupChatScreen(state, vm, screen.group, screen.conversationId)
     }
 }
 
@@ -1040,37 +1415,126 @@ fun DroneApp(vm: DroneViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(state: UiState, vm: DroneViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Scaffold(topBar = { TopAppBar(title = { Text("Astral Drone") }) }) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 32.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 32.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Sign In", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(32.dp))
-            OutlinedTextField(
-                value = state.emailInput, onValueChange = vm::setEmail, label = { Text("Email") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next)
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = state.passwordInput, onValueChange = vm::setPassword, label = { Text("Password") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { vm.login() })
-            )
-            Spacer(Modifier.height(24.dp))
-            if (state.error != null) {
-                Text(state.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 12.dp))
-            }
-            Button(onClick = vm::login, enabled = !state.isLoading, modifier = Modifier.fillMaxWidth()) {
-                if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                else Text("Sign In")
+            when (state.authMode) {
+                AuthMode.SIGN_IN, AuthMode.SIGN_UP -> {
+                    val isSignUp = state.authMode == AuthMode.SIGN_UP
+                    Text(if (isSignUp) "Create Account" else "Sign In",
+                        style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(24.dp))
+
+                    // Google button
+                    OutlinedButton(
+                        onClick = {
+                            val url = "$COGNITO_HOSTED_UI/oauth2/authorize" +
+                                "?client_id=$COGNITO_CLIENT_ID" +
+                                "&response_type=code" +
+                                "&scope=email+openid+profile" +
+                                "&redirect_uri=${OAUTH_REDIRECT_URI.encodeUrl()}" +
+                                "&identity_provider=Google" +
+                                "&prompt=select_account"
+                            CustomTabsIntent.Builder().build()
+                                .launchUrl(context, url.toUri())
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !state.isLoading
+                    ) {
+                        Icon(Icons.Filled.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Continue with Google")
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        HorizontalDivider(modifier = Modifier.weight(1f))
+                        Text("  or  ", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HorizontalDivider(modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = state.emailInput, onValueChange = vm::setEmail, label = { Text("Email") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = state.passwordInput, onValueChange = vm::setPassword, label = { Text("Password") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password,
+                            imeAction = if (isSignUp) ImeAction.Next else ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { if (!isSignUp) vm.login() })
+                    )
+                    if (isSignUp) {
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = state.confirmPasswordInput, onValueChange = vm::setConfirmPassword,
+                            label = { Text("Confirm Password") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { vm.signUp() })
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    if (state.error != null) {
+                        Text(state.error, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(bottom = 8.dp))
+                    }
+                    Button(
+                        onClick = { if (isSignUp) vm.signUp() else vm.login() },
+                        enabled = !state.isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        else Text(if (isSignUp) "Create Account" else "Sign In")
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = { vm.setAuthMode(if (isSignUp) AuthMode.SIGN_IN else AuthMode.SIGN_UP) }) {
+                        Text(if (isSignUp) "Already have an account? Sign in" else "Don't have an account? Sign up")
+                    }
+                }
+                AuthMode.CONFIRM -> {
+                    Text("Check your email", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("We sent a verification code to ${state.pendingEmail}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 24.dp))
+                    OutlinedTextField(
+                        value = state.confirmationCode, onValueChange = vm::setConfirmationCode,
+                        label = { Text("Verification Code") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { vm.confirmSignUp() })
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    if (state.error != null) {
+                        Text(state.error, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(bottom = 8.dp))
+                    }
+                    Button(onClick = vm::confirmSignUp, enabled = !state.isLoading,
+                        modifier = Modifier.fillMaxWidth()) {
+                        if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        else Text("Verify")
+                    }
+                    TextButton(onClick = { vm.setAuthMode(AuthMode.SIGN_UP) }) {
+                        Text("Wrong email? Go back")
+                    }
+                }
             }
         }
     }
@@ -1097,9 +1561,359 @@ fun MainScreen(state: UiState, vm: DroneViewModel) {
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
             when (state.mainTab) {
-                MainTab.Drones -> DroneListScreen(state, vm)
+                MainTab.Chats -> ChatsScreen(state, vm)
                 MainTab.Settings -> SettingsScreen(state, vm)
             }
+        }
+    }
+}
+
+// ============================================================
+// Chats Screen (unified: groups first, then drones)
+// ============================================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatsScreen(state: UiState, vm: DroneViewModel) {
+    val isRefreshing = state.isLoading && (state.drones.isNotEmpty() || state.groups.isNotEmpty())
+    val isEmpty = state.drones.isEmpty() && state.groups.isEmpty()
+
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Missions") }) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { vm.showAddDrone(true) },
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("Onboard new drone") }
+            )
+        }
+    ) { padding ->
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { vm.loadDrones(); vm.loadGroups() },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) {
+            when {
+                state.isLoading && isEmpty -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                }
+                isEmpty -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Icon(Icons.Filled.Message, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                            Text("No missions yet", style = MaterialTheme.typography.bodyLarge)
+                            Text("Tap the button below to onboard a drone", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                else -> {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        // Groups section
+                        if (state.groups.isNotEmpty()) {
+                            item {
+                                Text("Fleets", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                            }
+                            items(state.groups, key = { it.groupId }) { group ->
+                                ChatListItem(
+                                    icon = { GroupIcon() },
+                                    title = group.name,
+                                    subtitle = "${group.members.size} drone${if (group.members.size != 1) "s" else ""}",
+                                    badge = null,
+                                    onClick = { vm.openGroupChat(group) },
+                                    onSwipeDelete = { vm.deleteGroup(group.groupId) },
+                                    onRename = { vm.startRenameGroup(group) }
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
+                            }
+                            item { Spacer(Modifier.height(8.dp)) }
+                        }
+                        // Drones section
+                        if (state.drones.isNotEmpty()) {
+                            item {
+                                Text("Drones", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                            }
+                            items(state.drones, key = { it.droneId }) { drone ->
+                                val status = state.droneStatuses[drone.droneId]
+                                val isOnline = status?.isOnline == true
+                                ChatListItem(
+                                    icon = { DroneIconBadge(isOnline) },
+                                    title = drone.name,
+                                    subtitle = drone.droneId,
+                                    badge = if (isOnline) "Online" else null,
+                                    badgeColor = Color(0xFF4CAF50),
+                                    onClick = { vm.openDrone(drone) },
+                                    onSwipeDelete = { vm.deleteDroneFromList(drone.droneId) },
+                                    onRename = null
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Loading overlay
+    if (state.isLoading && !isEmpty) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+    }
+
+    if (state.showAddDrone) AddDroneDialog(state, vm)
+
+    // Create group sheet
+    if (state.showCreateGroup) {
+        CreateGroupDialog(state, vm)
+    }
+
+    // Rename group dialog
+    if (state.renamingGroup != null) {
+        AlertDialog(
+            onDismissRequest = { vm.startRenameGroup(state.renamingGroup!!) },
+            title = { Text("Rename fleet") },
+            text = {
+                OutlinedTextField(
+                    value = state.renameGroupText, onValueChange = vm::setRenameGroupText,
+                    label = { Text("Fleet name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = { Button(onClick = vm::confirmRenameGroup, enabled = state.renameGroupText.isNotBlank()) { Text("Save") } },
+            dismissButton = { TextButton(onClick = vm::cancelRenameGroup) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun GroupIcon() {
+    Box(
+        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.tertiaryContainer),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Filled.Groups, contentDescription = null,
+            tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun DroneIconBadge(isOnline: Boolean) {
+    Box(modifier = Modifier.size(48.dp)) {
+        Box(
+            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Flight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(24.dp))
+        }
+        Box(
+            modifier = Modifier.size(12.dp).align(Alignment.BottomEnd)
+                .background(if (isOnline) Color(0xFF4CAF50) else MaterialTheme.colorScheme.outline, CircleShape)
+                .then(Modifier.padding(2.dp))
+        )
+    }
+}
+
+@Composable
+private fun ChatListItem(
+    icon: @Composable () -> Unit,
+    title: String,
+    subtitle: String,
+    badge: String?,
+    badgeColor: Color = MaterialTheme.colorScheme.primary,
+    onClick: () -> Unit,
+    onSwipeDelete: (() -> Unit)?,
+    onRename: (() -> Unit)?
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        icon()
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (badge != null) {
+            Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(badgeColor.copy(alpha = 0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)) {
+                Text(badge, style = MaterialTheme.typography.labelSmall, color = badgeColor)
+            }
+        }
+        if (onRename != null || onSwipeDelete != null) {
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More", modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    if (onRename != null) {
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                            onClick = { showMenu = false; onRename() }
+                        )
+                    }
+                    if (onSwipeDelete != null) {
+                        DropdownMenuItem(
+                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = { showMenu = false; onSwipeDelete() }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreateGroupDialog(state: UiState, vm: DroneViewModel) {
+    AlertDialog(
+        onDismissRequest = { vm.showCreateGroup(false) },
+        title = { Text("New Fleet") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = state.createGroupName, onValueChange = vm::setCreateGroupName,
+                    label = { Text("Fleet name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                Text("Select drones:", style = MaterialTheme.typography.labelMedium)
+                if (state.drones.isEmpty()) {
+                    Text("No drones available. Add a drone first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    state.drones.forEach { drone ->
+                        val selected = drone.droneId in state.createGroupMemberIds
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { vm.toggleGroupMember(drone.droneId) }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = selected, onCheckedChange = { vm.toggleGroupMember(drone.droneId) })
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(drone.name, style = MaterialTheme.typography.bodyMedium)
+                                Text(drone.droneId, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                if (state.error != null) {
+                    Text(state.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = vm::createGroup, enabled = !state.isLoading && state.createGroupName.isNotBlank() && state.createGroupMemberIds.isNotEmpty()) {
+                if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text("Create")
+            }
+        },
+        dismissButton = { TextButton(onClick = { vm.showCreateGroup(false) }) { Text("Cancel") } }
+    )
+}
+
+// ============================================================
+// Group Chat Screen
+// ============================================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupChatScreen(state: UiState, vm: DroneViewModel, group: DroneGroup, conversationId: String) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.groupMessages.size) {
+        if (state.groupMessages.isNotEmpty()) listState.animateScrollToItem(state.groupMessages.size - 1)
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(group.name, fontWeight = FontWeight.SemiBold)
+                        Text("${group.members.size} drones", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = vm::backToList) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (state.groupMessages.isEmpty() && !state.isGroupSending) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        "Send a command to the fleet.\nTry: \"everyone take a photo\" or \"search the area\"",
+                        modifier = Modifier.padding(32.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(state.groupMessages) { msg -> GroupMessageBubble(msg) }
+                }
+            }
+
+            if (state.isGroupSending) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    Surface(shape = RoundedCornerShape(4.dp, 16.dp, 16.dp, 16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Text("Dispatching to fleet…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
+            if (state.error != null) {
+                Text(state.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
+
+            ChatInput(value = state.groupMessageInput, onValueChange = vm::setGroupMessageInput, onSend = vm::sendGroupMessage, isSending = state.isGroupSending)
+        }
+    }
+}
+
+@Composable
+private fun GroupMessageBubble(msg: ConversationMessage) {
+    val isUser = msg.sender == "user"
+    // Extract droneId from sender field if present (format: "drone-abc123")
+    val droneLabel = if (!isUser && msg.sender.startsWith("drone")) msg.sender else null
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+    ) {
+        if (droneLabel != null) {
+            Text(
+                droneLabel, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 2.dp)
+            )
+        }
+        val bgColor = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+        val textColor = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+        val shape = if (isUser) RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp) else RoundedCornerShape(4.dp, 16.dp, 16.dp, 16.dp)
+        Surface(shape = shape, color = if (msg.content.type == "error") MaterialTheme.colorScheme.errorContainer else bgColor, modifier = Modifier.widthIn(max = 300.dp)) {
+            Text(
+                msg.content.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (msg.content.type == "error") MaterialTheme.colorScheme.onErrorContainer else textColor,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            )
         }
     }
 }

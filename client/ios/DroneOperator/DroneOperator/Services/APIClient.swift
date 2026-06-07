@@ -190,6 +190,46 @@ final class APIClient {
         )
     }
     
+    // MARK: - Groups
+
+    func listGroups() async throws -> [DroneGroup] {
+        let response: GroupsResponse = try await request(method: "GET", path: "/groups")
+        return response.groups
+    }
+
+    func createGroup(name: String, members: [String]) async throws -> DroneGroup {
+        let body = CreateGroupRequest(name: name, members: members)
+        let response: GroupCreateResponse = try await request(method: "POST", path: "/groups", body: body)
+        return response.group
+    }
+
+    func renameGroup(groupId: String, name: String, members: [String]) async throws -> DroneGroup {
+        let body = CreateGroupRequest(name: name, members: members, groupId: groupId)
+        let response: GroupCreateResponse = try await request(method: "POST", path: "/groups", body: body)
+        return response.group
+    }
+
+    func deleteGroup(groupId: String) async throws {
+        let _: EmptyResponse = try await request(method: "DELETE", path: "/groups/\(groupId)")
+    }
+
+    func sendGroupMessage(groupId: String, conversationId: String, message: String) async throws -> GroupMessageResponse {
+        let body = ChatMessageRequest(message: message)
+        return try await request(
+            method: "POST",
+            path: "/groups/\(groupId)/conversations/\(conversationId)/messages",
+            body: body
+        )
+    }
+
+    func getGroupHistory(groupId: String, conversationId: String) async throws -> [ChatMessage] {
+        let response: ConversationHistoryResponse = try await request(
+            method: "GET",
+            path: "/groups/\(groupId)/conversations/\(conversationId)"
+        )
+        return response.messages
+    }
+
     // MARK: - Logs
     
     /// Get recent logs from a drone
@@ -358,6 +398,12 @@ private struct ErrorResponse: Decodable {
 
 private struct ChatMessageRequest: Encodable {
     let message: String
+}
+
+private struct CreateGroupRequest: Encodable {
+    let name: String
+    let members: [String]
+    var groupId: String?
 }
 
 private struct ImageSelectionRequest: Encodable {
