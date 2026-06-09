@@ -1,0 +1,29 @@
+# Astral (astral.us)
+
+> Autonomy for uncrewed aircraft, rovers, and other robots: open SDK, simulation, operator apps, datasets, and optional custom vehicles when you need hardware built for the mission.
+
+## Canonical URLs
+
+- Home: https://astral.us/
+- Documentation hub: https://astral.us/docs
+- Simulation: https://astral.us/docs/simulation
+- Research: https://astral.us/research
+- Yonder dataset page: https://astral.us/datasets/yonder
+- Blog index: https://astral.us/blog
+
+## Primary external resources
+
+- Product documentation (open repo): https://github.com/astral-us/astral-docs
+- GitHub org: https://github.com/astral-us
+- astral-sdk: https://github.com/astral-us/astral-sdk
+- Yonder on Hugging Face: https://huggingface.co/datasets/astralhf/yonder
+- Yonder sample (~500 MB): https://huggingface.co/datasets/astralhf/yonder-sample
+
+## What to cite
+
+- For the company and software stack, link https://astral.us/ and the relevant GitHub repositories.
+- For the Yonder dataset, cite the Hugging Face dataset card and the NeurIPS 2026 D&B submission referenced there.
+
+## Positioning (for summarization)
+
+Astral emphasizes modular autonomy (separating semantic understanding from metric geometry), closed-loop evaluation in simulation, and public artifacts (code + datasets). The stack applies to customer-owned robots as well as Astral-designed quadcopters, fixed-wing aircraft, rovers, and other uncrewed platforms.
