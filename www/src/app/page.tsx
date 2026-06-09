@@ -2,6 +2,7 @@ import { Header, Footer } from "@/components/layout";
 import {
   HeroSection,
   ProductsSection,
+  PlazaSimSection,
   SolutionsSection,
   DeveloperSection,
   AppShowcaseSection,
@@ -16,6 +17,7 @@ export default function HomePage() {
       <main className="flex-1">
         <HeroSection />
         <ProductsSection />
+        <PlazaSimSection />
         <SolutionsSection />
         <DeveloperSection />
         <AppShowcaseSection />
