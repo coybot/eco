@@ -1,46 +1,26 @@
 import Foundation
 
 /// AWS and auth endpoints for the DroneOperator app.
-///
-/// Replace placeholders with values from your deployed SAM stack and Google Cloud OAuth
-/// (iOS client). The Google reversed client scheme in `Info.plist` must match
-/// `googleIOSURLScheme` here.
+/// Values are sourced from the deployed `drone-api` SAM stack in us-west-2.
 enum AWSConfig {
     // MARK: - AWS
     static let region = "us-west-2"
 
     // MARK: - API Gateway
-    static let apiEndpoint = "https://YOUR_API_ID.execute-api.us-west-2.amazonaws.com/prod"
+    static let apiEndpoint = "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod"
 
     // MARK: - Cognito
-    static let identityPoolId = "us-west-2:REPLACE_WITH_IDENTITY_POOL_ID"
-    static let userPoolId = "us-west-2_REPLACE_WITH_USER_POOL_ID"
+    static let identityPoolId = "us-west-2:4f98bb63-512b-4772-861f-8a9bed4e8727"
+    static let userPoolId = "us-west-2_MkixOuF3S"
 
     // MARK: - IoT Core (for MQTT)
-    static let iotEndpoint = "REPLACE.iot.us-west-2.amazonaws.com"
+    static let iotEndpoint = "a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com"
 
     // MARK: - S3 (for drone images)
-    static let imagesBucket = "drone-images-dev-us-west-2-YOUR_ACCOUNT_ID"
+    static let imagesBucket = "drone-images-dev-us-west-2-041686205727"
 
-    // MARK: - OAuth (for social sign-in)
-    /// iOS OAuth client ID from Google Cloud Console (must match URL scheme in Info.plist).
-    static let googleClientId = "yourclientid.apps.googleusercontent.com"
-    static let appleServicesId = ""
-
-    // MARK: - App
+    // MARK: - Cognito App Client
+    static let cognitoClientId = "4j965u17ohomik14cte9ni276h"
+    static let cognitoHostedUIDomain = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"
     static let callbackURLScheme = "droneoperator"
-
-    /// `com.googleusercontent.apps.<prefix>` where `<prefix>` is the part before `.apps.googleusercontent.com`.
-    static var googleIOSURLScheme: String {
-        let suffix = ".apps.googleusercontent.com"
-        guard googleClientId.hasSuffix(suffix) else {
-            return "com.googleusercontent.apps.invalid"
-        }
-        let raw = String(googleClientId.dropLast(suffix.count))
-        return "com.googleusercontent.apps.\(raw)"
-    }
-
-    static var googleOAuthRedirectURI: String {
-        "\(googleIOSURLScheme):/oauth2redirect/google"
-    }
 }
