@@ -159,7 +159,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--drone-id", required=True)
     ap.add_argument("--vehicle", default="quadcopter", choices=["quadcopter", "rover"])
-    ap.add_argument("--sock", default="/tmp/sim_engine.sock")
+    ap.add_argument("--sock", default="tcp://127.0.0.1:9999",
+                    help="Engine IPC: Unix socket path or tcp://host:port (Godot default)")
     ap.add_argument("--certs-dir", required=True)
     ap.add_argument("--iot-endpoint",
                     default="a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com")

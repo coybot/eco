@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://rover"]
+
+[ext_resource type="Script" path="res://scripts/rover_visuals.gd" id="1"]
+
+[node name="Rover" type="Node3D"]
+script = ExtResource("1")
