@@ -1,430 +1,346 @@
 import Foundation
 import AuthenticationServices
-import CryptoKit
 
-/// Handles authentication via Apple/Google sign-in
+/// Handles authentication via Cognito: email/password, sign-up, and Google federated login.
 @Observable
 final class AuthService: NSObject {
-    
+
     // MARK: - State
-    
+
     var currentUser: User?
     var isAuthenticated: Bool { currentUser != nil }
     var isLoading = false
     var error: AuthError?
-    
+
     private var tokens: AuthTokens?
     private var webAuthSession: ASWebAuthenticationSession?
-    
+
     // MARK: - Singleton
-    
+
     static let shared = AuthService()
-    
+
     private override init() {
         super.init()
         loadStoredSession()
     }
-    
+
     // MARK: - Public API
-    
-    /// Get the current ID token for API requests
-    var idToken: String? {
-        tokens?.idToken
-    }
-    
-    /// Sign in with Apple
+
+    var idToken: String? { tokens?.idToken }
+
+    // MARK: - Email/Password Sign In
+
     @MainActor
-    func signInWithApple() async throws {
-        isLoading = true
-        error = nil
-        
-        let request = ASAuthorizationAppleIDProvider().createRequest()
-        request.requestedScopes = [.fullName, .email]
-        
-        let controller = ASAuthorizationController(authorizationRequests: [request])
-        
+    func signIn(email: String, password: String) async throws {
+        isLoading = true; error = nil
         do {
-            let authorization = try await withCheckedThrowingContinuation { continuation in
-                let delegate = AppleSignInDelegate(continuation: continuation)
-                controller.delegate = delegate
-                controller.performRequests()
-                
-                // Keep delegate alive
-                objc_setAssociatedObject(controller, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
-            }
-            
-            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                  let identityToken = credential.identityToken,
-                  let tokenString = String(data: identityToken, encoding: .utf8) else {
-                throw AuthError.signInFailed("Failed to get Apple ID token")
-            }
-            
-            // Store the Apple ID token (no refresh token for Apple)
-            self.tokens = createAppleTokens(idToken: tokenString)
-            
-            // Build user from Apple credential
-            self.currentUser = User(
-                id: credential.user,
-                email: credential.email,
-                name: [credential.fullName?.givenName, credential.fullName?.familyName]
-                    .compactMap { $0 }
-                    .joined(separator: " ")
-                    .nilIfEmpty,
-                provider: .apple
+            let result = try await cognitoInitiateAuth(
+                flow: "USER_PASSWORD_AUTH",
+                params: ["USERNAME": email, "PASSWORD": password]
             )
-            
-            saveSession()
+            apply(result: result, email: email)
             isLoading = false
-            AppLogger.logAuthEvent("Apple sign-in successful", error: nil)
-            logDebugAuthContext(reason: "Apple sign-in")
-            
+            AppLogger.logAuthEvent("Sign-in successful", error: nil)
         } catch {
             isLoading = false
-            self.error = .signInFailed(error.localizedDescription)
-            AppLogger.logAuthEvent("Apple sign-in failed", error: error)
-            throw error
+            let e = AuthError.signInFailed(error.localizedDescription)
+            self.error = e
+            AppLogger.logAuthEvent("Sign-in failed", error: error)
+            throw e
         }
     }
-    
-    /// Sign in with Google
+
+    // MARK: - Sign Up
+
+    /// Register a new Cognito user. After this, call confirmSignUp with the emailed code.
+    @MainActor
+    func signUp(email: String, password: String) async throws {
+        isLoading = true; error = nil
+        do {
+            try await cognitoSignUp(email: email, password: password)
+            isLoading = false
+            AppLogger.logAuthEvent("Sign-up successful — confirmation required", error: nil)
+        } catch {
+            isLoading = false
+            let e = AuthError.signInFailed(error.localizedDescription)
+            self.error = e
+            throw e
+        }
+    }
+
+    /// Confirm a new account with the verification code sent to the user's email.
+    @MainActor
+    func confirmSignUp(email: String, code: String) async throws {
+        isLoading = true; error = nil
+        do {
+            try await cognitoConfirmSignUp(email: email, code: code)
+            isLoading = false
+            AppLogger.logAuthEvent("Confirmation successful", error: nil)
+        } catch {
+            isLoading = false
+            let e = AuthError.signInFailed(error.localizedDescription)
+            self.error = e
+            throw e
+        }
+    }
+
+    // MARK: - Google Sign In (Cognito Hosted UI)
+
     @MainActor
     func signInWithGoogle() async throws {
-        guard !AWSConfig.googleClientId.isEmpty else {
-            throw AuthError.signInFailed("Google Client ID not configured")
-        }
-        
-        isLoading = true
-        error = nil
-        
-        do {
-            let tokenResponse = try await googleOAuthFlow()
-            self.tokens = createTokens(
-                idToken: tokenResponse.idToken,
-                refreshToken: tokenResponse.refreshToken,
-                expiresIn: tokenResponse.expiresIn
-            )
-            self.currentUser = try await fetchUserInfo(token: tokenResponse.idToken)
-            saveSession()
-            isLoading = false
-            AppLogger.logAuthEvent("Google sign-in successful", error: nil)
-            logDebugAuthContext(reason: "Google sign-in")
-        } catch {
-            isLoading = false
-            self.error = .signInFailed(error.localizedDescription)
-            AppLogger.logAuthEvent("Google sign-in failed", error: error)
-            throw error
-        }
+        try await signInWithHostedUI(provider: "Google", callbackScheme: AWSConfig.callbackURLScheme)
     }
-    
-    /// Sign out
+
+    // MARK: - Sign Out
+
     func signOut() {
         AppLogger.logAuthEvent("User signed out", error: nil)
-        tokens = nil
-        currentUser = nil
+        tokens = nil; currentUser = nil
         clearSession()
     }
-    
-    /// Refresh tokens if needed (or forced)
-    /// Returns true if tokens were refreshed, false if not needed
+
+    // MARK: - Token Refresh
+
     @discardableResult
     func refreshTokensIfNeeded(force: Bool = false) async throws -> Bool {
-        guard let currentTokens = tokens else {
-            throw AuthError.notAuthenticated
-        }
-        
-        // Check if refresh is needed
-        guard force || currentTokens.isExpiredOrExpiringSoon else {
-            return false  // Token is still valid
-        }
-        
-        // Apple Sign-In doesn't support refresh tokens - user must re-authenticate
-        if currentUser?.provider == .apple {
-            // Apple tokens last longer and are managed differently
-            // If expired, we need to re-authenticate
-            if currentTokens.isExpired {
-                throw AuthError.tokenRefreshFailed
-            }
+        guard let current = tokens else { throw AuthError.notAuthenticated }
+        guard force || current.isExpiredOrExpiringSoon else { return false }
+        guard let refreshToken = current.refreshToken else {
+            if current.isExpired { throw AuthError.tokenRefreshFailed }
             return false
         }
-        
-        // Google: use refresh token if available
-        guard let refreshToken = currentTokens.refreshToken else {
-            // No refresh token available - try to continue with existing token
-            // Only fail if token is completely expired
-            if currentTokens.isExpired {
-                throw AuthError.tokenRefreshFailed
-            }
-            return false
-        }
-        
         do {
-            let tokenResponse = try await refreshGoogleToken(refreshToken: refreshToken)
-            
-            // Update tokens - keep the existing refresh token since Google doesn't return it on refresh
-            self.tokens = createTokens(
-                idToken: tokenResponse.idToken,
-                refreshToken: refreshToken,  // Keep existing refresh token
-                expiresIn: tokenResponse.expiresIn
+            let result = try await cognitoInitiateAuth(
+                flow: "REFRESH_TOKEN_AUTH",
+                params: ["REFRESH_TOKEN": refreshToken]
             )
-            
-            saveSession()
-            AppLogger.logAuthEvent("Token refreshed successfully", error: nil)
+            apply(result: result, email: currentUser?.email ?? "", keepRefreshToken: refreshToken)
+            AppLogger.logAuthEvent("Token refreshed", error: nil)
             return true
         } catch {
             AppLogger.logAuthEvent("Token refresh failed", error: error)
             throw AuthError.tokenRefreshFailed
         }
     }
-    
-    // MARK: - Token Handling
-    
-    private func createTokens(idToken: String, refreshToken: String?, expiresIn: Int) -> AuthTokens {
-        let expiresAt = Date().addingTimeInterval(TimeInterval(expiresIn))
-        return AuthTokens(idToken: idToken, refreshToken: refreshToken, expiresAt: expiresAt)
-    }
-    
-    /// Create tokens for Apple Sign-In (no refresh token, long expiration)
-    private func createAppleTokens(idToken: String) -> AuthTokens {
-        // Apple ID tokens are valid for ~24 hours but we'll be conservative
-        let expiresAt = Date().addingTimeInterval(23 * 60 * 60)  // 23 hours
-        return AuthTokens(idToken: idToken, refreshToken: nil, expiresAt: expiresAt)
-    }
-    
-    private func fetchUserInfo(token: String) async throws -> User {
-        // Decode the JWT to get user info (Google ID token)
-        let parts = token.split(separator: ".")
-        guard parts.count >= 2 else {
-            throw AuthError.signInFailed("Invalid token format")
-        }
-        
-        var base64 = String(parts[1])
-        // Pad base64 string
-        while base64.count % 4 != 0 {
-            base64.append("=")
-        }
-        
-        guard let data = Data(base64Encoded: base64),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AuthError.signInFailed("Failed to decode token")
-        }
-        
-        let sub = json["sub"] as? String ?? UUID().uuidString
-        let email = json["email"] as? String
-        let name = json["name"] as? String
-        
-        return User(id: sub, email: email, name: name, provider: .google)
-    }
-    
-    // MARK: - Google OAuth Flow
-    
+
+    // MARK: - Cognito Hosted UI (OAuth code flow)
+
     @MainActor
-    private func googleOAuthFlow() async throws -> GoogleTokenResponse {
-        let codeVerifier = generateCodeVerifier()
-        let codeChallenge = generateCodeChallenge(from: codeVerifier)
-        
-        guard var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth") else {
-            throw AuthError.signInFailed("Invalid Google OAuth URL")
+    private func signInWithHostedUI(provider: String, callbackScheme: String) async throws {
+        isLoading = true; error = nil
+
+        let redirectURI = "\(callbackScheme)://callback"
+        guard var components = URLComponents(string: "\(AWSConfig.cognitoHostedUIDomain)/oauth2/authorize") else {
+            throw AuthError.signInFailed("Invalid Hosted UI URL")
         }
         components.queryItems = [
-            URLQueryItem(name: "client_id", value: AWSConfig.googleClientId),
-            URLQueryItem(name: "redirect_uri", value: AWSConfig.googleOAuthRedirectURI),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: "openid email profile"),
-            URLQueryItem(name: "code_challenge", value: codeChallenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "access_type", value: "offline"),  // Request refresh token
-            URLQueryItem(name: "prompt", value: "consent")  // Force consent to ensure refresh token is returned
+            URLQueryItem(name: "client_id",          value: AWSConfig.cognitoClientId),
+            URLQueryItem(name: "response_type",      value: "code"),
+            URLQueryItem(name: "scope",              value: "email openid profile"),
+            URLQueryItem(name: "redirect_uri",       value: redirectURI),
+            URLQueryItem(name: "identity_provider",  value: provider),
         ]
-        
-        guard let authURL = components.url else {
-            throw AuthError.signInFailed("Invalid OAuth URL")
-        }
-        
-        let callbackURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-            let session = ASWebAuthenticationSession(
-                url: authURL,
-                callbackURLScheme: AWSConfig.googleIOSURLScheme
-            ) { url, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let url = url {
-                    continuation.resume(returning: url)
-                } else {
-                    continuation.resume(throwing: AuthError.signInFailed("No callback URL"))
+        guard let authURL = components.url else { throw AuthError.signInFailed("Invalid OAuth URL") }
+
+        do {
+            let callbackURL = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
+                let session = ASWebAuthenticationSession(url: authURL, callbackURLScheme: callbackScheme) { url, err in
+                    if let err { cont.resume(throwing: err) }
+                    else if let url { cont.resume(returning: url) }
+                    else { cont.resume(throwing: AuthError.signInFailed("No callback URL")) }
                 }
+                session.prefersEphemeralWebBrowserSession = false
+                session.presentationContextProvider = self
+                self.webAuthSession = session
+                session.start()
             }
-            
-            session.prefersEphemeralWebBrowserSession = false
-            session.presentationContextProvider = self
-            
-            self.webAuthSession = session
-            session.start()
+
+            guard let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "code" })?.value else {
+                throw AuthError.signInFailed("No authorization code in callback")
+            }
+
+            let result = try await exchangeHostedUICode(code: code, redirectURI: redirectURI)
+            let email = extractEmail(from: result.idToken) ?? ""
+            apply(result: result, email: email)
+            isLoading = false
+            AppLogger.logAuthEvent("\(provider) Hosted UI sign-in successful", error: nil)
+        } catch {
+            isLoading = false
+            let e = AuthError.signInFailed(error.localizedDescription)
+            self.error = e
+            AppLogger.logAuthEvent("\(provider) sign-in failed", error: error)
+            throw e
         }
-        
-        guard let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
-            .queryItems?
-            .first(where: { $0.name == "code" })?
-            .value else {
-            throw AuthError.signInFailed("No authorization code")
-        }
-        
-        // Exchange code for tokens (id_token + refresh_token)
-        return try await exchangeGoogleCode(code: code, codeVerifier: codeVerifier)
     }
-    
-    /// Response from Google token exchange
-    struct GoogleTokenResponse {
+
+    private func exchangeHostedUICode(code: String, redirectURI: String) async throws -> CognitoAuthResult {
+        guard let url = URL(string: "\(AWSConfig.cognitoHostedUIDomain)/oauth2/token") else {
+            throw AuthError.signInFailed("Invalid token URL")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let body = [
+            "grant_type":   "authorization_code",
+            "client_id":    AWSConfig.cognitoClientId,
+            "code":         code,
+            "redirect_uri": redirectURI,
+        ].map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
+         .joined(separator: "&")
+        request.httpBody = body.data(using: .utf8)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let idToken = json["id_token"] as? String else {
+            throw AuthError.signInFailed("Token exchange failed")
+        }
+        return CognitoAuthResult(
+            idToken: idToken,
+            refreshToken: json["refresh_token"] as? String,
+            expiresIn: json["expires_in"] as? Int ?? 3600
+        )
+    }
+
+    // MARK: - Cognito API calls
+
+    private struct CognitoAuthResult {
         let idToken: String
         let refreshToken: String?
-        let expiresIn: Int  // seconds until expiration
+        let expiresIn: Int
     }
-    
-    private func exchangeGoogleCode(code: String, codeVerifier: String) async throws -> GoogleTokenResponse {
-        guard let url = URL(string: "https://oauth2.googleapis.com/token") else {
-            throw AuthError.signInFailed("Invalid Google token URL")
+
+    private func cognitoInitiateAuth(flow: String, params: [String: String]) async throws -> CognitoAuthResult {
+        guard let url = URL(string: "https://cognito-idp.\(AWSConfig.region).amazonaws.com/") else {
+            throw AuthError.signInFailed("Invalid Cognito URL")
         }
-        
+        let body: [String: Any] = [
+            "AuthFlow": flow,
+            "ClientId": AWSConfig.cognitoClientId,
+            "AuthParameters": params,
+        ]
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
-        let body = [
-            "client_id": AWSConfig.googleClientId,
-            "code": code,
-            "code_verifier": codeVerifier,
-            "grant_type": "authorization_code",
-            "redirect_uri": AWSConfig.googleOAuthRedirectURI
-        ]
-        .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
-        .joined(separator: "&")
-        
-        request.httpBody = body.data(using: .utf8)
-        
+        request.setValue("application/x-amz-json-1.1", forHTTPHeaderField: "Content-Type")
+        request.setValue("AWSCognitoIdentityProviderService.InitiateAuth", forHTTPHeaderField: "X-Amz-Target")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
         let (data, _) = try await URLSession.shared.data(for: request)
-        
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let idToken = json?["id_token"] as? String else {
-            throw AuthError.signInFailed("No ID token from Google")
-        }
-        
-        let refreshToken = json?["refresh_token"] as? String
-        let expiresIn = json?["expires_in"] as? Int ?? 3600  // Default 1 hour
-        
-        return GoogleTokenResponse(idToken: idToken, refreshToken: refreshToken, expiresIn: expiresIn)
+        return try decodeCognitoAuthResult(from: data)
     }
-    
-    /// Refresh the Google ID token using the stored refresh token
-    private func refreshGoogleToken(refreshToken: String) async throws -> GoogleTokenResponse {
-        guard let url = URL(string: "https://oauth2.googleapis.com/token") else {
-            throw AuthError.tokenRefreshFailed
+
+    private func cognitoSignUp(email: String, password: String) async throws {
+        guard let url = URL(string: "https://cognito-idp.\(AWSConfig.region).amazonaws.com/") else {
+            throw AuthError.signInFailed("Invalid Cognito URL")
         }
-        
+        let body: [String: Any] = [
+            "ClientId": AWSConfig.cognitoClientId,
+            "Username": email,
+            "Password": password,
+            "UserAttributes": [["Name": "email", "Value": email]],
+        ]
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
-        let body = [
-            "client_id": AWSConfig.googleClientId,
-            "refresh_token": refreshToken,
-            "grant_type": "refresh_token"
+        request.setValue("application/x-amz-json-1.1", forHTTPHeaderField: "Content-Type")
+        request.setValue("AWSCognitoIdentityProviderService.SignUp", forHTTPHeaderField: "X-Amz-Target")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? String ?? (json["__type"] as? String) {
+            throw AuthError.signInFailed(message)
+        }
+    }
+
+    private func cognitoConfirmSignUp(email: String, code: String) async throws {
+        guard let url = URL(string: "https://cognito-idp.\(AWSConfig.region).amazonaws.com/") else {
+            throw AuthError.signInFailed("Invalid Cognito URL")
+        }
+        let body: [String: Any] = [
+            "ClientId":         AWSConfig.cognitoClientId,
+            "Username":         email,
+            "ConfirmationCode": code,
         ]
-        .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
-        .joined(separator: "&")
-        
-        request.httpBody = body.data(using: .utf8)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw AuthError.tokenRefreshFailed
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-amz-json-1.1", forHTTPHeaderField: "Content-Type")
+        request.setValue("AWSCognitoIdentityProviderService.ConfirmSignUp", forHTTPHeaderField: "X-Amz-Target")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? String ?? (json["__type"] as? String) {
+            throw AuthError.signInFailed(message)
         }
-        
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let idToken = json?["id_token"] as? String else {
-            throw AuthError.tokenRefreshFailed
+    }
+
+    private func decodeCognitoAuthResult(from data: Data) throws -> CognitoAuthResult {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AuthError.signInFailed("Invalid response")
         }
-        
-        let expiresIn = json?["expires_in"] as? Int ?? 3600
-        
-        // Note: refresh_token is NOT returned on refresh calls - keep the existing one
-        return GoogleTokenResponse(idToken: idToken, refreshToken: nil, expiresIn: expiresIn)
+        if let message = json["message"] as? String { throw AuthError.signInFailed(message) }
+        if let type = json["__type"] as? String {
+            throw AuthError.signInFailed(json["message"] as? String ?? type)
+        }
+        guard let auth = json["AuthenticationResult"] as? [String: Any],
+              let idToken = auth["IdToken"] as? String else {
+            throw AuthError.signInFailed("Missing tokens in response")
+        }
+        return CognitoAuthResult(
+            idToken: idToken,
+            refreshToken: auth["RefreshToken"] as? String,
+            expiresIn: auth["ExpiresIn"] as? Int ?? 3600
+        )
     }
-    
-    private func generateCodeVerifier() -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return Data(bytes).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+
+    // MARK: - Helpers
+
+    private func apply(result: CognitoAuthResult, email: String, keepRefreshToken: String? = nil) {
+        let expiresAt = Date().addingTimeInterval(TimeInterval(result.expiresIn))
+        tokens = AuthTokens(
+            idToken: result.idToken,
+            refreshToken: result.refreshToken ?? keepRefreshToken,
+            expiresAt: expiresAt
+        )
+        if currentUser == nil || currentUser?.email != email {
+            currentUser = User(id: email, email: email, name: nil, provider: .cognito)
+        }
+        saveSession()
     }
-    
-    private func generateCodeChallenge(from verifier: String) -> String {
-        let data = Data(verifier.utf8)
-        let hash = SHA256.hash(data: data)
-        return Data(hash).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+
+    private func extractEmail(from idToken: String) -> String? {
+        let parts = idToken.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = String(parts[1])
+        while b64.count % 4 != 0 { b64.append("=") }
+        guard let data = Data(base64Encoded: b64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json["email"] as? String
     }
-    
+
     // MARK: - Session Persistence
-    
+
     private let sessionKey = "us.astral.drone.session"
-    
+
     private func saveSession() {
-        guard let tokens = tokens, let user = currentUser else { return }
-        
-        let session = StoredSession(tokens: tokens, user: user)
-        if let data = try? JSONEncoder().encode(session) {
+        guard let tokens, let user = currentUser else { return }
+        if let data = try? JSONEncoder().encode(StoredSession(tokens: tokens, user: user)) {
             KeychainHelper.save(data, forKey: sessionKey)
         }
     }
-    
+
     private func loadStoredSession() {
         guard let data = KeychainHelper.load(forKey: sessionKey),
-              let session = try? JSONDecoder().decode(StoredSession.self, from: data) else {
-            return
-        }
-        
-        self.tokens = session.tokens
-        self.currentUser = session.user
-        logDebugAuthContext(reason: "Loaded stored session")
+              let session = try? JSONDecoder().decode(StoredSession.self, from: data) else { return }
+        tokens = session.tokens
+        currentUser = session.user
     }
-    
-    private func clearSession() {
-        KeychainHelper.delete(forKey: sessionKey)
-    }
-    
+
+    private func clearSession() { KeychainHelper.delete(forKey: sessionKey) }
+
     private struct StoredSession: Codable {
         let tokens: AuthTokens
         let user: User
-    }
-
-    // MARK: - Debug Helpers
-
-    private func logDebugAuthContext(reason: String) {
-        #if DEBUG
-        guard let tokens else { return }
-        let header = "⚠️ DEBUG AUTH DUMP (\(reason))"
-        let config = """
-        apiEndpoint=\(AWSConfig.apiEndpoint)
-        iotEndpoint=\(AWSConfig.iotEndpoint)
-        identityPoolId=\(AWSConfig.identityPoolId)
-        userPoolId=\(AWSConfig.userPoolId)
-        region=\(AWSConfig.region)
-        """
-        print(header)
-        print(config)
-        print("idToken=\(tokens.idToken)")
-        if let refreshToken = tokens.refreshToken {
-            print("refreshToken=\(refreshToken)")
-        } else {
-            print("refreshToken=nil")
-        }
-        AppLogger.auth.warning("\(header) - see Xcode console for tokens/config")
-        #endif
     }
 }
 
@@ -436,24 +352,6 @@ extension AuthService: ASWebAuthenticationPresentationContextProviding {
     }
 }
 
-// MARK: - Apple Sign In Delegate
-
-private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
-    let continuation: CheckedContinuation<ASAuthorization, Error>
-    
-    init(continuation: CheckedContinuation<ASAuthorization, Error>) {
-        self.continuation = continuation
-    }
-    
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        continuation.resume(returning: authorization)
-    }
-    
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        continuation.resume(throwing: error)
-    }
-}
-
 // MARK: - Auth Errors
 
 enum AuthError: LocalizedError {
@@ -461,17 +359,13 @@ enum AuthError: LocalizedError {
     case signInFailed(String)
     case tokenRefreshFailed
     case networkError
-    
+
     var errorDescription: String? {
         switch self {
-        case .notAuthenticated:
-            return "Not authenticated"
-        case .signInFailed(let message):
-            return "Sign in failed: \(message)"
-        case .tokenRefreshFailed:
-            return "Session expired. Please sign in again."
-        case .networkError:
-            return "Network error"
+        case .notAuthenticated:      return "Not authenticated"
+        case .signInFailed(let msg): return msg
+        case .tokenRefreshFailed:    return "Session expired. Please sign in again."
+        case .networkError:          return "Network error"
         }
     }
 }
@@ -480,33 +374,21 @@ enum AuthError: LocalizedError {
 
 enum KeychainHelper {
     static func save(_ data: Data, forKey key: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data
-        ]
-        
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrAccount as String: key, kSecValueData as String: data]
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)
     }
-    
     static func load(forKey key: String) -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true
-        ]
-        
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrAccount as String: key, kSecReturnData as String: true]
         var result: AnyObject?
         SecItemCopyMatching(query as CFDictionary, &result)
         return result as? Data
     }
-    
     static func delete(forKey key: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
-        ]
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrAccount as String: key]
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -514,7 +396,5 @@ enum KeychainHelper {
 // MARK: - String Extension
 
 extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
-    }
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
