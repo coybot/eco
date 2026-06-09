@@ -1,0 +1,32 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; but the file format allows editing it manually.
+
+config_version=5
+
+[application]
+
+config/name="AstralEcoSim"
+config/description="Astral drone fleet simulator — Godot 4 backend for eco/"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+IpcServer="*res://scripts/ipc_server.gd"
+FleetManager="*res://scripts/fleet_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+environment/defaults/default_clear_color=Color(0.1, 0.1, 0.12, 1)

@@ -1,8 +1,12 @@
-"""Thin IPC client to the sim engine (Unix socket, newline-JSON).
+"""Thin IPC client to the sim engine (Unix socket or TCP, newline-JSON).
 
 Used by each per-drone daemon process to control its vehicle and grab camera
-frames from the shared Isaac world. Keeps the daemon free of Isaac/GPU and of
+frames from the shared sim world. Keeps the daemon free of engine/GPU and of
 the GIL contention that killed many MQTT connections in one process.
+
+addr forms accepted by __init__:
+  "/tmp/sim_engine.sock"   -- Unix socket (legacy / socat proxy)
+  "tcp://127.0.0.1:9999"   -- direct TCP to Godot IPC server
 """
 
 from __future__ import annotations
@@ -14,14 +18,22 @@ import threading
 
 
 class EngineClient:
-    def __init__(self, sock_path: str):
-        self._path = sock_path
+    def __init__(self, addr: str = "/tmp/sim_engine.sock"):
+        # addr can be a Unix socket path or a tcp://host:port string
+        self._addr = addr
+        self._is_tcp = addr.startswith("tcp://")
         self._lock = threading.Lock()
         self._connect()
 
     def _connect(self):
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect(self._path)
+        if self._is_tcp:
+            _, _, hostport = self._addr.partition("://")
+            host, _, port = hostport.rpartition(":")
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((host, int(port)))
+        else:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.connect(self._addr)
         self._sock = s
         self._f = s.makefile("rwb")
 

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://office_env"]
+
+[ext_resource type="Script" path="res://scripts/env_office.gd" id="1"]
+
+[node name="OfficeEnvironment" type="Node3D"]
+script = ExtResource("1")
