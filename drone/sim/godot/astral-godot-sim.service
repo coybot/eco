@@ -1,0 +1,31 @@
+[Unit]
+Description=Astral Godot Sim Fleet (office + city)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=yusuf
+WorkingDirectory=/home/yusuf/eco-sim
+
+# Xvfb virtual display (Godot needs a display server for Vulkan rendering)
+ExecStartPre=/usr/bin/Xvfb :99 -screen 0 1280x720x24 -ac &
+
+Environment=DISPLAY=:99
+Environment=GODOT_BIN=/home/yusuf/godot4
+
+ExecStart=/usr/bin/python3 /home/yusuf/eco-sim/drone/sim/godot_launch_fleet.py \
+    --fleet quad:3,rover:2 \
+    --env office \
+    --sock /tmp/sim_engine.sock \
+    --certs-base /home/yusuf/eco-certs-fleet \
+    --godot /home/yusuf/godot4 \
+    --tcp-port 9999
+
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
