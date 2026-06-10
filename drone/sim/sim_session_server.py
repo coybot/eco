@@ -388,7 +388,7 @@ def make_app(host: SimHost) -> web.Application:
                 "-f", "mjpeg", "-r", str(fps), "-i", "pipe:0",
                 "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
                 "-profile:v", "baseline", "-level", "3.1",
-                "-g", str(fps), "-bf", "0",
+                "-g", "1", "-bf", "0",
                 "-f", "mp4",
                 "-movflags", "frag_keyframe+empty_moov+default_base_moof",
                 "pipe:1",
