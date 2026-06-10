@@ -150,6 +150,9 @@ Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$SIM_SRC
 $(echo -e "$ENV_BLOCK")
+# Import any new/changed assets before launching (headless, no GPU needed).
+# Idempotent: quick no-op when nothing changed; essential after rsync'ing new GLBs.
+ExecStartPre=$INSTALL_DIR/godot4 --headless --path $SIM_SRC/godot --import --quit
 ExecStart=$EXEC_CMD
 Restart=on-failure
 RestartSec=10
