@@ -4,7 +4,6 @@ import { Calendar, ArrowRight } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { blogPosts } from "@/lib/blog-data";
 
 export const metadata: Metadata = {
@@ -22,21 +21,6 @@ const posts = blogPosts.map((p) => ({
   category: p.category,
   readTime: p.readTime,
 }));
-
-const categories = [
-  "All",
-  "Research",
-  "Security",
-  "Operations",
-  "Defense",
-  "Technology",
-  "Product",
-  "Compliance",
-  "Agriculture",
-  "Developer",
-  "Guide",
-  "Dataset",
-];
 
 export default function BlogPage() {
   return (
@@ -56,24 +40,6 @@ export default function BlogPage() {
           </div>
         </section>
 
-        {/* Categories */}
-        <section className="py-8 bg-card border-b border-border">
-          <div className="container mx-auto px-4">
-            <div className="flex flex-wrap justify-center gap-2">
-              {categories.map((category) => (
-                <Button
-                  key={category}
-                  variant={category === "All" ? "default" : "outline"}
-                  size="sm"
-                  className={category === "All" ? "" : ""}
-                >
-                  {category}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {/* Blog Posts */}
         <section className="py-16 bg-background">
           <div className="container mx-auto px-4">
@@ -81,21 +47,8 @@ export default function BlogPage() {
               {posts.map((post) => (
                 <Link key={post.slug} href={`/blog/${post.slug}`}>
                   <Card className="h-full bg-card border-border hover:border-amber-500/50 transition-all group cursor-pointer">
-                    {/* Image Placeholder */}
-                    <div className="aspect-video bg-secondary/50 flex items-center justify-center">
-                      <div className="text-2xl font-bold text-muted-foreground/20">
-                        {post.category}
-                      </div>
-                    </div>
-
                     <CardContent className="p-6">
                       <div className="flex items-center gap-2 mb-3">
-                        <Badge
-                          variant="secondary"
-                          className="bg-amber-500/10 text-amber-500 text-xs"
-                        >
-                          {post.category}
-                        </Badge>
                         <span className="text-xs text-muted-foreground flex items-center">
                           <Calendar className="h-3 w-3 mr-1" />
                           {post.date}
