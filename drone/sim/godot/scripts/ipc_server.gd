@@ -121,6 +121,24 @@ func _dispatch(line: String) -> String:
 			var jpg_b64 = fm.grab_vantage_jpeg(req.get("name", "overhead"))
 			return JSON.stringify({"ok": true, "jpg": jpg_b64})
 
+		"spawn":
+			var vt: String = req.get("vtype", "quadcopter")
+			if req.has("p"):
+				var p: Array = req.get("p", [0.0, 0.0, 0.0])
+				fm.spawn(did, vt, Vector3(p[0], p[1], p[2]))
+			else:
+				fm.spawn_auto(did, vt)
+			return JSON.stringify({"ok": true})
+
+		"despawn":
+			fm.despawn(did)
+			return JSON.stringify({"ok": true})
+
+		"load_env":
+			var env_name: String = req.get("env", "office")
+			fm.load_env(env_name)
+			return JSON.stringify({"ok": true, "env": env_name})
+
 		_:
 			return JSON.stringify({"ok": false, "error": "unknown op " + op})
 

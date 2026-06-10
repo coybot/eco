@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Sim Stream Test</title>
+<style>
+  body { background:#111; color:#eee; font-family:monospace; padding:20px; }
+  video { width:640px; height:360px; background:#000; border:1px solid #444; display:block; }
+  #log { margin-top:12px; font-size:12px; line-height:1.6; max-height:300px; overflow:auto; }
+  .ok  { color:#4caf50; }
+  .err { color:#f44336; }
+  .info{ color:#90caf9; }
+  button { margin-top:10px; padding:8px 16px; cursor:pointer; }
+</style>
+</head>
+<body>
+<h2>H.264/fMP4 WebSocket Stream Test</h2>
+<video id="v" autoplay muted playsinline></video>
+<div id="log"></div>
+<button onclick="switchCam('scene')">Switch → scene</button>
+<button onclick="switchCam('sim-quadcopter-001')">Switch → drone cam</button>
+<button onclick="disconnect()">Disconnect</button>
+
+<script>
+const SID  = 'f82aa56c0a644de983a73e2f3685d0f2'
+const WS_URL = `ws://44.247.129.156:8080/stream?session=${SID}`
+const MIME = 'video/mp4; codecs="avc1.42E01E"'
+const log  = document.getElementById('log')
+
+function L(msg, cls='info') {
+  const d = document.createElement('div')
+  d.className = cls; d.textContent = `[${new Date().toISOString().slice(11,23)}] ${msg}`
+  log.prepend(d)
+}
+
+const vid = document.getElementById('v')
+let ws, ms, sb, pending = [], chunks = 0, bytes = 0
+
+function releaseMSE() {
+  sb = null; pending = []
+  if (ms) { try { ms.endOfStream() } catch {} }
+  ms = null
+  vid.src = ''
+}
+
+function attachMSE() {
+  releaseMSE()
+  if (!window.MediaSource) { L('MediaSource API not available!', 'err'); return }
+  ms = new MediaSource()
+  vid.src = URL.createObjectURL(ms)
+  ms.addEventListener('sourceopen', () => {
+    if (!MediaSource.isTypeSupported(MIME)) { L('MIME not supported: ' + MIME, 'err'); return }
+    L('MediaSource open, adding SourceBuffer for ' + MIME, 'ok')
+    sb = ms.addSourceBuffer(MIME)
+    sb.addEventListener('updateend', () => {
+      if (!sb.updating && pending.length > 0) {
+        const next = pending.shift()
+        try { sb.appendBuffer(next) } catch(e) { L('appendBuffer err: '+e,'err') }
+      }
+    })
+    vid.play().catch(e => L('play() err: '+e, 'err'))
+  }, {once:true})
+}
+
+function connect() {
+  L('Connecting to ' + WS_URL)
+  ws = new WebSocket(WS_URL)
+  ws.binaryType = 'arraybuffer'
+  ws.onopen = () => {
+    L('WS open — subscribing to scene cam', 'ok')
+    ws.send(JSON.stringify({type:'subscribe', cam:'scene'}))
+    // Do NOT call attachMSE here — server always replies cam_reset first,
+    // which is the single trigger for attachMSE.
+  }
+  ws.onclose = e => L(`WS closed (code=${e.code})`, e.code===1000?'ok':'err')
+  ws.onerror = () => L('WS error', 'err')
+  ws.onmessage = ev => {
+    if (typeof ev.data === 'string') {
+      try {
+        const msg = JSON.parse(ev.data)
+        if (msg.type === 'cam_reset') { L('cam_reset received — resetting MSE', 'info'); attachMSE() }
+        else L('ctrl: '+ev.data)
+      } catch {}
+      return
+    }
+    const buf = ev.data
+    chunks++; bytes += buf.byteLength
+    const view = new Uint8Array(buf, 0, Math.min(4, buf.byteLength))
+    const sig = String.fromCharCode(...view)
+    const type = sig === 'ftyp' ? 'ftyp(init)' : sig.startsWith('moo') ? 'moof' : 'data'
+    if (chunks <= 5 || type === 'ftyp(init)') L(`chunk #${chunks} ${type} ${buf.byteLength}B`, 'ok')
+    if (chunks % 20 === 0) L(`...${chunks} chunks ${(bytes/1024).toFixed(1)}KB total`, 'info')
+
+    if (!sb) return
+    if (sb.updating || pending.length > 0) {
+      if (pending.length < 60) pending.push(buf)
+    } else {
+      try { sb.appendBuffer(buf) } catch(e) {
+        L('appendBuffer err: '+e,'err')
+        if (sb.buffered.length > 0 && !sb.updating) {
+          try { sb.remove(sb.buffered.start(0), sb.buffered.end(0)-4) } catch {}
+        }
+      }
+    }
+  }
+}
+
+function switchCam(cam) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    L('Switching to cam: '+cam)
+    ws.send(JSON.stringify({type:'subscribe', cam}))
+  } else { L('WebSocket not open','err') }
+}
+
+function disconnect() {
+  if (ws) ws.close(1000, 'user disconnect')
+  releaseMSE()
+}
+
+L('MediaSource supported: ' + !!window.MediaSource, window.MediaSource?'ok':'err')
+L('MIME supported: ' + MediaSource.isTypeSupported(MIME), MediaSource.isTypeSupported(MIME)?'ok':'err')
+connect()
+</script>
+</body>
+</html>

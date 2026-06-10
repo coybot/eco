@@ -22,6 +22,23 @@ Parameters:
     Type: String
     Default: ""
     Description: Apple Services ID (leave empty to skip Apple auth)
+  SimInstanceId:
+    Type: String
+    Default: ""
+    Description: EC2 instance id of the on-demand Godot sim host (web simulator)
+  SimHostBase:
+    Type: String
+    Default: "https://sim.astral.us"
+    Description: Base URL the orchestrator uses to reach sim_session_server on the EC2 host
+  SimPublicWss:
+    Type: String
+    Default: "wss://sim.astral.us"
+    Description: Public WSS base the browser uses for the sim frame stream
+  SimSharedSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Shared secret for the orchestrator -> sim host hop
 
 Globals:
   Function:
@@ -452,6 +469,50 @@ Resources:
           Properties:
             RestApiId: !Ref DroneApi
             Path: /auth/iot-policy
+            Method: POST
+
+  # Sim Session Orchestrator (web simulator: start/stop EC2 host + forward session)
+  SimOrchestratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub sim-orchestrator-${Environment}
+      CodeUri: src/
+      Handler: sim_orchestrator.handler
+      MemorySize: 256
+      Timeout: 120
+      Environment:
+        Variables:
+          SIM_INSTANCE_ID: !Ref SimInstanceId
+          SIM_HOST_BASE: !Ref SimHostBase
+          SIM_PUBLIC_WSS: !Ref SimPublicWss
+          SIM_SHARED_SECRET: !Ref SimSharedSecret
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ec2:StartInstances
+                - ec2:StopInstances
+                - ec2:DescribeInstances
+              Resource: '*'
+      Events:
+        Prewarm:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /sim/prewarm
+            Method: POST
+        StartSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /sim/session
+            Method: POST
+        EndSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /sim/session/{id}/end
             Method: POST
 
   # Update Drone Function (rename)

@@ -87,17 +87,21 @@ class DroneDaemon:
                 self._start_video()
             return
         conv = parts[3] if len(parts) >= 5 and parts[2] == "chat" else data.get("conversation_id", "c")
-        self._q.put((conv, data.get("code"), data.get("original_message", "")))
+        # Carry follow_up so the cloud's image-analysis loop (response_handler) fires after a
+        # `look`/capture. The IRL daemon echoes this; without it, sim `look` returns a raw image
+        # with no Claude analysis.
+        self._q.put((conv, data.get("code"), data.get("original_message", ""),
+                     bool(data.get("follow_up", False))))
 
     def _exec_loop(self):
         while self._running:
             try:
-                conv, code, original = self._q.get(timeout=1.0)
+                conv, code, original, follow_up = self._q.get(timeout=1.0)
             except queue.Empty:
                 continue
             if not code:
                 self._respond(conv, original, {"success": True, "stdout": "ack (sim).",
-                                               "error": None, "image_urls": []})
+                                               "error": None, "image_urls": []}, follow_up)
                 continue
             print(f"[{self.id}] exec on conv {conv}", flush=True)
             res = run_command(self.engine, self.id, self.vtype, conv, code,
@@ -105,13 +109,14 @@ class DroneDaemon:
             self._respond(conv, original, {
                 "success": res.get("success", False), "stdout": res.get("stdout", ""),
                 "error": res.get("error"), "image_urls": res.get("image_urls", []),
-                "video_urls": res.get("video_urls", [])})
+                "video_urls": res.get("video_urls", [])}, follow_up)
 
-    def _respond(self, conv, original, result):
+    def _respond(self, conv, original, result, follow_up=False):
         self.client.publish(f"drone/{self.id}/chat/{conv}/response", json.dumps({
             "droneId": self.id, "conversation_id": conv, "original_message": original,
             "result": result, "image_urls": result.get("image_urls", []),
             "video_urls": result.get("video_urls", []),
+            "follow_up": bool(follow_up),
             "timestamp": datetime.now(timezone.utc).isoformat()}), qos=1)
         print(f"[{self.id}] responded conv {conv} (success={result.get('success')}, "
               f"imgs={len(result.get('image_urls', []))})", flush=True)
