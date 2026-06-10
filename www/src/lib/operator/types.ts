@@ -110,6 +110,23 @@ export interface VideoViewerResponse {
 }
 
 // ─────────────────────────────────────────────
+// Web simulator (Godot) session types
+// ─────────────────────────────────────────────
+
+export interface SimDrone {
+  droneId: string
+  vehicleType: string
+  label: string          // "Quadcopter 1", "Rover 1", …
+  conversationId: string
+}
+
+export interface SimSession {
+  sessionId: string
+  wsUrl: string          // wss://sim.astral.us/stream?session=…
+  drones: SimDrone[]
+}
+
+// ─────────────────────────────────────────────
 // Auth session types
 // ─────────────────────────────────────────────
 
