@@ -6,30 +6,17 @@ const footerLinks = {
     { name: "M1-A Quadcopter", href: "/products/m1a" },
     { name: "M1-G Ground Rover", href: "/products/m1g" },
     { name: "Compare", href: "/compare" },
-    { name: "Accessories", href: "/products/accessories" },
-  ],
-  Solutions: [
-    { name: "Defense", href: "/solutions/defense" },
-    { name: "Agriculture", href: "/solutions/agriculture" },
-    { name: "Infrastructure", href: "/solutions/infrastructure" },
-    { name: "Public Safety", href: "/solutions/public-safety" },
+    { name: "Pricing", href: "/pricing" },
   ],
   Developers: [
     { name: "Documentation", href: "/docs" },
-    { name: "API Reference", href: "/docs/api" },
-    { name: "SDK", href: "/docs/sdk" },
     { name: "Run in Simulation", href: "/docs/simulation" },
-  ],
-  Company: [
-    { name: "About", href: "/company" },
+    { name: "Research", href: "/research" },
     { name: "Blog", href: "/blog" },
-    { name: "Careers", href: "/careers" },
-    { name: "Contact", href: "/contact" },
   ],
   Legal: [
     { name: "Privacy Policy", href: "/privacy" },
     { name: "Terms of Service", href: "/terms" },
-    { name: "Cookie Policy", href: "/cookies" },
   ],
 };
 
