@@ -32,6 +32,11 @@ var _scene_root: Node3D = null
 # Active environment name — drives spawn layout and camera framing.
 var _env_name: String = "office"
 
+# Currently-loaded environment node (so load_env can swap it at runtime).
+var _env_node: Node = null
+# Main-scene vantage camera (re-created on env swap).
+var _main_cam: Camera3D = null
+
 
 # ------------------------------------------------------------------
 # Internal state record
@@ -137,6 +142,7 @@ func _add_main_vantage() -> void:
 		main_cam.look_at(mc_look, Vector3.UP)
 	main_cam.current = true
 	_scene_root.add_child(main_cam)
+	_main_cam = main_cam
 
 
 # ------------------------------------------------------------------
@@ -160,6 +166,7 @@ func _load_environment(env_name: String) -> void:
 	var env_scene: PackedScene = load(path)
 	var env_node := env_scene.instantiate()
 	_scene_root.add_child(env_node)
+	_env_node = env_node
 
 
 func _add_default_ground() -> void:
@@ -170,6 +177,7 @@ func _add_default_ground() -> void:
 	mat.albedo_color = Color(0.3, 0.3, 0.3)
 	gm.material_override = mat
 	_scene_root.add_child(gm)
+	_env_node = gm
 
 
 # ------------------------------------------------------------------
@@ -365,6 +373,67 @@ func set_yaw(drone_id: String, yaw_rad: float) -> void:
 	if st == null:
 		return
 	st.goal_yaw = yaw_rad
+
+
+# ------------------------------------------------------------------
+# Runtime reconfigure (hot session start without relaunching Godot)
+# ------------------------------------------------------------------
+# Add one vehicle at an explicit ENU position. No-op if it already exists.
+func spawn(drone_id: String, vtype: String, pos_enu: Vector3) -> void:
+	if drone_id in _vehicles:
+		return
+	if _scene_root == null:
+		push_error("[FleetManager] spawn before scene ready")
+		return
+	_spawn_vehicle(drone_id, vtype, pos_enu, false)
+
+
+# Add one vehicle, auto-placing it using the per-environment layout.
+func spawn_auto(drone_id: String, vtype: String) -> void:
+	if drone_id in _vehicles:
+		return
+	var idx := _vehicles.size()
+	spawn(drone_id, vtype, _spawn_pos(vtype, idx, idx + 1))
+
+
+# Remove one vehicle and free its node + SubViewport/camera.
+func despawn(drone_id: String) -> void:
+	var st: VehicleState = _vehicles.get(drone_id)
+	if st == null:
+		return
+	if is_instance_valid(st.node):
+		st.node.queue_free()  # frees child SubViewport + camera too
+	_vehicles.erase(drone_id)
+	print("[FleetManager] despawned %s" % drone_id)
+
+
+# Swap the environment scene at runtime. Clears vantages (env-specific framing)
+# so a subsequent auto_overhead/add_vantage recomputes them. Does NOT touch
+# vehicles — the caller manages vehicle lifecycle (despawn before/after).
+func load_env(env_name: String) -> void:
+	if _scene_root == null:
+		return
+	if env_name == _env_name and _env_node != null:
+		return
+	# Free the old environment + main vantage cam.
+	if is_instance_valid(_env_node):
+		_env_node.queue_free()
+		_env_node = null
+	if is_instance_valid(_main_cam):
+		_main_cam.queue_free()
+		_main_cam = null
+	# Free all vantage cameras (positions are env-specific).
+	for name in _vantages.keys():
+		var v: Dictionary = _vantages[name]
+		var holder = v.get("node")
+		if is_instance_valid(holder):
+			holder.queue_free()
+	_vantages.clear()
+	# Load the new environment.
+	_env_name = env_name
+	_load_environment(env_name)
+	_add_main_vantage()
+	print("[FleetManager] env swapped -> %s" % env_name)
 
 
 func grab_frame_jpeg(drone_id: String) -> Variant:

@@ -15,6 +15,7 @@ import type {
   WifiNetwork,
   BatteryConfig,
   VideoViewerResponse,
+  SimSession,
 } from "./types"
 
 // ─── Internal fetch wrapper ───────────────────
@@ -215,4 +216,48 @@ export async function startVideoStream(droneId: string): Promise<void> {
 
 export async function attachIotPolicy(): Promise<void> {
   await apiFetch("/auth/iot-policy", { method: "POST" })
+}
+
+// ─── Web simulator (Godot) ────────────────────
+
+// Fire-and-forget: start the on-demand EC2 sim host while the user configures,
+// so Launch is fast. Safe to call repeatedly (idempotent on the backend).
+export async function simPrewarm(): Promise<void> {
+  try {
+    await apiFetch("/sim/prewarm", { method: "POST", body: JSON.stringify({}) })
+  } catch {
+    // Best-effort warm-up; the real start happens in simStartSession.
+  }
+}
+
+// Start a session. The host may still be cold-booting, in which case the
+// backend returns 503 — we poll until it's ready (pre-warm usually avoids this).
+export async function simStartSession(
+  fleet: { quadcopter: number; rover: number },
+  env: string,
+  signal?: AbortSignal
+): Promise<SimSession> {
+  const deadline = Date.now() + 150_000
+  for (;;) {
+    if (signal?.aborted) throw new ApiError(499, "aborted")
+    try {
+      return await apiFetch<SimSession>("/sim/session", {
+        method: "POST",
+        body: JSON.stringify({ fleet, env }),
+      })
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 503 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3000))
+        continue
+      }
+      throw e
+    }
+  }
+}
+
+export async function simEndSession(sessionId: string): Promise<void> {
+  await apiFetch(`/sim/session/${sessionId}/end`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
 }

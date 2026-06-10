@@ -86,3 +86,17 @@ class EngineClient:
         r = self._call({"op": "grab_vantage", "name": name})
         j = r.get("jpg")
         return base64.b64decode(j) if j else None
+
+    # -- runtime reconfigure (hot session start without relaunching Godot) ------
+    def spawn(self, did, vtype, position=None):
+        req = {"op": "spawn", "id": did, "vtype": vtype}
+        if position is not None:
+            req["p"] = list(position)
+        self._call(req)
+
+    def despawn(self, did):
+        self._call({"op": "despawn", "id": did})
+
+    def load_env(self, env: str) -> str:
+        r = self._call({"op": "load_env", "env": env})
+        return r.get("env", env)

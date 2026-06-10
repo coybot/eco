@@ -60,10 +60,13 @@ def _find_godot(hint: str | None) -> str:
 
 
 def _build_godot_args(godot_bin: str, fleet: str, env_name: str,
-                      tcp_port: int, headless: bool) -> list[str]:
+                      tcp_port: int, headless: bool,
+                      rendering_driver: str | None = None) -> list[str]:
     args = [godot_bin, "--path", str(GODOT_PROJECT)]
     if headless:
         args += ["--headless"]
+    if rendering_driver:
+        args += ["--rendering-driver", rendering_driver]
     # Pass fleet/env/port as scene-agnostic launch args (parsed by autoload).
     args += [
         "--",
@@ -134,6 +137,8 @@ def main():
                     help="Path to godot4 binary (overrides GODOT_BIN and PATH)")
     ap.add_argument("--gui", action="store_true",
                     help="Show Godot window (not headless; useful for dev)")
+    ap.add_argument("--rendering-driver", default=None,
+                    help="Force a Godot rendering driver (e.g. opengl3 for CPU instances)")
     ap.add_argument("--photoreal", action="store_true",
                     help="Pass --photoreal to Godot scene (higher quality assets)")
     args = ap.parse_args()
@@ -145,9 +150,10 @@ def main():
         fleet_arg += ":photoreal"  # Godot scene reads this suffix
 
     print(f"[godot-engine] fleet={args.fleet} env={args.env} "
-          f"godot={godot_bin} headless={headless}", flush=True)
+          f"godot={godot_bin} headless={headless} driver={args.rendering_driver}", flush=True)
 
-    cmd = _build_godot_args(godot_bin, fleet_arg, args.env, args.tcp_port, headless)
+    cmd = _build_godot_args(godot_bin, fleet_arg, args.env, args.tcp_port, headless,
+                            rendering_driver=args.rendering_driver)
     print(f"[godot-engine] launching: {' '.join(cmd)}", flush=True)
 
     proc = subprocess.Popen(
