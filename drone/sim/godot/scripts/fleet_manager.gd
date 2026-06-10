@@ -116,6 +116,13 @@ func _spawn_pos(vtype: String, i: int, n: int) -> Vector3:
 		var gy: float = 28.0
 		var gz: float = 0.0 if vtype == "rover" else 8.0
 		return Vector3(gx, gy, gz)
+	elif _env_name in ["city", "outdoor", "neighbourhood"]:
+		# Kenney city: 1m grid cells, map centred near origin, streets at y=0.
+		# Spawn above a clear road segment, spaced 6m apart in x.
+		var gx: float = (float(i) - float(n - 1) * 0.5) * 6.0
+		var gy: float = 5.0   # ENU north — roughly over a road
+		var gz: float = 0.0 if vtype == "rover" else 10.0
+		return Vector3(gx, gy, gz)
 	else:
 		# Office: glass facade center x=3. Spawn ENU y=150, 8m apart, quads at 15m altitude.
 		var gx: float = 3.0 + (float(i) - float(n - 1) * 0.5) * 8.0
@@ -135,6 +142,11 @@ func _add_main_vantage() -> void:
 		var mc_look := Vector3(0.0, 0.0, -13.0)    # ENU(0,13,0)
 		main_cam.position = mc_pos
 		main_cam.look_at(mc_look, Vector3.UP)
+	elif _env_name in ["city", "outdoor", "neighbourhood"]:
+		# Kenney city: angled overhead looking at street centre.
+		# ENU cam at (0, -25, 35) → Godot (0, 35, 25); look at origin.
+		main_cam.position = Vector3(0.0, 35.0, 25.0)
+		main_cam.look_at(Vector3.ZERO, Vector3.UP)
 	else:
 		var mc_pos := Vector3(-12.0, 50.0, -220.0)
 		var mc_look := Vector3(-12.0, 0.0, -3.0)
@@ -312,6 +324,13 @@ func _cam_params(vtype: String) -> Array:
 		else:
 			# Ground rover, chairs ahead at near-eye level — slight down tilt.
 			return [Vector3(0.0, 1.0, 0.5), -3.0]
+	elif _env_name in ["city", "outdoor", "neighbourhood"]:
+		if vtype == "quadcopter":
+			# 10m altitude — slight nose-down to frame the street below.
+			return [Vector3(0.0, 0.0, 0.5), -15.0]
+		else:
+			# Ground rover — forward-looking from ~1m height.
+			return [Vector3(0.0, 1.0, 0.5), 0.0]
 	else:
 		# Office
 		if vtype == "quadcopter":
@@ -483,6 +502,10 @@ func add_vantage(name: String, pos_enu: Vector3, look_enu: Vector3) -> void:
 func auto_overhead(name: String = "overhead") -> void:
 	if name in _vantages:
 		return
+	if _env_name in ["city", "outdoor", "neighbourhood"]:
+		# Angled overhead looking into the street grid from above.
+		add_vantage(name, Vector3(0.0, -25.0, 40.0), Vector3.ZERO)
+		return
 	if _vehicles.is_empty():
 		add_vantage(name, Vector3(0.0, 0.0, 60.0), Vector3.ZERO)
 		return
@@ -493,10 +516,7 @@ func auto_overhead(name: String = "overhead") -> void:
 	for p in pts:
 		center += p
 	center /= float(pts.size())
-	# Vantage: pull back in ENU-y (Godot +z) and up to get building + drones in frame.
-	# Building lobby center in ENU: x~=-12, y=0, z=0 (Godot: -12, 0, 0)
-	# Building spans ENU y=-103 to 109, center ~y=3. Lobby faces ENU +Y.
-	# Place vantage at ENU (0, 320, 120) — far in front at altitude — looking at building center.
+	# Office/default: pull back to frame the building facade.
 	var building_center := Vector3(-12.0, 3.0, 0.0)  # ENU (building centroid)
 	var cam_pos := Vector3(0.0, 320.0, 120.0)        # ENU: far in front, elevated
 	add_vantage(name, cam_pos, building_center)
