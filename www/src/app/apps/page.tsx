@@ -276,9 +276,7 @@ export default function AppsPage() {
                   <ChevronRight className="size-4" />
                 </Link>
                 <a
-                  href="https://support.astral.us"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="mailto:hello@astral.us"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-500/30 hover:border-amber-500 text-amber-500 text-sm font-medium transition-colors"
                 >
                   Contact Support
