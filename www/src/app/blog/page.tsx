@@ -5,6 +5,7 @@ import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { blogPosts } from "@/lib/blog-data";
 
 export const metadata: Metadata = {
   title: "Blog",
@@ -12,72 +13,29 @@ export const metadata: Metadata = {
     "Stay informed with the latest news, updates, and industry insights from Astral.",
 };
 
-// Sample blog posts (would come from Sanity CMS in production)
-const blogPosts = [
-  {
-    slug: "top-defense-use-cases-of-autonomous-drones-in-2025",
-    title: "Top Defense Use Cases of Autonomous Drones in 2025",
-    excerpt:
-      "How AI-Driven, NDAA-Compliant Aircraft Are Reshaping Modern Military Capability. On Jun 1, 2025 Ukraine launched a drone attack on a Russian military base...",
-    date: "December 10, 2025",
-    category: "Defense",
-    readTime: "8 min read",
-  },
-  {
-    slug: "ndaa-compliant-drones-explained",
-    title: "NDAA-Compliant Drones Explained: What Operators Need to Know",
-    excerpt:
-      "Trusted Hardware for Trusted Autonomy. As AI-powered drones move into critical infrastructure, public safety, and defense-adjacent missions...",
-    date: "November 25, 2025",
-    category: "Compliance",
-    readTime: "6 min read",
-  },
-  {
-    slug: "how-autonomous-drones-work",
-    title: "How Autonomous Drones Work: AI, Sensors, and Fleet Management",
-    excerpt:
-      "Learn how autonomous drones use AI, sensors, and fleet management systems to navigate, avoid obstacles, and perform complex missions.",
-    date: "November 6, 2025",
-    category: "Technology",
-    readTime: "10 min read",
-  },
-  {
-    slug: "introducing-mothership-jetson-orin",
-    title: "Introducing M1-A and M1-G: Powered by NVIDIA Jetson Orin Nano",
-    excerpt:
-      "We're excited to announce the M1-A quadcopter and M1-G rover, our autonomous platforms featuring the NVIDIA Jetson Orin Nano with 67 TOPS of AI performance.",
-    date: "October 15, 2025",
-    category: "Product",
-    readTime: "5 min read",
-  },
-  {
-    slug: "agricultural-drone-automation-guide",
-    title: "The Complete Guide to Agricultural Drone Automation",
-    excerpt:
-      "From crop monitoring to precision spraying, discover how autonomous drones are transforming modern agriculture and increasing yields.",
-    date: "September 28, 2025",
-    category: "Agriculture",
-    readTime: "12 min read",
-  },
-  {
-    slug: "building-with-astral-sdk",
-    title: "Building Your First App with the Astral SDK",
-    excerpt:
-      "A step-by-step tutorial on creating custom autonomous drone applications using our open source SDK and APIs.",
-    date: "September 10, 2025",
-    category: "Developer",
-    readTime: "15 min read",
-  },
-];
+// Map blog-data entries to the shape this page uses
+const posts = blogPosts.map((p) => ({
+  slug: p.slug,
+  title: p.title,
+  excerpt: p.description,
+  date: p.date,
+  category: p.category,
+  readTime: p.readTime,
+}));
 
 const categories = [
   "All",
+  "Research",
+  "Security",
+  "Operations",
   "Defense",
   "Technology",
   "Product",
   "Compliance",
   "Agriculture",
   "Developer",
+  "Guide",
+  "Dataset",
 ];
 
 export default function BlogPage() {
@@ -120,7 +78,7 @@ export default function BlogPage() {
         <section className="py-16 bg-background">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {blogPosts.map((post) => (
+              {posts.map((post) => (
                 <Link key={post.slug} href={`/blog/${post.slug}`}>
                   <Card className="h-full bg-card border-border hover:border-amber-500/50 transition-all group cursor-pointer">
                     {/* Image Placeholder */}
