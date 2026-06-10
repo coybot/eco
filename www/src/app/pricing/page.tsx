@@ -180,7 +180,7 @@ export default function PricingPage() {
                 ))}
               </div>
               <p className="text-center text-sm text-muted-foreground mt-6">
-                Hardware coming soon. Contact sales for early access.
+                Volume and government pricing available. <Link href="/enterprise" className="text-amber-500 hover:underline">Contact us.</Link>
               </p>
             </div>
           </div>

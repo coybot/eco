@@ -343,6 +343,7 @@ def make_app(host: SimHost) -> web.Application:
         async def _feed(proc: asyncio.subprocess.Process, cam: str) -> None:
             period = 1.0 / FRAME_FPS
             while not ws.closed:
+                t0 = time.time()
                 jpg = await loop.run_in_executor(None, host.grab, cam)
                 if jpg and proc.stdin and not proc.stdin.is_closing():
                     try:
@@ -351,7 +352,10 @@ def make_app(host: SimHost) -> web.Application:
                     except Exception:
                         break
                 host._last_viewer_ts = time.time()
-                await asyncio.sleep(period)
+                elapsed = time.time() - t0
+                sleep_left = period - elapsed
+                if sleep_left > 0:
+                    await asyncio.sleep(sleep_left)
 
         async def _send(proc: asyncio.subprocess.Process) -> None:
             while not ws.closed:

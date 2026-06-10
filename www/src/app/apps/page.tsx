@@ -134,12 +134,10 @@ export default function AppsPage() {
 
                   {/* CTA */}
                   <a
-                    href="https://apps.apple.com/app/astral-operator/id0000000000"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href="/enterprise"
                     className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black text-sm font-medium transition-colors duration-200"
                   >
-                    Get from App Store
+                    Request Access
                     <ChevronRight className="size-4" />
                   </a>
                 </div>
@@ -186,12 +184,10 @@ export default function AppsPage() {
 
                   {/* CTA */}
                   <a
-                    href="https://play.google.com/store/apps/details?id=com.astral.operator"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href="/enterprise"
                     className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black text-sm font-medium transition-colors duration-200"
                   >
-                    Get from Play Store
+                    Request Access
                     <ChevronRight className="size-4" />
                   </a>
                 </div>

@@ -2,7 +2,6 @@ import { Metadata } from "next";
 import Link from "next/link";
 import { Calendar, ArrowRight } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { blogPosts } from "@/lib/blog-data";
 
@@ -80,26 +79,7 @@ export default function BlogPage() {
           </div>
         </section>
 
-        {/* Newsletter CTA */}
-        <section className="py-16 bg-card">
-          <div className="container mx-auto px-4">
-            <div className="max-w-xl mx-auto text-center">
-              <h2 className="text-2xl font-bold mb-4">Stay Updated</h2>
-              <p className="text-muted-foreground mb-6">
-                Subscribe to our newsletter for the latest updates on autonomous
-                drone technology.
-              </p>
-              <form className="flex gap-2 max-w-md mx-auto">
-                <input
-                  type="email"
-                  placeholder="Enter your email"
-                  className="flex-1 h-10 px-4 rounded-md border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <Button type="submit">Subscribe</Button>
-              </form>
-            </div>
-          </div>
-        </section>
+
       </main>
       <Footer />
     </div>
