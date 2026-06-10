@@ -75,6 +75,30 @@ const papers: Array<{
       "Adds Gemma 4 to the same Isaac Sim closed-loop benchmark and compares end-to-end goal prediction against modular deployment of the same weights as a semantic target selector, illustrating the leverage of the separation principle.",
     links: [{ label: "Metric gap (context)", href: "/blog/metric-gap-vision-language-drone-navigation" }],
   },
+  {
+    id: "counter-uas",
+    title:
+      "Counter-UAS Attack and Defense Characterization in Autonomous Drone Swarms: A Kinematic Simulation Study",
+    venue: "Technical report",
+    summary:
+      "11,340 seeded trials across four attack classes (GNSS spoofing, RF jamming, kinetic interception, control takeover) and six matched defenses in a four-drone warehouse swarm. Central finding: mission success rate is the wrong primary metric for C-UAS — physical effects (79.5% PN capture rate, 5–8 m position error) are clearly measurable even when aggregate task completion is unaffected. A kinematic plausibility detector achieves 39.8% TP at 0% false-positive rate. Includes an explicit fidelity boundary analysis delineating what kinematic simulation can and cannot faithfully reproduce.",
+    links: [
+      { label: "Blog post", href: "/blog/counter-uas-drone-attack-defense-simulation" },
+      { label: "GitHub", href: SITE.githubOrg, external: true },
+    ],
+  },
+  {
+    id: "droneport-atc",
+    title:
+      "Droneport ATC Coordination: A Factorial Study of Authority, Communications, and Sensing in Urban Air Mobility",
+    venue: "Technical report",
+    summary:
+      "Nine-cell factorial study comparing tower vs. self-organized coordination, continuous vs. terminal-only communications, and four observation modalities (ADS-B, camera, both, none) across 405 simulated vertiport trials. Self-org with ADS-B matches tower throughput below ~20 ops/hour then degrades; silent-cruise drones exceed safe LoS thresholds at 12 ops/hour. Characterizes the throughput–safety Pareto frontier and broadcast necessity threshold for UAM droneport designs.",
+    links: [
+      { label: "Blog post", href: "/blog/droneport-atc-tower-vs-selforg" },
+      { label: "GitHub", href: SITE.githubOrg, external: true },
+    ],
+  },
 ];
 
 export default function ResearchPage() {
