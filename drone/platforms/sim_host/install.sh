@@ -31,15 +31,17 @@ SERVICE_USER="ubuntu"
 POOL="quad:5,rover:5"
 NO_REGISTER=""
 SIM_SECRET=""
+RENDERING_DRIVER=""
 CADDY_DOMAIN="${CADDY_DOMAIN:-}"
 GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot-builds/releases/download/4.4-stable/Godot_v4.4-stable_linux.x86_64.zip}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --no-register) NO_REGISTER="--no-register"; shift ;;
-        --pool)        POOL="$2"; shift 2 ;;
-        --godot-url)   GODOT_URL="$2"; shift 2 ;;
-        --sim-secret)  SIM_SECRET="$2"; shift 2 ;;
+        --no-register)      NO_REGISTER="--no-register"; shift ;;
+        --pool)             POOL="$2"; shift 2 ;;
+        --godot-url)        GODOT_URL="$2"; shift 2 ;;
+        --sim-secret)       SIM_SECRET="$2"; shift 2 ;;
+        --rendering-driver) RENDERING_DRIVER="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -128,12 +130,14 @@ EXEC_CMD="$EXEC_CMD --default-env office"
 EXEC_CMD="$EXEC_CMD --xvfb"
 EXEC_CMD="$EXEC_CMD --godot $INSTALL_DIR/godot4"
 EXEC_CMD="$EXEC_CMD --python $VENV/bin/python"
-[[ -n "$NO_REGISTER" ]] && EXEC_CMD="$EXEC_CMD $NO_REGISTER"
+[[ -n "$NO_REGISTER" ]]      && EXEC_CMD="$EXEC_CMD $NO_REGISTER"
+[[ -n "$RENDERING_DRIVER" ]] && EXEC_CMD="$EXEC_CMD --rendering-driver $RENDERING_DRIVER"
 
 # Env block
 ENV_BLOCK="Environment=SIM_IDLE_TIMEOUT=120"
 ENV_BLOCK="$ENV_BLOCK\nEnvironment=SIM_MAX_LIFETIME=1200"
 ENV_BLOCK="$ENV_BLOCK\nEnvironment=SIM_SELF_STOP=1"
+ENV_BLOCK="$ENV_BLOCK\nEnvironment=VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json"
 [[ -n "$SIM_SECRET" ]] && ENV_BLOCK="$ENV_BLOCK\nEnvironment=SIM_SHARED_SECRET=$SIM_SECRET"
 
 sudo tee /etc/systemd/system/sim-host.service > /dev/null << EOF
@@ -153,6 +157,9 @@ StandardOutput=journal
 StandardError=journal
 # Give Godot + Xvfb time to come up (up to 3 min before systemd gives up)
 TimeoutStartSec=180
+# Fast shutdown: SIGTERM → wait 10s → SIGKILL (Godot/Xvfb hold X11 resources)
+TimeoutStopSec=10
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target

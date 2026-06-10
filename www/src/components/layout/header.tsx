@@ -33,29 +33,6 @@ const products = [
   },
 ];
 
-const solutions = [
-  {
-    title: "Defense",
-    href: "/solutions/defense",
-    description: "NDAA-compliant autonomous systems for military applications.",
-  },
-  {
-    title: "Agriculture",
-    href: "/solutions/agriculture",
-    description: "Precision farming and crop monitoring at scale.",
-  },
-  {
-    title: "Infrastructure",
-    href: "/solutions/infrastructure",
-    description: "Asset inspection and monitoring for critical infrastructure.",
-  },
-  {
-    title: "Public Safety",
-    href: "/solutions/public-safety",
-    description: "Search and rescue, emergency response, and surveillance.",
-  },
-];
-
 const developers = [
   {
     title: "Documentation",
@@ -63,14 +40,14 @@ const developers = [
     description: "Comprehensive guides and API reference.",
   },
   {
-    title: "SDK & APIs",
-    href: "/docs/sdk",
-    description: "Build custom applications with our SDK.",
-  },
-  {
     title: "Run in Simulation",
     href: "/docs/simulation",
     description: "Try the autonomy stack in Isaac Sim before hardware.",
+  },
+  {
+    title: "Research",
+    href: "/research",
+    description: "Papers and technical reports from the Astral team.",
   },
 ];
 
@@ -105,25 +82,6 @@ export function Header() {
                       href={product.href}
                     >
                       {product.description}
-                    </ListItem>
-                  ))}
-                </ul>
-              </NavigationMenuContent>
-            </NavigationMenuItem>
-
-            <NavigationMenuItem>
-              <NavigationMenuTrigger className="bg-transparent">
-                Solutions
-              </NavigationMenuTrigger>
-              <NavigationMenuContent>
-                <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2">
-                  {solutions.map((solution) => (
-                    <ListItem
-                      key={solution.title}
-                      title={solution.title}
-                      href={solution.href}
-                    >
-                      {solution.description}
                     </ListItem>
                   ))}
                 </ul>
@@ -180,7 +138,6 @@ export function Header() {
             <SheetContent side="right" className="w-[300px] sm:w-[400px]">
               <nav className="flex flex-col space-y-4 mt-8">
                 <MobileNavSection title="Products" items={products} onClose={() => setMobileOpen(false)} />
-                <MobileNavSection title="Solutions" items={solutions} onClose={() => setMobileOpen(false)} />
                 <MobileNavSection title="Developers" items={developers} onClose={() => setMobileOpen(false)} />
                 <Link
                   href="/blog"

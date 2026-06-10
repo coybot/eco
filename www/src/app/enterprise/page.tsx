@@ -60,11 +60,12 @@ export default function EnterprisePage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // TODO: Send to HubSpot or your CRM
-    // For now, just simulate a submission
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    console.log("Enterprise lead:", formData);
+    const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+    const params = new URLSearchParams({
+      subject: `Enterprise inquiry from ${fullName} at ${formData.company}`,
+      body: `Name: ${fullName}\nCompany: ${formData.company}\nEmail: ${formData.email}\nFleet size: ${formData.fleetSize}\nUse case: ${formData.useCase}\nMessage: ${formData.message}`,
+    });
+    window.open(`mailto:hello@astral.us?${params}`);
     setIsSubmitted(true);
     setIsSubmitting(false);
   };
