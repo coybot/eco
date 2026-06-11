@@ -83,10 +83,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
             <div className="grid lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
               {/* Product Image */}
               <div className="space-y-4">
-                <div className="aspect-square bg-background rounded-lg flex items-center justify-center border border-border">
-                  <div className="text-6xl font-bold text-muted-foreground/20">
-                    {product.name}
-                  </div>
+                <div className="aspect-square bg-background rounded-lg overflow-hidden border border-border">
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 {/* Thumbnail strip placeholder */}
                 <div className="flex gap-2">
