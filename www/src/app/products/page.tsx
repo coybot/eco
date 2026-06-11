@@ -53,11 +53,12 @@ export default function ProductsPage() {
                       </span>
                     </div>
 
-                    {/* Product Image Placeholder */}
-                    <div className="aspect-video bg-secondary/50 rounded-lg flex items-center justify-center overflow-hidden">
-                      <div className="text-4xl font-bold text-muted-foreground/30">
-                        {product.name}
-                      </div>
+                    <div className="aspect-video bg-secondary/50 rounded-lg overflow-hidden">
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   </CardHeader>
 
