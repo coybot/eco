@@ -25,7 +25,7 @@ export const products: Product[] = [
     description:
       "The M1-A is our autonomous quadcopter platform, powered by the NVIDIA Jetson Orin Nano. Built for missions where GPS and communications may be unavailable, it operates seamlessly indoors and outdoors with full on-device intelligence for truly autonomous operations.",
     price: 5299,
-    image: "/m1a.png",
+    image: "/quadcopter.jpg",
     badge: "Quadcopter",
     specs: [
       { label: "Processor", value: "Jetson Orin Nano 8GB", category: "Compute" },
@@ -69,7 +69,7 @@ export const products: Product[] = [
     description:
       "The M1-G is our autonomous ground rover, powered by the same NVIDIA Jetson Orin Nano stack as the M1-A. Built for persistent perimeter and facility missions with heavier payloads, quieter operation, and all-weather mobility.",
     price: 7499,
-    image: "/m1g.png",
+    image: "/rover.jpg",
     badge: "Rover",
     specs: [
       { label: "Processor", value: "Jetson Orin Nano 8GB", category: "Compute" },
