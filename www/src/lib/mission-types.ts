@@ -3,9 +3,9 @@ export type EnvironmentType = 'city' | 'apartment';
 export type ActionType = 'move' | 'scan' | 'hover' | 'inspect' | 'rendezvous' | 'report';
 
 export interface Vehicle {
-  id: string;       // e.g. "qd-01", "rv-01"
+  id: string;       // e.g. "qc-01", "rv-01"
   type: VehicleType;
-  label: string;    // e.g. "QD-01", "RV-01"
+  label: string;    // e.g. "QC-01", "RV-01"
 }
 
 export interface Waypoint {
@@ -27,6 +27,7 @@ export interface MissionPlan {
   targetCount: number;
   reportLines: string[];
   missionSummary: string;
+  planVersion?: number; // incremented client-side each time fly() is called — forces Fleet state reset
 }
 
 // ENV_CONFIG drives camera, spawn positions, and coord bounds per environment

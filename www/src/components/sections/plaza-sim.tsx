@@ -118,6 +118,7 @@ export function PlazaSimSection() {
   const msgIdRef = useRef(0);
   const pipCanvasRef = useRef<HTMLCanvasElement>(null);
   const prevMissionCompleteRef = useRef(false);
+  const planVersionRef = useRef(0);
 
   useEffect(() => { planRef.current = plan; }, [plan]);
 
@@ -194,6 +195,7 @@ export function PlazaSimSection() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const newPlan: MissionPlan = await res.json();
+      newPlan.planVersion = ++planVersionRef.current;
       setPlan(newPlan);
       const labels: Record<string, string> = {};
       newPlan.vehicles.forEach((v) => { labels[v.id] = "standby"; });
