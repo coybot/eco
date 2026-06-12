@@ -424,6 +424,7 @@ export function PlazaSimSection() {
                 plan={plan}
                 onTargetDetected={onTargetDetected}
                 onWaypointLabel={onWaypointLabel}
+                missionActive={missionSent && !missionComplete}
                 selectedVehicleId={selectedVehicleId}
                 pipCanvasRef={pipCanvasRef}
               />
