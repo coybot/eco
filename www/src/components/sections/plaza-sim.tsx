@@ -116,6 +116,8 @@ export function PlazaSimSection() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const planRef = useRef<MissionPlan | null>(null);
   const msgIdRef = useRef(0);
+  const pipCanvasRef = useRef<HTMLCanvasElement>(null);
+  const prevMissionCompleteRef = useRef(false);
 
   useEffect(() => { planRef.current = plan; }, [plan]);
 
@@ -179,6 +181,7 @@ export function PlazaSimSection() {
     setMissionSent(true);
     setSelectedVehicleId(null);
     msgIdRef.current = 0;
+    prevMissionCompleteRef.current = false;
     setMessages([
       { id: `msg-${++msgIdRef.current}`, sender: "user", label: "You", text: text || "Search the area and report" },
       { id: `msg-${++msgIdRef.current}`, sender: "dispatch", label: "Central Dispatch", text: "Analyzing environment, assembling fleet…" },
@@ -227,6 +230,23 @@ export function PlazaSimSection() {
     if (!missionSent || vehicles.length === 0) return false;
     return vehicles.every((v) => (vehicleLabels[v.id] ?? "") === "mission ✓");
   }, [missionSent, vehicles, vehicleLabels]);
+
+  // Dispatch final count message when all units reach mission ✓
+  useEffect(() => {
+    if (missionComplete && !prevMissionCompleteRef.current && missionSent) {
+      prevMissionCompleteRef.current = true;
+      const n = planRef.current?.targetCount ?? 0;
+      const t = planRef.current?.targetType ?? 'object';
+      const text = n > 0
+        ? `Mission complete — ${n} ${t}${n !== 1 ? 's' : ''} identified`
+        : 'Mission complete — all units returned to base';
+      setMessages((prev) => [
+        ...prev,
+        { id: `msg-${++msgIdRef.current}`, sender: 'dispatch', label: 'Central Dispatch', text },
+      ]);
+    }
+    if (!missionComplete) prevMissionCompleteRef.current = false;
+  }, [missionComplete, missionSent]);
 
   // Progress: targets found, or report line progression
   const missionProgress = useMemo(() => {
@@ -404,6 +424,8 @@ export function PlazaSimSection() {
                 plan={plan}
                 onTargetDetected={onTargetDetected}
                 onWaypointLabel={onWaypointLabel}
+                selectedVehicleId={selectedVehicleId}
+                pipCanvasRef={pipCanvasRef}
               />
             )}
 
@@ -424,11 +446,14 @@ export function PlazaSimSection() {
 
             {/* PiP for selected vehicle */}
             {selectedVehicle && (
-              <div className="absolute bottom-3 right-3 w-44 rounded-xl overflow-hidden border border-white/20 bg-black/90 shadow-2xl z-10">
-                <div className="flex items-center justify-between px-2.5 pt-2 pb-1.5 border-b border-white/10">
-                  <span className="text-[10px] text-white/70 font-mono font-medium truncate">
-                    {selectedVehicle.label}
-                  </span>
+              <div className="absolute bottom-3 right-3 w-48 rounded-xl overflow-hidden border border-white/20 bg-black shadow-2xl z-10">
+                <div className="flex items-center justify-between px-2.5 pt-1.5 pb-1.5 border-b border-white/10">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-[10px] text-white/70 font-mono font-medium truncate">
+                      {selectedVehicle.label} · CAM
+                    </span>
+                  </div>
                   <button
                     onClick={() => setSelectedVehicleId(null)}
                     className="text-white/40 hover:text-white/80 transition-colors ml-2 shrink-0"
@@ -438,10 +463,30 @@ export function PlazaSimSection() {
                     </svg>
                   </button>
                 </div>
-                <div className="h-20 bg-[#050d18] flex flex-col items-center justify-center gap-1.5 px-3">
-                  <div className="text-[9px] text-white/25 font-mono uppercase tracking-widest">cam</div>
-                  <div className={`text-[11px] font-mono text-center ${statusColor(vehicleLabels[selectedVehicle.id] ?? "standby")}`}>
-                    {vehicleLabels[selectedVehicle.id] ?? "standby"}
+                <div className="relative bg-[#050d18]">
+                  <canvas
+                    ref={pipCanvasRef}
+                    width={192}
+                    height={108}
+                    className="w-full block"
+                  />
+                  {/* HUD overlay */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    {/* Scan lines */}
+                    <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_3px,rgba(0,0,0,0.07)_3px,rgba(0,0,0,0.07)_4px)]" />
+                    {/* Corner brackets */}
+                    <div className="absolute inset-2">
+                      <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-amber-400/50" />
+                      <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-amber-400/50" />
+                      <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-amber-400/50" />
+                      <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-amber-400/50" />
+                    </div>
+                    {/* Status label */}
+                    <div className="absolute bottom-1.5 left-0 right-0 flex justify-center">
+                      <span className={`text-[9px] font-mono uppercase tracking-wider ${statusColor(vehicleLabels[selectedVehicle.id] ?? "standby")}`}>
+                        {vehicleLabels[selectedVehicle.id] ?? "standby"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -493,9 +538,6 @@ export function PlazaSimSection() {
                     <div className={`text-[10px] mt-0.5 ${statusColor(status)}`}>
                       ▸ {status}
                     </div>
-                    {isSelected && (
-                      <div className="text-[9px] text-amber-400/60 mt-0.5">PiP active</div>
-                    )}
                   </button>
                 );
               })
