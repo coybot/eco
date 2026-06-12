@@ -20,15 +20,15 @@ function makeSystemPrompt(env: EnvironmentType, nQuads: number, nRovers: number)
   const quadY = cfg.quadY;
   const roverY = cfg.roverY;
 
-  const quadIds = Array.from({ length: nQuads }, (_, i) => `qd-0${i + 1}`);
+  const quadIds = Array.from({ length: nQuads }, (_, i) => `qc-0${i + 1}`);
   const roverIds = Array.from({ length: nRovers }, (_, i) => `rv-0${i + 1}`);
   const allIds = [...quadIds, ...roverIds];
 
   return `You are a drone mission planner for a 3D simulation set in a ${env === 'city' ? 'modular city block with roads, buildings, and trees' : 'apartment floor plan with rooms, corridors, and furniture'}.
 
 Fleet (fixed — use exactly these vehicles, no more, no less):
-${quadIds.map(id => `- ${id.toUpperCase().replace('-0', '-')}: quadcopter`).join('\n')}
-${roverIds.map(id => `- ${id.toUpperCase().replace('-0', '-')}: rover`).join('\n')}
+${quadIds.map(id => `- ${id.toUpperCase()}: quadcopter`).join('\n')}
+${roverIds.map(id => `- ${id.toUpperCase()}: rover`).join('\n')}
 
 Coordinate bounds:
 - X: ${xMin} to ${xMax}
@@ -40,10 +40,10 @@ OUTPUT ONLY this exact JSON schema, no markdown, no explanation:
   "environment": "${env}",
   "missionTitle": "<5 words>",
   "vehicles": [
-    { "id": "qd-01", "type": "quadcopter", "label": "QD-01" }
+    { "id": "qc-01", "type": "quadcopter", "label": "QC-01" }
   ],
   "waypoints": [
-    { "vehicleId": "qd-01", "x": 0, "y": ${quadY}, "z": 0, "action": "scan", "duration": 3, "statusLabel": "scanning" }
+    { "vehicleId": "qc-01", "x": 0, "y": ${quadY}, "z": 0, "action": "scan", "duration": 3, "statusLabel": "scanning" }
   ],
   "targetType": "<what is being found/counted>",
   "targetCount": 0,
@@ -54,7 +54,7 @@ OUTPUT ONLY this exact JSON schema, no markdown, no explanation:
 Rules:
 - vehicles array must contain exactly: ${allIds.map(id => `"${id}"`).join(', ')}
 - type MUST be "quadcopter" or "rover" (not "quad")
-- label is "QD-01", "RV-01", etc.
+- label is "QC-01", "RV-01", etc.
 - waypoints is a FLAT top-level array — do NOT nest inside vehicles
 - each vehicle gets 3-5 waypoints spread across the coordinate space
 - for counting missions targetCount = 8-15, for rendezvous targetCount = 0
@@ -70,8 +70,8 @@ function buildDefaultPlan(env: EnvironmentType, nQuads: number, nRovers: number)
 
   const vehicles = [
     ...Array.from({ length: nQuads }, (_, i) => ({
-      id: `qd-0${i + 1}`, type: 'quadcopter' as const,
-      label: `QD-0${i + 1}`,
+      id: `qc-0${i + 1}`, type: 'quadcopter' as const,
+      label: `QC-0${i + 1}`,
     })),
     ...Array.from({ length: nRovers }, (_, i) => ({
       id: `rv-0${i + 1}`, type: 'rover' as const,
