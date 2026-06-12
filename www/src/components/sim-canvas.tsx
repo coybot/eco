@@ -27,15 +27,41 @@ export const DEFAULT_PLAN: MissionPlan = {
     { vehicleId: "qc-02", x:  8,  y: 8, z:  8, action: "move",    duration: 3, statusLabel: "deploying" },
     { vehicleId: "qc-02", x:  8,  y: 8, z: -4, action: "scan",    duration: 4, statusLabel: "scanning"  },
     { vehicleId: "qc-02", x:  2,  y: 8, z:-12, action: "hover",   duration: 3, statusLabel: "hovering"  },
-    { vehicleId: "rv-01", x:  2,  y: 0.3, z:  8, action: "move",   duration: 3, statusLabel: "advancing" },
-    { vehicleId: "rv-01", x:  2,  y: 0.3, z: -4, action: "inspect",duration: 5, statusLabel: "inspecting"},
-    { vehicleId: "rv-01", x:  2,  y: 0.3, z:-12, action: "report", duration: 2, statusLabel: "reporting" },
+    { vehicleId: "rv-01", x:  2,  y: 0.3, z:  8, action: "move",    duration: 3, statusLabel: "advancing" },
+    { vehicleId: "rv-01", x:  2,  y: 0.3, z: -4, action: "inspect", duration: 5, statusLabel: "inspecting"},
+    { vehicleId: "rv-01", x:  2,  y: 0.3, z:-12, action: "report",  duration: 2, statusLabel: "reporting" },
   ],
   targetType: "object",
   targetCount: 10,
   reportLines: ["Deploying fleet", "Scanning city block", "Mission complete"],
   missionSummary: "City survey complete.",
 };
+
+// ─── Scene lighting (lerps dim↔bright based on missionActive) ─────────────────
+
+function SceneLighting({ missionActive }: { missionActive: boolean }) {
+  const ambRef  = useRef<THREE.AmbientLight>(null);
+  const dir1Ref = useRef<THREE.DirectionalLight>(null);
+  const dir2Ref = useRef<THREE.DirectionalLight>(null);
+
+  useFrame((_, delta) => {
+    const t = Math.min(delta * 3, 1);
+    if (ambRef.current)
+      ambRef.current.intensity  = THREE.MathUtils.lerp(ambRef.current.intensity,  missionActive ? 0.18 : 2.0, t);
+    if (dir1Ref.current)
+      dir1Ref.current.intensity = THREE.MathUtils.lerp(dir1Ref.current.intensity, missionActive ? 0.25 : 2.5, t);
+    if (dir2Ref.current)
+      dir2Ref.current.intensity = THREE.MathUtils.lerp(dir2Ref.current.intensity, missionActive ? 0.10 : 1.2, t);
+  });
+
+  return (
+    <>
+      <ambientLight ref={ambRef} intensity={2} />
+      <directionalLight ref={dir1Ref} position={[20, 40, 20]} intensity={2.5} castShadow />
+      <directionalLight ref={dir2Ref} position={[-10, 20, -10]} intensity={1.2} />
+    </>
+  );
+}
 
 // ─── Environment GLB ──────────────────────────────────────────────────────────
 
@@ -46,39 +72,41 @@ function EnvModel({ path }: { path: string }) {
 
 // ─── Vehicle meshes ───────────────────────────────────────────────────────────
 
-function QuadMesh() {
+function QuadMesh({ glowing }: { glowing: boolean }) {
+  const emInt   = glowing ? 4.5 : 0.4;
+  const emColor = glowing ? "#ddeeff" : "#aaccff";
   return (
     <group>
       <mesh castShadow>
         <boxGeometry args={[0.7, 0.16, 0.7]} />
-        <meshStandardMaterial color="#e8edf4" emissive="#aaccff" emissiveIntensity={0.4} />
+        <meshStandardMaterial color="#e8edf4" emissive={emColor} emissiveIntensity={emInt} />
       </mesh>
       {[[-1,1],[-1,-1],[1,1],[1,-1]].map(([sx,sz], i) => (
         <mesh key={i} position={[sx * 0.28, 0, sz * 0.28]}>
           <boxGeometry args={[0.5, 0.04, 0.09]} />
-          <meshStandardMaterial color="#c0c8d8" />
+          <meshStandardMaterial color="#c0c8d8" emissive={emColor} emissiveIntensity={glowing ? 2.0 : 0} />
         </mesh>
       ))}
       {[[-1,1],[-1,-1],[1,1],[1,-1]].map(([sx,sz], i) => (
         <mesh key={i} position={[sx * 0.48, 0.03, sz * 0.48]}>
           <cylinderGeometry args={[0.2, 0.2, 0.02, 8]} />
-          <meshStandardMaterial color="#667788" transparent opacity={0.6} />
+          <meshStandardMaterial color="#667788" transparent opacity={0.6} emissive="#88aaff" emissiveIntensity={glowing ? 3.0 : 0} />
         </mesh>
       ))}
     </group>
   );
 }
 
-function RoverMesh() {
+function RoverMesh({ glowing }: { glowing: boolean }) {
   return (
     <group>
       <mesh castShadow>
         <boxGeometry args={[0.9, 0.4, 1.3]} />
-        <meshStandardMaterial color="#3a3f4a" />
+        <meshStandardMaterial color="#3a3f4a" emissive="#334488" emissiveIntensity={glowing ? 1.5 : 0} />
       </mesh>
       <mesh position={[0, 0.28, 0]}>
         <sphereGeometry args={[0.18, 12, 8]} />
-        <meshStandardMaterial color="#1166ff" emissive="#0055ff" emissiveIntensity={0.5} />
+        <meshStandardMaterial color="#1166ff" emissive="#0055ff" emissiveIntensity={glowing ? 6.0 : 0.5} />
       </mesh>
     </group>
   );
@@ -93,11 +121,12 @@ interface FleetProps {
   plan: MissionPlan;
   onWaypointLabel: (vehicleId: string, label: string) => void;
   onTargetDetected: (count: number) => void;
+  missionActive: boolean;
   selectedVehicleId?: string | null;
   pipCanvasRef?: RefObject<HTMLCanvasElement | null>;
 }
 
-function Fleet({ plan, onWaypointLabel, onTargetDetected, selectedVehicleId, pipCanvasRef }: FleetProps) {
+function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selectedVehicleId, pipCanvasRef }: FleetProps) {
   const { gl, scene } = useThree();
   const cfg = ENV_CONFIG[plan.environment];
 
@@ -237,7 +266,6 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, selectedVehicleId, pip
         if (tempCtx && outCtx) {
           const imgData = new ImageData(new Uint8ClampedArray(pipPixelsRef.current), PIP_W, PIP_H);
           tempCtx.putImageData(imgData, 0, 0);
-          // WebGL framebuffer is upside-down relative to canvas
           outCtx.save();
           outCtx.translate(0, PIP_H);
           outCtx.scale(1, -1);
@@ -256,7 +284,10 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, selectedVehicleId, pip
           ref={el => { meshRefs.current[v.id] = el; }}
           position={[0, v.type === 'quadcopter' ? cfg.quadY : cfg.roverY, 0]}
         >
-          {v.type === 'quadcopter' ? <QuadMesh /> : <RoverMesh />}
+          {v.type === 'quadcopter' ? <QuadMesh glowing={missionActive} /> : <RoverMesh glowing={missionActive} />}
+          {missionActive && (
+            <pointLight color="#aaccff" intensity={6} distance={14} decay={2} />
+          )}
         </group>
       ))}
     </>
@@ -269,11 +300,12 @@ interface SimCanvasProps {
   plan: MissionPlan;
   onTargetDetected: (count: number) => void;
   onWaypointLabel: (vehicleId: string, label: string) => void;
+  missionActive: boolean;
   selectedVehicleId?: string | null;
   pipCanvasRef?: RefObject<HTMLCanvasElement | null>;
 }
 
-export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, selectedVehicleId, pipCanvasRef }: SimCanvasProps) {
+export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActive, selectedVehicleId, pipCanvasRef }: SimCanvasProps) {
   const cfg = ENV_CONFIG[plan.environment];
 
   return (
@@ -283,9 +315,7 @@ export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, selectedVeh
       gl={{ preserveDrawingBuffer: true }}
       style={{ background: '#0d1117' }}
     >
-      <ambientLight intensity={2} />
-      <directionalLight position={[20, 40, 20]} intensity={2.5} castShadow />
-      <directionalLight position={[-10, 20, -10]} intensity={1.2} />
+      <SceneLighting missionActive={missionActive} />
 
       <Suspense fallback={null}>
         <EnvModel path={cfg.model} />
@@ -296,6 +326,7 @@ export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, selectedVeh
         plan={plan}
         onTargetDetected={onTargetDetected}
         onWaypointLabel={onWaypointLabel}
+        missionActive={missionActive}
         selectedVehicleId={selectedVehicleId}
         pipCanvasRef={pipCanvasRef}
       />
