@@ -138,7 +138,7 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
   }>>({});
 
   const planKeyRef = useRef("");
-  const planKey = plan.vehicles.map(v => v.id).join(",") + plan.environment;
+  const planKey = `${plan.planVersion ?? 0}-${plan.vehicles.map(v => v.id).join(",")}-${plan.environment}`;
 
   const meshRefs = useRef<Record<string, THREE.Group | null>>({});
   const detectedRef = useRef(0);
