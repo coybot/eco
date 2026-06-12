@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Play, Volume2, VolumeX } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Volume2, VolumeX } from "lucide-react";
 import { useState, useRef } from "react";
 
 export function HeroSection() {
@@ -59,18 +57,6 @@ export function HeroSection() {
 
       <div className="container relative z-10 mx-auto px-4 py-20">
         <div className="max-w-4xl mx-auto text-center">
-          {/* Badge */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <span className="inline-flex items-center rounded-full border border-white/20 bg-white/5 px-4 py-1.5 text-sm font-medium backdrop-blur-sm">
-              <span className="mr-2 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              Now shipping: M1-A with Jetson Orin Nano
-            </span>
-          </motion.div>
-
           {/* Headline */}
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
@@ -94,60 +80,8 @@ export function HeroSection() {
             Agile Unmanned Systems. Built on Open Source.
           </motion.p>
 
-          {/* CTAs */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <Link href="/products">
-              <Button size="lg" className="text-base px-8 bg-white text-black hover:bg-white/90">
-                View Products
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-            <Link href="/docs">
-              <Button size="lg" variant="outline" className="text-base px-8 border-white/30 text-white hover:bg-white/10">
-                <Play className="mr-2 h-4 w-4" />
-                Start Building
-              </Button>
-            </Link>
-          </motion.div>
-
-          {/* Trust indicators */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-            className="mt-16 flex flex-wrap items-center justify-center gap-x-8 gap-y-4 text-white/50"
-          >
-            <span className="text-sm">NDAA Compliant Compute</span>
-            <span className="hidden sm:inline text-white/20">•</span>
-            <span className="text-sm">GPS & Comm Denied</span>
-            <span className="hidden sm:inline text-white/20">•</span>
-            <span className="text-sm">On-Device Intelligence</span>
-            <span className="hidden sm:inline text-white/20">•</span>
-            <span className="text-sm">Open Source</span>
-          </motion.div>
         </div>
       </div>
-
-      {/* Scroll indicator */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.8 }}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10"
-      >
-        <div className="w-6 h-10 rounded-full border-2 border-white/30 flex items-start justify-center p-2">
-          <motion.div
-            animate={{ y: [0, 8, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="w-1.5 h-1.5 rounded-full bg-white/50"
-          />
-        </div>
-      </motion.div>
     </section>
   );
 }
