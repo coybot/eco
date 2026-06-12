@@ -16,8 +16,8 @@ export default function HomePage() {
       <Header />
       <main className="flex-1">
         <HeroSection />
-        <ProductsSection />
         <PlazaSimSection />
+        <ProductsSection />
         <SolutionsSection />
         <DeveloperSection />
         <AppShowcaseSection />

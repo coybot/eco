@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import type { MissionPlan, EnvironmentType, Vehicle } from "@/lib/mission-types";
@@ -84,6 +84,14 @@ function EnvPicker({
   );
 }
 
+// ── Message type ──────────────────────────────────────────────────────────────
+interface ChatMsg {
+  id: string;
+  sender: "user" | "dispatch" | string;
+  label: string;
+  text: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function PlazaSimSection() {
@@ -100,6 +108,16 @@ export function PlazaSimSection() {
   const [instruction, setInstruction] = useState("");
   const [isPlanning, setIsPlanning] = useState(false);
   const [planError, setPlanError] = useState("");
+
+  // chat + mission state
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [missionSent, setMissionSent] = useState(false);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const planRef = useRef<MissionPlan | null>(null);
+  const msgIdRef = useRef(0);
+
+  useEffect(() => { planRef.current = plan; }, [plan]);
 
   // Load default plan on mount
   useEffect(() => {
@@ -127,9 +145,27 @@ export function PlazaSimSection() {
     return () => clearInterval(t);
   }, [plan]);
 
+  // Auto-scroll messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
   const onTargetDetected = useCallback((count: number) => setTargetCount(count), []);
+
   const onWaypointLabel = useCallback((vehicleId: string, label: string) => {
-    setVehicleLabels((prev) => ({ ...prev, [vehicleId]: label }));
+    setVehicleLabels((prev) => {
+      if (prev[vehicleId] === label) return prev;
+      return { ...prev, [vehicleId]: label };
+    });
+    const vLabel = planRef.current?.vehicles.find((v) => v.id === vehicleId)?.label ?? vehicleId;
+    setMessages((prevMsgs) => {
+      const lastFromDrone = [...prevMsgs].reverse().find((m) => m.sender === vehicleId);
+      if (lastFromDrone?.text === label) return prevMsgs;
+      return [
+        ...prevMsgs,
+        { id: `msg-${++msgIdRef.current}`, sender: vehicleId, label: vLabel, text: label },
+      ];
+    });
   }, []);
 
   const fly = async (overrideInstruction?: string) => {
@@ -140,6 +176,13 @@ export function PlazaSimSection() {
     setTargetCount(0);
     setDisplayCount(0);
     setReportLineIdx(0);
+    setMissionSent(true);
+    setSelectedVehicleId(null);
+    msgIdRef.current = 0;
+    setMessages([
+      { id: `msg-${++msgIdRef.current}`, sender: "user", label: "You", text: text || "Search the area and report" },
+      { id: `msg-${++msgIdRef.current}`, sender: "dispatch", label: "Central Dispatch", text: "Analyzing environment, assembling fleet…" },
+    ]);
     try {
       const res = await fetch("/api/plan-mission", {
         method: "POST",
@@ -152,6 +195,21 @@ export function PlazaSimSection() {
       const labels: Record<string, string> = {};
       newPlan.vehicles.forEach((v) => { labels[v.id] = "standby"; });
       setVehicleLabels(labels);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${++msgIdRef.current}`,
+          sender: "dispatch",
+          label: "Central Dispatch",
+          text: `${newPlan.missionTitle} — ${newPlan.vehicles.length} unit${newPlan.vehicles.length !== 1 ? "s" : ""} deployed`,
+        },
+        ...newPlan.vehicles.map((v) => ({
+          id: `msg-${++msgIdRef.current}`,
+          sender: "dispatch",
+          label: "Central Dispatch",
+          text: `${v.label}: proceeding to first waypoint`,
+        })),
+      ]);
     } catch {
       setPlanError("Couldn't reach mission planner — try again.");
     } finally {
@@ -161,9 +219,28 @@ export function PlazaSimSection() {
 
   const vehicles: Vehicle[] = plan?.vehicles ?? [];
   const totalTargets = plan?.targetCount ?? 0;
-  const currentReportLine = plan?.reportLines?.[reportLineIdx] ?? "";
-  const missionTitle = plan?.missionTitle ?? "Fleet demo";
   const targetType = plan?.targetType ?? "object";
+  const missionTitle = plan?.missionTitle ?? "Fleet demo";
+
+  // Mission complete: all vehicles report "mission ✓"
+  const missionComplete = useMemo(() => {
+    if (!missionSent || vehicles.length === 0) return false;
+    return vehicles.every((v) => (vehicleLabels[v.id] ?? "") === "mission ✓");
+  }, [missionSent, vehicles, vehicleLabels]);
+
+  // Progress: targets found, or report line progression
+  const missionProgress = useMemo(() => {
+    if (!missionSent) return 0;
+    if (missionComplete) return 100;
+    if (totalTargets > 0 && displayCount > 0) return Math.min(95, (displayCount / totalTargets) * 100);
+    if (plan && plan.reportLines.length > 1) return Math.min(85, (reportLineIdx / (plan.reportLines.length - 1)) * 80);
+    return 5;
+  }, [missionSent, missionComplete, totalTargets, displayCount, plan, reportLineIdx]);
+
+  const selectedVehicle = useMemo(
+    () => vehicles.find((v) => v.id === selectedVehicleId) ?? null,
+    [vehicles, selectedVehicleId]
+  );
 
   return (
     <section className="py-20 bg-background overflow-hidden">
@@ -178,11 +255,8 @@ export function PlazaSimSection() {
           className="mb-10 text-center"
         >
           <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-            Describe a mission. Watch it fly.
+            Natural language mission control, try it in our simulator
           </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Claude plans the mission in real time — environment, fleet, waypoints — and the sim executes it.
-          </p>
         </motion.div>
 
         {/* Controls row */}
@@ -261,77 +335,129 @@ export function PlazaSimSection() {
           </form>
         </motion.div>
 
-        {/* Canvas */}
+        {/* 3-column sim layout */}
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7, delay: 0.15 }}
-          className="relative h-[520px] rounded-xl overflow-hidden border border-white/10 shadow-2xl"
+          className="flex gap-3 h-[520px]"
         >
-          {plan && (
-            <SimCanvas
-              plan={plan}
-              onTargetDetected={onTargetDetected}
-              onWaypointLabel={onWaypointLabel}
-            />
-          )}
-
-          {/* Planning overlay */}
-          <AnimatePresence>
-            {isPlanning && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-10"
-              >
-                <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                <p className="text-white/60 text-sm font-mono">Claude is planning the mission…</p>
-              </motion.div>
+          {/* LEFT: Chat / dispatch feed */}
+          <div className="w-56 shrink-0 flex flex-col bg-[#0d1117] border border-white/10 rounded-xl overflow-hidden">
+            {/* Mission progress bar */}
+            {missionSent && (
+              <div className="px-3 pt-2.5 pb-2 border-b border-white/10 shrink-0">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] text-white/40 uppercase tracking-widest font-mono">Mission</span>
+                  <span className={`text-[10px] font-semibold font-mono ${
+                    missionComplete ? "text-green-400" : "text-amber-400"
+                  }`}>
+                    {missionComplete ? "✓ Complete" : isPlanning ? "Planning…" : `${Math.round(missionProgress)}%`}
+                  </span>
+                </div>
+                <div className="h-[2px] bg-white/10 rounded-full overflow-hidden">
+                  {isPlanning ? (
+                    <div className="h-full w-full bg-amber-500/40 animate-pulse" />
+                  ) : (
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        missionComplete ? "bg-green-500" : "bg-amber-500"
+                      }`}
+                      style={{ width: `${missionProgress}%` }}
+                    />
+                  )}
+                </div>
+              </div>
             )}
-          </AnimatePresence>
 
-          {/* Status overlay — top right */}
-          <div className="absolute top-4 right-4 pointer-events-none z-10">
-            <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-lg p-4 text-xs font-mono w-56">
-              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                </span>
-                <span className="text-green-400 font-semibold tracking-widest text-[10px] uppercase truncate">
-                  {missionTitle}
-                </span>
-              </div>
-
-              <div className="space-y-1.5 mb-3 min-h-[40px]">
-                {vehicles.length === 0 ? (
-                  <div className="text-white/20 text-[10px]">Awaiting fleet…</div>
-                ) : (
-                  vehicles.map((v) => (
-                    <div key={v.id} className="flex items-center justify-between gap-2">
-                      <span className="text-white/50">{v.label}</span>
-                      <span className={`${statusColor(vehicleLabels[v.id] ?? "standby")} text-right truncate max-w-[120px]`}>
-                        ▸ {vehicleLabels[v.id] ?? "standby"}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {totalTargets > 0 && (
-                <div className="border-t border-white/10 pt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-white/40 text-[10px] tracking-widest uppercase">
-                      {targetType}s found
+            {/* Messages feed */}
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
+              {messages.length === 0 ? (
+                <p className="text-white/20 m-auto text-center text-[11px] font-mono leading-relaxed">
+                  Dispatch and drone<br />reports appear here.
+                </p>
+              ) : (
+                messages.map((m) => (
+                  <div key={m.id} className="flex flex-col gap-0.5">
+                    <span className={`text-[10px] font-medium ${
+                      m.sender === "user"
+                        ? "text-amber-400"
+                        : m.sender === "dispatch"
+                        ? "text-green-400"
+                        : "text-blue-400"
+                    }`}>
+                      {m.label}
                     </span>
-                    <span className="text-white font-bold text-sm">
-                      {displayCount}
-                      <span className="text-white/30 font-normal"> / {totalTargets}</span>
+                    <span className="text-white/60 text-[11px] font-mono leading-snug">{m.text}</span>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* CENTER: Canvas */}
+          <div className="relative flex-1 min-w-0 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+            {plan && (
+              <SimCanvas
+                plan={plan}
+                onTargetDetected={onTargetDetected}
+                onWaypointLabel={onWaypointLabel}
+              />
+            )}
+
+            {/* Planning overlay */}
+            <AnimatePresence>
+              {isPlanning && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-10"
+                >
+                  <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                  <p className="text-white/60 text-sm font-mono">Astral is planning the mission…</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* PiP for selected vehicle */}
+            {selectedVehicle && (
+              <div className="absolute bottom-3 right-3 w-44 rounded-xl overflow-hidden border border-white/20 bg-black/90 shadow-2xl z-10">
+                <div className="flex items-center justify-between px-2.5 pt-2 pb-1.5 border-b border-white/10">
+                  <span className="text-[10px] text-white/70 font-mono font-medium truncate">
+                    {selectedVehicle.label}
+                  </span>
+                  <button
+                    onClick={() => setSelectedVehicleId(null)}
+                    className="text-white/40 hover:text-white/80 transition-colors ml-2 shrink-0"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                      <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="h-20 bg-[#050d18] flex flex-col items-center justify-center gap-1.5 px-3">
+                  <div className="text-[9px] text-white/25 font-mono uppercase tracking-widest">cam</div>
+                  <div className={`text-[11px] font-mono text-center ${statusColor(vehicleLabels[selectedVehicle.id] ?? "standby")}`}>
+                    {vehicleLabels[selectedVehicle.id] ?? "standby"}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Target count — bottom left */}
+            {totalTargets > 0 && (
+              <div className="absolute bottom-3 left-3 pointer-events-none z-10">
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-lg px-3 py-2 text-xs font-mono">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-white/40 uppercase tracking-widest text-[10px]">{targetType}s</span>
+                    <span className="text-white font-bold">
+                      {displayCount}<span className="text-white/30 font-normal"> / {totalTargets}</span>
                     </span>
                   </div>
-                  <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div className="mt-1 h-1 bg-white/10 rounded-full overflow-hidden w-24">
                     <motion.div
                       className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full"
                       animate={{ width: `${(displayCount / totalTargets) * 100}%` }}
@@ -339,26 +465,48 @@ export function PlazaSimSection() {
                     />
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Report line — bottom */}
-          <div className="absolute bottom-4 left-4 right-4 pointer-events-none z-10">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentReportLine}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.4 }}
-                className="inline-block bg-black/60 backdrop-blur-sm border border-white/10 rounded-md px-3 py-1.5"
-              >
-                <span className="text-white/60 text-[11px] font-mono">
-                  {currentReportLine || `Mission: ${missionTitle}`}
-                </span>
-              </motion.div>
-            </AnimatePresence>
+          {/* RIGHT: Drone list (click for PiP) */}
+          <div className="w-44 shrink-0 flex flex-col gap-2 pt-0.5">
+            <span className="text-[10px] text-white/40 uppercase tracking-widest font-mono px-1">Fleet</span>
+
+            {vehicles.length === 0 ? (
+              <div className="text-white/20 text-[10px] font-mono px-1">Awaiting fleet…</div>
+            ) : (
+              vehicles.map((v) => {
+                const isSelected = selectedVehicleId === v.id;
+                const status = vehicleLabels[v.id] ?? "standby";
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => setSelectedVehicleId((prev) => (prev === v.id ? null : v.id))}
+                    className={`rounded-lg border px-3 py-2.5 text-left text-xs font-mono transition-colors ${
+                      isSelected
+                        ? "border-amber-500/60 bg-amber-500/10 text-amber-400"
+                        : "border-white/10 bg-white/5 text-white/60 hover:text-white/80 hover:border-white/20"
+                    }`}
+                  >
+                    <div className="font-semibold text-[11px] truncate">{v.label}</div>
+                    <div className={`text-[10px] mt-0.5 ${statusColor(status)}`}>
+                      ▸ {status}
+                    </div>
+                    {isSelected && (
+                      <div className="text-[9px] text-amber-400/60 mt-0.5">PiP active</div>
+                    )}
+                  </button>
+                );
+              })
+            )}
+
+            {missionTitle && missionSent && (
+              <div className="mt-auto border border-white/10 bg-white/5 rounded-lg px-3 py-2.5">
+                <div className="text-[9px] text-white/30 uppercase tracking-widest font-mono">Mission</div>
+                <div className="text-[10px] text-white/50 font-mono mt-0.5 leading-snug">{missionTitle}</div>
+              </div>
+            )}
           </div>
         </motion.div>
 
