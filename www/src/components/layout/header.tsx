@@ -45,11 +45,6 @@ const developers = [
     description: "Try the autonomy stack in Isaac Sim before hardware.",
   },
   {
-    title: "Research",
-    href: "/research",
-    description: "Technical papers — each with an accessible blog write-up.",
-  },
-  {
     title: "Benchmark",
     href: "/benchmark",
     description: "Open closed-loop drone AI leaderboard. Submit your model.",
@@ -114,11 +109,11 @@ export function Header() {
 
             <NavigationMenuItem>
               <NavigationMenuLink asChild>
-                <Link 
-                  href="/blog" 
+                <Link
+                  href="/research"
                   className="group inline-flex h-10 w-max items-center justify-center rounded-md bg-transparent px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 hover:text-accent-foreground focus:bg-accent/10 focus:text-accent-foreground focus:outline-none"
                 >
-                  Blog
+                  Research
                 </Link>
               </NavigationMenuLink>
             </NavigationMenuItem>
@@ -145,11 +140,11 @@ export function Header() {
                 <MobileNavSection title="Products" items={products} onClose={() => setMobileOpen(false)} />
                 <MobileNavSection title="Developers" items={developers} onClose={() => setMobileOpen(false)} />
                 <Link
-                  href="/blog"
+                  href="/research"
                   className="text-lg font-medium hover:text-amber-500 transition-colors"
                   onClick={() => setMobileOpen(false)}
                 >
-                  Blog
+                  Research
                 </Link>
                 <div className="pt-4 border-t border-border space-y-2">
                   <Link href="/docs" onClick={() => setMobileOpen(false)}>
