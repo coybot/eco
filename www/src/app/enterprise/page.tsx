@@ -317,16 +317,11 @@ export default function EnterprisePage() {
                         Prefer to talk now?
                       </h3>
                       <p className="text-sm text-muted-foreground mb-4">
-                        Schedule a call with our enterprise team.
+                        Email our enterprise team and we&apos;ll get back to
+                        you.
                       </p>
                       <Button variant="outline" className="w-full" asChild>
-                        <a
-                          href="https://calendly.com/astral-sales"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Schedule a Call
-                        </a>
+                        <a href="mailto:hello@astral.us">Email Us</a>
                       </Button>
                     </div>
                   </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Apple, Play } from "lucide-react";
+import { Apple } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function AppShowcaseSection() {
@@ -70,15 +70,6 @@ export function AppShowcaseSection() {
                   <div className="text-left">
                     <div className="text-xs text-muted-foreground">Download on the</div>
                     <div className="text-sm font-semibold">App Store</div>
-                  </div>
-                </Button>
-              </Link>
-              <Link href="https://play.google.com/store/apps/details?id=us.astral.mobile" target="_blank">
-                <Button variant="outline" size="lg" className="h-14 px-6">
-                  <Play className="mr-2 h-6 w-6" />
-                  <div className="text-left">
-                    <div className="text-xs text-muted-foreground">Get it on</div>
-                    <div className="text-sm font-semibold">Google Play</div>
                   </div>
                 </Button>
               </Link>
