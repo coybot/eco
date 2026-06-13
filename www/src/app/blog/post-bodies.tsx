@@ -898,39 +898,40 @@ export function BlogPostBody({ slug }: { slug: string }) {
 
           <h2>Download</h2>
           <p>
-            All four models are publicly available from S3:
+            All models are publicly available on Hugging Face at{" "}
+            <a href={SITE.droneModels}>astralhf/astral-drone-models</a>:
           </p>
           <ul>
             <li>
-              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx">
+              <a href={`${SITE.droneModels}/resolve/main/yolov8n_domain_v3.onnx`}>
                 yolov8n_domain_v3.onnx
               </a>{" "}
               — 11.7 MB · YOLOv8n 9-class aerial detector
             </li>
             <li>
-              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/vlm_lora_v1_q4km.gguf">
+              <a href={`${SITE.droneModels}/resolve/main/vlm_lora_v1_q4km.gguf`}>
                 vlm_lora_v1_q4km.gguf
               </a>{" "}
               — 1.8 GB · Qwen2.5-VL-3B action-LoRA, GGUF Q4_K_M
             </li>
             <li>
-              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/vlm_lora_v1_mmproj.gguf">
+              <a href={`${SITE.droneModels}/resolve/main/vlm_lora_v1_mmproj.gguf`}>
                 vlm_lora_v1_mmproj.gguf
               </a>{" "}
               — 1.2 GB · multimodal projector (required with vlm_lora_v1_q4km.gguf)
             </li>
             <li>
-              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/policy_v1.onnx">
+              <a href={`${SITE.droneModels}/resolve/main/policy_v1.onnx`}>
                 policy_v1.onnx
               </a>{" "}
               +{" "}
-              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/policy_v1.onnx.data">
+              <a href={`${SITE.droneModels}/resolve/main/policy_v1.onnx.data`}>
                 policy_v1.onnx.data
               </a>{" "}
               — 121 KB · reactive policy MLP
             </li>
             <li>
-              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/depth_v1.onnx">
+              <a href={`${SITE.droneModels}/resolve/main/depth_v1.onnx`}>
                 depth_v1.onnx
               </a>{" "}
               — 1.6 MB · Depth Anything V2 Small, aerial fine-tune
@@ -938,7 +939,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           </ul>
           <p>
             Load the state normalization for the reactive policy with the paired{" "}
-            <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/policy_v1_state_norm.npy">
+            <a href={`${SITE.droneModels}/resolve/main/policy_v1_state_norm.npy`}>
               policy_v1_state_norm.npy
             </a>{" "}
             (224 B, NumPy array of shape [2, 12] — row 0 is mean, row 1 is std).
@@ -1120,11 +1121,12 @@ export function BlogPostBody({ slug }: { slug: string }) {
           </p>
           <h2>Download</h2>
           <p>
-            The ONNX model is publicly available:
+            The ONNX model is on Hugging Face at{" "}
+            <a href={SITE.droneModels}>astralhf/astral-drone-models</a>:
           </p>
           <ul>
             <li>
-              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx">
+              <a href={`${SITE.droneModels}/resolve/main/yolov8n_domain_v3.onnx`}>
                 yolov8n_domain_v3.onnx
               </a>{" "}
               — 11.7 MB, YOLOv8n, 9-class aerial detector, ONNX opset 17

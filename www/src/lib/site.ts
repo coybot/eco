@@ -11,6 +11,7 @@ export const SITE = {
   astralSdk: "https://github.com/astral-us/astral-sdk",
   yonderDataset: "https://huggingface.co/datasets/astralhf/yonder",
   yonderSample: "https://huggingface.co/datasets/astralhf/yonder-sample",
+  droneModels: "https://huggingface.co/astralhf/astral-drone-models",
   youtube: "https://www.youtube.com/@astral_us",
   linkedin: "https://www.linkedin.com/company/astral-us",
   appStore:

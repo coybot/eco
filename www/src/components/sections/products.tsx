@@ -64,7 +64,7 @@ export function ProductsSection() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl sm:text-4xl font-bold">Our software will run on your drone, or you can buy our hardware</h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="mt-4 text-lg text-muted-foreground max-w-3xl mx-auto">
             Autonomous systems with on-device AI. GPS and comm-denied capable, indoor and outdoor.
           </p>
         </motion.div>

@@ -21,6 +21,14 @@ const nextConfig: NextConfig = {
   // SEO redirects from old WordPress URLs
   async redirects() {
     return [
+      // Research paper pages → canonical blog post (merged)
+      { source: "/research/yonder", destination: "/blog/yonder-drone-navigation-dataset#paper", permanent: true },
+      { source: "/research/metric-gap", destination: "/blog/metric-gap-vision-language-drone-navigation#paper", permanent: true },
+      { source: "/research/engineering-separation", destination: "/blog/engineering-drone-autonomy-18-iterations#paper", permanent: true },
+      { source: "/research/scaling-separation", destination: "/blog/drone-swarm-sensing-1000-drones#paper", permanent: true },
+      { source: "/research/gemma4-pilot", destination: "/blog/why-vlm-drones-cant-beat-hovering#paper", permanent: true },
+      { source: "/research/counter-uas", destination: "/blog/counter-uas-drone-attack-defense-simulation#paper", permanent: true },
+      { source: "/research/droneport-atc", destination: "/blog/droneport-atc-tower-vs-selforg#paper", permanent: true },
       // Old WordPress blog URLs
       {
         source: "/blog/:slug/",

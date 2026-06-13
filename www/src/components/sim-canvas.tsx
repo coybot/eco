@@ -307,16 +307,18 @@ interface SimCanvasProps {
   missionActive: boolean;
   selectedVehicleId?: string | null;
   pipCanvasRef?: RefObject<HTMLCanvasElement | null>;
+  isMobile?: boolean;
 }
 
-export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActive, selectedVehicleId, pipCanvasRef }: SimCanvasProps) {
+export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActive, selectedVehicleId, pipCanvasRef, isMobile }: SimCanvasProps) {
   const cfg = ENV_CONFIG[plan.environment];
 
   return (
     <Canvas
       camera={{ position: cfg.camera, fov: cfg.fov }}
-      shadows
-      gl={{ preserveDrawingBuffer: true }}
+      shadows={!isMobile}
+      dpr={isMobile ? [1, 1] : [1, 2]}
+      gl={{ preserveDrawingBuffer: true, powerPreference: isMobile ? 'low-power' : 'high-performance' }}
       style={{ background: '#0d1117' }}
     >
       <SceneLighting missionActive={missionActive} />
@@ -341,6 +343,8 @@ export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActi
         maxDistance={100}
         autoRotate
         autoRotateSpeed={0.35}
+        enableRotate={!isMobile}
+        enablePan={false}
       />
     </Canvas>
   );

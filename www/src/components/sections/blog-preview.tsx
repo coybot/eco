@@ -6,30 +6,19 @@ import { ArrowRight, Calendar } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { blogPosts } from "@/lib/blog-data";
 
-const blogPosts = [
-  {
-    slug: "top-defense-use-cases-of-autonomous-drones-in-2025",
-    title: "Top Defense Use Cases of Autonomous Drones in 2025",
-    excerpt: "How AI-Driven, NDAA-Compliant Aircraft Are Reshaping Modern Military Capability.",
-    date: "December 10, 2025",
-    category: "Defense",
-  },
-  {
-    slug: "ndaa-compliant-drones-explained",
-    title: "NDAA-Compliant Drones Explained: What Operators Need to Know",
-    excerpt: "Trusted Hardware for Trusted Autonomy. As AI-powered drones move into critical infrastructure...",
-    date: "November 25, 2025",
-    category: "Compliance",
-  },
-  {
-    slug: "how-autonomous-drones-work",
-    title: "How Autonomous Drones Work: AI, Sensors, and Fleet Management",
-    excerpt: "Learn how autonomous drones use AI, sensors, and fleet management systems to navigate and perform complex missions.",
-    date: "November 6, 2025",
-    category: "Technology",
-  },
-];
+// Latest 3 real posts, newest first — auto-syncs as posts are added.
+const previewPosts = [...blogPosts]
+  .sort((a, b) => b.dateIso.localeCompare(a.dateIso))
+  .slice(0, 3)
+  .map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    excerpt: p.description,
+    date: p.date,
+    category: p.category,
+  }));
 
 export function BlogPreviewSection() {
   return (
@@ -51,7 +40,7 @@ export function BlogPreviewSection() {
 
         {/* Blog Grid */}
         <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {blogPosts.map((post, index) => (
+          {previewPosts.map((post, index) => (
             <motion.div
               key={post.slug}
               initial={{ opacity: 0, y: 20 }}

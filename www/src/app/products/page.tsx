@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, Check } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -53,11 +54,13 @@ export default function ProductsPage() {
                       </span>
                     </div>
 
-                    <div className="aspect-video bg-secondary/50 rounded-lg overflow-hidden">
-                      <img
+                    <div className="relative aspect-video bg-secondary/50 rounded-lg overflow-hidden">
+                      <Image
                         src={product.image}
                         alt={product.name}
-                        className="w-full h-full object-cover"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                        className="object-cover"
                       />
                     </div>
                   </CardHeader>
