@@ -43,9 +43,7 @@ const pillars: (PillarExternal | PillarInternal)[] = [
       "iOS and Android apps for real-world aerial and ground operations alongside the same autonomy stack we develop in the open.",
     icon: Smartphone,
     href: SITE.appStore,
-    secondaryHref: SITE.playStore,
     cta: "App Store",
-    secondaryCta: "Google Play",
     external: true as const,
   },
   {
