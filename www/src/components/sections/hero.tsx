@@ -16,7 +16,7 @@ export function HeroSection() {
   };
 
   return (
-    <section className="relative min-h-[100vh] flex items-center justify-center overflow-hidden">
+    <section className="relative overflow-hidden">
       {/* Video Background */}
       <div className="absolute inset-0 z-0">
         <video
@@ -55,30 +55,17 @@ export function HeroSection() {
       </button>
       */}
 
-      <div className="container relative z-10 mx-auto px-4 py-20">
+      <div className="container relative z-10 mx-auto px-4 pt-32 pb-16">
         <div className="max-w-4xl mx-auto text-center">
           {/* Headline */}
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="mt-8 text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white"
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white"
           >
-            The Autonomous
-            <br />
-            Drone Platform.
+            The Autonomous Drone Platform.
           </motion.h1>
-
-          {/* Subheadline */}
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="mt-6 text-lg sm:text-xl text-white/70 max-w-2xl mx-auto"
-          >
-            Empowering Developers, Enterprises, and Innovators with Agentic, 
-            Agile Unmanned Systems. Built on Open Source.
-          </motion.p>
 
         </div>
       </div>

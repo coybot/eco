@@ -1,12 +1,15 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, Check, Package, Shield, Truck } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { JsonLd } from "@/components/json-ld";
+import { SITE } from "@/lib/site";
 import { products, getProduct, formatPrice } from "@/lib/products";
 
 interface ProductPageProps {
@@ -48,6 +51,34 @@ export default async function ProductPage({ params }: ProductPageProps) {
     notFound();
   }
 
+  const productUrl = `${SITE.origin}/products/${product.id}`;
+  const jsonLd = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: product.name,
+      description: product.description,
+      image: `${SITE.origin}${product.image}`,
+      url: productUrl,
+      brand: { "@type": "Brand", name: "Astral" },
+      offers: {
+        "@type": "Offer",
+        price: product.price,
+        priceCurrency: "USD",
+        availability: "https://schema.org/PreOrder",
+        url: productUrl,
+      },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Products", item: `${SITE.origin}/products` },
+        { "@type": "ListItem", position: 2, name: product.name, item: productUrl },
+      ],
+    },
+  ];
+
   // Group specs by category
   const specsByCategory = product.specs.reduce(
     (acc, spec) => {
@@ -62,6 +93,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <JsonLd data={jsonLd} />
       <Header />
       <main className="flex-1">
         {/* Breadcrumb */}
@@ -83,11 +115,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
             <div className="grid lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
               {/* Product Image */}
               <div className="space-y-4">
-                <div className="aspect-square bg-background rounded-lg overflow-hidden border border-border">
-                  <img
+                <div className="relative aspect-square bg-background rounded-lg overflow-hidden border border-border">
+                  <Image
                     src={product.image}
                     alt={product.name}
-                    className="w-full h-full object-contain"
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                    priority
+                    className="object-contain"
                   />
                 </div>
                 {/* Thumbnail strip placeholder */}

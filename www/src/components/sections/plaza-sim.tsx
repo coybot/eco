@@ -117,9 +117,18 @@ export function PlazaSimSection() {
   const planRef = useRef<MissionPlan | null>(null);
   const msgIdRef = useRef(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const pipCanvasRef = useRef<HTMLCanvasElement>(null);
   const simCanvasWrapperRef = useRef<HTMLDivElement>(null);
   const prevMissionCompleteRef = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   const toggleFullscreen = () => {
     const el = simCanvasWrapperRef.current;
@@ -388,10 +397,10 @@ export function PlazaSimSection() {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7, delay: 0.15 }}
-          className="flex gap-3 h-[520px]"
+          className="flex flex-col md:flex-row gap-3 md:h-[400px] lg:h-[520px]"
         >
-          {/* LEFT: Chat / dispatch feed */}
-          <div className="w-56 shrink-0 flex flex-col bg-[#0d1117] border border-white/10 rounded-xl overflow-hidden">
+          {/* LEFT: Chat / dispatch feed — hidden on mobile */}
+          <div className="hidden md:flex w-44 lg:w-56 shrink-0 flex-col bg-[#0d1117] border border-white/10 rounded-xl overflow-hidden">
             {/* Mission progress bar */}
             {missionSent && (
               <div className="px-3 pt-2.5 pb-2 border-b border-white/10 shrink-0">
@@ -444,7 +453,7 @@ export function PlazaSimSection() {
           </div>
 
           {/* CENTER: Canvas */}
-          <div ref={simCanvasWrapperRef} className="relative flex-1 min-w-0 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+          <div ref={simCanvasWrapperRef} className="relative h-64 sm:h-80 md:h-auto md:flex-1 min-w-0 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
             {plan && (
               <SimCanvas
                 plan={plan}
@@ -453,6 +462,7 @@ export function PlazaSimSection() {
                 missionActive={missionSent && !missionComplete}
                 selectedVehicleId={selectedVehicleId}
                 pipCanvasRef={pipCanvasRef}
+                isMobile={isMobile}
               />
             )}
 
@@ -538,8 +548,8 @@ export function PlazaSimSection() {
 
           </div>
 
-          {/* RIGHT: Drone list (click for PiP) */}
-          <div className="w-44 shrink-0 flex flex-col gap-2 pt-0.5">
+          {/* RIGHT: Drone list — hidden on mobile */}
+          <div className="hidden md:flex w-36 lg:w-44 shrink-0 flex-col gap-2 pt-0.5">
             <span className="text-[10px] text-white/40 uppercase tracking-widest font-mono px-1">Fleet</span>
 
             {vehicles.length === 0 ? (
@@ -575,6 +585,20 @@ export function PlazaSimSection() {
             )}
           </div>
         </motion.div>
+
+        {/* Mobile-only compact dispatch feed */}
+        {isMobile && messages.length > 0 && (
+          <div className="md:hidden mt-2 bg-[#0d1117] border border-white/10 rounded-xl px-3 py-2.5 flex flex-col gap-1.5 max-h-24 overflow-y-auto">
+            {messages.slice(-3).map((m) => (
+              <div key={m.id} className="flex items-start gap-1.5">
+                <span className={`text-[10px] font-medium shrink-0 ${
+                  m.sender === "user" ? "text-amber-400" : m.sender === "dispatch" ? "text-green-400" : "text-blue-400"
+                }`}>{m.label}:</span>
+                <span className="text-white/60 text-[10px] font-mono leading-snug">{m.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Sim footer */}
         <motion.p

@@ -22,11 +22,13 @@ export function ResearchTeaserSection() {
           <div className="flex-1 space-y-4">
             <h2 className="text-3xl sm:text-4xl font-bold">Research-grade autonomy</h2>
             <p className="text-lg text-muted-foreground">
-              We publish on the metric gap in vision-language navigation for aerial
-              and ground robots, modular architectures that separate semantics from
-              geometry, swarm sensing requirements at scale, and Yonder — a public
-              dataset designed to expose when offline perception metrics mislead
-              you in closed loop.
+              We benchmarked 25 vision-language models across 10,200 closed-loop
+              flight trials — every one lost to a drone that just hovered. That
+              result is why we build the way we do: we publish on the metric gap in
+              vision-language navigation, modular architectures that separate
+              semantics from geometry, swarm sensing requirements at scale, and
+              Yonder — a public dataset designed to expose when offline perception
+              metrics mislead you in closed loop.
             </p>
             <Button asChild size="lg" className="w-fit">
               <Link href="/research">

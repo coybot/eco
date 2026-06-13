@@ -3,12 +3,34 @@ import Link from "next/link";
 import { Calendar, ArrowRight } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
+import { JsonLd } from "@/components/json-ld";
 import { blogPosts } from "@/lib/blog-data";
+import { SITE } from "@/lib/site";
+import { socialMeta } from "@/lib/social-metadata";
+
+const BLOG_DESCRIPTION =
+  "Astral's drone autonomy research blog: closed-loop benchmarks, the metric gap in vision-language navigation, swarm sensing at scale, counter-UAS, and the Yonder dataset.";
 
 export const metadata: Metadata = {
   title: "Blog",
-  description:
-    "Stay informed with the latest news, updates, and industry insights from Astral.",
+  description: BLOG_DESCRIPTION,
+  ...socialMeta("/blog", "Blog | Astral", BLOG_DESCRIPTION),
+};
+
+const blogJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Blog",
+  name: "Astral Blog",
+  description: BLOG_DESCRIPTION,
+  url: `${SITE.origin}/blog`,
+  publisher: { "@type": "Organization", name: "Astral", url: SITE.origin },
+  blogPost: blogPosts.map((p) => ({
+    "@type": "BlogPosting",
+    headline: p.title,
+    description: p.description,
+    datePublished: p.dateIso,
+    url: `${SITE.origin}/blog/${p.slug}`,
+  })),
 };
 
 // Map blog-data entries to the shape this page uses
@@ -24,6 +46,7 @@ const posts = blogPosts.map((p) => ({
 export default function BlogPage() {
   return (
     <div className="min-h-screen flex flex-col">
+      <JsonLd data={blogJsonLd} />
       <Header />
       <main className="flex-1">
         {/* Hero */}

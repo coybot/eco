@@ -14,9 +14,11 @@ This is the marketing site at https://astral.us. It is **informational only**: t
 
 ## The single most important rule
 
-**Pushing to GitHub does not deploy the site.** There is no GitHub Actions / CI workflow for `eco`. A push updates only the repo. AWS prod is updated only when someone runs `sst deploy` from a working tree.
+**Pushing to GitHub should trigger a deploy via GitHub Actions CI, but that workflow has not been set up yet.** Until it is, a push updates only the repo and you must deploy manually. AWS prod is updated only when someone runs `sst deploy` from a working tree.
 
 This means GitHub `main` and prod can drift. When they do, the source of truth for *what users see* is prod, and the source of truth for *what's checked in* is `main`. Reconciling them is a deliberate action, not automatic.
+
+**TODO:** Add a `.github/workflows/deploy.yml` that runs `AWS_PROFILE=astral npx sst deploy --stage prod` on push to `main`, with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` set as GitHub Actions secrets for the `astral` IAM user.
 
 ## Deploy
 
