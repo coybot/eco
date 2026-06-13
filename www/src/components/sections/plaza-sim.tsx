@@ -117,6 +117,7 @@ export function PlazaSimSection() {
   const planRef = useRef<MissionPlan | null>(null);
   const msgIdRef = useRef(0);
   const pipCanvasRef = useRef<HTMLCanvasElement>(null);
+  const simCanvasWrapperRef = useRef<HTMLDivElement>(null);
   const prevMissionCompleteRef = useRef(false);
   const planVersionRef = useRef(0);
 
@@ -188,11 +189,16 @@ export function PlazaSimSection() {
       { id: `msg-${++msgIdRef.current}`, sender: "user", label: "You", text: text || "Search the area and report" },
       { id: `msg-${++msgIdRef.current}`, sender: "dispatch", label: "Central Dispatch", text: "Analyzing environment, assembling fleet…" },
     ]);
+
+    // Capture the current 3D scene so the AI can see what's actually there
+    const glCanvas = simCanvasWrapperRef.current?.querySelector('canvas');
+    const sceneImage = glCanvas ? glCanvas.toDataURL('image/jpeg', 0.7).split(',')[1] : undefined;
+
     try {
       const res = await fetch("/api/plan-mission", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instruction: text, environment: env, quadcopters: nQuads, rovers: nRovers }),
+        body: JSON.stringify({ instruction: text, environment: env, quadcopters: nQuads, rovers: nRovers, sceneImage }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const newPlan: MissionPlan = await res.json();
@@ -421,7 +427,7 @@ export function PlazaSimSection() {
           </div>
 
           {/* CENTER: Canvas */}
-          <div className="relative flex-1 min-w-0 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+          <div ref={simCanvasWrapperRef} className="relative flex-1 min-w-0 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
             {plan && (
               <SimCanvas
                 plan={plan}

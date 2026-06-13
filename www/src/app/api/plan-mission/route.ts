@@ -57,7 +57,7 @@ Rules:
 - label is "QC-01", "RV-01", etc.
 - waypoints is a FLAT top-level array — do NOT nest inside vehicles
 - each vehicle gets 3-5 waypoints spread across the coordinate space
-- for counting missions targetCount = 8-15, for rendezvous targetCount = 0
+- for rendezvous/escort missions targetCount = 0; for counting missions set targetCount to what you actually count in the scene image provided
 - keep all coords inside the bounds above`;
 }
 
@@ -110,6 +110,7 @@ export async function POST(req: NextRequest) {
   let env: EnvironmentType;
   let nQuads: number;
   let nRovers: number;
+  let sceneImage: string | undefined;
 
   try {
     const body = await req.json();
@@ -117,7 +118,10 @@ export async function POST(req: NextRequest) {
     env = (body?.environment === 'apartment' ? 'apartment' : 'city') as EnvironmentType;
     nQuads = Math.max(0, Math.min(10, parseInt(body?.quadcopters ?? '1', 10) || 0));
     nRovers = Math.max(0, Math.min(10, parseInt(body?.rovers ?? '1', 10) || 0));
-    if (nQuads + nRovers === 0) nQuads = 1; // need at least one vehicle
+    if (nQuads + nRovers === 0) nQuads = 1;
+    sceneImage = typeof body?.sceneImage === 'string' && body.sceneImage.length > 0
+      ? body.sceneImage
+      : undefined;
   } catch {
     return NextResponse.json(buildDefaultPlan('city', 1, 1));
   }
@@ -127,11 +131,25 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const userContent: unknown[] = [];
+    if (sceneImage) {
+      userContent.push({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: sceneImage },
+      });
+      userContent.push({
+        type: 'text',
+        text: `Above is a screenshot of the 3D simulation scene. ${instruction || 'Search the area and report.'}`,
+      });
+    } else {
+      userContent.push({ type: 'text', text: instruction || 'Search the area and report.' });
+    }
+
     const payload = {
       anthropic_version: 'bedrock-2023-05-31',
       max_tokens: 2000,
       system: makeSystemPrompt(env, nQuads, nRovers),
-      messages: [{ role: 'user', content: instruction }],
+      messages: [{ role: 'user', content: userContent }],
     };
 
     const command = new InvokeModelCommand({
