@@ -496,26 +496,6 @@ export function PlazaSimSection() {
               </div>
             )}
 
-            {/* Target count — bottom left */}
-            {totalTargets > 0 && (
-              <div className="absolute bottom-3 left-3 pointer-events-none z-10">
-                <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-lg px-3 py-2 text-xs font-mono">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-white/40 uppercase tracking-widest text-[10px]">{targetType}s</span>
-                    <span className="text-white font-bold">
-                      {displayCount}<span className="text-white/30 font-normal"> / {totalTargets}</span>
-                    </span>
-                  </div>
-                  <div className="mt-1 h-1 bg-white/10 rounded-full overflow-hidden w-24">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full"
-                      animate={{ width: `${(displayCount / totalTargets) * 100}%` }}
-                      transition={{ duration: 0.4 }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* RIGHT: Drone list (click for PiP) */}
