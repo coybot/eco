@@ -135,6 +135,7 @@ DOMAIN_DETECTOR_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-wes
 
 POLICY_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models"
 DEPTH_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/depth_v1.onnx"
+VLM_DRONE_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models"
 
 
 def domain_detector(models_dir: Path) -> None:
@@ -159,6 +160,38 @@ def domain_detector(models_dir: Path) -> None:
     except Exception:
         run(["curl", "-fL", DOMAIN_DETECTOR_URL, "-o", str(out)])
     print(f"Saved {out}")
+
+
+def vlm_drone(models_dir: Path) -> None:
+    """Astral drone-action VLM v1 — Qwen2.5-VL-3B LoRA fine-tuned on aerial missions.
+
+    Q4_K_M GGUF (~1.8 GB) + mmproj (~1.2 GB). Downloads as vlm.gguf + vlm_mmproj.gguf
+    so daemon.py picks them up automatically (same slot as the stock Qwen3-VL-2B).
+    Trained on 2,000 VisDrone aerial scenes with deterministic VLMAction labels;
+    3 epochs, final loss 0.31, 94.4% token accuracy.
+    """
+    vlm_gguf    = models_dir / "vlm.gguf"
+    mmproj_gguf = models_dir / "vlm_mmproj.gguf"
+    if vlm_gguf.exists() and mmproj_gguf.exists():
+        print("vlm.gguf and vlm_mmproj.gguf already exist, skipping.")
+        return
+    for fname, dest in [
+        ("vlm_lora_v1_q4km.gguf",    vlm_gguf),
+        ("vlm_lora_v1_mmproj.gguf",  mmproj_gguf),
+    ]:
+        url = f"{VLM_DRONE_BASE_URL}/{fname}"
+        print(f"Downloading {fname} → {dest.name} ...")
+        try:
+            import requests
+            r = requests.get(url, stream=True, timeout=120)
+            r.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(chunk_size=4 << 20):
+                    f.write(chunk)
+        except Exception:
+            run(["curl", "-fL", url, "-o", str(dest)])
+        print(f"  Saved {dest} ({dest.stat().st_size // (1 << 20)} MB)")
+    print("Drone VLM v1 ready: vlm.gguf + vlm_mmproj.gguf")
 
 
 def reactive_policy(models_dir: Path) -> None:
@@ -269,6 +302,7 @@ def main() -> None:
     parser.add_argument("--yolo-only", action="store_true", help="Download YOLOv8n and export to ONNX")
     parser.add_argument("--yolox", action="store_true", help="Download YOLOv8x and export to ONNX (AGX)")
     parser.add_argument("--domain-detector", action="store_true", help="Download astral domain detector v1 (drone/vehicle/person ONNX)")
+    parser.add_argument("--vlm-drone", action="store_true", help="Download drone-action VLM v1 (Qwen2.5-VL-3B LoRA Q4_K_M GGUF, ~1.8+1.2 GB)")
     parser.add_argument("--reactive-policy", action="store_true", help="Download reactive policy MLP v1 (12-dim state → velocity cmd ONNX)")
     parser.add_argument("--depth-model", action="store_true", help="Download depth model v1 (Depth Anything V2 Small, aerial fine-tuned ONNX)")
     parser.add_argument("--qwen3-vl-2b", action="store_true", help="Small VLM for Nano (7B Q4_K_M)")
@@ -287,6 +321,8 @@ def main() -> None:
         yolox(models_dir)
     if args.domain_detector:
         domain_detector(models_dir)
+    if args.vlm_drone:
+        vlm_drone(models_dir)
     if args.reactive_policy:
         reactive_policy(models_dir)
     if args.depth_model:
@@ -306,6 +342,7 @@ def main() -> None:
             args.yolo_only,
             args.yolox,
             args.domain_detector,
+            args.vlm_drone,
             args.reactive_policy,
             args.depth_model,
             args.qwen3_vl_2b,
