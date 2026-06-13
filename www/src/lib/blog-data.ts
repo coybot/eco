@@ -11,6 +11,26 @@ export type BlogPostMeta = {
 
 export const blogPosts: BlogPostMeta[] = [
   {
+    slug: "domain-detector-aerial-autonomy",
+    title: "We Trained a Domain Detector for Drones. One Class Collapsed to Zero.",
+    description:
+      "COCO-80 has no drone class, no person_aerial, no landing pad. We trained a 9-class domain detector on 48,000 images of sim and real aerial footage — and learned why class imbalance is the dominant failure mode in aerial perception.",
+    date: "June 13, 2026",
+    dateIso: "2026-06-13",
+    category: "Research",
+    readTime: "12 min read",
+  },
+  {
+    slug: "domain-detector-aerial-autonomy-paper",
+    title: "Domain-Specific Object Detection for Aerial Autonomy: Sim Data, VisDrone, and the Class Imbalance Problem",
+    description:
+      "Technical report. YOLOv8n fine-tuned on a 9-class aerial schema across three training rounds: sim-only (v1), merged with VisDrone (v2), and 4× drone oversampling (v3). mAP50 0.471 → 0.376 → 0.384. Drone AP50 0.047 → 0.010 → 0.087.",
+    date: "June 13, 2026",
+    dateIso: "2026-06-13",
+    category: "Research",
+    readTime: "18 min read",
+  },
+  {
     slug: "droneport-atc-tower-vs-selforg",
     title: "Tower vs. Self-Organized Droneport ATC: What a 9-Cell Factorial Study Found",
     description:
