@@ -133,6 +133,9 @@ def qwen3_vl_32b(models_dir: Path) -> None:
 
 DOMAIN_DETECTOR_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx"
 
+POLICY_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models"
+DEPTH_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/depth_v1.onnx"
+
 
 def domain_detector(models_dir: Path) -> None:
     """Astral domain-trained YOLOv8n (9 classes: person, drone, vehicle, ...).
@@ -155,6 +158,59 @@ def domain_detector(models_dir: Path) -> None:
                 f.write(chunk)
     except Exception:
         run(["curl", "-fL", DOMAIN_DETECTOR_URL, "-o", str(out)])
+    print(f"Saved {out}")
+
+
+def reactive_policy(models_dir: Path) -> None:
+    """Astral reactive policy MLP v1 (~120 KB total: ONNX + external data + state norm).
+
+    Trained via behavioral cloning of the reactive_planner rule-set on 200k synthetic
+    state→velocity-command pairs. Input: 12-dim state, output: [vx, vy, vz] m/s.
+    Requires policy_v1.onnx, policy_v1.onnx.data, and policy_v1_state_norm.npy co-located.
+    """
+    onnx_file = models_dir / "policy_v1.onnx"
+    if onnx_file.exists():
+        print("policy_v1.onnx already exists, skipping.")
+        return
+    print("Downloading reactive policy v1 ...")
+    for fname in ("policy_v1.onnx", "policy_v1.onnx.data", "policy_v1_state_norm.npy"):
+        url = f"{POLICY_BASE_URL}/{fname}"
+        dest = models_dir / fname
+        try:
+            import requests
+            r = requests.get(url, stream=True, timeout=60)
+            r.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1 << 20):
+                    f.write(chunk)
+        except Exception:
+            run(["curl", "-fL", url, "-o", str(dest)])
+        print(f"  Saved {dest}")
+    print("Reactive policy v1 ready.")
+
+
+def depth_model(models_dir: Path) -> None:
+    """Depth Anything V2 Small fine-tuned on aerial domain (~1.6 MB ONNX).
+
+    Fine-tuned on VisDrone val pseudo-depth labels (500 images, 10 epochs).
+    Input: 3×518×518 normalised RGB. Output: 518×518 relative depth map (float32).
+    Integrate in perception.py as an alternate DistanceEstimator backend
+    when stereo depth is unavailable (fixed-wing / long-range).
+    """
+    out = models_dir / "depth_v1.onnx"
+    if out.exists():
+        print("depth_v1.onnx already exists, skipping.")
+        return
+    print("Downloading depth model v1 ...")
+    try:
+        import requests
+        r = requests.get(DEPTH_URL, stream=True, timeout=60)
+        r.raise_for_status()
+        with open(out, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 20):
+                f.write(chunk)
+    except Exception:
+        run(["curl", "-fL", DEPTH_URL, "-o", str(out)])
     print(f"Saved {out}")
 
 
@@ -213,6 +269,8 @@ def main() -> None:
     parser.add_argument("--yolo-only", action="store_true", help="Download YOLOv8n and export to ONNX")
     parser.add_argument("--yolox", action="store_true", help="Download YOLOv8x and export to ONNX (AGX)")
     parser.add_argument("--domain-detector", action="store_true", help="Download astral domain detector v1 (drone/vehicle/person ONNX)")
+    parser.add_argument("--reactive-policy", action="store_true", help="Download reactive policy MLP v1 (12-dim state → velocity cmd ONNX)")
+    parser.add_argument("--depth-model", action="store_true", help="Download depth model v1 (Depth Anything V2 Small, aerial fine-tuned ONNX)")
     parser.add_argument("--qwen3-vl-2b", action="store_true", help="Small VLM for Nano (7B Q4_K_M)")
     parser.add_argument("--qwen3-vl-8b", action="store_true", help="7B VLM for NX / AGX 32GB")
     parser.add_argument("--qwen3-vl-32b", action="store_true", help="32B VLM for AGX 64GB")
@@ -229,6 +287,10 @@ def main() -> None:
         yolox(models_dir)
     if args.domain_detector:
         domain_detector(models_dir)
+    if args.reactive_policy:
+        reactive_policy(models_dir)
+    if args.depth_model:
+        depth_model(models_dir)
     if args.qwen3_vl_2b:
         qwen3_vl_2b(models_dir)
     if args.qwen3_vl_8b:
@@ -244,6 +306,8 @@ def main() -> None:
             args.yolo_only,
             args.yolox,
             args.domain_detector,
+            args.reactive_policy,
+            args.depth_model,
             args.qwen3_vl_2b,
             args.qwen3_vl_8b,
             args.qwen3_vl_32b,
