@@ -32,9 +32,10 @@ export function BlogPreviewSection() {
           transition={{ duration: 0.5 }}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold">From the Blog</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold">Blog & Research</h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Stay informed with the latest news, updates, and industry insights.
+            Technical deep-dives, published papers, and lessons learned from
+            10,200+ closed-loop flight trials.
           </p>
         </motion.div>
 
@@ -97,7 +98,7 @@ export function BlogPreviewSection() {
         >
           <Link href="/blog">
             <Button variant="outline">
-              View All Posts
+              View All
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
