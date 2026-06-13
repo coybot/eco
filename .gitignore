@@ -66,6 +66,8 @@ DerivedData/
 
 # Local scratch
 drone/.local/
+www/test-sim.mjs
+www/public/sim_video_test.html
 
 # Large 3D source assets (downloaded via drone/sim/godot/setup_assets.py or tracked in LFS)
 /assets/*.glb

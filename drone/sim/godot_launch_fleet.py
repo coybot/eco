@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).parent
-SIM_DIR = HERE / "sim"
+SIM_DIR = HERE
 
 
 def main():

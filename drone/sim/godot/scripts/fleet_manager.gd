@@ -543,7 +543,11 @@ func grab_vantage_jpeg(name: String) -> Variant:
 # Roster / grid helpers
 # ------------------------------------------------------------------
 static func _parse_roster(fleet_str: String) -> Array[Dictionary]:
+	# Must match fleet.py parse_roster exactly:
+	#   "quad:2,rover:1" -> sim-quadcopter-001, sim-quadcopter-002, sim-rover-001
+	# Per-type counters, 3-digit zero-padded.
 	var roster: Array[Dictionary] = []
+	var type_counts: Dictionary = {}
 	var parts := fleet_str.split(",")
 	for part in parts:
 		part = part.strip_edges()
@@ -560,8 +564,11 @@ static func _parse_roster(fleet_str: String) -> Array[Dictionary]:
 				vtype = "quadcopter"
 		if kv.size() >= 2:
 			count = kv[1].strip_edges().to_int()
+		if not vtype in type_counts:
+			type_counts[vtype] = 0
 		for i in range(count):
-			var suffix := "-%02d" % (roster.size() + 1)
+			type_counts[vtype] += 1
+			var suffix := "-%03d" % type_counts[vtype]
 			roster.append({"id": "sim-%s%s" % [vtype, suffix], "type": vtype})
 	return roster
 
