@@ -806,6 +806,10 @@ export function BlogPostBody({ slug }: { slug: string }) {
             scenes did not have enough examples of those two classes at aerial
             angles to learn them well.
           </p>
+          <figure className="my-8">
+            <img src="/media/detector/demo_sim_hospital.jpg" alt="v1 detector running on a sim hospital scene" className="w-full rounded-lg" />
+            <figcaption className="mt-2 text-sm text-center text-muted-foreground">v1 running on a sim hospital frame — vehicle and drone detected, no person_aerial</figcaption>
+          </figure>
           <h2>Round 2: 343,000 free labels from VisDrone — and the collapse</h2>
           <p>
             <a href="https://github.com/VisDrone/VisDrone-Dataset" target="_blank" rel="noopener noreferrer">
@@ -822,6 +826,10 @@ export function BlogPostBody({ slug }: { slug: string }) {
             0.755. Bicycle_motorcycle appeared at 0.365. These were genuinely
             impressive gains.
           </p>
+          <figure className="my-8">
+            <img src="/media/detector/demo_vd_dense_traffic.jpg" alt="v3 detector on dense VisDrone traffic scene" className="w-full rounded-lg" />
+            <figcaption className="mt-2 text-sm text-center text-muted-foreground">v3 detector on a dense VisDrone traffic scene — person_aerial, vehicle, and bicycle_motorcycle all firing correctly</figcaption>
+          </figure>
           <p>
             Drone AP50 dropped from 0.047 to 0.010. The class had not just
             stagnated — it had nearly vanished.
@@ -840,6 +848,10 @@ export function BlogPostBody({ slug }: { slug: string }) {
             for roughly 10% of training samples. The training set grew from
             21,471 to 48,717 images.
           </p>
+          <figure className="my-8">
+            <img src="/media/detector/v3_training_curves.png" alt="v3 training curves" className="w-full rounded-lg" />
+            <figcaption className="mt-2 text-sm text-center text-muted-foreground">v3 training curves — mAP50 on VisDrone val converging after 4× drone oversampling across 50 epochs</figcaption>
+          </figure>
           <h2>Round 3: the oversampled result</h2>
           <p>
             mAP50 on the real-world VisDrone val set: 0.384. Person_aerial: 0.360.
@@ -875,6 +887,10 @@ export function BlogPostBody({ slug }: { slug: string }) {
               person_aerial or vehicle.
             </li>
           </ul>
+          <figure className="my-8">
+            <img src="/media/detector/demo_vd_street_intersection.jpg" alt="v3 detections on VisDrone street intersection" className="w-full rounded-lg" />
+            <figcaption className="mt-2 text-sm text-center text-muted-foreground">v3 on a VisDrone street intersection — vehicles and person_aerial labeled with confidence scores</figcaption>
+          </figure>
           <h2>Three things we learned</h2>
           <p>
             <strong>Sim mAP lies at small sample counts.</strong> A 0.471 on
@@ -1087,6 +1103,20 @@ export function BlogPostBody({ slug }: { slug: string }) {
           </ul>
 
           <h2>6. Results</h2>
+          <figure className="my-8 grid grid-cols-3 gap-3">
+            <div>
+              <img src="/media/detector/v1_training_curves.png" alt="v1 training curves" className="w-full rounded" />
+              <p className="mt-1 text-xs text-center text-muted-foreground">v1 (sim-only)</p>
+            </div>
+            <div>
+              <img src="/media/detector/v2_training_curves.png" alt="v2 training curves" className="w-full rounded" />
+              <p className="mt-1 text-xs text-center text-muted-foreground">v2 (+ VisDrone)</p>
+            </div>
+            <div>
+              <img src="/media/detector/v3_training_curves.png" alt="v3 training curves" className="w-full rounded" />
+              <p className="mt-1 text-xs text-center text-muted-foreground">v3 (oversampled)</p>
+            </div>
+          </figure>
           <h3>6.1 V1 — simulation baseline</h3>
           <ul>
             <li>mAP50 = 0.471, mAP50-95 = 0.341</li>
@@ -1119,6 +1149,16 @@ export function BlogPostBody({ slug }: { slug: string }) {
             of total training signal.
           </p>
 
+          <figure className="my-8 grid grid-cols-2 gap-3">
+            <div>
+              <img src="/media/detector/v2_val_predictions_batch0.jpg" alt="v2 val predictions" className="w-full rounded" />
+              <p className="mt-1 text-xs text-center text-muted-foreground">v2 val predictions — good on vehicles/people, drone boxes missing</p>
+            </div>
+            <div>
+              <img src="/media/detector/v3_val_predictions.jpg" alt="v3 val predictions" className="w-full rounded" />
+              <p className="mt-1 text-xs text-center text-muted-foreground">v3 val predictions — drone class recovered after oversampling</p>
+            </div>
+          </figure>
           <h3>6.3 V3 — 4× drone oversampling</h3>
           <ul>
             <li>mAP50 = 0.384 (VisDrone val), mAP50-95 = 0.219</li>
@@ -1137,6 +1177,16 @@ export function BlogPostBody({ slug }: { slug: string }) {
             large drone val set.
           </p>
 
+          <figure className="my-8 grid grid-cols-2 gap-3">
+            <div>
+              <img src="/media/detector/v3_confusion.png" alt="v3 confusion matrix" className="w-full rounded" />
+              <p className="mt-1 text-xs text-center text-muted-foreground">v3 confusion matrix — vehicles and person_aerial dominate; drone and rare classes small but present</p>
+            </div>
+            <div>
+              <img src="/media/detector/v3_pr_curve.png" alt="v3 PR curve" className="w-full rounded" />
+              <p className="mt-1 text-xs text-center text-muted-foreground">v3 per-class PR curves</p>
+            </div>
+          </figure>
           <h2>7. Discussion</h2>
           <h3>7.1 Sim-to-real gap in mAP reporting</h3>
           <p>
