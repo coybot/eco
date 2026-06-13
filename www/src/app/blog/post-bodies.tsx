@@ -750,6 +750,202 @@ export function BlogPostBody({ slug }: { slug: string }) {
         </Prose>
       );
 
+    case "four-models-drone-autonomy":
+      return (
+        <Prose>
+          <p>
+            The domain detector was the first model. It answered one question:
+            can the drone see the things that matter — other drones, people from
+            altitude, landing pads — instead of the 80 COCO categories it was
+            born knowing? The answer was yes, and{" "}
+            <Link href="/blog/domain-detector-aerial-autonomy">
+              we wrote about the class-collapse problem it exposed
+            </Link>
+            .
+          </p>
+          <p>
+            After that we trained three more models in the same session. This
+            post covers what they are, why we built each one, and how they all
+            run together on a Jetson Orin Nano today.
+          </p>
+
+          <h2>Model 2 — VLM action-LoRA</h2>
+          <p>
+            The drone's reasoning layer uses a vision-language model to look at
+            the camera feed, read the mission context, and emit a structured
+            action: <em>move forward 3 m</em>, <em>photograph the target</em>,{" "}
+            <em>land</em>. The stock Qwen3-VL-2B does this reasonably well but
+            it was trained on the internet — not on drone missions. It
+            occasionally emits verbs the SDK does not recognize, confuses rover
+            commands with quadcopter commands, and hallucinates fields in the
+            action JSON.
+          </p>
+          <p>
+            We fine-tuned Qwen2.5-VL-3B-Instruct with LoRA (rank 16, applied to
+            all attention projection matrices) on 2,000 drone-aerial training
+            examples. The examples were generated deterministically: run the v3
+            domain detector on VisDrone val images to get labeled detections,
+            apply a set of 10 mission templates (survey area, approach target,
+            orbit landmark, return to base, …), assign a canonical{" "}
+            <code>VLMAction</code> response via priority rules, and write the
+            image path + mission context + expected JSON response to a JSONL
+            file.
+          </p>
+          <p>
+            Training ran for 3 epochs on hoopoe (2× RTX 5090) with 4-bit
+            BitsAndBytes quantization to fit the model in GPU memory. Final
+            training loss: 0.31. Token accuracy on a held-out 200-example val
+            split: 94.4%.
+          </p>
+          <p>
+            The merged model was converted to GGUF Q4_K_M via llama.cpp:
+            first a float16 GGUF from{" "}
+            <code>convert_hf_to_gguf.py</code>, then quantized with{" "}
+            <code>llama-quantize</code>. Output: 1.8 GB main model + 1.2 GB
+            multimodal projector. Both slot directly into the existing
+            on-device VLM path — the daemon loads whatever{" "}
+            <code>vlm.gguf</code> and <code>vlm_mmproj.gguf</code> are present
+            in the models directory.
+          </p>
+
+          <h2>Model 3 — Reactive policy MLP</h2>
+          <p>
+            The VLM makes good mission-level decisions but it runs at 1–3 Hz.
+            At cruise speed a drone covers 1.5–3 m per inference cycle. That is
+            fine for high-level waypoint selection but too slow for obstacle
+            avoidance and altitude hold, which the rule-based reactive planner
+            currently handles.
+          </p>
+          <p>
+            The reactive planner is a set of explicit rules: brake if an
+            obstacle is closer than 2 m forward, push away from the nearest
+            surface, hold altitude within ±0.2 m, scale speed down as the goal
+            distance drops below 1 m. These rules are correct and safe but they
+            are not learnable — they cannot improve from experience and they do
+            not generalize beyond the cases they enumerate.
+          </p>
+          <p>
+            We trained a small MLP (two 128-unit hidden layers with LayerNorm,
+            approximately 50 K parameters) to clone the planner. The input is a
+            12-dimensional state vector: goal distance, goal bearing and
+            elevation, current altitude, current velocity (3-axis), and nearest
+            obstacle distance in five directions. The output is a 3-axis
+            velocity command.
+          </p>
+          <p>
+            We generated 200,000 synthetic state-action pairs by sampling random
+            states and running the planner rules as a function — no simulation
+            needed. 30 epochs of AdamW + cosine LR schedule. Best val MSE:
+            0.0077. The model fits in 121 KB as an ONNX file, runs in under 1 ms
+            on CPU, and can sustain 200 Hz on a Jetson Nano. The rule-based
+            planner stays in as the safety fallback — the MLP is the fast path.
+          </p>
+
+          <h2>Model 4 — Monocular depth fine-tune</h2>
+          <p>
+            The quadcopter and rover use a stereo depth camera (Intel D435i /
+            Luxonis OAK-D) for ranging. Stereo baseline works well up to about
+            10–15 m. Beyond that — at range or on a fixed-wing without a stereo
+            rig — depth is unavailable and the planner treats everything as
+            unranged.
+          </p>
+          <p>
+            We fine-tuned Depth Anything V2 Small on aerial imagery using
+            self-distillation: run the zero-shot model on 500 VisDrone val
+            images to generate pseudo-depth labels, then fine-tune on those
+            labels. This is not ground-truth supervision but it adapts the
+            model's internal representation to the overhead/oblique aerial
+            viewpoint, where the zero-shot model tends to produce noisy estimates
+            on flat textureless surfaces (roads, rooftops, open ground).
+          </p>
+          <p>
+            10 epochs, scale-invariant SmoothL1 loss, best val loss 0.00072.
+            The output is a 1.6 MB ONNX. Input: 518×518 RGB. Output: 518×518
+            relative depth map. Metric scaling is done at runtime using the
+            known flight altitude as a prior — the flight controller always knows
+            its barometric altitude, which anchors the scale factor.
+          </p>
+
+          <h2>Deployment</h2>
+          <p>
+            All four models are running on both the rover (Jetson Orin Nano,{" "}
+            <code>jetson@rover</code>) and the quadcopter (<code>astral@quadcopter</code>).
+            The deployment sequence:
+          </p>
+          <ol>
+            <li>
+              Copy updated <code>daemon.py</code>, <code>perception.py</code>,
+              and <code>setup_models.py</code> to <code>~/drone-api/</code> on
+              each device via SCP.
+            </li>
+            <li>
+              Run <code>python3 setup_models.py --domain-detector
+              --reactive-policy --depth-model --vlm-drone</code> to pull the
+              model files from S3.
+            </li>
+            <li>
+              <code>sudo systemctl restart drone-api</code>. The daemon detects
+              which models are present at startup and activates the corresponding
+              capability flags.
+            </li>
+          </ol>
+          <p>
+            The service restart on both devices confirmed: domain detector
+            loaded, reactive policy loaded, depth model loaded. The VLM GGUF
+            download (3.2 GB total) runs in the background and activates on next
+            restart.
+          </p>
+
+          <h2>Download</h2>
+          <p>
+            All four models are publicly available from S3:
+          </p>
+          <ul>
+            <li>
+              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx">
+                yolov8n_domain_v3.onnx
+              </a>{" "}
+              — 11.7 MB · YOLOv8n 9-class aerial detector
+            </li>
+            <li>
+              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/vlm_lora_v1_q4km.gguf">
+                vlm_lora_v1_q4km.gguf
+              </a>{" "}
+              — 1.8 GB · Qwen2.5-VL-3B action-LoRA, GGUF Q4_K_M
+            </li>
+            <li>
+              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/vlm_lora_v1_mmproj.gguf">
+                vlm_lora_v1_mmproj.gguf
+              </a>{" "}
+              — 1.2 GB · multimodal projector (required with vlm_lora_v1_q4km.gguf)
+            </li>
+            <li>
+              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/policy_v1.onnx">
+                policy_v1.onnx
+              </a>{" "}
+              +{" "}
+              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/policy_v1.onnx.data">
+                policy_v1.onnx.data
+              </a>{" "}
+              — 121 KB · reactive policy MLP
+            </li>
+            <li>
+              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/depth_v1.onnx">
+                depth_v1.onnx
+              </a>{" "}
+              — 1.6 MB · Depth Anything V2 Small, aerial fine-tune
+            </li>
+          </ul>
+          <p>
+            Load the state normalization for the reactive policy with the paired{" "}
+            <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/policy_v1_state_norm.npy">
+              policy_v1_state_norm.npy
+            </a>{" "}
+            (224 B, NumPy array of shape [2, 12] — row 0 is mean, row 1 is std).
+          </p>
+        </Prose>
+      );
+
     case "domain-detector-aerial-autonomy":
       return (
         <Prose>
@@ -917,10 +1113,28 @@ export function BlogPostBody({ slug }: { slug: string }) {
           <h2>Where the model runs</h2>
           <p>
             The ONNX is 12 MB. It runs at 55 FPS on an RTX 5090 and is
-            targeting a TensorRT int8 export for the Jetson Orin Nano where it
-            will replace the stock COCO-80 model in the perception pipeline.
-            The model is loaded automatically by the perception layer if a
-            domain detector ONNX is present — no inference code changes required.
+            deployed to Jetson Orin Nano hardware (rover and quadcopter) where
+            it replaces the stock COCO-80 model in the perception pipeline.
+            The model is loaded automatically by the perception layer — no
+            inference code changes required.
+          </p>
+          <h2>Download</h2>
+          <p>
+            The ONNX model is publicly available:
+          </p>
+          <ul>
+            <li>
+              <a href="https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx">
+                yolov8n_domain_v3.onnx
+              </a>{" "}
+              — 11.7 MB, YOLOv8n, 9-class aerial detector, ONNX opset 17
+            </li>
+          </ul>
+          <p>
+            Input: 640×640 RGB, normalized to ImageNet mean/std. Output: standard
+            YOLOv8 detection head (xywh + conf + 9-class logits). Classes in
+            order: drone, person_aerial, vehicle, bicycle_motorcycle,
+            landing_pad, powerline_pole, person, animal, boat.
           </p>
           <p>
             Technical report with all metrics, training curves, and confusion
