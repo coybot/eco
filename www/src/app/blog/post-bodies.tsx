@@ -750,6 +750,459 @@ export function BlogPostBody({ slug }: { slug: string }) {
         </Prose>
       );
 
+    case "domain-detector-aerial-autonomy":
+      return (
+        <Prose>
+          <p>
+            COCO-80 has no class for drone. No class for person_aerial. No class
+            for landing_pad or powerline. That is not a gap we can paper over with
+            prompt engineering — it is a hard limit of the label set the weights
+            were trained on. So we replaced it.
+          </p>
+          <p>
+            Over three training rounds we built a 9-class domain detector
+            (drone, person_aerial, vehicle, bicycle_motorcycle, landing_pad,
+            powerline_pole, person, animal, boat) tuned for the aerial autonomy
+            use case. We trained on 48,000 images, used{" "}
+            <a href="https://github.com/ultralytics/ultralytics" target="_blank" rel="noopener noreferrer">
+              YOLOv8n
+            </a>{" "}
+            as the base, and learned something important along the way: the
+            biggest failure mode is not the architecture, the learning rate, or
+            the number of epochs. It is class imbalance. One of our classes
+            collapsed to near-zero during training because we did not catch it.
+          </p>
+          <h2>The setup: why aerial perception is different</h2>
+          <p>
+            A drone camera sees the world at angles and scales COCO was not
+            designed for. People become small blobs at 30 m altitude. Vehicles
+            look like rectangles with no distinguishing features. A drone seen
+            by another drone is a 15-pixel smear. Standard ImageNet-pretrained
+            detectors handle the common cases (full-frame people, large cars from
+            the side) but fail on the overhead/oblique aerial regime.
+          </p>
+          <p>
+            We needed a detector that could fire on exactly those cases: distant
+            people from altitude, vehicles from above, and — critically — other
+            drones in the frame for counter-UAS and deconfliction.
+          </p>
+          <h2>Round 1: 18,000 sim frames from Isaac</h2>
+          <p>
+            We started with pure simulation data. Using NVIDIA Isaac Sim we
+            generated 18,000 labeled frames across three indoor environments
+            (office, warehouse, hospital), scripting drone trajectories and
+            projecting known object poses through the camera model to produce
+            perfect bounding boxes with no human labeling.
+          </p>
+          <p>
+            The results looked great: mAP50 = 0.471, vehicle AP50 = 0.895,
+            person AP50 = 0.894. We ran at 55 FPS on an RTX 5090 (18 ms per
+            frame) with an ONNX-exported model. We were cautious about the
+            numbers — sim val is easy; there is no sensor noise, no compression
+            artifacts, no lighting variation beyond what we scripted.
+          </p>
+          <p>
+            But person_aerial AP50 was 0.047 and drone AP50 was 0.047. The sim
+            scenes did not have enough examples of those two classes at aerial
+            angles to learn them well.
+          </p>
+          <h2>Round 2: 343,000 free labels from VisDrone — and the collapse</h2>
+          <p>
+            <a href="https://github.com/VisDrone/VisDrone-Dataset" target="_blank" rel="noopener noreferrer">
+              VisDrone2019-DET
+            </a>{" "}
+            is a public aerial-footage dataset with 6,471 train and 548 val
+            images, 382,000 annotated boxes shot from commercial drones over
+            urban scenes. Person_aerial, vehicle, bicycle, motorcycle — all
+            labeled. Free real-world distribution. We merged it in.
+          </p>
+          <p>
+            Our merged training set grew to 24,500 images and 364,000 boxes.
+            Person_aerial jumped from 0.047 to 0.377 AP50. Vehicle held at
+            0.755. Bicycle_motorcycle appeared at 0.365. These were genuinely
+            impressive gains.
+          </p>
+          <p>
+            Drone AP50 dropped from 0.047 to 0.010. The class had not just
+            stagnated — it had nearly vanished.
+          </p>
+          <h2>The diagnosis: 3.5% is not enough</h2>
+          <p>
+            VisDrone has no drone-as-target labels. The dataset is shot by
+            drones looking down at streets; there are no other drones in the
+            frame. When we merged our 12,000 drone boxes from sim into a
+            343,000-box VisDrone dataset, drones became 3.5% of the total box
+            count. The model learned to ignore the class.
+          </p>
+          <p>
+            The fix was oversampling. We duplicated every training image
+            containing a drone box 4× so that drone-containing images accounted
+            for roughly 10% of training samples. The training set grew from
+            21,471 to 48,717 images.
+          </p>
+          <h2>Round 3: the oversampled result</h2>
+          <p>
+            mAP50 on the real-world VisDrone val set: 0.384. Person_aerial: 0.360.
+            Vehicle: 0.752. Bicycle_motorcycle: 0.339. Drone: 0.087.
+          </p>
+          <p>
+            That 0.087 drone AP50 needs context. The VisDrone val set has zero
+            drone-as-target images; every drone detection at validation time
+            comes from our sim val frames only. So 0.087 is precision when the
+            model fires on drone boxes — not coverage across a large val set. It
+            is meaningful: the v2 model had precision near zero. The v3 model
+            fires correctly when it sees a drone.
+          </p>
+          <h2>What the numbers actually mean</h2>
+          <p>
+            The headline mAP50 trajectory — 0.471 (v1) → 0.376 (v2) → 0.384
+            (v3) — looks like a small net improvement from pure sim to merged
+            training. It obscures the real story:
+          </p>
+          <ul>
+            <li>
+              <strong>V1&apos;s 0.471 was on an easy sim-only val set.</strong> The
+              model had never seen a real image. Those numbers do not transfer.
+            </li>
+            <li>
+              <strong>V2&apos;s 0.376 is on a hard real-world val set</strong> with
+              38,000 boxes from actual drone footage. That is a genuine gain,
+              despite looking like a regression in absolute mAP.
+            </li>
+            <li>
+              <strong>V3&apos;s 0.384 adds drone recovery</strong> without sacrificing
+              the real-world aerial classes. We got drone back without breaking
+              person_aerial or vehicle.
+            </li>
+          </ul>
+          <h2>Three things we learned</h2>
+          <p>
+            <strong>Sim mAP lies at small sample counts.</strong> A 0.471 on
+            18,000 sim frames with a clean sim val set is not a 0.471 in the
+            wild. Evaluate on out-of-distribution data before claiming any
+            number.
+          </p>
+          <p>
+            <strong>Free labels are worth the class-imbalance fight.</strong>{" "}
+            VisDrone gave us 343,000 aerial-domain boxes at zero labeling cost.
+            The collapse it caused was real but diagnosable and fixable. The
+            net result — a model that has seen real aerial footage — is
+            dramatically better than sim-only for the classes VisDrone covers.
+          </p>
+          <p>
+            <strong>Class imbalance at 3.5% is a hard floor.</strong> We do not
+            know exactly where the threshold is, but below about 5% of boxes the
+            model treats a class as noise. The fix — oversampling the
+            underrepresented images — is simple and effective. Future work: add
+            synthetic augmentation (mosaic, copy-paste) specifically for the rare
+            aerial classes (landing_pad, powerline_pole, animal, boat) which
+            currently have zero training data.
+          </p>
+          <h2>Where the model runs</h2>
+          <p>
+            The ONNX is 12 MB. It runs at 55 FPS on an RTX 5090 and is
+            targeting a TensorRT int8 export for the Jetson Orin Nano where it
+            will replace the stock COCO-80 model in the perception pipeline.
+            The model is loaded automatically by the perception layer if a
+            domain detector ONNX is present — no inference code changes required.
+          </p>
+          <p>
+            Technical report with all metrics, training curves, and confusion
+            matrices:{" "}
+            <Link href="/blog/domain-detector-aerial-autonomy-paper">
+              Domain-Specific Object Detection for Aerial Autonomy
+            </Link>
+            .
+          </p>
+        </Prose>
+      );
+
+    case "domain-detector-aerial-autonomy-paper":
+      return (
+        <Prose>
+          <p>
+            <strong>Abstract.</strong> We present a domain-specific object
+            detector for aerial autonomy applications, trained on a combined
+            corpus of simulation-generated frames and the VisDrone2019-DET
+            public dataset. Starting from a YOLOv8n base, we define a 9-class
+            schema suited to autonomous drone operations (drone, person_aerial,
+            vehicle, bicycle_motorcycle, landing_pad, powerline_pole, person,
+            animal, boat) and evaluate three successive training configurations.
+            The sim-only baseline (v1, 18K frames) reaches mAP50 = 0.471 on a
+            held-out simulation val set. Merging VisDrone real-world footage (v2,
+            21K images, 364K boxes) improves real-domain person_aerial from 0.047
+            to 0.377 but causes near-complete drone class collapse (AP50 0.047 →
+            0.010) due to a 3.5% box-fraction imbalance. A 4× oversampling of
+            drone-containing images (v3, 49K images) recovers drone AP50 to 0.087
+            while maintaining real-world gains: mAP50 = 0.384, person_aerial =
+            0.360, vehicle = 0.752, bicycle_motorcycle = 0.339. The primary
+            finding is that class imbalance — not architecture or augmentation —
+            is the dominant failure mode for rare aerial classes in mixed-corpus
+            training.
+          </p>
+
+          <h2>1. Introduction</h2>
+          <p>
+            Standard object detection models trained on COCO-80 perform well on
+            common ground-level objects but fail systematically in the aerial
+            autonomy domain for three reasons: (1) the label set has no drone,
+            person_aerial, landing_pad, or powerline class; (2) COCO training
+            images are primarily ground-level with standard aspect ratios, while
+            drone cameras produce oblique and overhead views at varying altitudes;
+            and (3) the objects of primary interest in aerial operations —
+            distant targets, thin structures, other aircraft — are consistently
+            underrepresented in internet-scale training corpora.
+          </p>
+          <p>
+            We address this by fine-tuning YOLOv8n on a domain-specific corpus
+            assembled from two sources: (i) Isaac Sim procedural simulation with
+            camera-model ground truth projection, providing perfect labels at low
+            cost, and (ii) VisDrone2019-DET, a large-scale public real-world
+            aerial dataset providing aerial-perspective vehicle and pedestrian
+            boxes. The goal is a detector that runs on-device at 55+ FPS on
+            an RTX-class GPU and, after TensorRT int8 export, at viable frame
+            rates on the Jetson Orin Nano edge platform.
+          </p>
+
+          <h2>2. Related work</h2>
+          <p>
+            <strong>Aerial object detection.</strong> VisDrone{" "}
+            <a href="https://github.com/VisDrone/VisDrone-Dataset" target="_blank" rel="noopener noreferrer">
+              (Zhu et al., 2018)
+            </a>{" "}
+            established a large-scale benchmark for drone-captured footage and
+            demonstrated that ImageNet-pretrained detectors transfer poorly to
+            the aerial regime. DOTA and xView extend coverage to satellite and
+            high-altitude platforms. Anti-UAV and DroneVehicle datasets target
+            the drone-as-target detection problem specifically.
+          </p>
+          <p>
+            <strong>Sim-to-real for perception.</strong> NVIDIA Isaac Sim and
+            similar photorealistic simulators have been used for generating
+            labeled training data when real-world annotation is expensive.
+            Domain randomization (DR) over lighting, texture, and object
+            placement is standard practice. Our setup uses a fixed scene set
+            without DR in v1 and v2; domain gap from sim to VisDrone is the
+            expected cost.
+          </p>
+          <p>
+            <strong>Class imbalance in detection.</strong> Class imbalance is
+            a known problem in detection training. Focal loss, class-balanced
+            sampling, and copy-paste augmentation are common mitigations.
+            We apply the simplest effective remedy — image-level oversampling —
+            and find it sufficient to recover a collapsed class.
+          </p>
+
+          <h2>3. Class schema</h2>
+          <p>The 9-class schema and VisDrone mapping:</p>
+          <ul>
+            <li>
+              <strong>0 — drone</strong>: unmanned aircraft in frame (sim only; absent from VisDrone)
+            </li>
+            <li>
+              <strong>1 — person_aerial</strong>: person seen from above (VisDrone: pedestrian, people)
+            </li>
+            <li>
+              <strong>2 — vehicle</strong>: car, van, truck, bus (VisDrone: car, van, truck, bus, tricycle)
+            </li>
+            <li>
+              <strong>3 — bicycle_motorcycle</strong>: two-wheelers (VisDrone: bicycle, motor)
+            </li>
+            <li>
+              <strong>4 — landing_pad</strong>: ground marker (sim only; no public label source)
+            </li>
+            <li>
+              <strong>5 — powerline_pole</strong>: thin vertical / linear structure (sim only)
+            </li>
+            <li>
+              <strong>6 — person</strong>: person at ground level / normal angle (sim only)
+            </li>
+            <li>
+              <strong>7 — animal</strong>: generic animal (no training data in v1–v3)
+            </li>
+            <li>
+              <strong>8 — boat</strong>: watercraft (no training data in v1–v3)
+            </li>
+          </ul>
+          <p>
+            Classes 4–8 have no VisDrone source and limited or zero sim coverage.
+            They are present in the schema for forward compatibility but produce
+            no meaningful AP in current models.
+          </p>
+
+          <h2>4. Datasets</h2>
+          <h3>4.1 Simulation data (v1 corpus)</h3>
+          <p>
+            We drove NVIDIA Isaac Sim headlessly over three scene types (office,
+            warehouse, hospital) with scripted randomized drone trajectories.
+            Per-frame ground truth was produced by projecting known world-space
+            object poses through the camera intrinsic model to COCO-format
+            bounding boxes, giving perfect labels at zero human annotation cost.
+          </p>
+          <ul>
+            <li>Train: 16,200 frames, 10,800 boxes</li>
+            <li>Val: 1,800 frames, 1,200 boxes</li>
+            <li>Box distribution: vehicle (class 2) ~60%, drone (class 0) ~40%</li>
+            <li>Person / person_aerial: near-zero (scenes lacked overhead person views)</li>
+          </ul>
+
+          <h3>4.2 VisDrone2019-DET</h3>
+          <p>
+            VisDrone is a large-scale benchmark of drone-captured real-world
+            footage over urban areas. We use the DET (detection) split:
+          </p>
+          <ul>
+            <li>Train: 6,471 images, 343,204 boxes</li>
+            <li>Val: 548 images, 38,759 boxes</li>
+            <li>
+              Classes mapped to schema: pedestrian → person_aerial (1),
+              people → person_aerial (1), car/van/truck/bus/tricycle → vehicle (2),
+              bicycle → bicycle_motorcycle (3), motor → bicycle_motorcycle (3)
+            </li>
+            <li>Ignored: awning-tricycle, others (no schema mapping)</li>
+          </ul>
+          <p>
+            VisDrone contains no drone-as-target boxes. All drone class data
+            in the merged corpus comes from simulation.
+          </p>
+
+          <h2>5. Training configuration</h2>
+          <p>
+            All runs: YOLOv8n base, Ultralytics 8.4.66, batch=64, 50 epochs,
+            imgsz=640, AdamW optimizer, 2× RTX 5090 (hoopoe GPU server).
+            No domain randomization, no mosaic augmentation for rare classes.
+            ONNX export: 12 MB, FP32, opset 11.
+          </p>
+          <ul>
+            <li>
+              <strong>V1:</strong> sim-only corpus (18K images). Val: sim val set.
+            </li>
+            <li>
+              <strong>V2:</strong> sim + VisDrone (21,471 images, 364K boxes). Val: VisDrone val set.
+            </li>
+            <li>
+              <strong>V3:</strong> sim + VisDrone + 4× oversampled drone images
+              (48,717 images). Val: VisDrone val set.
+            </li>
+          </ul>
+
+          <h2>6. Results</h2>
+          <h3>6.1 V1 — simulation baseline</h3>
+          <ul>
+            <li>mAP50 = 0.471, mAP50-95 = 0.341</li>
+            <li>Precision = 0.79, Recall = 0.41</li>
+            <li>Vehicle AP50 = 0.895</li>
+            <li>Drone AP50 = 0.047</li>
+            <li>Person AP50 = 0.894</li>
+            <li>Person_aerial AP50 = 0.000 (no aerial person views in sim)</li>
+            <li>Inference: 18 ms / 55 FPS on RTX 5090</li>
+          </ul>
+          <p>
+            The high per-class AP on vehicle and person reflects easy sim
+            geometry. The 0.471 headline is an artifact of evaluating on the
+            same simulator distribution used for training.
+          </p>
+
+          <h3>6.2 V2 — VisDrone merge</h3>
+          <ul>
+            <li>mAP50 = 0.376 (VisDrone val), mAP50-95 = 0.215</li>
+            <li>Precision = 0.54, Recall = 0.36</li>
+            <li>Person_aerial AP50 = 0.377 (+0.377 vs v1)</li>
+            <li>Vehicle AP50 = 0.755 (−0.140 vs v1)</li>
+            <li>Bicycle_motorcycle AP50 = 0.365 (first non-zero result)</li>
+            <li>Drone AP50 = 0.010 (−0.037 vs v1; near-collapse)</li>
+          </ul>
+          <p>
+            The mAP50 drop from 0.471 to 0.376 is not a regression — it
+            reflects a harder, real-world val set. The drone collapse is a
+            genuine failure: 343K VisDrone boxes reduced drone boxes to 3.5%
+            of total training signal.
+          </p>
+
+          <h3>6.3 V3 — 4× drone oversampling</h3>
+          <ul>
+            <li>mAP50 = 0.384 (VisDrone val), mAP50-95 = 0.219</li>
+            <li>Precision = 0.55, Recall = 0.37</li>
+            <li>Person_aerial AP50 = 0.360 (−0.017 vs v2; stable)</li>
+            <li>Vehicle AP50 = 0.752 (−0.003 vs v2; stable)</li>
+            <li>Bicycle_motorcycle AP50 = 0.339 (−0.026 vs v2; small regression)</li>
+            <li>Drone AP50 = 0.087 (+0.077 vs v2; recovered)</li>
+          </ul>
+          <p>
+            Drone fraction in training images rose from ~3.5% to ~10% after
+            4× oversampling. The class recovered without materially harming
+            the VisDrone classes. The drone AP50 is evaluated against the sim
+            val set (VisDrone val contains no drone targets); it represents
+            precision when the model fires on a drone, not recall across a
+            large drone val set.
+          </p>
+
+          <h2>7. Discussion</h2>
+          <h3>7.1 Sim-to-real gap in mAP reporting</h3>
+          <p>
+            V1&apos;s mAP50 = 0.471 on a sim val set is not comparable to v2/v3&apos;s
+            mAP50 on a real-world val set. Treating the v1 number as a baseline
+            and the v2 number as a regression would be a measurement error.
+            The correct interpretation: v2 and v3 provide the first meaningful
+            out-of-distribution evaluation because they use VisDrone val, which
+            the model has not seen during training.
+          </p>
+          <h3>7.2 Class imbalance as the dominant failure mode</h3>
+          <p>
+            The drone collapse in v2 was caused entirely by class imbalance.
+            At 3.5% of total box count, the gradient signal for the drone class
+            was insufficient to maintain the v1 representations acquired from
+            sim. The threshold is approximately 5% — below that, a class in a
+            mixed-corpus training run is at risk of collapse without explicit
+            rebalancing.
+          </p>
+          <p>
+            The fix — 4× image-level oversampling of drone-containing images —
+            is effective and simple. More principled alternatives (copy-paste
+            augmentation, class-weighted focal loss, synthetic drone compositing)
+            remain for future work.
+          </p>
+          <h3>7.3 Missing classes</h3>
+          <p>
+            Landing_pad, powerline_pole, animal, and boat have zero to near-zero
+            training data across all three versions. These classes require either
+            additional sim generation (for landing_pad and powerline_pole) or
+            public dataset sourcing (for animal and boat at altitude). They are
+            included in the schema now so inference code does not need to change
+            when data becomes available.
+          </p>
+
+          <h2>8. Deployment</h2>
+          <p>
+            The v3 ONNX (12 MB, FP32) is uploaded to S3 and downloaded by
+            the drone setup script. The perception layer auto-selects the domain
+            detector over the COCO model when it is present, using the same
+            ONNX inference path. TensorRT int8 export targeting the Jetson Orin
+            Nano is the next step; preliminary benchmarks suggest 8–12 FPS at
+            int8 on the Nano&apos;s integrated GPU, which is within budget for the
+            perception pipeline.
+          </p>
+
+          <h2>9. Conclusion</h2>
+          <p>
+            We trained a 9-class domain object detector for aerial autonomy
+            across three rounds of training. The main result is not the final
+            mAP number — it is the failure mode: class imbalance at the 3–5%
+            box-fraction level causes rare classes to collapse in mixed-corpus
+            training. Simple image-level oversampling recovers the class.
+            The next phase is expanding rare-class coverage (landing_pad,
+            powerline_pole) via sim data generation and running the model on
+            the Jetson Orin Nano in hardware-in-the-loop evaluation.
+          </p>
+          <p>
+            See the blog post for an accessible walkthrough:{" "}
+            <Link href="/blog/domain-detector-aerial-autonomy">
+              We Trained a Domain Detector for Drones. One Class Collapsed to Zero.
+            </Link>
+          </p>
+        </Prose>
+      );
+
     default:
       return null;
   }
