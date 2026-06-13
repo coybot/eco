@@ -5,6 +5,7 @@ import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { JsonLd } from "@/components/json-ld";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 const hardwareProducts = [
   {
     name: "M1-A",
-    price: "$5,299",
+    price: "$9,000",
     description: "Autonomous quadcopter for aerial missions in any environment.",
     features: [
       "Jetson Orin Nano (67 TOPS)",
@@ -34,7 +35,7 @@ const hardwareProducts = [
   },
   {
     name: "M1-G",
-    price: "$4,499",
+    price: "$4,000",
     description: "Autonomous ground rover for persistent missions and patrol.",
     features: [
       "Jetson Orin Nano (67 TOPS)",
@@ -66,7 +67,7 @@ const softwareTiers = [
       "Local simulator",
     ],
     cta: "Get Started",
-    href: "/docs/quickstart",
+    href: "/docs",
   },
   {
     name: "Pro",
@@ -82,8 +83,8 @@ const softwareTiers = [
       "API access",
       "Analytics dashboard",
     ],
-    cta: "Start Free Trial",
-    href: "/signup?plan=pro",
+    cta: "Request Access",
+    href: "/enterprise",
     highlighted: true,
   },
   {
@@ -106,9 +107,43 @@ const softwareTiers = [
   },
 ];
 
+const faqs = [
+  {
+    q: "Do I need a software subscription to use the hardware?",
+    a: "No! The drones work standalone with the free tier. Software subscriptions add cloud features, fleet management, and advanced mission planning.",
+  },
+  {
+    q: "What's included with the hardware purchase?",
+    a: "Each drone includes batteries, controller, charger, carrying case, spare propellers, and quick start guide. See individual product pages for full details.",
+  },
+  {
+    q: "Do you offer volume discounts?",
+    a: "Yes — contact our enterprise team for custom pricing on orders of 5+ drones.",
+  },
+  {
+    q: "What's your return policy?",
+    a: "30-day no-questions-asked returns on hardware. Software subscriptions can be cancelled anytime.",
+  },
+  {
+    q: "Is the hardware NDAA compliant?",
+    a: "Yes, all compute and sensor components (Jetson Orin Nano, Intel RealSense) are NDAA compliant, making the platform suitable for government and defense applications.",
+  },
+];
+
 export default function PricingPage() {
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((faq) => ({
+      "@type": "Question",
+      name: faq.q,
+      acceptedAnswer: { "@type": "Answer", text: faq.a },
+    })),
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
+      <JsonLd data={faqJsonLd} />
       <Header />
       <main className="flex-1">
         {/* Hero */}
@@ -256,28 +291,7 @@ export default function PricingPage() {
                 Frequently Asked Questions
               </h2>
               <div className="space-y-6">
-                {[
-                  {
-                    q: "Do I need a software subscription to use the hardware?",
-                    a: "No! The drones work standalone with the free tier. Software subscriptions add cloud features, fleet management, and advanced mission planning.",
-                  },
-                  {
-                    q: "What's included with the hardware purchase?",
-                    a: "Each drone includes batteries, controller, charger, carrying case, spare propellers, and quick start guide. See individual product pages for full details.",
-                  },
-                  {
-                    q: "Do you offer volume discounts?",
-                    a: "Yes — contact our enterprise team for custom pricing on orders of 5+ drones.",
-                  },
-                  {
-                    q: "What's your return policy?",
-                    a: "30-day no-questions-asked returns on hardware. Software subscriptions can be cancelled anytime.",
-                  },
-                  {
-                    q: "Is the hardware NDAA compliant?",
-                    a: "Yes, all compute and sensor components (Jetson Orin Nano, Intel RealSense) are NDAA compliant, making the platform suitable for government and defense applications.",
-                  },
-                ].map((faq) => (
+                {faqs.map((faq) => (
                   <div key={faq.q} className="space-y-2">
                     <h3 className="font-semibold">{faq.q}</h3>
                     <p className="text-sm text-muted-foreground">{faq.a}</p>

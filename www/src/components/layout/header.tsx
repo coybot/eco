@@ -47,7 +47,12 @@ const developers = [
   {
     title: "Research",
     href: "/research",
-    description: "Papers and technical reports from the Astral team.",
+    description: "Technical papers — each with an accessible blog write-up.",
+  },
+  {
+    title: "Benchmark",
+    href: "/benchmark",
+    description: "Open closed-loop drone AI leaderboard. Submit your model.",
   },
 ];
 
@@ -55,7 +60,7 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         {/* Logo */}
         <Link href="/" className="flex items-center">

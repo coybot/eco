@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { Apple } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,61 +77,49 @@ export function AppShowcaseSection() {
             </div>
           </motion.div>
 
-          {/* Right Column - App Preview */}
+          {/* Right Column - Real screenshots */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            className="relative"
+            className="relative flex items-center justify-center"
           >
-            {/* Phone Mockup */}
-            <div className="relative mx-auto max-w-[300px]">
-              {/* Subtle glow effect */}
-              <div className="absolute -inset-4 bg-white/5 rounded-[3rem] blur-2xl" />
-              
-              {/* Phone frame */}
-              <div className="relative bg-card border-4 border-secondary rounded-[2.5rem] p-2 shadow-2xl">
-                <div className="bg-background rounded-[2rem] overflow-hidden aspect-[9/19]">
-                  {/* Status bar */}
-                  <div className="h-6 bg-secondary/50 flex items-center justify-center">
-                    <div className="w-20 h-1 bg-foreground/20 rounded-full" />
-                  </div>
-                  
-                  {/* App content placeholder */}
-                  <div className="p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">Mission Control</span>
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20" />
-                    </div>
-                    
-                    {/* Map placeholder */}
-                    <div className="aspect-square bg-secondary/50 rounded-lg flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-amber-500/20 flex items-center justify-center">
-                          <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
-                        </div>
-                        <span className="text-xs text-muted-foreground">Live Map</span>
-                      </div>
-                    </div>
-                    
-                    {/* Stats */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {["Alt", "Speed", "Battery"].map((stat) => (
-                        <div key={stat} className="bg-secondary/30 rounded-md p-2 text-center">
-                          <div className="text-xs text-muted-foreground">{stat}</div>
-                          <div className="text-sm font-mono font-bold">--</div>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    {/* Action button */}
-                    <div className="bg-amber-500/20 rounded-lg p-3 text-center">
-                      <span className="text-sm font-semibold text-amber-500">Launch Mission</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {/* Glow */}
+            <div className="absolute inset-0 bg-amber-500/5 rounded-3xl blur-3xl" />
+
+            {/* Back-left screenshot */}
+            <div className="absolute left-0 top-6 w-[38%] rounded-[1.4rem] overflow-hidden border-2 border-white/10 shadow-xl rotate-[-6deg] origin-bottom-right opacity-70">
+              <Image
+                src="/media/mobile-app/ios_06_chat_sent.png"
+                alt="Astral app — send a command"
+                width={390}
+                height={844}
+                className="w-full h-auto"
+              />
+            </div>
+
+            {/* Front-right screenshot */}
+            <div className="absolute right-0 top-6 w-[38%] rounded-[1.4rem] overflow-hidden border-2 border-white/10 shadow-xl rotate-[6deg] origin-bottom-left opacity-70">
+              <Image
+                src="/media/mobile-app/ios_07_chat_reply.png"
+                alt="Astral app — assistant reply"
+                width={390}
+                height={844}
+                className="w-full h-auto"
+              />
+            </div>
+
+            {/* Centre screenshot — hero */}
+            <div className="relative w-[44%] rounded-[1.6rem] overflow-hidden border-2 border-white/20 shadow-2xl z-10">
+              <Image
+                src="/media/mobile-app/ios_04_missions_online.png"
+                alt="Astral app — drone online"
+                width={390}
+                height={844}
+                className="w-full h-auto"
+                priority
+              />
             </div>
           </motion.div>
         </div>

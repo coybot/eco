@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SITE } from "@/lib/site";
 import { socialMeta } from "@/lib/social-metadata";
+import { researchPapers } from "@/lib/research-data";
+import { getBlogPost } from "@/lib/blog-data";
 
 const RESEARCH_DESCRIPTION =
   "Astral publishes rigorous autonomy research on vision-language navigation for aerial and ground robots, modular architectures, swarm sensing, and large-scale datasets including Yonder.";
@@ -16,91 +18,6 @@ export const metadata: Metadata = {
   ...socialMeta("/research", "Research | Astral", RESEARCH_DESCRIPTION),
 };
 
-type PaperLink =
-  | { label: string; href: string; external?: false }
-  | { label: string; href: string; external: true };
-
-const papers: Array<{
-  id: string;
-  title: string;
-  venue: string;
-  summary: string;
-  links: PaperLink[];
-}> = [
-  {
-    id: "yonder",
-    title:
-      "Yonder: A 4.65M-Frame Drone Navigation Dataset and the Cross-Simulator Generalization Gap",
-    venue: "NeurIPS 2026 Datasets & Benchmarks track (submission)",
-    summary:
-      "Introduces Yonder, a multi-million-frame drone-perspective indoor dataset with rich sensing, and shows why offline detection gains can fail to translate to closed-loop navigation when training and evaluation simulators disagree geometrically.",
-    links: [{ label: "Yonder on Hugging Face", href: SITE.yonderDataset, external: true }],
-  },
-  {
-    id: "metric-gap",
-    title:
-      "Closing the Metric Gap: From Diagnosis to Solution in Vision-Language Drone Navigation",
-    venue: "Technical report",
-    summary:
-      "Large-scale closed-loop benchmark across many VLMs, decomposing failures into semantic understanding versus metric spatial grounding, and a modular architecture that closes the gap on operational commands while prioritizing collision-free flight.",
-    links: [
-      { label: "Simulation docs", href: "/docs/simulation" },
-      { label: "GitHub", href: SITE.githubOrg, external: true },
-    ],
-  },
-  {
-    id: "engineering-separation",
-    title:
-      "Engineering the Separation Principle: From Modular Architecture to Deployable Drone Navigation",
-    venue: "Technical report",
-    summary:
-      "An eighteen-iteration engineering log: improving a modular autonomy stack in aggregate, scaling detector fine-tuning with large synthetic data, diagnosing a cross-simulator localization gap, and characterizing exploration and planning as the next bottlenecks.",
-    links: [{ label: "Yonder dataset", href: "/datasets/yonder" }],
-  },
-  {
-    id: "scaling-separation",
-    title:
-      "Scaling the Separation Principle: Sensing Requirements for 1000-Drone Swarms in Urban and Natural Environments",
-    venue: "Technical report",
-    summary:
-      "Controlled swarm simulations up to 1,000 agents comparing sensing stacks and coordination architectures, with a focus on when ultra-wideband ranging becomes necessary as fleet scale and environment difficulty increase.",
-    links: [{ label: "GitHub", href: SITE.githubOrg, external: true }],
-  },
-  {
-    id: "gemma4-pilot",
-    title:
-      "Gemma 4 E2B as an End-to-End Drone Navigation Controller: A Pilot Trial in the 25-VLM Lineup",
-    venue: "Technical note",
-    summary:
-      "Adds Gemma 4 to the same Isaac Sim closed-loop benchmark and compares end-to-end goal prediction against modular deployment of the same weights as a semantic target selector, illustrating the leverage of the separation principle.",
-    links: [{ label: "Metric gap (context)", href: "/blog/metric-gap-vision-language-drone-navigation" }],
-  },
-  {
-    id: "counter-uas",
-    title:
-      "Counter-UAS Attack and Defense Characterization in Autonomous Drone Swarms: A Kinematic Simulation Study",
-    venue: "Technical report",
-    summary:
-      "11,340 seeded trials across four attack classes (GNSS spoofing, RF jamming, kinetic interception, control takeover) and six matched defenses in a four-drone warehouse swarm. Central finding: mission success rate is the wrong primary metric for C-UAS — physical effects (79.5% PN capture rate, 5–8 m position error) are clearly measurable even when aggregate task completion is unaffected. A kinematic plausibility detector achieves 39.8% TP at 0% false-positive rate. Includes an explicit fidelity boundary analysis delineating what kinematic simulation can and cannot faithfully reproduce.",
-    links: [
-      { label: "Blog post", href: "/blog/counter-uas-drone-attack-defense-simulation" },
-      { label: "GitHub", href: SITE.githubOrg, external: true },
-    ],
-  },
-  {
-    id: "droneport-atc",
-    title:
-      "Droneport ATC Coordination: A Factorial Study of Authority, Communications, and Sensing in Urban Air Mobility",
-    venue: "Technical report",
-    summary:
-      "Nine-cell factorial study comparing tower vs. self-organized coordination, continuous vs. terminal-only communications, and four observation modalities (ADS-B, camera, both, none) across 405 simulated vertiport trials. Self-org with ADS-B matches tower throughput below ~20 ops/hour then degrades; silent-cruise drones exceed safe LoS thresholds at 12 ops/hour. Characterizes the throughput–safety Pareto frontier and broadcast necessity threshold for UAM droneport designs.",
-    links: [
-      { label: "Blog post", href: "/blog/droneport-atc-tower-vs-selforg" },
-      { label: "GitHub", href: SITE.githubOrg, external: true },
-    ],
-  },
-];
-
 export default function ResearchPage() {
   const jsonLd = {
     "@context": "https://schema.org",
@@ -109,6 +26,13 @@ export default function ResearchPage() {
     description: RESEARCH_DESCRIPTION,
     url: `${SITE.origin}/research`,
     isPartOf: { "@type": "WebSite", name: "Astral", url: SITE.origin },
+    hasPart: researchPapers.map((p) => ({
+      "@type": p.schemaType === "Dataset" ? "Dataset" : "Report",
+      name: p.title,
+      url: p.companionPostSlug
+        ? `${SITE.origin}/blog/${p.companionPostSlug}#paper`
+        : `${SITE.origin}/research/${p.slug}`,
+    })),
   };
 
   return (
@@ -122,19 +46,19 @@ export default function ResearchPage() {
             <p className="text-lg text-muted-foreground mb-8">
               Astral treats autonomous uncrewed systems as a systems problem:
               perception, geometry, planning, safety, simulation fidelity, and honest
-              evaluation—whether the robot flies, drives, or does both. These papers
-              and notes are the scientific backbone behind our open software,
-              datasets, benchmarks, and vehicle programs.
+              evaluation — whether the robot flies, drives, or does both. Each paper
+              below links to the full write-up on the blog, where the technical
+              detail is available alongside the accessible narrative.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild>
                 <Link href="/datasets/yonder">Yonder dataset</Link>
               </Button>
               <Button variant="outline" asChild>
-                <a href={SITE.githubOrg}>GitHub</a>
+                <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer">GitHub</a>
               </Button>
               <Button variant="outline" asChild>
-                <a href={SITE.docs}>Documentation</a>
+                <a href={SITE.droneModels} target="_blank" rel="noopener noreferrer">Models on HF</a>
               </Button>
             </div>
           </div>
@@ -142,36 +66,62 @@ export default function ResearchPage() {
 
         <section className="py-12 bg-background border-t border-border">
           <div className="container mx-auto px-4 max-w-4xl space-y-8">
-            {papers.map((paper) => (
-              <Card
-                key={paper.id}
-                id={paper.id}
-                className="bg-card border-border scroll-mt-24"
-              >
-                <CardHeader>
-                  <CardTitle className="text-xl leading-snug">{paper.title}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{paper.venue}</p>
-                </CardHeader>
-                <CardContent className="space-y-4 text-muted-foreground">
-                  <p>{paper.summary}</p>
-                  <div className="flex flex-wrap gap-3">
-                    {paper.links.map((l) =>
-                      l.external ? (
-                        <Button key={l.href} variant="secondary" size="sm" asChild>
-                          <a href={l.href} target="_blank" rel="noopener noreferrer">
-                            {l.label}
-                          </a>
+            {researchPapers.map((paper) => {
+              const companion = paper.companionPostSlug
+                ? getBlogPost(paper.companionPostSlug)
+                : null;
+              const href = companion
+                ? `/blog/${paper.companionPostSlug}#paper`
+                : `/research/${paper.slug}`;
+
+              return (
+                <Card
+                  key={paper.slug}
+                  id={paper.slug}
+                  className="bg-card border-border scroll-mt-24"
+                >
+                  <CardHeader>
+                    <CardTitle className="text-xl leading-snug">
+                      <Link
+                        href={href}
+                        className="hover:text-amber-500 transition-colors"
+                      >
+                        {paper.title}
+                      </Link>
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">{paper.venue}</p>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-muted-foreground">
+                    <p>{paper.summary}</p>
+                    <div className="flex flex-wrap gap-3">
+                      <Button size="sm" asChild>
+                        <Link href={href}>Read the paper</Link>
+                      </Button>
+                      {companion && (
+                        <Button variant="secondary" size="sm" asChild>
+                          <Link href={`/blog/${paper.companionPostSlug}`}>
+                            {companion.title}
+                          </Link>
                         </Button>
-                      ) : (
-                        <Button key={l.href} variant="secondary" size="sm" asChild>
-                          <Link href={l.href}>{l.label}</Link>
-                        </Button>
-                      )
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                      )}
+                      {paper.externalLinks.map((l) =>
+                        l.external ? (
+                          <Button key={l.href} variant="secondary" size="sm" asChild>
+                            <a href={l.href} target="_blank" rel="noopener noreferrer">
+                              {l.label}
+                            </a>
+                          </Button>
+                        ) : (
+                          <Button key={l.href} variant="secondary" size="sm" asChild>
+                            <Link href={l.href}>{l.label}</Link>
+                          </Button>
+                        )
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </section>
       </main>
