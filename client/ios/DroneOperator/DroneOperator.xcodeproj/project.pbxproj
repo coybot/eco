@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F7EF5F138BEA331DC60973C2 /* WebRTC */; };
+		0C7CD6C64F1A964DCFDEFEA7 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 108E6D9254DA11DE44020D09 /* Foundation.framework */; };
 		108C2B667CC25044DED0793F /* DroneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */; };
 		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
 		2080601FFA5F70674A60C87A /* DroneSetupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */; };
@@ -18,6 +19,7 @@
 		3B8C7D6E5F4A3B2C1D0E9F8A /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */; };
 		43521145F3770AD6CD467509 /* AWSCore in Frameworks */ = {isa = PBXBuildFile; productRef = 525C477C1B0FB5F6D2FBF0A9 /* AWSCore */; };
 		45DEDDB47F4ACB8F4F995F3E /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57BAEA30533FDEB9448F8BF6 /* Logger.swift */; };
+		46C67D8D6CB2EB8DB3C5AB47 /* DroneOperatorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0EAFFDB470AFDBE1D79345 /* DroneOperatorUITests.swift */; };
 		5E2E62FFFCA6F635DFC011CA /* AWSConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */; };
 		8E784835F0405EA03CD8C65B /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F92BA31E0CFB629DD79C76 /* AuthView.swift */; };
 		8F5DDE243D4076B597744222 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACB1AA8F7570A095FAED7A1 /* AuthService.swift */; };
@@ -39,8 +41,19 @@
 		FF7256D2350F95C6619AA7D3 /* AWSIoT in Frameworks */ = {isa = PBXBuildFile; productRef = 8F5B60C7D6A2D7B84AAE7C7E /* AWSIoT */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		DE4B25B9A5C386A711F0CB4C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 296B157250891887B96C9351 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B416D9FB34A02DBCC61BE35A;
+			remoteInfo = DroneOperator;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		100B1A7A36761E30F2A4500A /* SetupDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDroneView.swift; sourceTree = "<group>"; };
+		108E6D9254DA11DE44020D09 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		24F92BA31E0CFB629DD79C76 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		2B3E698CDF3450F25420AF98 /* DroneChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneChatView.swift; sourceTree = "<group>"; };
 		2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStreamView.swift; sourceTree = "<group>"; };
@@ -48,6 +61,7 @@
 		3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneListView.swift; sourceTree = "<group>"; };
 		4ACB1AA8F7570A095FAED7A1 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		510296A4402A34484A02E3C4 /* DroneOperatorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DroneOperatorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5478F74C272118CF0A0A4F37 /* Drone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Drone.swift; sourceTree = "<group>"; };
 		57BAEA30533FDEB9448F8BF6 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
@@ -64,6 +78,7 @@
 		B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddDroneView.swift; sourceTree = "<group>"; };
 		BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneSetupService.swift; sourceTree = "<group>"; };
 		C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneOperatorApp.swift; sourceTree = "<group>"; };
+		CB0EAFFDB470AFDBE1D79345 /* DroneOperatorUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DroneOperatorUITests.swift; path = DroneOperatorUITests/DroneOperatorUITests.swift; sourceTree = "<group>"; };
 		CEB16DB863897C31CEF2CACE /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneDetailView.swift; sourceTree = "<group>"; };
 		DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AWSConfig.swift; sourceTree = "<group>"; };
@@ -73,6 +88,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		951853196F471DACD8AE7118 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0C7CD6C64F1A964DCFDEFEA7 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EF4B6154F03DBD3E5A69408C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -109,6 +132,22 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		3F4893F1ABDDDB934DB685BA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				7FCD37E9C1985CDAD3D540C4 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		51F76BA57A9429915348E9A7 /* DroneOperatorUITests */ = {
+			isa = PBXGroup;
+			children = (
+				CB0EAFFDB470AFDBE1D79345 /* DroneOperatorUITests.swift */,
+			);
+			name = DroneOperatorUITests;
+			sourceTree = SOURCE_ROOT;
+		};
 		56A3539E966CCEAFEE52AF88 /* Drones */ = {
 			isa = PBXGroup;
 			children = (
@@ -133,10 +172,19 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		7FCD37E9C1985CDAD3D540C4 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				108E6D9254DA11DE44020D09 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		82CED843544E37DC5152F0A9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */,
+				510296A4402A34484A02E3C4 /* DroneOperatorUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -146,6 +194,8 @@
 			children = (
 				DFDD5F9CC92A007C94C975AE /* DroneOperator */,
 				82CED843544E37DC5152F0A9 /* Products */,
+				3F4893F1ABDDDB934DB685BA /* Frameworks */,
+				51F76BA57A9429915348E9A7 /* DroneOperatorUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -227,6 +277,24 @@
 			productReference = 39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C7E9D33174840BB4B5DF1C18 /* DroneOperatorUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 038B348B5883011F6D9CA18E /* Build configuration list for PBXNativeTarget "DroneOperatorUITests" */;
+			buildPhases = (
+				446ABB105CCC6DECC7991C10 /* Sources */,
+				951853196F471DACD8AE7118 /* Frameworks */,
+				AF865644D24002F83C6DCC98 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EE61E975CA267EE334302E69 /* PBXTargetDependency */,
+			);
+			name = DroneOperatorUITests;
+			productName = DroneOperatorUITests;
+			productReference = 510296A4402A34484A02E3C4 /* DroneOperatorUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -250,10 +318,12 @@
 				FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */,
 				B4DDC5DB2E3F42F7B0A8A745 /* XCRemoteSwiftPackageReference "WebRTC" */,
 			);
+			productRefGroup = 82CED843544E37DC5152F0A9 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				B416D9FB34A02DBCC61BE35A /* DroneOperator */,
+				C7E9D33174840BB4B5DF1C18 /* DroneOperatorUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -267,9 +337,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AF865644D24002F83C6DCC98 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		446ABB105CCC6DECC7991C10 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				46C67D8D6CB2EB8DB3C5AB47 /* DroneOperatorUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		519092DAA02E0118FF00919A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -305,6 +390,15 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		EE61E975CA267EE334302E69 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = DroneOperator;
+			target = B416D9FB34A02DBCC61BE35A /* DroneOperator */;
+			targetProxy = DE4B25B9A5C386A711F0CB4C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
 		07C8258A6B29693B2D46A355 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -324,6 +418,23 @@
 				PRODUCT_BUNDLE_IDENTIFIER = us.astral.drone;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2123EF9633DA290ECE97EDAD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.drone.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = DroneOperator;
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -448,6 +559,22 @@
 			};
 			name = Release;
 		};
+		B66B02077DE90A8FC2E80696 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.drone.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = DroneOperator;
+			};
+			name = Debug;
+		};
 		CEBB51F0126B3DF4C657F193 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -472,6 +599,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		038B348B5883011F6D9CA18E /* Build configuration list for PBXNativeTarget "DroneOperatorUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2123EF9633DA290ECE97EDAD /* Release */,
+				B66B02077DE90A8FC2E80696 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		5D37380520CAA01DFE50CC3D /* Build configuration list for PBXNativeTarget "DroneOperator" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

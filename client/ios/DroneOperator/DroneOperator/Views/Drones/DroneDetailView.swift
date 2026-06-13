@@ -205,6 +205,7 @@ struct DroneDetailView: View {
             TabButton(title: "Chat", isSelected: selectedTab == 1, badge: nil) {
                 withAnimation { selectedTab = 1 }
             }
+            .accessibilityIdentifier("tab_chat")
             
             TabButton(title: "Map", isSelected: selectedTab == 2) {
                 withAnimation { selectedTab = 2 }
@@ -1188,7 +1189,8 @@ struct ChatInputBar: View {
                 .background(Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .lineLimit(1...5)
-            
+                .accessibilityIdentifier("e2e_chat_input")
+
             // Send button
             Button(action: onSend) {
                 Image(systemName: "paperplane.fill")
@@ -1199,6 +1201,7 @@ struct ChatInputBar: View {
                     .clipShape(Circle())
             }
             .disabled(text.isEmpty || isLoading)
+            .accessibilityIdentifier("e2e_chat_send")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

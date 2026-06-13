@@ -28,7 +28,7 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E2F0AAA10000000800000001"
+               BlueprintIdentifier = "C7E9D33174840BB4B5DF1C18"
                BuildableName = "DroneOperatorUITests.xctest"
                BlueprintName = "DroneOperatorUITests"
                ReferencedContainer = "container:DroneOperator.xcodeproj">
@@ -57,7 +57,7 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E2F0AAA10000000800000001"
+               BlueprintIdentifier = "C7E9D33174840BB4B5DF1C18"
                BuildableName = "DroneOperatorUITests.xctest"
                BlueprintName = "DroneOperatorUITests"
                ReferencedContainer = "container:DroneOperator.xcodeproj">

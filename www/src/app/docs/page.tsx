@@ -78,6 +78,7 @@ const sections = [
       { name: "Overview", href: "/docs/mission-control" },
       { name: "Mission Planning", href: "/docs/mission-control/planning" },
       { name: "Simulation", href: "/docs/simulation" },
+      { name: "Mobile Apps", href: "/docs/mobile-app" },
       { name: "Deployment", href: "/docs/mission-control/deployment" },
     ],
   },
