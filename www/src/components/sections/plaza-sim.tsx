@@ -584,25 +584,16 @@ export function PlazaSimSection() {
           transition={{ duration: 0.5, delay: 0.4 }}
           className="mt-4 text-center text-xs text-white/30"
         >
-          Want a higher-fidelity sim?{" "}
+          Our simulator is open source and{" "}
           <a
             href="https://github.com/astral-us/eco/tree/main/drone/sim/godot"
             target="_blank"
             rel="noopener noreferrer"
             className="text-white/50 hover:text-white/80 underline underline-offset-2 transition-colors"
           >
-            Godot-based
-          </a>{" "}
-          or{" "}
-          <a
-            href="https://github.com/astral-us/eco/tree/main/drone/sim/ishmael"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-white/50 hover:text-white/80 underline underline-offset-2 transition-colors"
-          >
-            Isaac Sim–based
-          </a>{" "}
-          versions are available on GitHub.
+            available on GitHub
+          </a>
+          .
         </motion.p>
       </div>
     </section>
