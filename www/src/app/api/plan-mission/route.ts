@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import { fromIni } from '@aws-sdk/credential-providers';
 import type { MissionPlan, EnvironmentType } from '@/lib/mission-types';
 import { ENV_CONFIG } from '@/lib/mission-types';
@@ -9,6 +10,33 @@ const credentials = process.env.NODE_ENV === 'development'
   : undefined;
 
 const client = new BedrockRuntimeClient({ region: 'us-west-2', credentials });
+const dynamo = new DynamoDBClient({ region: 'us-east-1', credentials });
+
+const RATE_LIMIT = 20;   // requests per IP per hour
+const RATE_TABLE = process.env.RATE_LIMIT_TABLE ?? '';
+
+async function checkRateLimit(req: NextRequest): Promise<boolean> {
+  if (!RATE_TABLE) return true; // no table in dev = allow
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
+  const hour = Math.floor(Date.now() / 3_600_000);
+  const pk = `plan#${ip}#${hour}`;
+  const ttl = Math.floor(Date.now() / 1000) + 7200; // expire after 2h
+
+  try {
+    const res = await dynamo.send(new UpdateItemCommand({
+      TableName: RATE_TABLE,
+      Key: { pk: { S: pk } },
+      UpdateExpression: 'ADD #n :one SET #t = if_not_exists(#t, :ttl)',
+      ExpressionAttributeNames: { '#n': 'count', '#t': 'ttl' },
+      ExpressionAttributeValues: { ':one': { N: '1' }, ':ttl': { N: String(ttl) } },
+      ReturnValues: 'ALL_NEW',
+    }));
+    const count = Number(res.Attributes?.count?.N ?? 1);
+    return count <= RATE_LIMIT;
+  } catch {
+    return true; // fail open — don't block on DynamoDB errors
+  }
+}
 
 // Cross-region inference profile (same ID as handler.py Lambda)
 const MODEL_ID = 'arn:aws:bedrock:us-west-2:041686205727:inference-profile/us.anthropic.claude-sonnet-4-6';
@@ -106,6 +134,10 @@ function stripMarkdownFences(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await checkRateLimit(req))) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   let instruction: string;
   let env: EnvironmentType;
   let nQuads: number;

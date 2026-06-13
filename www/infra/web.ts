@@ -1,4 +1,4 @@
-import { bucket } from "./storage";
+import { bucket, rateLimitTable } from "./storage";
 import * as aws from "@pulumi/aws";
 
 const isProd = $app.stage === "prod";
@@ -17,6 +17,7 @@ export const web = new sst.aws.Nextjs("AstralWebsite", {
 
   environment: {
     NEXT_PUBLIC_BASE_URL: `https://${domainName}`,
+    RATE_LIMIT_TABLE: rateLimitTable.name,
   },
 
   warm: isProd ? 5 : 1,
@@ -30,16 +31,21 @@ export const web = new sst.aws.Nextjs("AstralWebsite", {
   },
 });
 
-// Grant the SSR Lambda role permission to invoke Bedrock models
-const bedrockPolicy = new aws.iam.RolePolicy("AstralWebsiteBedrockPolicy", {
+// Grant the SSR Lambda role permission to invoke Bedrock models and use the rate-limit table
+const lambdaPolicy = new aws.iam.RolePolicy("AstralWebsiteLambdaPolicy", {
   role: web.nodes.server.nodes.role.name,
-  policy: JSON.stringify({
+  policy: $jsonStringify({
     Version: "2012-10-17",
     Statement: [
       {
         Effect: "Allow",
         Action: ["bedrock:InvokeModel"],
         Resource: "*",
+      },
+      {
+        Effect: "Allow",
+        Action: ["dynamodb:UpdateItem", "dynamodb:GetItem"],
+        Resource: rateLimitTable.arn,
       },
     ],
   }),

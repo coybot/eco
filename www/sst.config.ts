@@ -15,12 +15,13 @@ export default $config({
     };
   },
   async run() {
-    const { storage } = await import("./infra/storage");
+    const { storage, rateLimitTable } = await import("./infra/storage");
     const { web } = await import("./infra/web");
 
     return {
       websiteUrl: web.url,
       bucketName: storage.bucket.name,
+      rateLimitTable: rateLimitTable.name,
     };
   },
 });
