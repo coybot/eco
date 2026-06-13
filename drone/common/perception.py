@@ -19,7 +19,7 @@ COMMON_DIR = Path(__file__).parent.absolute()
 DRONE_DIR = COMMON_DIR.parent
 sys.path.insert(0, str(DRONE_DIR))
 
-# COCO class names (80 classes)
+# COCO class names (80 classes) — used by the stock yolov8n.onnx baseline.
 COCO_CLASSES = [
     'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck',
     'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench',
@@ -33,6 +33,14 @@ COCO_CLASSES = [
     'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
     'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
     'toothbrush'
+]
+
+# Domain class names for the astral-trained detector (v1+).
+# Matches the category order in drone-data/dataset.yaml / sim_dataset_recorder.CLASS_NAMES.
+# Switch to this by loading yolov8n_domain_v1.onnx (or .engine) instead of yolov8n.
+DOMAIN_CLASSES = [
+    'person', 'person_aerial', 'vehicle', 'bicycle_motorcycle',
+    'drone', 'landing_pad', 'powerline_pole', 'animal', 'boat',
 ]
 
 
@@ -182,24 +190,26 @@ class TensorRTDetector:
         self._load_model()
     
     def _find_model(self) -> str:
-        """Find model file, preferring TensorRT engine."""
+        """Find model file. Preference order: domain TRT engine → domain ONNX → stock ONNX."""
         # Install layout: script in ~/drone-api, models in ~/drone-api/models
         # Repo layout: script in drone/common, models in drone/models
         models_dir = COMMON_DIR / 'models' if (COMMON_DIR / 'models').exists() else DRONE_DIR / 'models'
-        
-        # Prefer TensorRT engine
-        trt_path = models_dir / 'yolov8n.engine'
-        if trt_path.exists():
-            return str(trt_path)
-        
-        # Fall back to ONNX
-        onnx_path = models_dir / 'yolov8n.onnx'
-        if onnx_path.exists():
-            return str(onnx_path)
-        
+
+        # Domain-trained detector (astral v1): try TRT then ONNX
+        for name in ('yolov8n_domain_v1.engine', 'yolov8n_domain_v1.onnx'):
+            p = models_dir / name
+            if p.exists():
+                return str(p)
+
+        # Stock COCO baseline
+        for name in ('yolov8n.engine', 'yolov8n.onnx'):
+            p = models_dir / name
+            if p.exists():
+                return str(p)
+
         raise FileNotFoundError(
             f"No YOLOv8 model found in {models_dir}. "
-            "Run 'python setup_models.py' to download."
+            "Run 'python setup_models.py --domain-detector' to download."
         )
     
     def _load_model(self):
@@ -469,13 +479,22 @@ class PerceptionService:
                 self._camera.start()
         return self._camera
     
-    def detect(self, rgb_frame: np.ndarray) -> list[Detection]:
+    def detect(
+        self,
+        rgb_frame: np.ndarray,
+        depth: np.ndarray = None,
+        intrinsics: dict = None,
+        pose: dict = None,
+    ) -> list[Detection]:
         """
         Run detection on an RGB frame.
-        
+
         Args:
             rgb_frame: RGB image as numpy array (H, W, 3)
-        
+            depth: optional aligned depth map (H, W) uint16 mm, logged for training only
+            intrinsics: optional camera intrinsics dict, logged for training only
+            pose: optional vehicle pose dict, logged for training only
+
         Returns:
             List of Detection objects with distances and directions
         """
@@ -507,7 +526,15 @@ class PerceptionService:
         
         self._last_detections = detections
         self._last_detection_time = time.time()
-        
+
+        # Optional training-data capture (no-op unless a recorder is enabled).
+        from data_recorder import get_default
+        recorder = get_default()
+        if recorder.enabled:
+            recorder.record_detection(
+                rgb_frame, detections, depth=depth, intrinsics=intrinsics, pose=pose
+            )
+
         return detections
     
     def detect_from_camera(self) -> list[Detection]:

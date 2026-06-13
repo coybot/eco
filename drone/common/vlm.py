@@ -290,9 +290,26 @@ class VLMService:
             # Parse response
             content = response['choices'][0]['message']['content']
             action = self._parse_response(content)
-            
+
             print(f"VLM decision in {elapsed:.2f}s: {action.action_type.value}")
-            
+
+            # Optional training-data capture (no-op unless a recorder is enabled).
+            try:
+                from data_recorder import get_default
+                recorder = get_default()
+                if recorder.enabled:
+                    recorder.record_vlm(
+                        rgb_frame=image if hasattr(image, 'shape') else None,
+                        system_prompt=VLM_SYSTEM_PROMPT,
+                        user_prompt=prompt,
+                        response=content,
+                        action=action.to_dict(),
+                        inference_ms=elapsed * 1000.0,
+                        drone_state=drone_state,
+                    )
+            except Exception:
+                pass
+
             return action
             
         except Exception as e:

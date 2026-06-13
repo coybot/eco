@@ -48,6 +48,20 @@ DRONE_ID = get_or_create_drone_id()
 IOT_ENDPOINT = config.get('iot_endpoint')
 LOG_LEVEL = config.get('log_level', 'INFO')
 
+# Training data capture — off by default; set record: true in config.yaml to enable.
+_record_cfg = config.get('record', {})
+if _record_cfg is True:
+    _record_cfg = {}
+if _record_cfg is not False and _record_cfg is not None:
+    try:
+        from data_recorder import configure
+        _rec_dir = str(DRONE_DIR / _record_cfg.get('output_dir', 'recordings'))
+        configure(enabled=True, output_dir=_rec_dir,
+                  save_images=_record_cfg.get('save_images', True),
+                  shard_size=_record_cfg.get('shard_size', 1000))
+    except Exception as _e:
+        pass  # data_recorder not installed — silently skip
+
 # IoT Thing Shadow (offline-safe decommission/reset)
 CERTS_DIR = DRONE_DIR / "certs"
 THING_NAME_FILE = CERTS_DIR / "thing-name.txt"

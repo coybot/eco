@@ -188,13 +188,33 @@ class MissionLoop:
     def run(self, mission: Mission) -> MissionResult:
         """
         Execute a mission using VLM-based perception-action loop.
-        
-        Args:
-            mission: The Mission to execute
-        
-        Returns:
-            MissionResult describing what happened
+
+        Wraps _run_impl with optional training-data capture: starts a recorder episode so
+        per-frame det/vlm/plan rows share an episode id, and logs the final MissionResult
+        (the success/fail reward signal). No-op unless a recorder is enabled.
         """
+        try:
+            from data_recorder import get_default
+            recorder = get_default()
+        except Exception:
+            recorder = None
+
+        if recorder is not None and recorder.enabled:
+            recorder.start_episode(
+                {"message": mission.original_message, "phases": len(mission.phases)}
+            )
+
+        result = self._run_impl(mission)
+
+        if recorder is not None and recorder.enabled:
+            try:
+                recorder.record_mission(result)
+            except Exception:
+                pass
+
+        return result
+
+    def _run_impl(self, mission: Mission) -> MissionResult:
         mission.start_time = time.time()
         self._current_mission = mission
         self._history = []
@@ -231,6 +251,11 @@ class MissionLoop:
                 
                 phase_num = mission.current_phase + 1
                 self._report_progress(f"Phase {phase_num}/{len(mission.phases)}: {phase.get('objective', 'Unknown')}")
+                try:
+                    from data_recorder import get_default
+                    get_default().set_phase(phase.get('objective'))
+                except Exception:
+                    pass
                 
                 # Execute phase
                 phase_result = self._execute_phase(phase, mission)
