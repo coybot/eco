@@ -12,7 +12,7 @@ const credentials = process.env.NODE_ENV === 'development'
 const client = new BedrockRuntimeClient({ region: 'us-west-2', credentials });
 const dynamo = new DynamoDBClient({ region: 'us-east-1', credentials });
 
-const RATE_LIMIT = 20;   // requests per IP per hour
+const RATE_LIMIT = 100;  // requests per IP per hour
 const RATE_TABLE = process.env.RATE_LIMIT_TABLE ?? '';
 
 async function checkRateLimit(req: NextRequest): Promise<boolean> {
