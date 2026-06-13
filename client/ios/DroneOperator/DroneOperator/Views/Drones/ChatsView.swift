@@ -75,7 +75,10 @@ struct ChatsView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar { toolbarItems }
             .sheet(isPresented: $showingAddDrone) {
-                AddDroneView { drone in drones.append(drone) }
+                AddDroneView { drone in
+                    drones.append(drone)
+                    subscribeStatusTopics(for: [drone])
+                }
             }
             .sheet(isPresented: $showingCreateGroup) {
                 CreateGroupView { newGroup in groups.append(newGroup) }
@@ -183,6 +186,7 @@ struct ChatsView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("drone_cell_\(drone.droneId)")
         case .group(let group):
             NavigationLink(value: group) {
                 ChatRow(
