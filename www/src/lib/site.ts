@@ -15,6 +15,4 @@ export const SITE = {
   linkedin: "https://www.linkedin.com/company/astral-us",
   appStore:
     "https://apps.apple.com/us/app/astral-us-drone-operator/id6471107516",
-  playStore:
-    "https://play.google.com/store/apps/details?id=us.astral.mobile",
 } as const;

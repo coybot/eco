@@ -14,6 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_BASE_URL ?? "https://astral.us"
+  ),
   title: {
     default: "Astral - The Autonomous Drone Fleet Platform",
     template: "%s | Astral",
