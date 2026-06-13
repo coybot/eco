@@ -43,15 +43,22 @@ function SceneLighting({ missionActive }: { missionActive: boolean }) {
   const ambRef  = useRef<THREE.AmbientLight>(null);
   const dir1Ref = useRef<THREE.DirectionalLight>(null);
   const dir2Ref = useRef<THREE.DirectionalLight>(null);
+  const { scene } = useThree();
 
   useFrame((_, delta) => {
     const t = Math.min(delta * 3, 1);
     if (ambRef.current)
-      ambRef.current.intensity  = THREE.MathUtils.lerp(ambRef.current.intensity,  missionActive ? 0.18 : 2.0, t);
+      ambRef.current.intensity  = THREE.MathUtils.lerp(ambRef.current.intensity,  missionActive ? 0.08 : 2.0, t);
     if (dir1Ref.current)
-      dir1Ref.current.intensity = THREE.MathUtils.lerp(dir1Ref.current.intensity, missionActive ? 0.25 : 2.5, t);
+      dir1Ref.current.intensity = THREE.MathUtils.lerp(dir1Ref.current.intensity, missionActive ? 0.10 : 2.5, t);
     if (dir2Ref.current)
-      dir2Ref.current.intensity = THREE.MathUtils.lerp(dir2Ref.current.intensity, missionActive ? 0.10 : 1.2, t);
+      dir2Ref.current.intensity = THREE.MathUtils.lerp(dir2Ref.current.intensity, missionActive ? 0.05 : 1.2, t);
+    // IBL from <Environment> ignores the light refs — dim it directly on the scene
+    scene.environmentIntensity = THREE.MathUtils.lerp(
+      scene.environmentIntensity ?? 1,
+      missionActive ? 0.04 : 1.0,
+      t
+    );
   });
 
   return (
@@ -104,11 +111,6 @@ function RoverMesh({ glowing }: { glowing: boolean }) {
       <mesh castShadow>
         <boxGeometry args={[1.1, 0.55, 1.6]} />
         <meshStandardMaterial color="#3a3f4a" emissive="#334488" emissiveIntensity={glowing ? 2.5 : 0} />
-      </mesh>
-      {/* beacon dome */}
-      <mesh position={[0, 0.45, 0]}>
-        <sphereGeometry args={[0.22, 12, 8]} />
-        <meshStandardMaterial color="#1166ff" emissive="#0055ff" emissiveIntensity={glowing ? 9.0 : 0.5} />
       </mesh>
     </group>
   );
