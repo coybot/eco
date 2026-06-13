@@ -11,6 +11,16 @@ export type BlogPostMeta = {
 
 export const blogPosts: BlogPostMeta[] = [
   {
+    slug: "four-models-drone-autonomy",
+    title: "Four Models, One Stack: Training the Full Perception–Reasoning–Action Pipeline for Autonomous Drones",
+    description:
+      "After the domain detector, we trained three more models in a single session: a VLM action-LoRA that cuts malformed commands, a 121 KB reactive policy MLP that runs at 200 Hz, and a monocular depth fine-tune for rangefinding beyond stereo baseline. All four are now running on Jetson Orin Nano hardware.",
+    date: "June 13, 2026",
+    dateIso: "2026-06-13",
+    category: "Research",
+    readTime: "14 min read",
+  },
+  {
     slug: "domain-detector-aerial-autonomy",
     title: "We Trained a Domain Detector for Drones. One Class Collapsed to Zero.",
     description:
