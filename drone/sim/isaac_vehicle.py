@@ -205,6 +205,11 @@ class IsaacVehicleBridge:
         h_ap = 2.0 * focal * m.tan(hfov / 2.0)
         cam.set_horizontal_aperture(h_ap)
         cam.set_vertical_aperture(h_ap * 480 / 640)
+        # Depth channel for training-data capture (distance to image plane, meters).
+        try:
+            cam.add_distance_to_image_plane_to_frame()
+        except Exception as e:
+            logger.warning("depth annotator unavailable for %s: %s", drone_id, e)
         for _ in range(3):
             self._world.step(render=True)
         v.camera = cam
@@ -281,6 +286,64 @@ class IsaacVehicleBridge:
         except Exception:
             pass
         return None
+
+    def grab_depth(self, drone_id: str):
+        """Return latest depth (H,W) float meters for a vehicle, or None. Isaac thread only.
+
+        Used by the sim dataset recorder to write paired RGB+depth training samples and to
+        bootstrap the monocular-depth model (Model 4). Convert to uint16 mm at the writer.
+        """
+        v = self.vehicles[drone_id]
+        if v.camera is None:
+            self.ensure_camera(drone_id)
+        try:
+            frame = v.camera.get_current_frame()
+            depth = frame.get("distance_to_image_plane")
+            if depth is not None and getattr(depth, "size", 0):
+                return np.ascontiguousarray(depth)
+        except Exception:
+            pass
+        return None
+
+    def camera_intrinsics(self, drone_id: str) -> dict:
+        """Pinhole intrinsics for a vehicle camera (fx, fy, cx, cy, width, height).
+
+        Derived from the 70° HFOV + 640x480 set in ensure_camera; used for ground-truth
+        bbox projection and as the metric-depth prior.
+        """
+        v = self.vehicles[drone_id]
+        if v.camera is None:
+            self.ensure_camera(drone_id)
+        w, h = 640, 480
+        hfov = math.radians(70.0)
+        fx = (w / 2.0) / math.tan(hfov / 2.0)
+        fy = fx  # square pixels (vertical aperture set proportionally)
+        return {"fx": fx, "fy": fy, "cx": w / 2.0, "cy": h / 2.0, "width": w, "height": h}
+
+    def camera_world_pose(self, drone_id: str):
+        """(position[3], quat_wxyz[4]) of the vehicle camera in world frame, or None."""
+        v = self.vehicles[drone_id]
+        if v.camera is None:
+            self.ensure_camera(drone_id)
+        try:
+            pos, quat = v.camera.get_world_pose()
+            return np.asarray(pos, dtype=float), np.asarray(quat, dtype=float)
+        except Exception:
+            return None
+
+    def vehicle_world_positions(self) -> dict:
+        """{drone_id: (position[3], vtype, radius_m)} for all vehicles — ground-truth anchors.
+
+        The dataset recorder projects these into each camera to auto-label the drone/UAV and
+        rover classes (the rare classes sim is best at generating). `radius_m` is a coarse
+        bounding sphere used to size the projected 2D box.
+        """
+        out = {}
+        for vid, v in self.vehicles.items():
+            with v.lock:
+                radius = 0.15 if v.vtype == "quadcopter" else 0.5
+                out[vid] = (v.position.copy(), v.vtype, radius)
+        return out
 
     # -- kinematics (Isaac thread) ----------------------------------------------
     def _apply_pose(self, v: _Vehicle) -> None:

@@ -78,6 +78,26 @@ class ReactivePlanner:
         `clearance_m`: depth directly ahead (straight in front of drone).
         `altitude_m`: current altitude above takeoff (for floor enforcement).
         """
+        result = self._step_impl(target_xyz, clearance_m, altitude_m, dt)
+
+        # Optional training-data capture (no-op unless a recorder is enabled).
+        try:
+            from data_recorder import get_default
+            recorder = get_default()
+            if recorder.enabled:
+                recorder.record_plan(target_xyz, clearance_m, altitude_m, result)
+        except Exception:
+            pass
+
+        return result
+
+    def _step_impl(
+        self,
+        target_xyz: Optional[tuple],
+        clearance_m: Optional[float],
+        altitude_m: Optional[float],
+        dt: float,
+    ) -> PlanStep:
         if target_xyz is None:
             return PlanStep(0.0, 0.0, 0.0, 0.0, "no-target-visible")
 

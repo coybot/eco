@@ -125,4 +125,19 @@ class GroundingDINO:
                 bbox=(float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])),
             ))
         out.sort(key=lambda d: d.score, reverse=True)
+
+        # Optional training-data capture: open-vocab detections double as weak labels
+        # (text query + box) for the domain detector. No-op unless a recorder is enabled.
+        try:
+            from data_recorder import get_default
+            recorder = get_default()
+            if recorder.enabled:
+                recorder.record_detection(
+                    image_rgb,
+                    [{"label": d.label, "confidence": d.score, "bbox": d.bbox,
+                      "source_model": "grounding_dino", "queries": queries} for d in out],
+                )
+        except Exception:
+            pass
+
         return out
