@@ -5,10 +5,10 @@ import {
   HeroSection,
   ProductsSection,
   PlazaSimSection,
+  ResearchTeaserSection,
   SolutionsSection,
   DeveloperSection,
   AppShowcaseSection,
-  BlogPreviewSection,
   CTASection,
 } from "@/components/sections";
 
@@ -41,7 +41,7 @@ export default function HomePage() {
         <SolutionsSection />
         <DeveloperSection />
         <AppShowcaseSection />
-        <BlogPreviewSection />
+        <ResearchTeaserSection />
         <CTASection />
       </main>
       <Footer />
