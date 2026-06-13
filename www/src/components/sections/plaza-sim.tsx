@@ -116,9 +116,26 @@ export function PlazaSimSection() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const planRef = useRef<MissionPlan | null>(null);
   const msgIdRef = useRef(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const pipCanvasRef = useRef<HTMLCanvasElement>(null);
   const simCanvasWrapperRef = useRef<HTMLDivElement>(null);
   const prevMissionCompleteRef = useRef(false);
+
+  const toggleFullscreen = () => {
+    const el = simCanvasWrapperRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
   const planVersionRef = useRef(0);
 
   useEffect(() => { planRef.current = plan; }, [plan]);
@@ -438,6 +455,23 @@ export function PlazaSimSection() {
                 pipCanvasRef={pipCanvasRef}
               />
             )}
+
+            {/* Fullscreen toggle */}
+            <button
+              onClick={toggleFullscreen}
+              className="absolute top-3 right-3 z-20 p-1.5 rounded-lg bg-black/40 hover:bg-black/70 text-white/60 hover:text-white transition-all backdrop-blur-sm"
+              title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            >
+              {isFullscreen ? (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" />
+                </svg>
+              )}
+            </button>
 
             {/* Planning overlay */}
             <AnimatePresence>
