@@ -131,7 +131,7 @@ def qwen3_vl_32b(models_dir: Path) -> None:
     print("Qwen3-VL 30B ready: vlm.gguf, vlm_mmproj.gguf")
 
 
-DOMAIN_DETECTOR_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v1.onnx"
+DOMAIN_DETECTOR_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx"
 
 
 def domain_detector(models_dir: Path) -> None:

@@ -196,7 +196,8 @@ class TensorRTDetector:
         models_dir = COMMON_DIR / 'models' if (COMMON_DIR / 'models').exists() else DRONE_DIR / 'models'
 
         # Domain-trained detector (astral v1): try TRT then ONNX
-        for name in ('yolov8n_domain_v1.engine', 'yolov8n_domain_v1.onnx'):
+        for name in ('yolov8n_domain_v3.engine', 'yolov8n_domain_v3.onnx',
+                     'yolov8n_domain_v1.engine', 'yolov8n_domain_v1.onnx'):
             p = models_dir / name
             if p.exists():
                 return str(p)
