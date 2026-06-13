@@ -131,6 +131,33 @@ def qwen3_vl_32b(models_dir: Path) -> None:
     print("Qwen3-VL 30B ready: vlm.gguf, vlm_mmproj.gguf")
 
 
+DOMAIN_DETECTOR_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v1.onnx"
+
+
+def domain_detector(models_dir: Path) -> None:
+    """Astral domain-trained YOLOv8n (9 classes: person, drone, vehicle, ...).
+
+    Trained on 18 k sim frames (office/warehouse/hospital) plus public aerial sets.
+    Stored in the dev S3 bucket after training on hoopoe. Falls back to curl if requests
+    is unavailable.
+    """
+    out = models_dir / "yolov8n_domain_v1.onnx"
+    if out.exists():
+        print("yolov8n_domain_v1.onnx already exists, skipping.")
+        return
+    print("Downloading domain detector v1 ...")
+    try:
+        import requests
+        r = requests.get(DOMAIN_DETECTOR_URL, stream=True, timeout=60)
+        r.raise_for_status()
+        with open(out, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 20):
+                f.write(chunk)
+    except Exception:
+        run(["curl", "-fL", DOMAIN_DETECTOR_URL, "-o", str(out)])
+    print(f"Saved {out}")
+
+
 def setup_device(variant: str) -> None:
     """Create device symlinks. Single-device install: files already named vlm.gguf / vlm_mmproj.gguf."""
     models_dir = get_models_dir()
@@ -185,6 +212,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Setup AI models for drone mission autonomy")
     parser.add_argument("--yolo-only", action="store_true", help="Download YOLOv8n and export to ONNX")
     parser.add_argument("--yolox", action="store_true", help="Download YOLOv8x and export to ONNX (AGX)")
+    parser.add_argument("--domain-detector", action="store_true", help="Download astral domain detector v1 (drone/vehicle/person ONNX)")
     parser.add_argument("--qwen3-vl-2b", action="store_true", help="Small VLM for Nano (7B Q4_K_M)")
     parser.add_argument("--qwen3-vl-8b", action="store_true", help="7B VLM for NX / AGX 32GB")
     parser.add_argument("--qwen3-vl-32b", action="store_true", help="32B VLM for AGX 64GB")
@@ -199,6 +227,8 @@ def main() -> None:
         yolo_only(models_dir)
     if args.yolox:
         yolox(models_dir)
+    if args.domain_detector:
+        domain_detector(models_dir)
     if args.qwen3_vl_2b:
         qwen3_vl_2b(models_dir)
     if args.qwen3_vl_8b:
@@ -213,6 +243,7 @@ def main() -> None:
         [
             args.yolo_only,
             args.yolox,
+            args.domain_detector,
             args.qwen3_vl_2b,
             args.qwen3_vl_8b,
             args.qwen3_vl_32b,
