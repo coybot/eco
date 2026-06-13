@@ -45,7 +45,7 @@ OUTPUT ONLY this exact JSON schema, no markdown, no explanation:
   "waypoints": [
     { "vehicleId": "qc-01", "x": 0, "y": ${quadY}, "z": 0, "action": "scan", "duration": 3, "statusLabel": "scanning" }
   ],
-  "targetType": "<what is being found/counted>",
+  "targetType": "<singular noun for what is found/counted, e.g. \"car\" not \"cars\">",
   "targetCount": 0,
   "reportLines": ["line 1", "line 2", "line 3"],
   "missionSummary": "one sentence result"
