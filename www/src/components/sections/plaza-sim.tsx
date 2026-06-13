@@ -113,7 +113,7 @@ export function PlazaSimSection() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [missionSent, setMissionSent] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const planRef = useRef<MissionPlan | null>(null);
   const msgIdRef = useRef(0);
   const pipCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,9 +148,10 @@ export function PlazaSimSection() {
     return () => clearInterval(t);
   }, [plan]);
 
-  // Auto-scroll messages
+  // Scroll the chat container (not the page) when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
 
   const onTargetDetected = useCallback((count: number) => setTargetCount(count), []);
@@ -239,8 +240,9 @@ export function PlazaSimSection() {
       prevMissionCompleteRef.current = true;
       const n = planRef.current?.targetCount ?? 0;
       const t = planRef.current?.targetType ?? 'object';
+      const needsPlural = n !== 1 && !t.endsWith('s');
       const text = n > 0
-        ? `Mission complete — ${n} ${t}${n !== 1 ? 's' : ''} identified`
+        ? `Mission complete — ${n} ${t}${needsPlural ? 's' : ''} identified`
         : 'Mission complete — all units returned to base';
       setMessages((prev) => [
         ...prev,
@@ -394,7 +396,7 @@ export function PlazaSimSection() {
             )}
 
             {/* Messages feed */}
-            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
               {messages.length === 0 ? (
                 <p className="text-white/20 m-auto text-center text-[11px] font-mono leading-relaxed">
                   Dispatch and drone<br />reports appear here.
@@ -415,7 +417,6 @@ export function PlazaSimSection() {
                   </div>
                 ))
               )}
-              <div ref={messagesEndRef} />
             </div>
           </div>
 

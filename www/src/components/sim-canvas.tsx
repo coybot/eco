@@ -100,13 +100,15 @@ function QuadMesh({ glowing }: { glowing: boolean }) {
 function RoverMesh({ glowing }: { glowing: boolean }) {
   return (
     <group>
+      {/* body — bigger so it's visible from the overhead camera */}
       <mesh castShadow>
-        <boxGeometry args={[0.9, 0.4, 1.3]} />
-        <meshStandardMaterial color="#3a3f4a" emissive="#334488" emissiveIntensity={glowing ? 1.5 : 0} />
+        <boxGeometry args={[1.1, 0.55, 1.6]} />
+        <meshStandardMaterial color="#3a3f4a" emissive="#334488" emissiveIntensity={glowing ? 2.5 : 0} />
       </mesh>
-      <mesh position={[0, 0.28, 0]}>
-        <sphereGeometry args={[0.18, 12, 8]} />
-        <meshStandardMaterial color="#1166ff" emissive="#0055ff" emissiveIntensity={glowing ? 6.0 : 0.5} />
+      {/* beacon dome */}
+      <mesh position={[0, 0.45, 0]}>
+        <sphereGeometry args={[0.22, 12, 8]} />
+        <meshStandardMaterial color="#1166ff" emissive="#0055ff" emissiveIntensity={glowing ? 9.0 : 0.5} />
       </mesh>
     </group>
   );
@@ -286,7 +288,7 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
         >
           {v.type === 'quadcopter' ? <QuadMesh glowing={missionActive} /> : <RoverMesh glowing={missionActive} />}
           {missionActive && (
-            <pointLight color="#aaccff" intensity={6} distance={14} decay={2} />
+            <pointLight color="#aaccff" intensity={12} distance={20} decay={2} />
           )}
         </group>
       ))}
