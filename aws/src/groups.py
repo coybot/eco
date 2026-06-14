@@ -191,7 +191,7 @@ def message_handler(event, context):
     codes = {}
     for drone_id, order in orders.items():
         try:
-            codes[drone_id] = C.generate_code(order, conversation_id)
+            codes[drone_id] = C.generate_code(order, conversation_id, vehicle_type=member_types.get(drone_id, 'quadcopter'))
         except Exception as e:
             print(f"[group {group_id}] codegen {drone_id} failed: {e}")
     dispatched = {}
