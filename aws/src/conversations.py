@@ -242,6 +242,9 @@ User: "Search for anyone who might need help"
   "message": "I'll thoroughly search the area and report anyone who appears to need help."
 }
 
+User: "Disarm" or "Stop motors"
+{"action": "execute", "code": "land()", "message": "Landing/disarming now..."}
+
 User: "Land"
 {"action": "execute", "code": "land()", "message": "Landing now..."}
 
@@ -254,35 +257,81 @@ CRITICAL RULES:
 Output ONLY the JSON object, no markdown or extra text."""
 
 # Code generation prompt (simpler, just for drone commands)
-CODE_SYSTEM_PROMPT = """You generate Python code for drone control. The code runs on a drone with these SDK functions pre-imported:
+QUADCOPTER_CODE_SYSTEM_PROMPT = """You generate Python code for quadcopter drone control. The code runs on a drone with these SDK functions pre-imported:
 
 AVAILABLE FUNCTIONS:
 - motor_test(motor_num, throttle_pct=15, duration_sec=2)
-- arm() - Arm motors
-- safe_disarm() - Disarm motors (only when on the ground; raises error if airborne)
-- takeoff(altitude_m) / land() - land() handles disarming automatically
+- arm() - Arm motors (spin up)
+- land() - Controlled stop: descends if airborne, then cuts motors. ALWAYS use this to stop motors.
+- takeoff(altitude_m) - Fly to altitude (ONLY use outdoors when explicitly asked to fly)
 - goto(lat, lon, alt)
 - set_velocity(vx, vy, vz)
 - set_yaw(angle_deg, relative=False)
 - wait(seconds)
-- get_position() - returns tuple (lat, lon, alt_m) — alt_m is RELATIVE altitude above home (same frame as goto/takeoff); index with [0],[1],[2] NOT dict keys
+- get_position() - returns tuple (lat, lon, alt_m)
 - get_attitude() - returns tuple (roll, pitch, yaw) in degrees
 - capture_photo(upload=True) - Take photo and upload to S3, return URL
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
-- home_lat, home_lon, home_alt — GPS position at the moment the command was received (relative alt above home)
+- home_lat, home_lon, home_alt
 - CONVERSATION_ID — for capture_photo()
 
 RULES:
-1. Use ONLY these SDK functions
-2. Do NOT import anything - all functions are pre-imported
-3. ALWAYS call arm() before takeoff(), then wait(2) for motors to spin up
-4. "disarm" always means safe_disarm() — never substitute land(). "land" means land().
-5. For flight: arm() → takeoff() → ... → land(). land() handles disarming automatically.
-6. Keep throttle under 30%, altitude under 20m
-7. Use home_lat/home_lon for relative navigation (e.g. home_lat + 0.00001 ≈ 1.1m north)
+1. Use ONLY these SDK functions — do NOT import anything
+2. "disarm", "stop motors", "power off" always means land(). NEVER use safe_disarm().
+3. To just arm and disarm: arm() → wait(N) → land()
+4. NEVER call takeoff() unless the user explicitly asks to fly or take off
+5. For flight (only outdoors, only when asked): arm() → takeoff() → ... → land()
+6. Keep altitude under 20m
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
+
+ROVER_CODE_SYSTEM_PROMPT = """You generate Python code for ground rover control. The code runs on a rover with these SDK functions pre-imported:
+
+AVAILABLE FUNCTIONS:
+- arm() - Enable rover motion
+- safe_disarm() - Stop motion and disable rover
+- stop() - Immediately stop all motion
+- drive(speed_mps=0.5, duration_sec=1.0) - Drive forward (positive) or backward (negative) for duration
+- turn(angle_deg, speed_rad_s=0.5) - Turn in place by degrees (positive=left/CCW)
+- set_velocity(vx, vy=0.0, omega=0.0) - Set continuous velocity: vx=forward m/s, omega=angular rad/s
+- goto(lat, lon) - Navigate to GPS coordinates using Nav2 (blocks until arrived)
+- wait(seconds) - Pause execution
+- get_position() - Returns (lat, lon, alt_m) from GPS or odometry
+- get_attitude() - Returns (roll, pitch, yaw) degrees
+- capture_photo(upload=True) - Take photo and upload to S3, return URL
+
+PRE-DEFINED VARIABLES (always available, do NOT redefine):
+- home_lat, home_lon, home_alt — GPS position at command time
+- CONVERSATION_ID — for capture_photo()
+
+RULES:
+1. Use ONLY these SDK functions — do NOT import anything
+2. Max speed 1.0 m/s, max angular speed 1.57 rad/s
+3. For motion: arm() first, then drive()/turn()/set_velocity()/goto(), then safe_disarm() when done
+4. Do NOT use takeoff(), land(), set_yaw(), motor_test(), disarm() — those are either quadcopter-only or blocked
+5. "stop" or "halt" means stop(). "disarm" always means safe_disarm() — never use disarm() directly
+
+Output ONLY Python code. No markdown, no comments unless necessary."""
+
+# Keep legacy name pointing to quadcopter prompt for backward compat
+CODE_SYSTEM_PROMPT = QUADCOPTER_CODE_SYSTEM_PROMPT
+
+
+def get_code_system_prompt(drone_id):
+    """Return the appropriate code generation prompt based on vehicle type."""
+    table = dynamodb.Table(os.environ.get('DRONE_TABLE', 'drone-registry-dev'))
+    try:
+        resp = table.scan(
+            FilterExpression='droneId = :d',
+            ExpressionAttributeValues={':d': drone_id}
+        )
+        items = resp.get('Items', [])
+        if items and items[0].get('vehicleType') == 'rover':
+            return ROVER_CODE_SYSTEM_PROMPT
+    except Exception:
+        pass
+    return QUADCOPTER_CODE_SYSTEM_PROMPT
 
 
 def get_user_id(event):
@@ -483,14 +532,20 @@ def call_agent(conversation_history, user_message, pending_images=None):
         return {'action': 'respond', 'message': f'Error processing request: {str(e)}'}
 
 
-def generate_code(instruction, conversation_id):
+def generate_code(instruction, conversation_id, drone_id=None, vehicle_type=None):
     """Generate Python code for a drone command."""
+    if vehicle_type == 'rover':
+        system_prompt = ROVER_CODE_SYSTEM_PROMPT
+    elif vehicle_type == 'quadcopter':
+        system_prompt = QUADCOPTER_CODE_SYSTEM_PROMPT
+    else:
+        system_prompt = get_code_system_prompt(drone_id) if drone_id else CODE_SYSTEM_PROMPT
     try:
         response = bedrock.invoke_model(
             modelId=BEDROCK_MODEL_ID,
             body=json.dumps({
                 'anthropic_version': ANTHROPIC_VERSION,
-                'system': CODE_SYSTEM_PROMPT,
+                'system': system_prompt,
                 'messages': [
                     {
                         'role': 'user',
@@ -1127,11 +1182,15 @@ def message_handler(event, context):
             })
         
         # Generate and send code to drone
-        code = agent_response.get('code', '')
+        # For rovers: always use generate_code() with the rover prompt — the
+        # generic agent generates quadcopter inline code (takeoff/land) which
+        # doesn't apply to rovers.
+        vehicle_type = 'rover' if get_code_system_prompt(drone_id) is ROVER_CODE_SYSTEM_PROMPT else 'quadcopter'
+        code = '' if vehicle_type == 'rover' else agent_response.get('code', '')
         if not code:
             # Use the original user message to preserve details
             try:
-                code = generate_code(message, conversation_id)
+                code = generate_code(message, conversation_id, drone_id=drone_id)
             except Exception as e:
                 error_text = f"Sorry, I couldn't process that command. AI service error: {str(e)}"
                 error_msg = save_message(conversation_id, drone_id, 'drone', 'text', error_text)
@@ -1294,10 +1353,11 @@ def select_handler(event, context):
     action = agent_response.get('action', 'respond')
     
     if action == 'execute':
-        code = agent_response.get('code', '')
+        vehicle_type = 'rover' if get_code_system_prompt(drone_id) is ROVER_CODE_SYSTEM_PROMPT else 'quadcopter'
+        code = '' if vehicle_type == 'rover' else agent_response.get('code', '')
         if not code:
             try:
-                code = generate_code(agent_response.get('message', ''), conversation_id)
+                code = generate_code(agent_response.get('message', ''), conversation_id, drone_id=drone_id)
             except Exception as e:
                 error_text = f"Sorry, I couldn't process that command. AI service error: {str(e)}"
                 error_msg = save_message(conversation_id, drone_id, 'drone', 'text', error_text)
