@@ -16,7 +16,8 @@ export function VideoDemoSection() {
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">See it in action</h2>
             <p className="text-lg text-muted-foreground">
-              Astral autonomous platforms operating with real-time perception and decision-making
+              One platform across mobile, quadcopter, and rover — real-time perception and
+              autonomous decision-making in the field
             </p>
           </div>
 
@@ -24,7 +25,7 @@ export function VideoDemoSection() {
             <iframe
               width="100%"
               height="100%"
-              src="https://www.youtube.com/embed/zlBUv7T1Yyc"
+              src="https://www.youtube-nocookie.com/embed/kCoSswh5azA"
               title="Astral Demo"
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
