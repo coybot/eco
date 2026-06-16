@@ -8,3 +8,4 @@ export { AppShowcaseSection } from "./app-showcase";
 export { BlogPreviewSection } from "./blog-preview";
 export { CTASection } from "./cta";
 export { PlazaSimSection } from "./plaza-sim";
+export { VideoDemoSection } from "./video-demo";
