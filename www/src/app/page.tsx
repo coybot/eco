@@ -3,6 +3,7 @@ import { JsonLd } from "@/components/json-ld";
 import { SITE, SITE_DEFAULT_DESCRIPTION } from "@/lib/site";
 import {
   HeroSection,
+  VideoDemoSection,
   ProductsSection,
   PlazaSimSection,
   ResearchTeaserSection,
@@ -36,6 +37,7 @@ export default function HomePage() {
       <Header />
       <main className="flex-1">
         <HeroSection />
+        <VideoDemoSection />
         <PlazaSimSection />
         <ProductsSection />
         <SolutionsSection />
