@@ -110,6 +110,17 @@ export function Header() {
             <NavigationMenuItem>
               <NavigationMenuLink asChild>
                 <Link
+                  href="/benchmark"
+                  className="group inline-flex h-10 w-max items-center justify-center rounded-md bg-transparent px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 hover:text-accent-foreground focus:bg-accent/10 focus:text-accent-foreground focus:outline-none"
+                >
+                  Benchmark
+                </Link>
+              </NavigationMenuLink>
+            </NavigationMenuItem>
+
+            <NavigationMenuItem>
+              <NavigationMenuLink asChild>
+                <Link
                   href="/research"
                   className="group inline-flex h-10 w-max items-center justify-center rounded-md bg-transparent px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 hover:text-accent-foreground focus:bg-accent/10 focus:text-accent-foreground focus:outline-none"
                 >
@@ -139,6 +150,13 @@ export function Header() {
               <nav className="flex flex-col space-y-4 mt-8">
                 <MobileNavSection title="Products" items={products} onClose={() => setMobileOpen(false)} />
                 <MobileNavSection title="Developers" items={developers} onClose={() => setMobileOpen(false)} />
+                <Link
+                  href="/benchmark"
+                  className="text-lg font-medium hover:text-amber-500 transition-colors"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Benchmark
+                </Link>
                 <Link
                   href="/research"
                   className="text-lg font-medium hover:text-amber-500 transition-colors"
