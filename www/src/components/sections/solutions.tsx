@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
-import { Shield, Tractor, Building2, Siren, ArrowRight } from "lucide-react";
+import { Shield, Tractor, Building2, Siren } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 const solutions = [
@@ -69,25 +68,19 @@ export function SolutionsSection() {
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
-              <Link href={`/solutions/${solution.id}`}>
-                <Card className="h-full bg-background border-border hover:border-amber-500/50 transition-all group cursor-pointer">
-                  <CardContent className="p-6">
-                    <div className={`inline-flex p-3 rounded-lg ${solution.bgColor} mb-4`}>
-                      <solution.icon className={`h-6 w-6 ${solution.color}`} />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2 group-hover:text-amber-500 transition-colors">
-                      {solution.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {solution.description}
-                    </p>
-                    <span className="inline-flex items-center text-sm text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      Learn more
-                      <ArrowRight className="ml-1 h-3 w-3" />
-                    </span>
-                  </CardContent>
-                </Card>
-              </Link>
+              <Card className="h-full bg-background border-border">
+                <CardContent className="p-6">
+                  <div className={`inline-flex p-3 rounded-lg ${solution.bgColor} mb-4`}>
+                    <solution.icon className={`h-6 w-6 ${solution.color}`} />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">
+                    {solution.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {solution.description}
+                  </p>
+                </CardContent>
+              </Card>
             </motion.div>
           ))}
         </div>
