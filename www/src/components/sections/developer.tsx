@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Github, BookOpen, Terminal, ArrowRight, Copy, Check } from "lucide-react";
+import { Github, BookOpen, Terminal, Users, ArrowRight, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -45,7 +45,13 @@ const resources = [
   {
     icon: Github,
     title: "Open Source",
-    description: "Contribute on GitHub",
+    description: "Contribute to astral-sdk",
+    href: "https://github.com/astral-us/astral-sdk",
+  },
+  {
+    icon: Users,
+    title: "Community",
+    description: "Browse all repos on GitHub",
     href: "https://github.com/astral-us",
   },
 ];
