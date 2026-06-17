@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { products } from "@/lib/products";
 import { blogPosts } from "@/lib/blog-data";
+import { researchPapers } from "@/lib/research-data";
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "https://astral.us";
 
@@ -39,5 +40,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
-  return [...staticRoutes, ...productRoutes, ...blogRoutes];
+  const researchRoutes: MetadataRoute.Sitemap = researchPapers.map((paper) => ({
+    url: `${baseUrl}/research/${paper.slug}`,
+    lastModified: new Date(paper.dateIso),
+    changeFrequency: "monthly",
+    priority: 0.7,
+  }));
+
+  return [...staticRoutes, ...productRoutes, ...blogRoutes, ...researchRoutes];
 }

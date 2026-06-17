@@ -1,0 +1,43 @@
+name: Link Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  link-check:
+    name: Check internal links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server
+        run: npm start &
+        env:
+          PORT: 3000
+
+      - name: Wait for server
+        run: npx wait-on http://localhost:3000 --timeout 30000
+
+      - name: Check internal links
+        # Skip external https:// links (flaky in CI); localhost resolves as http://
+        run: |
+          npx linkinator http://localhost:3000 \
+            --recurse \
+            --skip "^https://" \
+            --timeout 10000 \
+            --concurrency 5 \
+            --verbosity error

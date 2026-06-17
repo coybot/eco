@@ -272,6 +272,24 @@ export default async function ProductPage({ params }: ProductPageProps) {
           </div>
         </section>
 
+        {/* Benchmark callout */}
+        <section className="py-12 bg-background border-y border-border">
+          <div className="container mx-auto px-4 max-w-3xl text-center">
+            <p className="text-sm font-medium text-amber-500 uppercase tracking-wider mb-2">
+              Open Benchmark
+            </p>
+            <h2 className="text-2xl font-bold mb-3">
+              0% collision rate. Verified in closed-loop simulation.
+            </h2>
+            <p className="text-muted-foreground mb-6">
+              We benchmarked 25 vision-language models across 10,200 flight trials. The modular stack is the only architecture that clears the bar. Methodology and results are public.
+            </p>
+            <Link href="/benchmark">
+              <Button variant="outline">View the benchmark →</Button>
+            </Link>
+          </div>
+        </section>
+
         {/* CTA */}
         <section className="py-16 bg-card">
           <div className="container mx-auto px-4 text-center">

@@ -1,6 +1,7 @@
 export { HeroSection } from "./hero";
 export { SocialProofSection } from "./social-proof";
 export { ResearchTeaserSection } from "./research-teaser";
+export { BenchmarkTeaserSection } from "./benchmark-teaser";
 export { ProductsSection } from "./products";
 export { SolutionsSection } from "./solutions";
 export { DeveloperSection } from "./developer";
