@@ -324,6 +324,19 @@ export default function EnterprisePage() {
                         <a href="mailto:hello@astral.us">Email Us</a>
                       </Button>
                     </div>
+
+                    <div className="p-6 bg-amber-500/5 rounded-lg border border-amber-500/20">
+                      <p className="text-xs font-medium text-amber-500 uppercase tracking-wider mb-2">Open Benchmark</p>
+                      <h3 className="font-semibold mb-2">
+                        0% collision rate, verified.
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        25 VLMs, 10,200 closed-loop trials. Every end-to-end model lost to a hovering baseline. Methodology is public.
+                      </p>
+                      <Button variant="outline" className="w-full" asChild>
+                        <Link href="/benchmark">View Benchmark</Link>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -7,6 +7,7 @@ import {
   ProductsSection,
   PlazaSimSection,
   ResearchTeaserSection,
+  BenchmarkTeaserSection,
   SolutionsSection,
   DeveloperSection,
   AppShowcaseSection,
@@ -40,6 +41,7 @@ export default function HomePage() {
         <VideoDemoSection />
         <PlazaSimSection />
         <ProductsSection />
+        <BenchmarkTeaserSection />
         <SolutionsSection />
         <DeveloperSection />
         <AppShowcaseSection />
