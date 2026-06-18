@@ -156,7 +156,15 @@ def train(
         train_loss = total / tx.shape[0]
         model.eval()
         with torch.no_grad():
-            val_loss = float(lossf(model(vx), vy)) if n_val else float("nan")
+            if n_val:
+                # batch the val forward — a full-set forward OOMs at larger hidden sizes
+                vtot = 0.0
+                for b in range(0, vx.shape[0], batch_size):
+                    pv = model(vx[b:b + batch_size])
+                    vtot += float(lossf(pv, vy[b:b + batch_size])) * pv.shape[0]
+                val_loss = vtot / vx.shape[0]
+            else:
+                val_loss = float("nan")
         history.append({"epoch": epoch, "train": train_loss, "val": val_loss})
         print(f"epoch {epoch:3d}  train {train_loss:.5f}  val {val_loss:.5f}")
 
