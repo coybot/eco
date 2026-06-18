@@ -1,0 +1,138 @@
+{
+  "rule": [
+    {
+      "reached": true,
+      "ticks": 25,
+      "final_dist_m": 0.8,
+      "jerk_rms": 62.5543,
+      "accel_max": 30.0,
+      "goal": "(8.0,0.0,0.0) quad",
+      "planner": "rule"
+    },
+    {
+      "reached": true,
+      "ticks": 28,
+      "final_dist_m": 0.844,
+      "jerk_rms": 58.8348,
+      "accel_max": 30.0,
+      "goal": "(8.0,4.0,0.0) quad",
+      "planner": "rule"
+    },
+    {
+      "reached": true,
+      "ticks": 18,
+      "final_dist_m": 0.921,
+      "jerk_rms": 75.0,
+      "accel_max": 30.0,
+      "goal": "(5.0,-3.0,1.5) quad",
+      "planner": "rule"
+    },
+    {
+      "reached": true,
+      "ticks": 18,
+      "final_dist_m": 0.9,
+      "jerk_rms": 75.0,
+      "accel_max": 30.0,
+      "goal": "(0.0,6.0,0.0) quad",
+      "planner": "rule"
+    },
+    {
+      "reached": true,
+      "ticks": 31,
+      "final_dist_m": 1.0,
+      "jerk_rms": 55.7086,
+      "accel_max": 30.0,
+      "goal": "(10.0,0.0,0.0) quad",
+      "planner": "rule"
+    },
+    {
+      "reached": true,
+      "ticks": 17,
+      "final_dist_m": 0.857,
+      "jerk_rms": 77.4597,
+      "accel_max": 30.0,
+      "goal": "(4.0,4.0,0.0) rover",
+      "planner": "rule"
+    },
+    {
+      "reached": true,
+      "ticks": 28,
+      "final_dist_m": 0.844,
+      "jerk_rms": 58.8348,
+      "accel_max": 30.0,
+      "goal": "(8.0,-4.0,0.0) rover",
+      "planner": "rule"
+    }
+  ],
+  "learned": [
+    {
+      "reached": true,
+      "ticks": 38,
+      "final_dist_m": 0.852,
+      "jerk_rms": 25.9593,
+      "accel_max": 16.4154,
+      "goal": "(8.0,0.0,0.0) quad",
+      "planner": "learned"
+    },
+    {
+      "reached": true,
+      "ticks": 50,
+      "final_dist_m": 0.886,
+      "jerk_rms": 35.209,
+      "accel_max": 19.8978,
+      "goal": "(8.0,4.0,0.0) quad",
+      "planner": "learned"
+    },
+    {
+      "reached": false,
+      "ticks": 3000,
+      "final_dist_m": 2.26,
+      "jerk_rms": 12.3021,
+      "accel_max": 27.7285,
+      "goal": "(5.0,-3.0,1.5) quad",
+      "planner": "learned"
+    },
+    {
+      "reached": false,
+      "ticks": 3000,
+      "final_dist_m": 3.884,
+      "jerk_rms": 11.8879,
+      "accel_max": 21.7722,
+      "goal": "(0.0,6.0,0.0) quad",
+      "planner": "learned"
+    },
+    {
+      "reached": true,
+      "ticks": 46,
+      "final_dist_m": 0.877,
+      "jerk_rms": 22.764,
+      "accel_max": 15.9979,
+      "goal": "(10.0,0.0,0.0) quad",
+      "planner": "learned"
+    },
+    {
+      "reached": false,
+      "ticks": 3000,
+      "final_dist_m": 2.978,
+      "jerk_rms": 2.9837,
+      "accel_max": 9.9379,
+      "goal": "(4.0,4.0,0.0) rover",
+      "planner": "learned"
+    },
+    {
+      "reached": false,
+      "ticks": 3000,
+      "final_dist_m": 5.462,
+      "jerk_rms": 3.2744,
+      "accel_max": 12.2084,
+      "goal": "(8.0,-4.0,0.0) rover",
+      "planner": "learned"
+    }
+  ],
+  "summary": {
+    "rule_jerk_rms_mean": 66.1989,
+    "learned_jerk_rms_mean": 16.3401,
+    "ratio": 0.247,
+    "pass": 1
+  }
+}
