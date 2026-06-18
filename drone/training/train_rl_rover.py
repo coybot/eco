@@ -200,9 +200,10 @@ class RoverEnv:
         if not m.any():
             return
         gi = idx[m]
-        cx = gx[m] * self._rand(n, lo=cx_frac_lo, hi=cx_frac_hi)
-        gap_cy = self._rand(n, lo=-1.4, hi=1.4)
-        gap_hy = self._rand(n, lo=0.65, hi=1.00)   # rover half-width ~0.3m, gap must fit
+        nm = int(m.sum().item())   # actual submask size — use for all _rand calls
+        cx = gx[m] * self._rand(nm, lo=cx_frac_lo, hi=cx_frac_hi)
+        gap_cy = self._rand(nm, lo=-1.4, hi=1.4)
+        gap_hy = self._rand(nm, lo=0.65, hi=1.00)   # rover half-width ~0.3m, gap must fit
 
         # Left wall segment
         left_cy = (-span / 2 + gap_cy - gap_hy) / 2
@@ -211,11 +212,11 @@ class RoverEnv:
         right_cy = (gap_cy + gap_hy + span) / 2
         right_hy = ((span - gap_cy - gap_hy) / 2).clamp(min=0.1)
 
-        self.bcx[gi, slot] = cx[m]; self.bcy[gi, slot] = left_cy[m]
-        self.bhx[gi, slot] = wall_hx; self.bhy[gi, slot] = left_hy[m]; self.bmask[gi, slot] = 1.0
+        self.bcx[gi, slot] = cx; self.bcy[gi, slot] = left_cy
+        self.bhx[gi, slot] = wall_hx; self.bhy[gi, slot] = left_hy; self.bmask[gi, slot] = 1.0
 
-        self.bcx[gi, slot + 1] = cx[m]; self.bcy[gi, slot + 1] = right_cy[m]
-        self.bhx[gi, slot + 1] = wall_hx; self.bhy[gi, slot + 1] = right_hy[m]
+        self.bcx[gi, slot + 1] = cx; self.bcy[gi, slot + 1] = right_cy
+        self.bhx[gi, slot + 1] = wall_hx; self.bhy[gi, slot + 1] = right_hy
         self.bmask[gi, slot + 1] = 1.0
 
     # ---------------------------------------------------------------------- sensing
