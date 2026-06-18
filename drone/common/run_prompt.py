@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.resolve()))
 from target_selector import parse as parse_prompt  # noqa: E402
 from grounding import GroundingDINO, GDetection  # noqa: E402
 from spatial_memory import SpatialMemory  # noqa: E402
-from reactive_planner import ReactivePlanner, PlanStep  # noqa: E402
+from reactive_planner import ReactivePlanner, PlanStep, make_planner  # noqa: E402
 
 
 def _ts() -> str:
@@ -299,6 +299,11 @@ def main():
                     help="Safety altitude cap (m). vz is zeroed above this.")
     ap.add_argument("--max-speed", type=float, default=1.0,
                     help="Planner max speed (m/s). Default 1.0 for indoor/tight spaces.")
+    ap.add_argument("--use-learned-planner", action="store_true",
+                    help="Use policy_v2.onnx GRU planner instead of the rule-based planner. "
+                         "Falls back silently to rules if onnxruntime or model is unavailable.")
+    ap.add_argument("--models-dir", type=str, default=None,
+                    help="Path to directory containing policy_v2.onnx (default: auto-detect).")
     args = ap.parse_args()
 
     # 1. Parse prompt
@@ -372,7 +377,13 @@ def main():
           f"fx={intr.fx:.1f} fy={intr.fy:.1f} ppx={intr.ppx:.1f} ppy={intr.ppy:.1f}")
 
     memory = SpatialMemory(merge_radius=1.5, alpha=0.4)
-    planner = ReactivePlanner(reach_threshold=args.reach_m, max_speed=args.max_speed)
+    planner = make_planner(
+        use_learned=args.use_learned_planner,
+        models_dir=args.models_dir,
+        reach_threshold=args.reach_m,
+        max_speed=args.max_speed,
+    )
+    print(f"{_ts()} planner: {'LearnedPlanner (policy_v2)' if args.use_learned_planner else 'ReactivePlanner (rule-based)'}")
 
     # ============ PHASE 1: go to nearest <target> ============
     print(f"\n{_ts()} === PHASE 1: find and reach nearest {parsed.target!r} ===")
