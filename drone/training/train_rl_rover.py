@@ -13,10 +13,11 @@ Design choices vs the quad (train_rl_rnn.py):
     with DR ramping on dynamics after the basic task is mastered.
   - **DynamicsDR** reused — wheel lag, accel cap, latency, heading drift (wind→yaw bias).
 
-Nav2 integration (Jetson deploy):
-    This policy runs as the local reactive planner inside Nav2. Nav2's global planner
-    (A* on a cost map) supplies the next waypoint; our policy replaces DWB to execute it.
-    Wire plan.v_linear → cmd_vel.linear.x, plan.yaw_rate → cmd_vel.angular.z.
+Deploy (Jetson rover):
+    This policy is the complete navigation stack — no map, no global planner.
+    Given a goal waypoint in body frame, it reactively avoids obstacles using live lidar.
+    Wire action[0] → cmd_vel.linear.x, action[1] → cmd_vel.angular.z.
+    A higher-level goal sequencer (or a human operator) supplies successive waypoints.
 
 Train on hoopoe (no BC warm-start needed, trains from scratch in ~30 min on A100):
     PYTHONPATH=. python -m eco.drone.training.train_rl_rover \\
