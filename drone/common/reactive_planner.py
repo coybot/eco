@@ -212,6 +212,7 @@ class LearnedPlanner:
         onnx_path = models_dir / onnx_name
         norm_path = models_dir / onnx_name.replace(".onnx", "_state_norm.npy")
         self._session = None
+        self._recurrent = False
 
         try:
             import onnxruntime as ort
@@ -221,13 +222,21 @@ class LearnedPlanner:
                 str(onnx_path), providers=["CPUExecutionProvider"]
             )
             self._input_name = self._session.get_inputs()[0].name
+            # Recurrent (step-mode) export carries a hidden state: inputs (state, h_in) ->
+            # (action, h_out). Window export takes (state_window) -> (action). Detect by input name.
+            in_names = [i.name for i in self._session.get_inputs()]
+            self._recurrent = "h_in" in in_names
+            if self._recurrent:
+                h_shape = self._session.get_inputs()[in_names.index("h_in")].shape
+                self._hidden = int(h_shape[-1]) if isinstance(h_shape[-1], int) else 128
             # The model normalizes internally (mean/std baked into ONNX buffers).
             # Do NOT pre-normalize inputs here.
         except Exception as e:
             print(f"[LearnedPlanner] fallback to rule-based: {e}")
 
-        # ring buffer of raw state vectors for the GRU window
+        # ring buffer of raw state vectors for the GRU window (window-mode)
         self._history = np.zeros((self.SEQ_LEN, self.STATE_DIM), dtype=np.float32)
+        self._h = np.zeros((1, 1, getattr(self, "_hidden", 1)), dtype=np.float32)  # recurrent state
         self._cur_yaw_rate = 0.0   # carry last commanded yaw_rate for state assembly
         self._cur_vel = np.zeros(3, dtype=np.float32)  # carry last vel for state
         self._warmup_ticks = 0     # suppress stall detection while GRU warms up
@@ -235,6 +244,8 @@ class LearnedPlanner:
     def reset(self) -> None:
         import numpy as np
         self._history = np.zeros((self.SEQ_LEN, self.STATE_DIM), dtype=np.float32)
+        if getattr(self, "_recurrent", False):
+            self._h = np.zeros((1, 1, self._hidden), dtype=np.float32)
         self._stall_buffer.clear()
         self._cur_yaw_rate = 0.0
         self._cur_vel = np.zeros(3, dtype=np.float32)
@@ -325,14 +336,21 @@ class LearnedPlanner:
 
         fan = self._resolve_fan(depth_fan, clearance_m)
         state_vec = self._build_state_vec(target_xyz, fan, altitude_m)
-        # shift history window and append latest state
-        self._history = np.roll(self._history, -1, axis=0)
-        self._history[-1] = state_vec
 
-        inp = self._history[np.newaxis]   # (1, SEQ_LEN, STATE_DIM)
-        out = self._session.run(None, {self._input_name: inp})[0][0]  # (ACTION_DIM,)
+        if self._recurrent:
+            # step-mode: feed one frame + carried hidden state, get action + next hidden state
+            inp = state_vec[np.newaxis, np.newaxis]   # (1, 1, STATE_DIM)
+            out = self._session.run(None, {"state": inp, "h_in": self._h})
+            act = out[0][0]                            # (ACTION_DIM,)
+            self._h = out[1]                           # (1, 1, hidden)
+        else:
+            # window-mode: shift history window and append latest state
+            self._history = np.roll(self._history, -1, axis=0)
+            self._history[-1] = state_vec
+            inp = self._history[np.newaxis]            # (1, SEQ_LEN, STATE_DIM)
+            act = self._session.run(None, {self._input_name: inp})[0][0]
 
-        vx, vy, vz, yaw_rate = (float(x) for x in out)
+        vx, vy, vz, yaw_rate = (float(x) for x in act)
 
         # speed cap (policy_v3 was trained ≤ max_speed but clamp as safety net)
         spd = math.sqrt(vx*vx + vy*vy + vz*vz)
