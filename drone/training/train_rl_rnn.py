@@ -89,6 +89,8 @@ def main():
     ap.add_argument("--k-alt", type=float, default=0.45)
     ap.add_argument("--k-clear", type=float, default=0.8)
     ap.add_argument("--clear-margin", type=float, default=0.6)
+    ap.add_argument("--k-above", type=float, default=0.0)
+    ap.add_argument("--above-margin", type=float, default=1.0)
     ap.add_argument("--depth-noise", type=float, default=0.07)
     ap.add_argument("--target-noise", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=0)
