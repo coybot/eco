@@ -1,37 +1,41 @@
 # Handoff prompt — make `gauntlet2` (chained under→over→through) work
 
-> ## ✅ RESOLVED (2026-06-17) — hierarchical A*+policy
+> ## STATUS (2026-06-18) — singles deploy-ready; gauntlet2 fails SAFE, not solved
 >
-> `gauntlet2` now **reaches** (under→over→through, no collision). The fix is the recommended
-> hierarchical direction, implemented as `HierarchicalPlanner` in
-> `eco/drone/common/reactive_planner.py`: run A* on an occupancy estimate for the global route,
-> then feed the policy a target **redirected along the next path segment at cruise range (6 m)**
-> instead of the far global goal. The policy keeps cruise speed and reads each segment as a single
-> over/under/through problem (which it already solves), so it commits to the climb out of the duck
-> instead of skirting the wall. Outer layer owns goal-reach + stall; the inner policy's gates are
-> disabled. **No retraining** — same `policy_v4_dr.onnx` weights (md5 `74f6f58…`).
+> **Deploy-ready (end-to-end policy, NO planner):** robust single-obstacle avoidance (over / under /
+> through a corridor-spanning wall) — 20/20 under depth+target noise, ≥0.5 m clearance, within a
+> **4.0 m altitude cap**; ~95% on 300 random 3D courses. Best model: **policy_v13_dr** (hidden=128)
+> or policy_v10_dr. Validate locally (no Isaac) with `local_course.py --alt-cap 4.0 [--depth-noise
+> 0.10 --target-noise 0.20 --trials 20]` using `~/.astral-venv`.
 >
-> Verified two ways with identical numbers:
-> - Local CPU kinematic harness `eco/drone/training/local_course.py` (mirrors `run_pass`, no Isaac).
-> - Isaac render on hoopoe (`record_comparison.py`, hierarchical is now the default; `--policy-alone`
->   reproduces the old stall). Videos: `eco/drone/training/videos_gauntlet2/{chase,fpv}_gauntlet2.mp4`.
+> **gauntlet2 is NOT solved end-to-end.** After 13 retrains (v5..v13) it **fails safe** — stalls/
+> stops, does NOT collide (0/20 under noise). The reactive 16-frame policy can't reliably execute
+> the multi-stage duck→climb→thread under a tight cap + noise.
 >
-> | course | policy-alone | hierarchical |
-> |---|---|---|
-> | limbo / over_wall / window | reach | reach (clr 0.70 / 0.87 / 0.41) |
-> | **gauntlet2** | stall @ x≈5 | **reach, no coll, clr 0.46, 71 ticks** |
-> | 300 random 3D | 97.3% / 2.0% coll | 97.0% / 3.0% coll (parity) |
+> ### Approaches tried (so the next session doesn't repeat them)
+> - **A\* hierarchical** (`HierarchicalPlanner`, `occupancy.py`): solved gauntlet2 with KNOWN boxes,
+>   but a global planner needs map knowledge a forward-depth drone lacks, and online A* on
+>   accumulated occupancy thrashes the target → **rejected as deploy path** (kept for reference).
+> - **Reward/curriculum retrains:** anti-stall (hover-to-timeout was cheaper than collision);
+>   un-skirtable walls (HY=9/SPAN=18 → commit over/under, not skirt); altitude cap baked into BC
+>   oracle + RL env (no fly-over cheat); altitude-recovery `k_alt`; clearance-margin `k_clear` +
+>   sensor-noise DR (noise-robust singles); decorrelate altitude↔over/under (BC + RL) so it climbs
+>   over from low; heavy direct gauntlet exposure; network capacity 64→128. Each fixed singles or
+>   moved the gauntlet failure (stall ↔ ram ↔ over-climb) but none robustly completed it.
+> - **Confirmed root cause:** the policy used CURRENT ALTITUDE as the over/under cue; forced low by
+>   the ceiling it wouldn't climb the next floor-wall. Decorrelation broke that (climbs over from
+>   z=0.8 now), but in the *sequence* it still won't initiate the climb in the ~4 m gap after a duck.
 >
-> **Open items for a real vehicle (not needed for the sim proof):** the sim passes the *known*
-> course boxes to A* (`step(..., boxes=...)`). On-vehicle, replace that with a local voxel map
-> accumulated from the depth grid — the `astar_path` interface is unchanged. Window-thread
-> clearance is ~0.46 m (above the 0.3 m halt radius but below the 0.5 m single-course spec);
-> tighten later via depth-map A* or a window-centering term if desired. SITL gate not yet re-run
-> with the hierarchical wrapper.
+> ### Untried bigger swings (need a decision, not a knob)
+> True carried recurrent hidden state (vs the fixed 16-step window); a learned high-level mode/
+> sub-goal selector; or relaxed assumptions (wider spacing / correlated-not-white target noise).
 >
-> Tuning that matters (in `HierarchicalPlanner.__init__`): `cruise_horizon=6.0` and `lookahead=2.0`
-> are load-bearing — `cruise_horizon<6` makes the policy decelerate and stall mid-gauntlet;
-> `inflate>0.55` closes the under-gap/window so A* finds no path.
+> ### Still pending for full deploy
+> `run_prompt.py` feeds the policy only a center-clearance scalar — wire the real 5×9 depth-grid
+> sampling from RealSense (the policy's actual input) + run the ArduPilot SITL gate.
+>
+> ---
+> *(Original hierarchical-A\* note removed — superseded; see git log f6a175e/230d12f/6a02d31.)*
 
 Paste everything below into a fresh Claude Code session (run from `~/code/ys/a`).
 
