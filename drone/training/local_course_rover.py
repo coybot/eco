@@ -209,8 +209,7 @@ class RoverPlanner:
             return 0.0, 0.0, reached
 
         obs = build_obs(target_fwd, target_left, vel_fwd, yaw_rate, lidar)
-        norm = (obs - R_STATE_MEAN) / (R_STATE_STD + 1e-6)
-        x = norm.reshape(1, 1, R_STATE_DIM).astype(np.float32)
+        x = obs.reshape(1, 1, R_STATE_DIM).astype(np.float32)  # ONNX normalizes internally
         action, h_out = self._session.run(None, {"state": x, "h_in": self._h})
         self._h = h_out
         v_lin = float(np.clip(action[0, 0], -MAX_V, MAX_V))
