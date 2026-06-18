@@ -189,7 +189,7 @@ class LearnedPlanner:
         stall_steps: int = 30,   # lenient: model may rotate before translating
         stall_progress: float = 0.1,
         vehicle: float = 0.0,    # 0.0 = quad, 1.0 = rover
-        onnx_name: str = "policy_v4_dr.onnx",   # 3D depth-grid policy; "policy_v3_rl.onnx" = old 2D
+        onnx_name: str = "policy_v26rnn_dr.onnx",  # 3D depth-grid GRU policy; "policy_v4_dr.onnx" = old non-recurrent
     ):
         import numpy as np
         from pathlib import Path
