@@ -83,7 +83,10 @@ def depth_grid_5x9(depth_img: np.ndarray, scale: float, intr, depth_max: float =
     Layout: row-major top→bottom, left→right (matches contract.py RAY_DIRS).
     HFOV = 90° (±45°, 9 cols), VFOV = 70° (±35°, 5 rows).
     Body frame: fwd=+Z_cam, left=−X_cam, up=−Y_cam (matches backproject convention).
-    Rays outside the D435i FOV return depth_max (no obstacle assumed).
+    D435i at 640×480 covers ≈87°H×58°V, so 21/45 rays land inside the image (the
+    3 middle rows × 7 centre columns); the ±35° top/bottom rows and ±45° outer
+    columns are out of bounds and return depth_max (no-obstacle assumption — safe
+    but means the policy's far-peripheral vision is always "clear" at deploy).
     Returns float32 array of shape (45,) in metres.
     """
     import math as _math
