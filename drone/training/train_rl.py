@@ -245,6 +245,23 @@ class BoxEnv:
         d = t.where(self.bmask > 0.5, d, t.full_like(d, 1e9))
         return d.min(dim=1).values
 
+    def above_near(self, above_margin):
+        """Vertical clearance above obstacle tops: fires only when the drone is inside a box's
+        x-y footprint AND above its top surface. Unlike min_box_dist, this never penalizes
+        horizontal approach at low altitude — so the policy can approach a wall from the side
+        without avoidance behaviour, while still being strongly discouraged from descending into
+        the top of a wall it has just cleared."""
+        t = self.t
+        box_top = self.bcz + self.bhz                              # (n, K)
+        above = self.z[:, None] > box_top                          # (n, K)
+        in_x = (self.x[:, None] - self.bcx).abs() <= self.bhx     # (n, K)
+        in_y = (self.y[:, None] - self.bcy).abs() <= self.bhy     # (n, K)
+        vert_dist = (self.z[:, None] - box_top).clamp(min=0.0)    # (n, K)
+        near_k = ((above_margin - vert_dist).clamp(min=0.0)
+                  * (above & in_x & in_y).float()
+                  * (self.bmask > 0.5).float())
+        return near_k.max(dim=1).values                            # (n,)
+
     def obs(self):
         """(n, STATE_DIM) raw state matching contract order."""
         t = self.t
@@ -321,6 +338,8 @@ class BoxEnv:
         # colliding, so the policy keeps a safety buffer that survives sensor noise at deploy
         # (the clean gauntlet climb cleared by only ~0.4 m and clipped once noise was added).
         near = (w.clear_margin - box_dist).clamp(min=0.0)
+        # Vertical-only above-surface penalty (see above_near docstring).
+        above = self.above_near(w.above_margin)
 
         # Anti-stall: without this, hovering until timeout (cost ~k_time*MAX_STEPS) is CHEAPER than
         # a collision (k_coll), so the policy learns to freeze in the gauntlet rather than commit
@@ -343,6 +362,7 @@ class BoxEnv:
                   - w.k_stall * stalled.float()
                   - w.k_alt * below_goal_alt
                   - w.k_clear * near
+                  - w.k_above * above
                   - w.k_coll * collided.float()
                   - w.k_timeout * timed_out_unreached.float()
                   + w.k_goal * reached.float())
@@ -421,6 +441,8 @@ class W:  # reward weights
         self.k_alt = a.k_alt
         self.k_clear = a.k_clear
         self.clear_margin = a.clear_margin
+        self.k_above = getattr(a, 'k_above', 0.0)
+        self.above_margin = getattr(a, 'above_margin', 1.0)
 
 
 def main():
@@ -454,6 +476,10 @@ def main():
                     help="dense penalty per meter inside clear-margin of an obstacle (safety buffer)")
     ap.add_argument("--clear-margin", type=float, default=0.6,
                     help="obstacle clearance buffer (m) the policy is rewarded to keep")
+    ap.add_argument("--k-above", type=float, default=0.0,
+                    help="vertical above-surface clearance penalty weight (0=disabled)")
+    ap.add_argument("--above-margin", type=float, default=1.0,
+                    help="vertical margin (m) above box tops within which k-above fires")
     ap.add_argument("--depth-noise", type=float, default=0.07,
                     help="std (m) of depth-grid noise during RL (sensor-noise DR)")
     ap.add_argument("--target-noise", type=float, default=0.15,

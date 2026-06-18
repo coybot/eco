@@ -1,47 +1,85 @@
 # Handoff prompt — make `gauntlet2` (chained under→over→through) work
 
-> ## STATUS (2026-06-18) — singles deploy-ready (recurrent); gauntlet2 NOT solved
+> ## STATUS (2026-06-18) -- GAUNTLET2 SOLVED. policy_v26rnn_dr.onnx. Pending SITL gate.
 >
-> **Deploy-ready (end-to-end, NO planner):** singles (over/under/through) solved by recurrent GRU
-> policy. **Best deploy model: `policy_v16rnn_dr.onnx`** (step-mode, hidden=128). Reaches 20/20
-> clean, ~20/20 noisy on all single-obstacle types, ≥0.5 m clearance, within 4.0 m alt cap.
-> `policy_v13_dr.onnx` (window/non-recurrent) also works for singles. Validate with
-> `local_course.py --onnx-name policy_v16rnn_dr.onnx --all --alt-cap 4.0`.
+> **Deploy-ready (singles):** policy_v16rnn_dr.onnx (step-mode GRU, SITL 3/3). run_prompt.py wired.
+> **Gauntlet2 solved:** policy_v26rnn_dr.onnx — 20/20 reach, 0/20 collision, min_clr=0.34m (noisy).
+>   Pending ArduPilot SITL gate before declaring fully deploy-ready.
+>   Singles also pass (limbo 20/20 0.52m, over_wall 20/20 0.88m, window 18/20 0.36m).
 >
-> **Singles**: ✅ DEPLOY-READY + SITL PASSED. policy_v16rnn_dr.onnx: ArduPilot SITL 3/3
-> (go_over 1.78m, go_under 1.28m, slalom_3d 1.2m min clearance). run_prompt.py wired (d17b233/08d8be8).
+> ### Root cause analysis
+> MATH: wall x=[6.8,8.2] (1.4m wide), vx~0.14m/tick -> 10 ticks to cross.
+> At vz=0.19m/tick descent, drone drops 1.9m. From z=3.65m entry -> z_exit=1.75m < wall top 2.6m.
+> Fix requires strong gradient signal THROUGHOUT the wall crossing to maintain altitude.
 >
-> **Gauntlet2**: NOT solved yet, but v18rnn_dr showed the FIRST correct maneuver sequence:
-> duck (z=0.91) → climb to z=4.06 → approach over-wall at z=2.98 (above 2.6m top) → clip wall
-> on descent (z=2.84, clearance=0.24m < HALT_R=0.3m). Collision, but the RIGHT behavior at last.
-> Root cause of clip: k_clear=0.8 too weak; descent at 0.07m/tick reaches HALT_R while still in
-> wall's x-range [6.8, 8.2]. Fix: k_clear=2.0 → v19rnn_dr (training now, reach=0.97-0.98).
+> **k_alt stability limit**: k_alt only penalizes z<goal_z. During limbo duck (z=0.76m, 10 ticks):
+> - k_alt=0.7: duck penalty = 0.87/tick x 10 = 8.7 << k_coll=25 (stable)
+> - k_alt=1.0: duck penalty = 1.24/tick x 10 = 12.4 (safe margin)
+> - k_alt=2.0: duck penalty = 2.48/tick x 10 = 24.8 ~= k_coll=25 (COLLAPSE -- v21)
+>   PPO gradients explode when altitude penalty matches collision penalty during duck.
+>   DO NOT use k_alt > 1.5. Safe range: 0.7-1.2.
+>
+> **clear_margin root problem**: min_box_dist is isotropic -- fires for HORIZONTAL approach too.
+> At z=0.70m (post-duck), wall side face is only 0.98m away (inside wall z-range).
+> clear_margin=1.2m -> penalty fires at x=5.6m (1.2m from wall face at low altitude).
+> Policy learns "avoid wall at low z" -> drifts sideways instead of climbing (v22 stall).
+>
+> **New fix: k_above / above_margin** (added to train_rl.py BoxEnv.above_near()):
+> Fires ONLY when drone is in box's x-y footprint AND above its top surface.
+> above_near = max over boxes of (above_margin - (z - box_top)).clamp(0) * in_footprint
+> - At x=5.82 (outside wall x-footprint |5.82-7.5|=1.68>0.7): near=0. No horizontal avoidance.
+> - At x=7.0, z=3.4 (over wall, vert_dist=0.8m): near=0.2, penalty=8x0.2=1.6/tick.
+> - At x=7.0, z=3.0 (vert_dist=0.4m): near=0.6, penalty=4.8/tick >> k_prog.
+> - During ceiling duck (z=0.7, drone BELOW ceiling top=5.0m): near=0. ✅
+> - For window sill (top=1.2m, drone at z=2.0m): near=0.2, penalty=1.6/tick x 4-5 ticks = 7 << k_goal.
 >
 > ### Recurrent policy lineage (don't repeat)
-> - **v14rnn** (BC, 35ep): initiates climb (z→1.43) but collides on ALL singles. BC-only ≠ deploy.
-> - **v15rnn** (BC+noise aug): collides everywhere. Noise-aug BC with clean labels fails.
-> - **v16rnn_dr** (PPO T=48, warm v14rnn): ✅ singles fixed (reach=0.92), ✅ SITL 3/3. But T=48
->   doesn't cover gauntlet (~70 ticks) → loses climb commitment, retreats/drifts sideways.
-> - **v17rnn_dr** (PPO T=160, k_prog=3.0): unstable — reach=0.60, coll=0.40. T=160 amplifies
->   gradient updates; k_prog=3.0 makes policy charge into obstacles.
-> - **v18rnn_dr** (PPO T=96, lr=1e-4, k_alt=0.7, k_goal=35, warm v16rnn_dr, 600 iter, best=0.90):
->   BREAKTHROUGH. Correct maneuver sequence. Clips wall by 0.06m due to weak k_clear. 0/20 reach.
-> - **v19rnn_dr** (same, k_clear=2.0, lr=5e-5, 400 iter, warm v18rnn_dr_ac.pt): training now.
->   Check `/tmp/rl19rnn.log` on hoopoe.
+> - **v14rnn** (BC): collides singles. BC-only fails.
+> - **v15rnn** (BC+noise): collides everywhere.
+> - **v16rnn_dr** (T=48, k_clear=0.8): DEPLOY singles, SITL 3/3. Gauntlet 0/20.
+> - **v17rnn_dr** (T=160, k_prog=3.0): COLLAPSED (0.60 reach). Large k_prog + long rollout.
+> - **v18rnn_dr** (T=96, lr=1e-4, k_clear=0.8, k_goal=35, 600 iter): BREAKTHROUGH maneuver.
+>   Clips wall (clr=0.24m). k_clear isotropic fires too late.
+> - **v19rnn_dr** (k_clear=2.0, margin=0.6): WORSE (clr=0.13m). Margin too small.
+> - **v20rnn_dr** (k_clear=4.0, margin=1.0, lr=3e-5, 300 iter): STILL CLIPS (clr=0.08m).
+>   Penalty at entry too small to stop 0.19m/tick descent.
+> - **v21rnn_dr** (k_alt=2.0, k_clear=6.0, margin=1.2, k_goal=50): COLLAPSED (0.44 reach).
+>   k_alt=2.0 duck penalty nearly equals k_coll, PPO gradients destabilize.
+> - **v22rnn_dr** (k_alt=1.0, k_clear=5.0, margin=1.2, k_goal=40, lr=3e-5, 400 iter,
+>   warm v20rnn_dr_ac.pt): STALL (gauntlet2 stays at z=0.70m). clear_margin=1.2m creates
+>   horizontal approach penalty (box_dist to wall side face 0.98m < 1.2m), policy drifts sideways.
+> - **v23rnn_dr** (k_above=8.0, above_margin=1.0, k_clear=0.6, margin=0.6, k_alt=1.0, k_goal=40,
+>   lr=3e-5, 400 iter, warm v20rnn_dr_ac.pt): COLLISION (clr=0.17-0.20m). Stall FIXED!
+>   Drone now climbs to z=4.01m and attempts wall crossing. But above_margin=1.0m fires TOO LATE:
+>   wall entry z=3.75m → vert_dist=1.15m > 1.0m → above_near=0 at entry → free descent 0.43m.
+>   Then descends 1.13m total over 9 ticks. Needs above_near to fire AT ENTRY.
+> - **v24rnn_dr** (k_above=5.0, above_margin=1.5m, k_clear=2.0, margin=0.6, k_alt=1.0, k_goal=40,
+>   lr=3e-5, 400 iter, warm v23rnn_dr_ac.pt): COLLISION (clr=0.17m). above_near fires at entry
+>   (z=3.78m, near=0.25, 1.25/tick) but too weak. Also: v23 warm-start baked in yaw-drift habit
+>   (yaw=-27.8° at t=40, y=1.9m lateral drift). Still descends 1.08m total, clips wall.
+>   k_above=5.0 insufficient: needs k_above=8.0 AND above_margin=1.5m TOGETHER.
+> - **v25rnn_dr** (k_above=8.0, above_margin=1.5m, k_clear=0.6, margin=0.6, k_alt=1.0, k_goal=40,
+>   lr=2e-5, 500 iter, warm v20rnn_dr_ac.pt): COLLISION (clr=0.23-0.25m). Stall fixed, yaw-drift
+>   reduced (-10° vs -27.8°), above_near fires 1.84/tick at entry. vz=0.149m/tick vs need 0.139.
+>   Gap: 0.01m/tick. Increasing above_margin to 1.7m to push entry signal to 3.44/tick.
+> - **v26rnn_dr** (k_above=8.0, above_margin=1.7m, k_clear=0.6, margin=0.6, k_alt=1.0, k_goal=40,
+>   lr=2e-5, 500 iter, warm v25rnn_dr_ac.pt): ✅ GAUNTLET2 SOLVED.
+>   20/20 reach, 0/20 collision, min_clr=0.34m under depth+target noise.
+>   Clean trajectory: duck z=0.94 → climb z=4.05 → wall clr=0.35m → window z=2.08 → goal.
+>   Singles: limbo 20/20 0.52m, over_wall 20/20 0.88m, window 18/20 0.36m (2 stall misses).
+>   Above_near at entry: vert_dist=1.27m, near=0.43, penalty=3.44/tick >> k_prog=0.3/tick.
 >
 > ### Key facts (do not relitigate)
-> - `LearnedPlanner` auto-detects step-mode ONNX (`h_in` input name); carries `self._h` tick-to-tick.
-> - With T=48 rollout (16s), gauntlet (~70 ticks, 23s) never completed → terminal reward unseen.
->   T=96 fixed this. T=160 too large (gradient instability).
-> - Gauntlet walls hy=4.0 (±4m), training SPAN=18 (±9m). Policy tries to skirt y≈-2.5 in eval.
-> - **Flat copy on hoopoe must be in `~/astral-training/eco/drone/training/`** (sitl_validate imports
->   from package path, not flat `/home/yusuf/` copy). Always SCP both locations.
-> - D435i at 640×480: 21/45 training rays are valid; ±35° V rows and ±45° H cols are out-of-bounds
->   → depth_max returned for those. See run_prompt.py depth_grid_5x9() docstring.
+> - LearnedPlanner auto-detects step-mode ONNX (h_in input), carries self._h tick-to-tick.
+> - T=96 required (gauntlet ~70 ticks). T=48 = no gauntlet credit. T=160 = unstable.
+> - 40% RL episodes are SEQUENCE mode (under->over->through). Gauntlet IS in distribution.
+> - k_alt safe range: 0.7-1.2. Above ~1.5 collapses training during limbo duck.
+> - k_above/above_margin: vertical-only above-surface clearance, replaces large clear_margin.
+>   above_near() in BoxEnv fires ONLY when in box x-y footprint AND above box top.
+> - Flat copy on hoopoe: BOTH /home/yusuf/ AND ~/astral-training/eco/drone/training/.
 >
 > ---
-> *(A\* rejected. Git: f6a175e/230d12f/6a02d31/96e1289/d17b233/d493dff/08d8be8)*
-
+> *(A* rejected. Git: f6a175e/230d12f/6a02d31/96e1289/d17b233/d493dff/08d8be8/c2a0b2b)*
 Paste everything below into a fresh Claude Code session (run from `~/code/ys/a`).
 
 ---
