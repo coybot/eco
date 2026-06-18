@@ -30,6 +30,12 @@ from .world3d import Box3D, depth_grid, min_dist_to_boxes, window_prisms
 from .planner3d import astar_path, PathFollower
 
 
+# Deploy altitude cap (run_prompt.py --max-alt). The teacher and policy must operate within it:
+# 'over' walls are climbable below it, 'under' ceilings exceed it (forcing a duck), goals sit
+# under it. Training above the cap taught v6 to "fly over everything" — impossible on the vehicle.
+ALT_CAP = 4.0
+
+
 def _rng(seed: int) -> np.random.Generator:
     return np.random.default_rng(seed)
 
@@ -42,18 +48,29 @@ def _place_obstacles(gx, z0, goal_alt, vehicle, rng):
     band_lo, band_hi = min(z0, goal_alt), max(z0, goal_alt)
     mode = rng.random()
 
+    # HY=9: corridor walls wider than the depth FOV can see around at the approach range, so the
+    # A* oracle routes OVER/UNDER/THROUGH (not around) and the cloned policy learns to commit to
+    # the vertical maneuver. With HY=4 the 8m walls were skirtable, so the policy learned to skirt
+    # — a dead-end in a gauntlet where the next wall is full-corridor.
+    HY = 9.0
+
     def _wall(cx, kind):
-        """One corridor-spanning obstacle at x=cx: 'over' floor wall, 'under' ceiling, or 'window'."""
+        """One corridor-spanning obstacle at x=cx: 'over' floor wall, 'under' ceiling, or 'window'.
+
+        Geometry respects ALT_CAP (deploy max_alt): 'over' walls top out BELOW the cap so they can be
+        climbed within it; 'under' ceilings extend ABOVE the cap so flying over isn't an option and
+        the drone must duck under (the deploy-faithful constraint v6 violated by flying high)."""
         if kind == "window":
             cyo = rng.uniform(-1.0, 1.0)
-            czo = float(np.clip(rng.uniform(band_lo - 0.4, band_hi + 0.4), 1.5, 3.3))
-            return window_prisms(cx, cyo, czo, ohy=rng.uniform(0.95, 1.3), ohz=rng.uniform(0.85, 1.15))
+            czo = float(np.clip(rng.uniform(band_lo - 0.4, band_hi + 0.4), 1.4, ALT_CAP - 0.7))
+            return window_prisms(cx, cyo, czo, ohy=rng.uniform(0.95, 1.3),
+                                 ohz=rng.uniform(0.85, 1.05), span=2 * HY)
         if kind == "over":
-            top = band_hi + rng.uniform(0.4, 1.1)
-            return [Box3D(cx, 0.0, top / 2, 0.6, 4.0, top / 2)]
-        bottom = rng.uniform(1.3, 1.9)
-        top = bottom + rng.uniform(2.0, 3.5)
-        return [Box3D(cx, 0.0, (bottom + top) / 2, 0.6, 4.0, (top - bottom) / 2)]
+            top = min(band_hi + rng.uniform(0.4, 0.8), ALT_CAP - 0.3)   # climbable under the cap
+            return [Box3D(cx, 0.0, top / 2, 0.6, HY, top / 2)]
+        bottom = rng.uniform(1.1, 1.6)
+        top = ALT_CAP + 1.5                                             # above cap -> must duck under
+        return [Box3D(cx, 0.0, (bottom + top) / 2, 0.6, HY, (top - bottom) / 2)]
 
     if vehicle == VEHICLE_QUAD and mode < 0.20:               # SEQUENCE: chained corridor walls
         if rng.random() < 0.5:
@@ -93,9 +110,10 @@ def rollout_episode(vehicle, rng, dt=0.1, max_ticks=700, limits=None):
 
     gx = rng.uniform(6.0, 15.0)                               # goal along +x
     gy = rng.uniform(-3.0, 3.0)
-    z0 = rng.uniform(1.5, 4.0) if vehicle == VEHICLE_QUAD else 0.5
-    gz = rng.uniform(-2.5, 2.5) if vehicle == VEHICLE_QUAD else 0.0
-    goal_alt = max(0.6, z0 + gz) if vehicle == VEHICLE_QUAD else 0.5
+    # start/goal altitudes kept under ALT_CAP so over-walls + goals are reachable within the cap
+    z0 = rng.uniform(1.0, 2.2) if vehicle == VEHICLE_QUAD else 0.5
+    gz = rng.uniform(-1.0, 0.9) if vehicle == VEHICLE_QUAD else 0.0
+    goal_alt = float(np.clip(z0 + gz, 0.6, ALT_CAP - 0.4)) if vehicle == VEHICLE_QUAD else 0.5
 
     boxes = _place_obstacles(gx, z0, goal_alt, vehicle, rng)
     start = (0.0, 0.0, z0)
@@ -103,9 +121,12 @@ def rollout_episode(vehicle, rng, dt=0.1, max_ticks=700, limits=None):
     if (min_dist_to_boxes(*start, boxes) < 0.8 or min_dist_to_boxes(*goal, boxes) < 0.8):
         boxes = []
 
-    # privileged A* path; if blocked, skip this episode (caller yields nothing)
+    # privileged A* path; if blocked, skip this episode (caller yields nothing).
+    # zmax=ALT_CAP for the quad so the teacher DUCKS UNDER tall ceilings instead of routing over
+    # them (matches the deploy altitude cap; otherwise BC would teach the fly-high cheat).
     path = astar_path(start, goal, boxes, inflate=(0.55 if vehicle == VEHICLE_QUAD else 0.5),
-                      zmin=(0.4 if vehicle == VEHICLE_QUAD else 0.45))
+                      zmin=(0.4 if vehicle == VEHICLE_QUAD else 0.45),
+                      zmax=(ALT_CAP if vehicle == VEHICLE_QUAD else 6.0))
     if path is None:
         return
     follower = PathFollower(path, lookahead=0.9)
@@ -146,7 +167,7 @@ def rollout_episode(vehicle, rng, dt=0.1, max_ticks=700, limits=None):
         vz_w = ex_vz
         x += vx_w * dt
         y += vy_w * dt
-        z = max(0.2, z + vz_w * dt)
+        z = min(ALT_CAP, max(0.2, z + vz_w * dt)) if vehicle == VEHICLE_QUAD else max(0.2, z + vz_w * dt)
         yaw = wrap_pi(yaw + ayr * dt)
 
         if min_dist_to_boxes(x, y, z, boxes) < collide_r:

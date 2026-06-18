@@ -30,7 +30,7 @@ _repo = _here.parent.parent.parent
 for p in (_repo / "eco" / "drone" / "common", _repo / "eco" / "drone" / "sim", str(_here)):
     sys.path.insert(0, str(p))
 
-from reactive_planner import ReactivePlanner, LearnedPlanner  # noqa: E402
+from reactive_planner import ReactivePlanner, LearnedPlanner, HierarchicalPlanner  # noqa: E402
 from world3d import Box3D, depth_grid, min_dist_to_boxes      # noqa: E402
 
 DT = 0.1
@@ -120,6 +120,7 @@ def run_pass(bridge, drone_id, planner, goal, is_learned, start, obstacles, halt
     bridge.set_drone_pose(drone_id, start, yaw_rad=0.0)
     planner.reset()
     boxes = [Box3D(cx, cy, cz, hx, hy, hz) for (cx, cy, cz, hx, hy, hz) in obstacles]
+    hierarchical = isinstance(planner, HierarchicalPlanner)
     yaw = 0.0
     onboard, overhead = [], []
     reached = collided = False
@@ -136,7 +137,9 @@ def run_pass(bridge, drone_id, planner, goal, is_learned, start, obstacles, halt
         if min_dist_to_boxes(px, py, pz, boxes) < halt_r:
             collided = True
 
-        if is_learned:
+        if hierarchical:
+            plan = planner.step((px, py, pz), yaw, goal, depth_fan=fan, dt=DT, boxes=boxes)
+        elif is_learned:
             plan = planner.step(tgt, depth_fan=fan, altitude_m=pz, dt=DT)
         else:
             plan = planner.step(tgt, float(np.min(fan)), altitude_m=pz, dt=DT)
@@ -200,6 +203,8 @@ def main():
     ap.add_argument("--env", default="none", help="'none' = bare ground plane (default)")
     ap.add_argument("--onnx-name", default="policy_v4_dr.onnx",
                     help="learned model to render")
+    ap.add_argument("--policy-alone", action="store_true",
+                    help="render policy-alone (reactive) instead of the A*+policy hierarchy")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -216,9 +221,17 @@ def main():
     bridge.add_lighting(sun_intensity=2000.0, dome_intensity=700.0)
     bridge.add_marker(DRONE, color=(0.1, 0.95, 0.3), radius=0.28)  # ~real quad radius
 
-    learned_planner = LearnedPlanner(models_dir=args.models_dir, reach_threshold=1.0,
-                                     max_speed=3.0, vehicle=0.0, onnx_name=args.onnx_name)
-    if learned_planner._session is None:
+    if args.policy_alone:
+        learned_planner = LearnedPlanner(models_dir=args.models_dir, reach_threshold=1.0,
+                                         max_speed=3.0, vehicle=0.0, onnx_name=args.onnx_name)
+        loaded = learned_planner._session is not None
+        print("MODE: policy-alone (reactive)", flush=True)
+    else:
+        learned_planner = HierarchicalPlanner(models_dir=args.models_dir, onnx_name=args.onnx_name,
+                                              vehicle=0.0, max_speed=3.0, reach_threshold=1.0)
+        loaded = learned_planner.using_policy
+        print("MODE: hierarchical (A* route + policy local tracking)", flush=True)
+    if not loaded:
         print(f"WARNING: {args.onnx_name} not loaded — learned planner is running the fallback!",
               flush=True)
 

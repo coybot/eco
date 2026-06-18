@@ -354,6 +354,170 @@ class LearnedPlanner:
         )
 
 
+# ---------------------------------------------------------------------------
+# Hierarchical planner — global A* route + LearnedPlanner local tracking
+# ---------------------------------------------------------------------------
+
+class HierarchicalPlanner:
+    """A* (global route) wrapped around LearnedPlanner (local smoothing + depth avoidance).
+
+    The reactive policy alone can't sustain a multi-stage commitment (duck UNDER -> climb OVER ->
+    thread THROUGH) because it only ever sees the far global goal plus the local depth grid: coming
+    out of a duck it treats the next wall as a lateral obstacle and tries to skirt it instead of
+    committing to the climb. This wrapper runs A* on an occupancy estimate to get a collision-free
+    route, then feeds the policy a target **redirected along the next path segment** — turning the
+    gauntlet into a sequence of the single-obstacle problems the policy already solves well.
+
+    Key detail: the redirected target is placed at *cruise range* (`cruise_horizon`), not at the
+    nearby waypoint, so the policy still sees a "far goal in this direction" and cruises instead of
+    decelerating as if arriving. Goal-reach and stall are tracked HERE on the true goal distance;
+    the inner policy's own reach/range/stall gates are disabled so it only emits a velocity.
+
+    Occupancy source is pluggable via the `boxes` arg to step(): pass the known course geometry for
+    the sim proof, or an accumulated local voxel map (from the depth grid) on the vehicle. The A*
+    interface (planner3d.astar_path) is identical either way.
+    """
+
+    def __init__(
+        self,
+        models_dir: Optional[str] = None,
+        onnx_name: str = "policy_v4_dr.onnx",
+        vehicle: float = 0.0,
+        max_speed: float = 3.0,
+        reach_threshold: float = 1.0,
+        altitude_floor: float = 0.8,
+        lookahead: float = 2.0,
+        cruise_horizon: float = 6.0,
+        replan_every: int = 10,
+        inflate: float = 0.55,
+        stall_steps: int = 40,
+        stall_progress: float = 0.2,
+        online_occupancy: bool = True,
+        occ_res: float = 0.4,
+    ):
+        # Inner policy: disable its reach/range/stall gates — this wrapper owns those decisions.
+        self.policy = LearnedPlanner(
+            models_dir=models_dir, onnx_name=onnx_name, vehicle=vehicle,
+            max_speed=max_speed, altitude_floor=altitude_floor,
+            reach_threshold=-1.0, range_gate=(0.0, 1e18), stall_steps=10**9,
+        )
+        self.reach_threshold = reach_threshold
+        self.lookahead = lookahead
+        self.cruise_horizon = cruise_horizon
+        self.replan_every = replan_every
+        self.inflate = inflate
+        self.stall_steps = stall_steps
+        self.stall_progress = stall_progress
+        self.max_speed = max_speed
+        self.online_occupancy = online_occupancy
+        self._occ = None
+        if online_occupancy:
+            try:
+                from occupancy import OccupancyMap
+            except ImportError:
+                from eco.drone.common.occupancy import OccupancyMap
+            self._occ = OccupancyMap(res=occ_res)
+        self._follower = None
+        self._tick = 0
+        self._stall = []
+
+    @property
+    def using_policy(self) -> bool:
+        return self.policy._session is not None
+
+    @property
+    def n_voxels(self) -> int:
+        return self._occ.n_voxels if self._occ is not None else 0
+
+    def reset(self) -> None:
+        self.policy.reset()
+        if self._occ is not None:
+            self._occ.reset()
+        self._follower = None
+        self._tick = 0
+        self._stall = []
+
+    def _replan(self, pos, goal, boxes) -> None:
+        try:
+            from planner3d import PathFollower
+        except ImportError:
+            from eco.drone.training.planner3d import PathFollower
+        if self.online_occupancy:
+            from occupancy import astar_occupancy
+            path = astar_occupancy(tuple(pos), tuple(goal), self._occ, inflate=self.inflate)
+        else:
+            try:
+                from planner3d import astar_path
+            except ImportError:
+                from eco.drone.training.planner3d import astar_path
+            path = astar_path(tuple(pos), tuple(goal), boxes, inflate=self.inflate)
+        self._follower = PathFollower(path, lookahead=self.lookahead) if path else None
+
+    def step(self, pos, yaw, goal, depth_fan=None, dt: float = 0.1, boxes=None) -> PlanStep:
+        """One velocity command. `pos`,`goal` are world (x,y,z); `yaw` world heading (rad).
+
+        `depth_fan`: DEPTH_RAYS forward depth grid (the only obstacle sense on the vehicle).
+        `boxes`: used ONLY when online_occupancy=False (privileged sim proof). In online mode the
+        depth grid is accumulated into an internal voxel map and A* plans over that estimate.
+        """
+        import numpy as np
+        pos = np.asarray(pos, dtype=float)
+        goal_v = np.asarray(goal, dtype=float)
+        goal_dist = float(np.linalg.norm(goal_v - pos))
+
+        # --- accumulate perception every tick (continuous; replanning is periodic) ---
+        if self.online_occupancy and depth_fan is not None:
+            self._occ.integrate(pos, yaw, depth_fan)
+
+        # --- outer reach (true goal) ---
+        if goal_dist <= self.reach_threshold:
+            return PlanStep(0.0, 0.0, 0.0, 0.0, f"reached dist={goal_dist:.2f}m", reached=True)
+
+        # --- outer stall on true goal distance ---
+        self._stall.append(goal_dist)
+        if len(self._stall) > self.stall_steps:
+            self._stall.pop(0)
+        if len(self._stall) == self.stall_steps:
+            prog = self._stall[0] - self._stall[-1]
+            if prog < self.stall_progress:
+                return PlanStep(0.0, 0.0, 0.0, 0.0,
+                                f"stall progress={prog:.2f}m over {self.stall_steps} steps",
+                                rejected=True)
+
+        # --- (re)plan the global route ---
+        boxes = boxes or []
+        if self._follower is None or self._tick % self.replan_every == 0:
+            self._replan(pos, goal_v, boxes)
+        self._tick += 1
+
+        # lookahead world point on the path (fall back to straight-at-goal if planning failed)
+        if self._follower is None:
+            look_w = goal_v
+        else:
+            look_w = np.asarray(self._follower.target(pos), dtype=float)
+
+        dir_w = look_w - pos
+        n = float(np.linalg.norm(dir_w))
+        if n < 1e-6:
+            dir_w = goal_v - pos
+            n = max(float(np.linalg.norm(dir_w)), 1e-6)
+        dir_w = dir_w / n
+
+        # Redirect a CRUISE-RANGE target along the path direction so the policy keeps cruise speed
+        # and reads the next segment as "the goal is that way" (e.g. up-and-over the wall).
+        horizon = min(goal_dist, self.cruise_horizon)
+        d = dir_w * horizon
+        c, s = math.cos(-yaw), math.sin(-yaw)
+        target_body = (c * d[0] - s * d[1], s * d[0] + c * d[1], d[2])
+
+        plan = self.policy.step(target_body, depth_fan=depth_fan,
+                                altitude_m=float(pos[2]), dt=dt)
+        # the inner policy never decides reach/stall here
+        plan.reached = False
+        plan.rejected = False
+        return plan
+
+
 def make_planner(
     use_learned: bool = False,
     models_dir: Optional[str] = None,
