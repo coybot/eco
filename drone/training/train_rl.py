@@ -171,18 +171,29 @@ class BoxEnv:
 
         # SEQUENCE: the hard chain UNDER -> OVER -> THROUGH (the gauntlet pattern), so the big
         # duck->climb vertical swing right before a window is in-distribution.
-        seq = mode < 0.25
+        seq = mode < 0.40                            # heavy direct gauntlet exposure (was 0.25)
         set_barrier(seq, 0, gx * self._rand(n, lo=0.20, hi=0.34), force_over=False)   # under
         set_barrier(seq, 1, gx * self._rand(n, lo=0.42, hi=0.56), force_over=True)     # over
         set_window(seq, 2, gx * self._rand(n, lo=0.66, hi=0.82))                       # through
         mask_off(seq, [6, 7])
 
-        win = (mode >= 0.25) & (mode < 0.45)        # single WINDOW wall
+        win = (mode >= 0.40) & (mode < 0.55)        # single WINDOW wall
         set_window(win, 0, gx * self._rand(n, lo=0.4, hi=0.65))
         mask_off(win, [4, 5, 6, 7])
 
-        barr = (mode >= 0.45) & (mode < 0.63)       # single wide BARRIER
-        set_barrier(barr, 0, gx * self._rand(n, lo=0.4, hi=0.65))
+        # single wide BARRIER, approached ADVERSARIALLY to break the altitude shortcut: the policy
+        # learned "high -> climb over, low -> go under", which fails the gauntlet (forced low by the
+        # ceiling, it won't climb the next floor-wall). So make it climb OVER from a LOW start and
+        # duck UNDER from a HIGH start -> it must read the gap location from depth, not its altitude.
+        barr = (mode >= 0.55) & (mode < 0.72)
+        barr_over = barr & (self._rand(n) < 0.5)
+        barr_under = barr & ~barr_over
+        low_start = self._rand(n, lo=0.7, hi=1.1)
+        high_start = self._rand(n, lo=2.5, hi=ALT_CAP - 0.2)
+        self.z[idx[barr_over]] = low_start[barr_over]
+        self.z[idx[barr_under]] = high_start[barr_under]
+        set_barrier(barr_over, 0, gx * self._rand(n, lo=0.4, hi=0.65), force_over=True)
+        set_barrier(barr_under, 0, gx * self._rand(n, lo=0.4, hi=0.65), force_over=False)
         mask_off(barr, list(range(1, self.K)))
 
         self.steps[idx] = 0.0

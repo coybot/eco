@@ -72,22 +72,26 @@ def _place_obstacles(gx, z0, goal_alt, vehicle, rng):
         top = ALT_CAP + 1.5                                             # above cap -> must duck under
         return [Box3D(cx, 0.0, (bottom + top) / 2, 0.6, HY, (top - bottom) / 2)]
 
-    if vehicle == VEHICLE_QUAD and mode < 0.20:               # SEQUENCE: chained corridor walls
-        if rng.random() < 0.5:
+    if vehicle == VEHICLE_QUAD and mode < 0.38:               # SEQUENCE: chained corridor walls
+        # Heavy direct exposure to the gauntlet maneuver: 65% are the exact under->over->through
+        # chain (the oracle demonstrates the correct ALTERNATING altitude — duck low, climb high,
+        # thread — which a constant altitude bias can't teach). Tight, evenly-spaced like gauntlet2.
+        if rng.random() < 0.65:
             seq = ["under", "over", "window"]                 # the hard gauntlet pattern
+            fracs = np.array([0.25, 0.52, 0.78]) + rng.uniform(-0.04, 0.04, 3)
         else:
             kinds = ["over", "under", "window"]
             seq = [kinds[int(rng.integers(0, 3))] for _ in range(int(rng.integers(2, 4)))]
-        fracs = np.sort(rng.uniform(0.22, 0.82, len(seq)))
+            fracs = np.sort(rng.uniform(0.22, 0.82, len(seq)))
         boxes = []
         for frac, kind in zip(fracs, seq):
             boxes += _wall(frac * gx, kind)
         return boxes
 
-    if vehicle == VEHICLE_QUAD and mode < 0.40:               # WINDOW wall (thread through)
+    if vehicle == VEHICLE_QUAD and mode < 0.54:               # WINDOW wall (thread through)
         return _wall(rng.uniform(0.4, 0.65) * gx, "window")
 
-    if vehicle == VEHICLE_QUAD and mode < 0.62:               # wide BARRIER (over or under)
+    if vehicle == VEHICLE_QUAD and mode < 0.72:               # wide BARRIER (over or under)
         return _wall(rng.uniform(0.4, 0.65) * gx, "over" if rng.random() < 0.5 else "under")
 
     boxes = []                                                # scattered prisms (bob & weave)
@@ -115,7 +119,26 @@ def rollout_episode(vehicle, rng, dt=0.1, max_ticks=700, limits=None):
     gz = rng.uniform(-1.0, 0.9) if vehicle == VEHICLE_QUAD else 0.0
     goal_alt = float(np.clip(z0 + gz, 0.6, ALT_CAP - 0.4)) if vehicle == VEHICLE_QUAD else 0.5
 
-    boxes = _place_obstacles(gx, z0, goal_alt, vehicle, rng)
+    # DECORRELATE altitude from the over/under choice (matches the RL env): with some probability,
+    # force a single floor-wall approached from a LOW start (must climb OVER from low) or a ceiling
+    # from a HIGH start (must duck UNDER from high). The oracle demonstrates the correct maneuver, so
+    # the cloned policy stops using current altitude as a shortcut for over-vs-under (the gauntlet
+    # failure: forced low by a ceiling, it then wouldn't climb the next floor-wall).
+    decorr = rng.random() if vehicle == VEHICLE_QUAD else 1.0
+    if decorr < 0.16:                                         # over-from-LOW
+        z0 = rng.uniform(0.7, 1.1)
+        goal_alt = float(np.clip(rng.uniform(1.6, 2.6), 0.6, ALT_CAP - 0.4))
+        cx = rng.uniform(0.4, 0.65) * gx
+        top = min(max(z0, goal_alt) + rng.uniform(0.4, 0.9), ALT_CAP - 0.3)
+        boxes = [Box3D(cx, 0.0, top / 2, 0.6, 9.0, top / 2)]
+    elif decorr < 0.30:                                       # under-from-HIGH
+        z0 = rng.uniform(2.6, ALT_CAP - 0.2)
+        goal_alt = float(np.clip(rng.uniform(0.8, 1.8), 0.6, ALT_CAP - 0.4))
+        cx = rng.uniform(0.4, 0.65) * gx
+        bottom = rng.uniform(1.1, 1.6)
+        boxes = [Box3D(cx, 0.0, (bottom + ALT_CAP + 1.5) / 2, 0.6, 9.0, (ALT_CAP + 1.5 - bottom) / 2)]
+    else:
+        boxes = _place_obstacles(gx, z0, goal_alt, vehicle, rng)
     start = (0.0, 0.0, z0)
     goal = (gx, gy, goal_alt)
     if (min_dist_to_boxes(*start, boxes) < 0.8 or min_dist_to_boxes(*goal, boxes) < 0.8):
