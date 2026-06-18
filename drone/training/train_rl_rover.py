@@ -1,20 +1,32 @@
-"""Recurrent PPO for ground rover (differential/holonomic drive, 2D kinematic world).
+"""Recurrent PPO for ground rover: 360° lidar + unicycle kinematics.
 
-Architecture mirrors train_rl_rnn.py (separate actor/critic GRUs, carry-state PPO).
-Key differences from the quad BoxEnv:
-  - Ground-plane only: rover at fixed z=CAMERA_Z=0.5m; no vertical dynamics
-  - Floor-to-ceiling prism obstacles (bhz=5): lateral avoidance only
-  - vehicle=VEHICLE_ROVER (1.0) in every observation
-  - vz component of action is zeroed; altitude=0; target_up=0
+Design choices vs the quad (train_rl_rnn.py):
+  - **360° lidar** (72 rays, 5° spacing) — full situational awareness, sees behind/beside,
+    avoids the "commit to the wrong side" failures that plague forward-only cameras.
+  - **Unicycle kinematics** — action = [v_linear, yaw_rate]; no lateral slip. Matches
+    differential-drive hardware (Jetson Orin Nano rover).
+  - **Separate rover contract** (rover_contract.py) — R_STATE_DIM=83, R_ACTION_DIM=2.
+    The quad ONNX/contract is untouched.
+  - **Same recurrent PPO** (carry-state GRU, separate actor/critic) — proven stable on the
+    drone. T=96 so the policy sees full episode gradient.
+  - **Four-stage curriculum** (open → sparse columns → dense columns+walls → tight slalom)
+    with DR ramping on dynamics after the basic task is mastered.
+  - **DynamicsDR** reused — wheel lag, accel cap, latency, heading drift (wind→yaw bias).
 
-Training from scratch:
+Nav2 integration (Jetson deploy):
+    This policy runs as the local reactive planner inside Nav2. Nav2's global planner
+    (A* on a cost map) supplies the next waypoint; our policy replaces DWB to execute it.
+    Wire plan.v_linear → cmd_vel.linear.x, plan.yaw_rate → cmd_vel.angular.z.
+
+Train on hoopoe (no BC warm-start needed, trains from scratch in ~30 min on A100):
     PYTHONPATH=. python -m eco.drone.training.train_rl_rover \\
-        --out ~/drone-data/rover/models --version rover_v1 --iters 600 --envs 256
+        --out ~/drone-data/rover/models --version rover_v1 \\
+        --iters 800 --envs 512 --rollout 96
 
-Warm-start from an existing RNN checkpoint:
+Continue from a checkpoint:
     PYTHONPATH=. python -m eco.drone.training.train_rl_rover \\
-        --bc-ckpt ~/drone-data/rover/models/policy_rover_v0.pt \\
-        --out ~/drone-data/rover/models --version rover_v1 --iters 600 --envs 256
+        --ckpt ~/drone-data/rover/models/policy_rover_v1_ac.pt \\
+        --out ~/drone-data/rover/models --version rover_v2 --iters 400 --envs 512
 """
 from __future__ import annotations
 
@@ -25,14 +37,18 @@ from pathlib import Path
 
 import numpy as np
 
-from .contract import (STATE_DIM, ACTION_DIM, DEPTH_RAYS, RAY_DIRS, DEPTH_MAX, VEHICLE_ROVER)
-from .train_rl import W, DT, MAX_SPEED, torch_cos, torch_sin, torch_atan2, wrap_pi_t
+from .rover_contract import (
+    R_STATE_DIM, R_ACTION_DIM, LIDAR_RAYS, LIDAR_MAX, LIDAR_ANGLES, R_STATE_STD, R_STATE_MEAN,
+)
 from .dynamics import DynamicsDR
 
-REACH = 1.0
-COLLIDE_R = 0.35
-MAX_STEPS = 300
-CAMERA_Z = 0.5      # rover camera height above ground (depth-ray origin)
+# --------------------------------------------------------------------------- constants
+DT = 0.1          # simulation timestep (10 Hz)
+MAX_STEPS = 250   # episode cap (25 s)
+REACH_R = 1.0     # goal-reached radius (m)
+COLLIDE_R = 0.30  # collision radius (m)
+MAX_V = 2.0       # linear speed cap (m/s)
+MAX_W = 2.0       # yaw-rate cap (rad/s)
 
 
 def _torch():
@@ -40,23 +56,43 @@ def _torch():
     return torch
 
 
+def _wrap_pi(t, a):
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
+
 # --------------------------------------------------------------------------- env
 class RoverEnv:
-    """Vectorized kinematic rover env with random 2D column/wall obstacles, all in torch.
+    """Vectorised unicycle rover env with 360° lidar sensing, all in torch.
 
-    The rover stays at z=CAMERA_Z so the batched 3D ray-AABB code from BoxEnv works unchanged:
-    obstacles are floor-to-ceiling prisms (bhz=5). vehicle=VEHICLE_ROVER in all observations.
+    Obstacles are floor-to-ceiling 2D prisms (arbitrary rectangles in XY). The lidar casts
+    LIDAR_RAYS horizontal rays from the rover position using batched 2D ray-AABB intersection —
+    equivalent to the quad's 3D slab code but with Z collapsed.
+
+    Curriculum (controlled by self.stage 0..3):
+        0 — open field (no obstacles), learn go-to-goal
+        1 — sparse random columns (3-4 per env)
+        2 — dense columns + occasional gap-walls (6-8 per env)
+        3 — tight slalom: two or three corridor walls with offset gaps
+
+    DR scale (DynamicsDR.scale) ramps separately from curriculum stage.
     """
 
-    def __init__(self, torch, n, dev, k_boxes=10, seed=0, depth_noise=0.0, target_noise=0.0):
+    K = 10   # max obstacle slots per env (not all used at lower stages)
+
+    def __init__(self, torch, n, dev, seed=0,
+                 lidar_noise=0.05, target_noise=0.15, stage=0):
         self.t = torch
         self.n = n
         self.dev = dev
-        self.K = k_boxes
-        self.depth_noise = depth_noise
+        self.lidar_noise = lidar_noise
         self.target_noise = target_noise
-        rd = torch.tensor(RAY_DIRS, device=dev, dtype=torch.float32)  # (R,3)
-        self.ray_fwd = rd[:, 0]; self.ray_left = rd[:, 1]; self.ray_up = rd[:, 2]
+        self.stage = stage
+
+        # precompute per-ray directions in body frame (fwd=+x, left=+y)
+        la = torch.tensor(LIDAR_ANGLES, device=dev, dtype=torch.float32)  # (L,)
+        self.ray_cos = torch.cos(la)   # (L,) body-frame fwd component
+        self.ray_sin = torch.sin(la)   # (L,) body-frame left component
+
         self.g = torch.Generator(device="cpu").manual_seed(seed)
         self.reset_all()
 
@@ -67,101 +103,133 @@ class RoverEnv:
     def reset_all(self):
         t = self.t
         z = t.zeros(self.n, device=self.dev)
-        self.x = z.clone(); self.y = z.clone()
+        self.x = z.clone(); self.y = z.clone(); self.yaw = z.clone()
         self.gx = z.clone(); self.gy = z.clone()
-        self.yaw = z.clone()
+        self.v = z.clone(); self.w = z.clone()   # realized linear speed, yaw rate
+        self.prev_a = z.clone(); self.prev_alpha = z.clone()  # for jerk
+        self.steps = z.clone()
+        # Obstacle slots: each box has centre (cx,cy) and half-extents (hx,hy)
         self.bcx = t.zeros(self.n, self.K, device=self.dev)
         self.bcy = t.zeros(self.n, self.K, device=self.dev)
         self.bhx = t.zeros(self.n, self.K, device=self.dev)
         self.bhy = t.zeros(self.n, self.K, device=self.dev)
         self.bmask = t.zeros(self.n, self.K, device=self.dev)
-        self.vx = z.clone(); self.vy = z.clone()
-        self.prev_ax = z.clone(); self.prev_ay = z.clone()
-        self.yr = z.clone()
-        self.steps = z.clone()
         self.dyn = DynamicsDR(t, self.n, self.dev, self._rand)
         self._new_episode(t.ones(self.n, device=self.dev, dtype=t.bool))
 
+    # ---------------------------------------------------------------------- episode
     def _new_episode(self, mask):
         t = self.t
         n = int(mask.sum().item())
         if n == 0:
             return
         idx = mask.nonzero(as_tuple=True)[0]
-        gx = self._rand(n, lo=6.0, hi=14.0)
+
+        # Goal: ahead and to the side (not too close)
+        gx = self._rand(n, lo=7.0, hi=15.0)
         gy = self._rand(n, lo=-3.0, hi=3.0)
         self.x[idx] = 0.0; self.y[idx] = 0.0
         self.gx[idx] = gx; self.gy[idx] = gy
-        aligned = self._rand(n, lo=-0.6, hi=0.6)
+        # Initial heading: mostly aligned with goal, sometimes random
+        aligned = self._rand(n, lo=-0.5, hi=0.5)
         full = self._rand(n, lo=-math.pi, hi=math.pi)
-        self.yaw[idx] = t.where(self._rand(n) < 0.6, aligned, full)
+        self.yaw[idx] = t.where(self._rand(n) < 0.65, aligned, full)
 
-        SPAN = 10.0   # wall lateral span in 2D rover world
-        HXW = 0.4     # wall depth half-width
+        # Clear all slots then populate based on stage
+        self.bmask[idx] = 0.0
 
-        # Default: scattered column prisms across all slots
-        for k in range(self.K):
-            self.bcx[idx, k] = gx * self._rand(n, lo=0.20, hi=0.88)
-            self.bcy[idx, k] = self._rand(n, lo=-2.8, hi=2.8)
-            self.bhx[idx, k] = self._rand(n, lo=0.2, hi=0.9)
-            self.bhy[idx, k] = self._rand(n, lo=0.2, hi=0.9)
-            self.bmask[idx, k] = (self._rand(n) > 0.12).float()
+        if self.stage == 0:
+            pass  # no obstacles
 
-        mode = self._rand(n)
+        elif self.stage == 1:
+            # 3-4 scattered columns
+            n_obs = 4
+            for k in range(n_obs):
+                self.bcx[idx, k] = gx * self._rand(n, lo=0.20, hi=0.82)
+                self.bcy[idx, k] = self._rand(n, lo=-2.5, hi=2.5)
+                self.bhx[idx, k] = self._rand(n, lo=0.2, hi=0.6)
+                self.bhy[idx, k] = self._rand(n, lo=0.2, hi=0.6)
+                self.bmask[idx, k] = (self._rand(n) > 0.20).float()
 
-        def set_wall_gap(m, s0, cx):
-            """Corridor wall + navigable gap using slots [s0, s0+1]."""
-            gi = idx[m]
-            gap_y = self._rand(n, lo=-1.3, hi=1.3)    # gap center
-            gap_hy = self._rand(n, lo=0.65, hi=0.95)  # gap half-width
-            # left segment
-            left_cy = ((-SPAN + (gap_y - gap_hy)) / 2)
-            left_hy = ((gap_y - gap_hy + SPAN) / 2).clamp(min=0.05)
-            self.bcx[gi, s0] = cx[m]; self.bcy[gi, s0] = left_cy[m]
-            self.bhx[gi, s0] = HXW; self.bhy[gi, s0] = left_hy[m]
-            self.bmask[gi, s0] = 1.0
-            # right segment
-            right_cy = ((gap_y + gap_hy + SPAN) / 2)
-            right_hy = ((SPAN - (gap_y + gap_hy)) / 2).clamp(min=0.05)
-            self.bcx[gi, s0 + 1] = cx[m]; self.bcy[gi, s0 + 1] = right_cy[m]
-            self.bhx[gi, s0 + 1] = HXW; self.bhy[gi, s0 + 1] = right_hy[m]
-            self.bmask[gi, s0 + 1] = 1.0
+        elif self.stage == 2:
+            # Dense columns + occasional walls
+            for k in range(8):
+                self.bcx[idx, k] = gx * self._rand(n, lo=0.15, hi=0.90)
+                self.bcy[idx, k] = self._rand(n, lo=-3.0, hi=3.0)
+                self.bhx[idx, k] = self._rand(n, lo=0.2, hi=0.8)
+                self.bhy[idx, k] = self._rand(n, lo=0.2, hi=0.8)
+                self.bmask[idx, k] = (self._rand(n) > 0.12).float()
+            # 40% chance of a gap wall
+            wall = self._rand(n) < 0.4
+            if wall.any():
+                self._place_gap_wall(idx, n, wall, gx, slot=8)
 
-        def mask_off(m, slots):
-            for k in slots:
-                self.bmask[idx[m], k] = 0.0
-
-        # 35%: two gap walls in sequence (slalom / gauntlet)
-        seq = mode < 0.35
-        set_wall_gap(seq, 0, gx * self._rand(n, lo=0.25, hi=0.42))
-        set_wall_gap(seq, 2, gx * self._rand(n, lo=0.52, hi=0.72))
-        mask_off(seq, list(range(4, self.K)))
-
-        # 20%: single gap wall
-        single = (mode >= 0.35) & (mode < 0.55)
-        set_wall_gap(single, 0, gx * self._rand(n, lo=0.35, hi=0.60))
-        mask_off(single, list(range(2, self.K)))
+        else:  # stage 3: slalom gauntlet
+            # Full curriculum: 40% double-wall slalom, 20% single wall, 40% dense columns
+            mode = self._rand(n)
+            # Default: dense columns
+            for k in range(self.K):
+                self.bcx[idx, k] = gx * self._rand(n, lo=0.18, hi=0.90)
+                self.bcy[idx, k] = self._rand(n, lo=-3.0, hi=3.0)
+                self.bhx[idx, k] = self._rand(n, lo=0.2, hi=0.9)
+                self.bhy[idx, k] = self._rand(n, lo=0.2, hi=0.9)
+                self.bmask[idx, k] = (self._rand(n) > 0.12).float()
+            # double-wall slalom (40%)
+            seq = mode < 0.40
+            self._place_gap_wall(idx, n, seq, gx, cx_frac_lo=0.25, cx_frac_hi=0.42, slot=0)
+            self._place_gap_wall(idx, n, seq, gx, cx_frac_lo=0.52, cx_frac_hi=0.72, slot=2)
+            for k in range(4, self.K):
+                self.bmask[idx[seq], k] = 0.0
+            # single wall (20%)
+            single = (mode >= 0.40) & (mode < 0.60)
+            self._place_gap_wall(idx, n, single, gx, cx_frac_lo=0.35, cx_frac_hi=0.60, slot=0)
+            for k in range(2, self.K):
+                self.bmask[idx[single], k] = 0.0
 
         self.steps[idx] = 0.0
+        self.v[idx] = 0.0; self.w[idx] = 0.0
+        self.prev_a[idx] = 0.0; self.prev_alpha[idx] = 0.0
         self.dyn.randomize(mask)
 
-    def depth_grid(self):
-        """(n, R) depth ranges from rover camera at z=CAMERA_Z against floor-to-ceiling prisms."""
+    def _place_gap_wall(self, idx, n, m, gx,
+                        cx_frac_lo=0.35, cx_frac_hi=0.65,
+                        slot=0, span=10.0, wall_hx=0.4):
+        """Place a corridor-spanning wall with a navigable gap into slots [slot, slot+1]."""
+        t = self.t
+        if not m.any():
+            return
+        gi = idx[m]
+        cx = gx[m] * self._rand(n, lo=cx_frac_lo, hi=cx_frac_hi)
+        gap_cy = self._rand(n, lo=-1.4, hi=1.4)
+        gap_hy = self._rand(n, lo=0.65, hi=1.00)   # rover half-width ~0.3m, gap must fit
+
+        # Left wall segment
+        left_cy = (-span / 2 + gap_cy - gap_hy) / 2
+        left_hy = ((gap_cy - gap_hy + span) / 2).clamp(min=0.1)
+        # Right wall segment
+        right_cy = (gap_cy + gap_hy + span) / 2
+        right_hy = ((span - gap_cy - gap_hy) / 2).clamp(min=0.1)
+
+        self.bcx[gi, slot] = cx[m]; self.bcy[gi, slot] = left_cy[m]
+        self.bhx[gi, slot] = wall_hx; self.bhy[gi, slot] = left_hy[m]; self.bmask[gi, slot] = 1.0
+
+        self.bcx[gi, slot + 1] = cx[m]; self.bcy[gi, slot + 1] = right_cy[m]
+        self.bhx[gi, slot + 1] = wall_hx; self.bhy[gi, slot + 1] = right_hy[m]
+        self.bmask[gi, slot + 1] = 1.0
+
+    # ---------------------------------------------------------------------- sensing
+    def lidar_scan(self):
+        """(n, LIDAR_RAYS) via batched 2D ray-AABB. Fully vectorised, no loops."""
         t = self.t
         eps = 1e-6
-        c, s = torch_cos(t, self.yaw), torch_sin(t, self.yaw)
-        fwd, left, up = self.ray_fwd, self.ray_left, self.ray_up
+        c, s = t.cos(self.yaw), t.sin(self.yaw)   # (n,)
+        # World-frame ray directions: rotate body-frame (cos_a, sin_a) by yaw
+        # dvx (n,L), dvy (n,L)
+        dvx = c[:, None] * self.ray_cos[None, :] - s[:, None] * self.ray_sin[None, :]
+        dvy = s[:, None] * self.ray_cos[None, :] + c[:, None] * self.ray_sin[None, :]
 
-        dvx = c[:, None] * fwd[None, :] - s[:, None] * left[None, :]
-        dvy = s[:, None] * fwd[None, :] + c[:, None] * left[None, :]
-        dvz = up[None, :].expand(self.n, -1)
-
-        # Boxes are floor-to-ceiling prisms: cz=0, hz=5 (spans well above/below camera)
-        rover_z = t.full((self.n,), CAMERA_Z, device=self.dev)
-        box_cz = t.zeros(self.n, self.K, device=self.dev)
-        box_hz = t.full((self.n, self.K), 5.0, device=self.dev)
-
-        def slab(d, o, lo, hi):
+        def slab_1d(d, o, lo, hi):
+            """d (n,L,1), o (n,1,1), lo/hi (n,1,K) → tmin,tmax (n,L,K)"""
             par = d.abs() < eps
             ds = t.where(par, t.full_like(d, eps), d)
             t1 = (lo - o) / ds; t2 = (hi - o) / ds
@@ -172,21 +240,21 @@ class RoverEnv:
             tmax = t.where(par, t.where(inside, big, -big), tmax)
             return tmin, tmax
 
-        tnx, txx = slab(dvx[:, :, None], self.x[:, None, None],
-                        (self.bcx - self.bhx)[:, None, :], (self.bcx + self.bhx)[:, None, :])
-        tny, txy = slab(dvy[:, :, None], self.y[:, None, None],
-                        (self.bcy - self.bhy)[:, None, :], (self.bcy + self.bhy)[:, None, :])
-        tnz, txz = slab(dvz[:, :, None], rover_z[:, None, None],
-                        (box_cz - box_hz)[:, None, :], (box_cz + box_hz)[:, None, :])
-        tmin = t.maximum(t.maximum(tnx, tny), tnz)
-        tmax = t.minimum(t.minimum(txx, txy), txz)
+        tnx, txx = slab_1d(dvx[:, :, None], self.x[:, None, None],
+                           (self.bcx - self.bhx)[:, None, :],
+                           (self.bcx + self.bhx)[:, None, :])
+        tny, txy = slab_1d(dvy[:, :, None], self.y[:, None, None],
+                           (self.bcy - self.bhy)[:, None, :],
+                           (self.bcy + self.bhy)[:, None, :])
+        tmin = t.maximum(tnx, tny)
+        tmax = t.minimum(txx, txy)
         hit = (tmax >= tmin) & (tmax >= 0) & (self.bmask[:, None, :] > 0.5)
         tcand = t.where(tmin >= 0, tmin, t.zeros_like(tmin))
-        dist = t.where(hit, tcand, t.full_like(tcand, DEPTH_MAX))
-        return dist.min(dim=2).values.clamp(0.0, DEPTH_MAX)
+        dist = t.where(hit, tcand, t.full_like(tcand, LIDAR_MAX))
+        return dist.min(dim=2).values.clamp(0.0, LIDAR_MAX)   # (n, LIDAR_RAYS)
 
     def min_box_dist(self):
-        """2D distance from rover footprint to nearest obstacle surface."""
+        """(n,) minimum 2D distance from rover to any obstacle surface."""
         t = self.t
         ddx = ((self.x[:, None] - self.bcx).abs() - self.bhx).clamp(min=0.0)
         ddy = ((self.y[:, None] - self.bcy).abs() - self.bhy).clamp(min=0.0)
@@ -198,64 +266,71 @@ class RoverEnv:
         t = self.t
         return t.sqrt((self.gx - self.x) ** 2 + (self.gy - self.y) ** 2)
 
+    # ---------------------------------------------------------------------- obs
     def obs(self):
-        """(n, STATE_DIM) raw state matching contract order. target_up=vel_up=altitude=0."""
+        """(n, R_STATE_DIM) raw state matching rover_contract order."""
         t = self.t
         dx, dy = self.gx - self.x, self.gy - self.y
-        c, s = torch_cos(t, -self.yaw), torch_sin(t, -self.yaw)
-        tf = c * dx - s * dy
-        tl = s * dx + c * dy
-        tu = t.zeros_like(tf)
+        # Rotate world-frame goal vector into body frame
+        c, s = t.cos(-self.yaw), t.sin(-self.yaw)
+        tf = c * dx - s * dy         # forward component
+        tl = s * dx + c * dy         # left component
         dist = t.sqrt(tf * tf + tl * tl)
-        yaw_err = torch_atan2(t, tl, tf)
-        vehicle = t.full_like(tf, VEHICLE_ROVER)
-        base = t.stack([tf, tl, tu, dist,
-                        self.vx, self.vy, t.zeros_like(self.vx),
-                        yaw_err, self.yr, t.zeros_like(tf), vehicle], dim=1)
-        grid = self.depth_grid()
-        if self.depth_noise > 0:
-            grid = (grid + t.randn_like(grid) * self.depth_noise).clamp(0.0, DEPTH_MAX)
-        if self.target_noise > 0:
-            base[:, 0:2] = base[:, 0:2] + t.randn_like(base[:, 0:2]) * self.target_noise
-        return t.cat([base, grid], dim=1)
+        yaw_err = t.atan2(tl, tf)
 
+        base = t.stack([
+            tf, tl, t.zeros_like(tf), dist,
+            self.v, t.zeros_like(self.v), t.zeros_like(self.v),
+            yaw_err, self.w, t.zeros_like(tf), t.ones_like(tf),
+        ], dim=1)  # (n, 11)
+
+        scan = self.lidar_scan()   # (n, LIDAR_RAYS)
+        if self.lidar_noise > 0:
+            scan = (scan + t.randn_like(scan) * self.lidar_noise).clamp(0.0, LIDAR_MAX)
+        if self.target_noise > 0:
+            base[:, 0:2] += t.randn_like(base[:, 0:2]) * self.target_noise
+
+        return t.cat([base, scan], dim=1)   # (n, R_STATE_DIM)
+
+    # ---------------------------------------------------------------------- step
     def step(self, action, w):
-        """action (n,4): [vx,vy,_vz_ignored,yaw_rate]. Returns reward (n,), done (n,)."""
+        """action (n,2): [v_cmd, yaw_rate_cmd]. Returns reward (n,), done (n,), info."""
         t = self.t
         d_prev = self.goal_dist()
-        vx, vy, yr = action[:, 0], action[:, 1], action[:, 3]
-        spd = t.sqrt(vx * vx + vy * vy).clamp(min=1e-6)
-        scale = (MAX_SPEED / spd).clamp(max=1.0)
-        cmd = t.stack([vx * scale, vy * scale, t.zeros_like(vx), yr], dim=1)
 
-        vbody, yr_real = self.dyn.apply(cmd, DT)
-        rvx, rvy = vbody[:, 0], vbody[:, 1]
+        v_cmd = action[:, 0].clamp(-MAX_V, MAX_V)
+        w_cmd = action[:, 1].clamp(-MAX_W, MAX_W)
+        # DynamicsDR expects a 4-dim command; pack unicycle into [vx,vy=0,vz=0,yaw_rate]
+        cmd4 = t.stack([v_cmd, t.zeros_like(v_cmd), t.zeros_like(v_cmd), w_cmd], dim=1)
+        vbody, yr_real = self.dyn.apply(cmd4, DT)
+        v_real = vbody[:, 0].clamp(-MAX_V, MAX_V)
+        w_real = yr_real.clamp(-MAX_W, MAX_W)
 
-        ax = (rvx - self.vx) / DT; ay = (rvy - self.vy) / DT
-        jx = (ax - self.prev_ax) / DT; jy = (ay - self.prev_ay) / DT
-        jerk = t.sqrt(jx * jx + jy * jy)
+        # Jerk (smoothness penalty)
+        a_lin = (v_real - self.v) / DT
+        a_ang = (w_real - self.w) / DT
+        jerk = t.sqrt((a_lin - self.prev_a) ** 2 + (a_ang - self.prev_alpha) ** 2) / DT
 
-        c, s = torch_cos(t, self.yaw), torch_sin(t, self.yaw)
-        wind = self.dyn.wind
-        self.x = self.x + (c * rvx - s * rvy) * DT + wind[:, 0] * DT
-        self.y = self.y + (s * rvx + c * rvy) * DT + wind[:, 1] * DT
-        self.yaw = wrap_pi_t(t, self.yaw + yr_real * DT)
-        self.vx, self.vy = rvx, rvy
-        self.prev_ax, self.prev_ay = ax, ay
-        self.yr = yr_real
-        self.steps = self.steps + 1
+        # Unicycle integration (+ wind treated as forward/lateral additive drift)
+        wind = self.dyn.wind   # (n,2) world-frame
+        c, s = t.cos(self.yaw), t.sin(self.yaw)
+        self.x += (c * v_real) * DT + wind[:, 0] * DT
+        self.y += (s * v_real) * DT + wind[:, 1] * DT
+        self.yaw = _wrap_pi(t, self.yaw + w_real * DT)
+        self.v = v_real; self.w = w_real
+        self.prev_a = a_lin; self.prev_alpha = a_ang
+        self.steps += 1
 
         d_now = self.goal_dist()
         progress = d_prev - d_now
         box_dist = self.min_box_dist()
         collided = box_dist < COLLIDE_R
-        reached = d_now < REACH
+        reached = d_now < REACH_R
         timeout = self.steps >= MAX_STEPS
 
         near = (w.clear_margin - box_dist).clamp(min=0.0)
-        speed_real = t.sqrt(rvx * rvx + rvy * rvy)
-        stalled = (speed_real < w.stall_speed) & (d_now > REACH)
-        timed_out_unreached = timeout & (~reached) & (~collided)
+        stalled = (v_real.abs() < w.stall_speed) & (d_now > REACH_R)
+        timed_out = timeout & (~reached) & (~collided)
 
         reward = (w.k_prog * progress
                   - w.k_time
@@ -263,87 +338,110 @@ class RoverEnv:
                   - w.k_stall * stalled.float()
                   - w.k_clear * near
                   - w.k_coll * collided.float()
-                  - w.k_timeout * timed_out_unreached.float()
+                  - w.k_timeout * timed_out.float()
                   + w.k_goal * reached.float())
         done = collided | reached | timeout
         return reward, done, {"reached": reached, "collided": collided}
 
     def reset_done(self, done):
         if done.any():
-            idx = done.nonzero(as_tuple=True)[0]
-            self.vx[idx] = 0; self.vy[idx] = 0
-            self.prev_ax[idx] = 0; self.prev_ay[idx] = 0
-            self.yr[idx] = 0
             self._new_episode(done)
+
+
+# --------------------------------------------------------------------------- reward weights
+class W:
+    def __init__(self, a):
+        self.k_prog = a.k_prog
+        self.k_time = a.k_time
+        self.k_jerk = a.k_jerk
+        self.k_coll = a.k_coll
+        self.k_goal = a.k_goal
+        self.k_stall = a.k_stall
+        self.k_timeout = a.k_timeout
+        self.stall_speed = a.stall_speed
+        self.k_clear = a.k_clear
+        self.clear_margin = a.clear_margin
 
 
 # --------------------------------------------------------------------------- model
 def build_ac(torch, hidden):
     nn = torch.nn
 
-    class ActorCriticRNN(nn.Module):
-        """Separate actor/critic GRUs with carried hidden state across timesteps."""
+    class RoverAC(nn.Module):
+        """Separate actor/critic GRUs — same design as the quad to keep training stable."""
+
         def __init__(self):
             super().__init__()
-            self.register_buffer("mean", torch.zeros(STATE_DIM))
-            self.register_buffer("std", torch.ones(STATE_DIM))
-            self.gru = nn.GRU(STATE_DIM, hidden, batch_first=True)
-            self.head = nn.Sequential(nn.Linear(hidden, hidden), nn.ReLU(),
-                                      nn.Linear(hidden, ACTION_DIM))
-            self.gru_v = nn.GRU(STATE_DIM, hidden, batch_first=True)
-            self.value = nn.Sequential(nn.Linear(hidden, hidden), nn.ReLU(),
-                                       nn.Linear(hidden, 1))
-            self.log_std = nn.Parameter(torch.full((ACTION_DIM,), -1.4))
+            self.register_buffer("mean", torch.tensor(R_STATE_MEAN))
+            self.register_buffer("std", torch.tensor(R_STATE_STD))
+            self.gru = nn.GRU(R_STATE_DIM, hidden, batch_first=True)
+            self.head = nn.Sequential(
+                nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, R_ACTION_DIM)
+            )
+            self.gru_v = nn.GRU(R_STATE_DIM, hidden, batch_first=True)
+            self.value = nn.Sequential(
+                nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, 1)
+            )
+            self.log_std = nn.Parameter(torch.full((R_ACTION_DIM,), -1.4))
             self.hidden = hidden
 
         def _norm(self, x):
-            return (x - self.mean) / self.std
+            return (x - self.mean) / (self.std + 1e-6)
 
         def step(self, obs, h_a, h_v):
+            """One tick. obs (n, R_STATE_DIM), h_* (1,n,hidden) → mean, value, h_a', h_v'."""
             xn = self._norm(obs).unsqueeze(1)
             oa, h_a = self.gru(xn, h_a)
             ov, h_v = self.gru_v(xn, h_v)
             return self.head(oa[:, 0]), self.value(ov[:, 0]).squeeze(-1), h_a, h_v
 
-    return ActorCriticRNN()
+    return RoverAC()
 
 
 # --------------------------------------------------------------------------- training
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--bc-ckpt", default=None,
-                    help="optional: warm-start from an existing RNN checkpoint")
+    ap = argparse.ArgumentParser(description="Rover recurrent PPO trainer")
+    ap.add_argument("--ckpt", default=None, help="continue from _ac.pt checkpoint")
     ap.add_argument("--out", required=True)
     ap.add_argument("--version", default="rover_v1")
-    ap.add_argument("--hidden", type=int, default=256,
-                    help="GRU hidden size (ignored if --bc-ckpt given)")
-    ap.add_argument("--iters", type=int, default=600)
-    ap.add_argument("--envs", type=int, default=256)
-    ap.add_argument("--rollout", type=int, default=64)
+    ap.add_argument("--hidden", type=int, default=256)
+    ap.add_argument("--iters", type=int, default=800)
+    ap.add_argument("--envs", type=int, default=512)
+    ap.add_argument("--rollout", type=int, default=96,
+                    help="must be ≥ max episode length; 96 = 9.6s at 10 Hz")
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--gamma", type=float, default=0.99)
     ap.add_argument("--lam", type=float, default=0.95)
     ap.add_argument("--clip", type=float, default=0.2)
+    # Reward weights
     ap.add_argument("--k-prog", type=float, default=1.5)
-    ap.add_argument("--k-time", type=float, default=0.05)
-    ap.add_argument("--k-jerk", type=float, default=0.005)
+    ap.add_argument("--k-time", type=float, default=0.03)
+    ap.add_argument("--k-jerk", type=float, default=0.003)
     ap.add_argument("--k-coll", type=float, default=25.0)
     ap.add_argument("--k-goal", type=float, default=40.0)
-    ap.add_argument("--k-stall", type=float, default=0.4)
-    ap.add_argument("--k-timeout", type=float, default=12.0)
-    ap.add_argument("--stall-speed", type=float, default=0.3)
-    ap.add_argument("--k-alt", type=float, default=0.0,
-                    help="unused for rover; kept so W() is happy")
+    ap.add_argument("--k-stall", type=float, default=0.3)
+    ap.add_argument("--k-timeout", type=float, default=10.0)
+    ap.add_argument("--stall-speed", type=float, default=0.2)
     ap.add_argument("--k-clear", type=float, default=0.6)
-    ap.add_argument("--clear-margin", type=float, default=0.6)
-    ap.add_argument("--k-above", type=float, default=0.0)
-    ap.add_argument("--above-margin", type=float, default=1.0)
-    ap.add_argument("--depth-noise", type=float, default=0.07)
+    ap.add_argument("--clear-margin", type=float, default=0.5,
+                    help="keep rover ≥ this many metres from obstacle surfaces")
+    # Curriculum
+    ap.add_argument("--curriculum", action="store_true", default=True,
+                    help="ramp stage 0→3 over training (recommended)")
+    ap.add_argument("--stage", type=int, default=None,
+                    help="fix obstacle stage (overrides curriculum)")
+    ap.add_argument("--stage-fracs", type=float, nargs=4,
+                    default=[0.10, 0.25, 0.50, 0.75],
+                    help="fractions of iters at which stages 0,1,2,3 start")
+    # Domain randomization
+    ap.add_argument("--dr-hold-frac", type=float, default=0.25)
+    ap.add_argument("--dr-full-frac", type=float, default=0.70)
+    # Noise
+    ap.add_argument("--lidar-noise", type=float, default=0.05,
+                    help="std (m) of Gaussian noise on lidar ranges (RPLidar noise ~0.03-0.05m)")
     ap.add_argument("--target-noise", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--dr-hold-frac", type=float, default=0.30)
-    ap.add_argument("--dr-full-frac", type=float, default=0.75)
     args = ap.parse_args()
     w = W(args)
 
@@ -351,31 +449,31 @@ def main():
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(args.seed)
 
-    if args.bc_ckpt:
-        ckpt = torch.load(args.bc_ckpt, map_location=dev, weights_only=False)
-        hidden = ckpt["hidden"]
+    hidden = args.hidden
+    if args.ckpt:
+        ckpt = torch.load(args.ckpt, map_location=dev, weights_only=False)
+        hidden = ckpt.get("hidden", hidden)
         ac = build_ac(torch, hidden).to(dev)
         ac.load_state_dict(ckpt["state_dict"], strict=False)
-        mean_np = ckpt.get("mean", np.zeros(STATE_DIM, dtype=np.float32))
-        std_np = ckpt.get("std", np.ones(STATE_DIM, dtype=np.float32))
-        print(f"warm-started from {args.bc_ckpt} (hidden={hidden})", flush=True)
+        print(f"loaded checkpoint {args.ckpt} (hidden={hidden})", flush=True)
     else:
-        hidden = args.hidden
         ac = build_ac(torch, hidden).to(dev)
-        mean_np = np.zeros(STATE_DIM, dtype=np.float32)
-        std_np = np.ones(STATE_DIM, dtype=np.float32)
         print(f"training rover policy from scratch (hidden={hidden})", flush=True)
-
     print(f"params={sum(p.numel() for p in ac.parameters())}  device={dev}", flush=True)
 
     opt = torch.optim.Adam(ac.parameters(), lr=args.lr)
+
+    # Initial stage: start at 0 (open field) unless fixed
+    init_stage = args.stage if args.stage is not None else 0
     env = RoverEnv(torch, args.envs, dev, seed=args.seed,
-                   depth_noise=args.depth_noise, target_noise=args.target_noise)
+                   lidar_noise=args.lidar_noise, target_noise=args.target_noise,
+                   stage=init_stage)
+
     n = args.envs
     h_a = torch.zeros(1, n, hidden, device=dev)
     h_v = torch.zeros(1, n, hidden, device=dev)
 
-    def dr_schedule(it):
+    def dr_scale(it):
         hold = args.dr_hold_frac * args.iters
         full = args.dr_full_frac * args.iters
         if it <= hold:
@@ -384,13 +482,31 @@ def main():
             return 1.0
         return (it - hold) / max(1.0, full - hold)
 
+    def curriculum_stage(it):
+        if args.stage is not None:
+            return args.stage
+        fracs = args.stage_fracs
+        for s in range(3, -1, -1):
+            if it >= fracs[s] * args.iters:
+                return s
+        return 0
+
     hist = []
     best_reach, best_sd = -1.0, None
+
     for it in range(args.iters):
-        env.dyn.set_scale(dr_schedule(it))
+        # Curriculum + DR schedule
+        new_stage = curriculum_stage(it)
+        if new_stage != env.stage:
+            env.stage = new_stage
+            env.reset_all()   # re-draw episodes with new obstacle density
+            h_a.zero_(); h_v.zero_()
+            print(f"  → curriculum stage {new_stage}", flush=True)
+        env.dyn.set_scale(dr_scale(it))
+
         T = args.rollout
-        obs_b = torch.zeros(T, n, STATE_DIM, device=dev)
-        act_b = torch.zeros(T, n, ACTION_DIM, device=dev)
+        obs_b = torch.zeros(T, n, R_STATE_DIM, device=dev)
+        act_b = torch.zeros(T, n, R_ACTION_DIM, device=dev)
         logp_b = torch.zeros(T, n, device=dev)
         val_b = torch.zeros(T, n, device=dev)
         rew_b = torch.zeros(T, n, device=dev)
@@ -401,59 +517,56 @@ def main():
         for t in range(T):
             o = env.obs()
             with torch.no_grad():
-                mean, value, h_a, h_v = ac.step(o, h_a, h_v)
+                mu, val, h_a, h_v = ac.step(o, h_a, h_v)
                 std = ac.log_std.exp()
-                dist_ = torch.distributions.Normal(mean, std)
+                dist_ = torch.distributions.Normal(mu, std)
                 act = dist_.sample()
                 logp = dist_.log_prob(act).sum(-1)
             rew, done, info = env.step(act, w)
             obs_b[t] = o; act_b[t] = act; logp_b[t] = logp
-            val_b[t] = value; rew_b[t] = rew; done_b[t] = done.float()
+            val_b[t] = val; rew_b[t] = rew; done_b[t] = done.float()
             ep_reach += float(info["reached"].sum())
             ep_coll += float(info["collided"].sum())
-            ep_cnt += float(done.sum())
-            ep_ret += float(rew.sum())
+            ep_cnt += float(done.sum()); ep_ret += float(rew.sum())
             nd = (1.0 - done.float()).view(1, n, 1)
             h_a = h_a * nd; h_v = h_v * nd
             env.reset_done(done)
 
         with torch.no_grad():
-            o = env.obs()
-            _, last_val, _, _ = ac.step(o, h_a, h_v)
+            _, last_val, _, _ = ac.step(env.obs(), h_a, h_v)
 
         # GAE
         adv = torch.zeros(T, n, device=dev)
-        lastgae = torch.zeros(n, device=dev)
+        last_gae = torch.zeros(n, device=dev)
         for tt in reversed(range(T)):
-            nextval = last_val if tt == T - 1 else val_b[tt + 1]
-            nonterm = 1.0 - done_b[tt]
-            delta = rew_b[tt] + args.gamma * nextval * nonterm - val_b[tt]
-            lastgae = delta + args.gamma * args.lam * nonterm * lastgae
-            adv[tt] = lastgae
+            nv = last_val if tt == T - 1 else val_b[tt + 1]
+            nt = 1.0 - done_b[tt]
+            delta = rew_b[tt] + args.gamma * nv * nt - val_b[tt]
+            last_gae = delta + args.gamma * args.lam * nt * last_gae
+            adv[tt] = last_gae
         ret = adv + val_b
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
         def replay():
             ha, hv = h_a0.clone(), h_v0.clone()
-            means = torch.zeros(T, n, ACTION_DIM, device=dev)
+            mus = torch.zeros(T, n, R_ACTION_DIM, device=dev)
             vals = torch.zeros(T, n, device=dev)
             for t in range(T):
                 if t > 0:
                     nd = (1.0 - done_b[t - 1]).view(1, n, 1)
                     ha = ha * nd; hv = hv * nd
                 m, v, ha, hv = ac.step(obs_b[t], ha, hv)
-                means[t] = m; vals[t] = v
-            return means, vals
+                mus[t] = m; vals[t] = v
+            return mus, vals
 
         for _ in range(args.epochs):
-            means, vals = replay()
+            mus, vals = replay()
             std = ac.log_std.exp()
-            dist_ = torch.distributions.Normal(means, std)
+            dist_ = torch.distributions.Normal(mus, std)
             logp = dist_.log_prob(act_b).sum(-1)
             ratio = (logp - logp_b).exp()
-            s1 = ratio * adv
-            s2 = torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * adv
-            pg = -torch.min(s1, s2).mean()
+            pg = -torch.min(ratio * adv,
+                            torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * adv).mean()
             vl = 0.5 * (vals - ret).pow(2).mean()
             ent = dist_.entropy().sum(-1).mean()
             loss = pg + 0.5 * vl - 0.005 * ent
@@ -464,19 +577,25 @@ def main():
         h_a, h_v = h_a.detach(), h_v.detach()
         reach_rate = ep_reach / max(ep_cnt, 1)
         coll_rate = ep_coll / max(ep_cnt, 1)
-        hist.append({"iter": it, "reach": reach_rate, "coll": coll_rate})
-        if env.dyn.scale >= 0.8 and reach_rate > best_reach:
+        hist.append({"iter": it, "stage": env.stage, "drs": env.dyn.scale,
+                     "reach": reach_rate, "coll": coll_rate})
+        # Save best checkpoint at full DR / highest obstacle stage
+        if env.dyn.scale >= 0.8 and env.stage >= 2 and reach_rate > best_reach:
             best_reach = reach_rate
             best_sd = {k: v.detach().clone() for k, v in ac.state_dict().items()}
         if it % 10 == 0 or it == args.iters - 1:
-            print(f"it {it:3d} drs={env.dyn.scale:.2f} reach={reach_rate:.2f} "
-                  f"coll={coll_rate:.2f} ret/env={ep_ret/n:7.2f} "
-                  f"std={ac.log_std.exp().mean().item():.2f}", flush=True)
+            print(f"it {it:3d} stage={env.stage} drs={env.dyn.scale:.2f} "
+                  f"reach={reach_rate:.2f} coll={coll_rate:.2f} "
+                  f"ret/env={ep_ret / n:7.2f} "
+                  f"std={ac.log_std.exp().mean().item():.3f}", flush=True)
 
     if best_sd is not None:
         ac.load_state_dict(best_sd)
-        print(f"exporting BEST DR-robust checkpoint (reach={best_reach:.2f})", flush=True)
+        print(f"exporting BEST checkpoint (reach={best_reach:.2f})", flush=True)
+    else:
+        print("exporting final checkpoint", flush=True)
 
+    # --- ONNX export: (state[1,1,83], h_in[1,1,256]) → (action[1,2], h_out[1,1,256]) ---
     nn = torch.nn
 
     class StepExport(nn.Module):
@@ -486,29 +605,39 @@ def main():
             self.gru = ac.gru; self.head = ac.head
 
         def forward(self, state, h_in):
-            xn = (state - self.mean) / self.std
+            xn = (state - self.mean) / (self.std + 1e-6)
             out, hn = self.gru(xn, h_in)
             return self.head(out[:, -1, :]), hn
 
     out_dir = Path(args.out).expanduser(); out_dir.mkdir(parents=True, exist_ok=True)
-    step_export = StepExport(ac).to(dev).eval()
+    exporter = StepExport(ac).to(dev).eval()
     onnx_path = out_dir / f"policy_{args.version}.onnx"
-    ds = torch.zeros(1, 1, STATE_DIM, device=dev)
-    dh = torch.zeros(1, 1, hidden, device=dev)
-    torch.onnx.export(step_export, (ds, dh), str(onnx_path),
-                      input_names=["state", "h_in"], output_names=["action", "h_out"],
+    dummy_s = torch.zeros(1, 1, R_STATE_DIM, device=dev)
+    dummy_h = torch.zeros(1, 1, hidden, device=dev)
+    torch.onnx.export(exporter, (dummy_s, dummy_h), str(onnx_path),
+                      input_names=["state", "h_in"],
+                      output_names=["action", "h_out"],
                       opset_version=17)
+
     np.save(out_dir / f"policy_{args.version}_state_norm.npy",
-            np.stack([mean_np, std_np]).astype(np.float32))
+            np.stack([R_STATE_MEAN, R_STATE_STD]).astype(np.float32))
     torch.save({"state_dict": ac.state_dict(), "hidden": hidden,
-                "mean": mean_np, "std": std_np, "recurrent": True},
+                "mean": R_STATE_MEAN, "std": R_STATE_STD,
+                "recurrent": True, "vehicle": "rover",
+                "state_dim": R_STATE_DIM, "action_dim": R_ACTION_DIM},
                out_dir / f"policy_{args.version}_ac.pt")
-    summary = {"version": args.version, "recurrent": True, "vehicle": "rover",
-               "iters": args.iters, "final": hist[-1] if hist else None,
-               "onnx": str(onnx_path), "onnx_bytes": onnx_path.stat().st_size}
+
+    summary = {
+        "version": args.version, "recurrent": True, "vehicle": "rover",
+        "state_dim": R_STATE_DIM, "action_dim": R_ACTION_DIM,
+        "lidar_rays": LIDAR_RAYS, "hidden": hidden,
+        "iters": args.iters, "best_reach": best_reach,
+        "final": hist[-1] if hist else None,
+        "onnx": str(onnx_path), "onnx_bytes": onnx_path.stat().st_size,
+    }
     (out_dir / f"policy_{args.version}_rl_summary.json").write_text(
         json.dumps(summary, indent=2))
-    print(json.dumps(summary["final"], indent=2), flush=True)
+    print(json.dumps(summary, indent=2), flush=True)
 
 
 if __name__ == "__main__":
