@@ -39,6 +39,7 @@ MAX_STEPS = 250          # per-episode cap (25 s)
 REACH = 1.0
 COLLIDE_R = 0.3
 MAX_SPEED = 3.0
+ALT_CAP = 4.0            # deploy altitude cap (run_prompt --max-alt): policy may not climb above it
 
 
 def _torch():
@@ -50,11 +51,13 @@ def _torch():
 class BoxEnv:
     """Vectorized kinematic quad env with random box obstacles, all in torch."""
 
-    def __init__(self, torch, n, dev, k_boxes=8, seed=0):
+    def __init__(self, torch, n, dev, k_boxes=8, seed=0, depth_noise=0.0, target_noise=0.0):
         self.t = torch
         self.n = n
         self.dev = dev
         self.K = k_boxes
+        self.depth_noise = depth_noise
+        self.target_noise = target_noise
         rd = torch.tensor(RAY_DIRS, device=dev, dtype=torch.float32)  # (R,3) fwd,left,up
         self.ray_fwd = rd[:, 0]; self.ray_left = rd[:, 1]; self.ray_up = rd[:, 2]
         self.g = torch.Generator(device="cpu").manual_seed(seed)
@@ -67,7 +70,7 @@ class BoxEnv:
     def reset_all(self):
         t = self.t
         z = t.zeros(self.n, device=self.dev)
-        self.x = z.clone(); self.y = z.clone(); self.z = self._rand(self.n, lo=1.5, hi=3.0)
+        self.x = z.clone(); self.y = z.clone(); self.z = self._rand(self.n, lo=1.0, hi=2.2)
         self.gx = z.clone(); self.gy = z.clone(); self.galt = z.clone(); self.yaw = z.clone()
         self.bcx = t.zeros(self.n, self.K, device=self.dev)
         self.bcy = t.zeros(self.n, self.K, device=self.dev)
@@ -95,12 +98,12 @@ class BoxEnv:
         # perpendicular to the path; initial heading randomized (turn-then-go robustness).
         gx = self._rand(n, lo=6.0, hi=15.0)
         gy = self._rand(n, lo=-3.0, hi=3.0)
-        gz = self._rand(n, lo=-2.5, hi=2.5)
+        gz = self._rand(n, lo=-1.0, hi=0.9)
         self.x[idx] = 0.0
         self.y[idx] = 0.0
         self.gx[idx] = gx
         self.gy[idx] = gy
-        galt = (self.z[idx] + gz).clamp(min=0.6)
+        galt = (self.z[idx] + gz).clamp(min=0.6, max=ALT_CAP - 0.4)   # reachable under the cap
         self.galt[idx] = galt
         aligned = self._rand(n, lo=-0.6, hi=0.6)
         full = self._rand(n, lo=-math.pi, hi=math.pi)
@@ -109,7 +112,11 @@ class BoxEnv:
         z0 = self.z[idx]
         band_lo = t.minimum(z0, galt)
         band_hi = t.maximum(z0, galt)
-        SPAN, TALL, HXW = 8.0, 3.5, 0.5
+        # SPAN=18: corridor-spanning walls wider than the depth FOV can see around at the approach
+        # range, so "skirt it laterally" stops being a valid solution and the policy must commit to
+        # OVER/UNDER/THROUGH. With SPAN=8 the 90deg FOV saw the wall ends up close and the policy
+        # learned to skirt — a dead-end in a gauntlet where the next wall is full-corridor.
+        SPAN, TALL, HXW = 18.0, 3.5, 0.5
 
         def set_barrier(m, slot, cx, force_over=None):
             """Wide corridor-spanning over/under wall into `slot` for env-subset mask m.
@@ -117,9 +124,11 @@ class BoxEnv:
             gi = idx[m]
             over = (self._rand(n) < 0.5) if force_over is None else \
                    (self._rand(n) < (1.0 if force_over else 0.0))
-            top = band_hi + self._rand(n, lo=0.4, hi=1.1)
-            botc = self._rand(n, lo=1.3, hi=1.9)
-            topc = botc + self._rand(n, lo=2.0, hi=3.5)
+            # 'over' floor-wall tops out below the cap (climbable); 'under' ceiling spans from a low
+            # gap up to ABOVE the cap (top fixed > ALT_CAP) so it can't be flown over -> must duck.
+            top = (band_hi + self._rand(n, lo=0.4, hi=0.8)).clamp(max=ALT_CAP - 0.3)
+            botc = self._rand(n, lo=1.1, hi=1.6)
+            topc = t.full_like(botc, ALT_CAP + 1.5)
             cz = t.where(over, top / 2, (botc + topc) / 2)
             hz = t.where(over, top / 2, (topc - botc) / 2)
             self.bcx[gi, slot] = cx[m]; self.bcy[gi, slot] = 0.0
@@ -131,9 +140,9 @@ class BoxEnv:
             """Full wall + central opening across slots [s0..s0+3] for env-subset mask m."""
             gi = idx[m]
             cyo = self._rand(n, lo=-1.0, hi=1.0)
-            czo = (band_lo + (band_hi - band_lo) * self._rand(n)).clamp(1.5, 3.3)
+            czo = (band_lo + (band_hi - band_lo) * self._rand(n)).clamp(1.4, ALT_CAP - 0.7)
             ohy = self._rand(n, lo=0.95, hi=1.3)
-            ohz = self._rand(n, lo=0.85, hi=1.15)
+            ohz = self._rand(n, lo=0.85, hi=1.05)
             cy = [(-SPAN + (cyo - ohy)) / 2, ((cyo + ohy) + SPAN) / 2, cyo, cyo]
             hy = [((cyo - ohy) + SPAN) / 2, (SPAN - (cyo + ohy)) / 2, ohy, ohy]
             cz = [czo, czo, (czo - ohz) / 2, czo + ohz + TALL / 2]
@@ -148,7 +157,7 @@ class BoxEnv:
             for k in slots:
                 self.bmask[idx[m], k] = 0.0
 
-        mode = self._rand(n)                       # <.16 seq, <.38 window, <.60 barrier, else scattered
+        mode = self._rand(n)                       # <.25 seq, <.45 window, <.63 barrier, else scattered
         # ---- default: scattered prisms (bob & weave) across all slots ----
         for k in range(self.K):
             self.bcx[idx, k] = gx * self._rand(n, lo=0.25, hi=0.85)
@@ -162,17 +171,17 @@ class BoxEnv:
 
         # SEQUENCE: the hard chain UNDER -> OVER -> THROUGH (the gauntlet pattern), so the big
         # duck->climb vertical swing right before a window is in-distribution.
-        seq = mode < 0.18
+        seq = mode < 0.25
         set_barrier(seq, 0, gx * self._rand(n, lo=0.20, hi=0.34), force_over=False)   # under
         set_barrier(seq, 1, gx * self._rand(n, lo=0.42, hi=0.56), force_over=True)     # over
         set_window(seq, 2, gx * self._rand(n, lo=0.66, hi=0.82))                       # through
         mask_off(seq, [6, 7])
 
-        win = (mode >= 0.18) & (mode < 0.40)        # single WINDOW wall
+        win = (mode >= 0.25) & (mode < 0.45)        # single WINDOW wall
         set_window(win, 0, gx * self._rand(n, lo=0.4, hi=0.65))
         mask_off(win, [4, 5, 6, 7])
 
-        barr = (mode >= 0.40) & (mode < 0.62)       # single wide BARRIER
+        barr = (mode >= 0.45) & (mode < 0.63)       # single wide BARRIER
         set_barrier(barr, 0, gx * self._rand(n, lo=0.4, hi=0.65))
         mask_off(barr, list(range(1, self.K)))
 
@@ -239,6 +248,13 @@ class BoxEnv:
         base = t.stack([tf, tl, tu, dist, self.vx, self.vy, self.vz,
                         yaw_err, self._yaw_rate(), self.z, veh], dim=1)  # (n,11)
         grid = self.depth_grid()
+        # Sensor-noise domain randomization: train on noisy depth + target so the policy keeps
+        # safe margins under real RealSense depth noise and vision-backproject target error
+        # (without this the thin-margin gauntlet climb clips obstacles under noise at deploy).
+        if self.depth_noise > 0:
+            grid = (grid + t.randn_like(grid) * self.depth_noise).clamp(0.0, DEPTH_MAX)
+        if self.target_noise > 0:
+            base[:, 0:3] = base[:, 0:3] + t.randn_like(base[:, 0:3]) * self.target_noise
         return t.cat([base, grid], dim=1)
 
     def _yaw_rate(self):
@@ -274,7 +290,9 @@ class BoxEnv:
         wind = self.dyn.wind
         self.x = self.x + (c * rvx - s * rvy) * DT + wind[:, 0] * DT
         self.y = self.y + (s * rvx + c * rvy) * DT + wind[:, 1] * DT
-        self.z = self.z + rvz * DT
+        # deploy altitude cap: never climb above ALT_CAP (so the policy can't learn to fly over
+        # tall ceilings — it must duck under them, matching run_prompt's max_alt clamp).
+        self.z = (self.z + rvz * DT).clamp(max=ALT_CAP)
         self.yaw = wrap_pi_t(t, self.yaw + yr_real * DT)
         self.vx, self.vy, self.vz = rvx, rvy, rvz
         self.prev_ax, self.prev_ay, self.prev_az = ax, ay, az
@@ -283,14 +301,39 @@ class BoxEnv:
 
         d_now = self.goal_dist()
         progress = d_prev - d_now
-        collided = self.min_box_dist() < COLLIDE_R
+        box_dist = self.min_box_dist()
+        collided = box_dist < COLLIDE_R
         reached = d_now < REACH
         timeout = self.steps >= MAX_STEPS
+
+        # Clearance margin: penalize grazing within `clear_margin` of an obstacle even when not yet
+        # colliding, so the policy keeps a safety buffer that survives sensor noise at deploy
+        # (the clean gauntlet climb cleared by only ~0.4 m and clipped once noise was added).
+        near = (w.clear_margin - box_dist).clamp(min=0.0)
+
+        # Anti-stall: without this, hovering until timeout (cost ~k_time*MAX_STEPS) is CHEAPER than
+        # a collision (k_coll), so the policy learns to freeze in the gauntlet rather than commit
+        # to the duck->climb->thread. Two terms remove that local optimum:
+        #  - dense per-step penalty for crawling (low realized speed) while still far from goal,
+        #  - terminal penalty for timing out without reaching.
+        speed_real = t.sqrt(rvx * rvx + rvy * rvy + rvz * rvz)
+        stalled = (speed_real < w.stall_speed) & (d_now > REACH)
+        timed_out_unreached = timeout & (~reached) & (~collided)
+
+        # Altitude recovery: penalize flying BELOW goal altitude. During a forced duck the much
+        # larger collision penalty dominates (the drone still ducks), but once clear this term pulls
+        # it back UP to goal altitude — so it meets the NEXT corridor wall high enough to go OVER
+        # instead of staying pinned low and trying to go under a floor-wall (the gauntlet stall).
+        below_goal_alt = (self.galt - self.z).clamp(min=0.0)
 
         reward = (w.k_prog * progress
                   - w.k_time
                   - w.k_jerk * jerk
+                  - w.k_stall * stalled.float()
+                  - w.k_alt * below_goal_alt
+                  - w.k_clear * near
                   - w.k_coll * collided.float()
+                  - w.k_timeout * timed_out_unreached.float()
                   + w.k_goal * reached.float())
         done = collided | reached | timeout
         return reward, done, {"reached": reached, "collided": collided}
@@ -299,7 +342,7 @@ class BoxEnv:
         if done.any():
             # fresh z for the reset envs, then reinit pose/goal/boxes
             idx = done.nonzero(as_tuple=True)[0]
-            self.z[idx] = self._rand(len(idx), lo=1.5, hi=3.0)
+            self.z[idx] = self._rand(len(idx), lo=1.0, hi=2.2)
             self.vx[idx] = 0; self.vy[idx] = 0; self.vz[idx] = 0
             self.prev_ax[idx] = 0; self.prev_ay[idx] = 0; self.prev_az[idx] = 0
             self.yr[idx] = 0 if hasattr(self, "yr") else 0
@@ -361,6 +404,12 @@ class W:  # reward weights
         self.k_jerk = a.k_jerk
         self.k_coll = a.k_coll
         self.k_goal = a.k_goal
+        self.k_stall = a.k_stall
+        self.k_timeout = a.k_timeout
+        self.stall_speed = a.stall_speed
+        self.k_alt = a.k_alt
+        self.k_clear = a.k_clear
+        self.clear_margin = a.clear_margin
 
 
 def main():
@@ -382,6 +431,22 @@ def main():
     ap.add_argument("--k-jerk", type=float, default=0.005)
     ap.add_argument("--k-coll", type=float, default=25.0)
     ap.add_argument("--k-goal", type=float, default=30.0)
+    ap.add_argument("--k-stall", type=float, default=0.4,
+                    help="dense per-step penalty for crawling (<stall-speed) while far from goal")
+    ap.add_argument("--k-timeout", type=float, default=12.0,
+                    help="terminal penalty for timing out without reaching")
+    ap.add_argument("--stall-speed", type=float, default=0.4,
+                    help="realized speed (m/s) below which a far-from-goal env counts as stalled")
+    ap.add_argument("--k-alt", type=float, default=0.35,
+                    help="dense penalty per meter BELOW goal altitude (altitude recovery after ducks)")
+    ap.add_argument("--k-clear", type=float, default=0.8,
+                    help="dense penalty per meter inside clear-margin of an obstacle (safety buffer)")
+    ap.add_argument("--clear-margin", type=float, default=0.6,
+                    help="obstacle clearance buffer (m) the policy is rewarded to keep")
+    ap.add_argument("--depth-noise", type=float, default=0.07,
+                    help="std (m) of depth-grid noise during RL (sensor-noise DR)")
+    ap.add_argument("--target-noise", type=float, default=0.15,
+                    help="std (m) of body-target noise during RL (vision-backproject DR)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--dr-hold-frac", type=float, default=0.35,
                     help="fraction of iters held at kinematic (scale 0) before DR ramps")
@@ -401,7 +466,8 @@ def main():
     print(f"warm-started actor from BC ({sum(p.numel() for p in ac.parameters())} params)")
 
     opt = torch.optim.Adam(ac.parameters(), lr=args.lr)
-    env = BoxEnv(torch, args.envs, dev, seed=args.seed)
+    env = BoxEnv(torch, args.envs, dev, seed=args.seed,
+                 depth_noise=args.depth_noise, target_noise=args.target_noise)
     o = env.obs(); win = env.push_window(o)
 
     def policy(win, sample=True):
