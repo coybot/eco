@@ -1,11 +1,12 @@
 # Handoff prompt — make `gauntlet2` (chained under→over→through) work
 
-> ## STATUS (2026-06-18) -- GAUNTLET2 SOLVED. policy_v26rnn_dr.onnx. Pending SITL gate.
+> ## STATUS (2026-06-18) -- GAUNTLET2 SOLVED + SITL 3/3. policy_v26rnn_dr.onnx. DEPLOY-READY.
 >
 > **Deploy-ready (singles):** policy_v16rnn_dr.onnx (step-mode GRU, SITL 3/3). run_prompt.py wired.
-> **Gauntlet2 solved:** policy_v26rnn_dr.onnx — 20/20 reach, 0/20 collision, min_clr=0.34m (noisy).
->   Pending ArduPilot SITL gate before declaring fully deploy-ready.
->   Singles also pass (limbo 20/20 0.52m, over_wall 20/20 0.88m, window 18/20 0.36m).
+> **DEPLOY-READY:** policy_v26rnn_dr.onnx — gauntlet2 + singles. SITL 3/3 passed.
+>   Local (20 noisy trials): gauntlet2 20/20 clr=0.34m, limbo 20/20 0.52m, over_wall 20/20 0.88m,
+>   window 18/20 0.36m (2 stall misses, 0 collisions).
+>   SITL: go_over 2.16m, go_under 1.22m, slalom_3d 1.39m — all reached, 0 collisions.
 >
 > ### Root cause analysis
 > MATH: wall x=[6.8,8.2] (1.4m wide), vx~0.14m/tick -> 10 ticks to cross.
