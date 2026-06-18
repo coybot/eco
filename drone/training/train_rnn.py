@@ -91,7 +91,7 @@ def _pad_batch(torch, eps, idx, dev):
 
 
 def train(data, out_dir, epochs=35, batch_eps=64, lr=1e-3, hidden=128, val_frac=0.1,
-          seed=0, version="v14rnn"):
+          seed=0, version="v14rnn", depth_noise=0.10, target_noise=0.15):
     torch = _require_torch()
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -110,7 +110,17 @@ def train(data, out_dir, epochs=35, batch_eps=64, lr=1e-3, hidden=128, val_frac=
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     lossf = torch.nn.SmoothL1Loss(reduction="none")
 
-    def masked_loss(bx, by, mask):
+    # depth-grid channels start at index 11 (contract: 11 base dims then DEPTH_RAYS)
+    DEPTH0 = 11
+
+    def masked_loss(bx, by, mask, augment=False):
+        if augment and (depth_noise > 0 or target_noise > 0):
+            bx = bx.clone()
+            if target_noise > 0:                                # vision-backproject error
+                bx[..., 0:3] += torch.randn_like(bx[..., 0:3]) * target_noise
+            if depth_noise > 0:                                 # RealSense depth noise
+                bx[..., DEPTH0:] = (bx[..., DEPTH0:]
+                                    + torch.randn_like(bx[..., DEPTH0:]) * depth_noise).clamp(min=0.0)
         pred, _ = model(bx)
         per = lossf(pred, by).mean(-1) * mask
         return per.sum() / mask.sum().clamp(min=1.0)
@@ -124,7 +134,7 @@ def train(data, out_dir, epochs=35, batch_eps=64, lr=1e-3, hidden=128, val_frac=
             idx = tr_idx[b:b + batch_eps]
             bx, by, mask = _pad_batch(torch, eps, idx, dev)
             opt.zero_grad()
-            loss = masked_loss(bx, by, mask)
+            loss = masked_loss(bx, by, mask, augment=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
@@ -197,9 +207,12 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--version", default="v14rnn")
+    ap.add_argument("--depth-noise", type=float, default=0.10, help="depth-channel noise aug std (m)")
+    ap.add_argument("--target-noise", type=float, default=0.15, help="target-channel noise aug std (m)")
     args = ap.parse_args()
     train(args.data, args.out, epochs=args.epochs, batch_eps=args.batch_eps, lr=args.lr,
-          hidden=args.hidden, version=args.version)
+          hidden=args.hidden, version=args.version,
+          depth_noise=args.depth_noise, target_noise=args.target_noise)
 
 
 if __name__ == "__main__":

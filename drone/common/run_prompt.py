@@ -77,6 +77,47 @@ def depth_at(depth_img: np.ndarray, scale: float, x: int, y: int, win: int = 5) 
     return float(np.median(vals)) * scale
 
 
+def depth_grid_5x9(depth_img: np.ndarray, scale: float, intr, depth_max: float = 10.0) -> np.ndarray:
+    """Sample the 5×9 forward depth grid that matches the training state contract.
+
+    Layout: row-major top→bottom, left→right (matches contract.py RAY_DIRS).
+    HFOV = 90° (±45°, 9 cols), VFOV = 70° (±35°, 5 rows).
+    Body frame: fwd=+Z_cam, left=−X_cam, up=−Y_cam (matches backproject convention).
+    Rays outside the D435i FOV return depth_max (no obstacle assumed).
+    Returns float32 array of shape (45,) in metres.
+    """
+    import math as _math
+    h_img, w_img = depth_img.shape
+    cx, cy, fx, fy = intr.ppx, intr.ppy, intr.fx, intr.fy
+
+    # Training ray angles (top→down, left→right)
+    h_angles = [_math.pi / 4 - c * _math.pi / 4 / 4 for c in range(9)]   # +45°..−45°
+    v_angles = [_math.pi * 35 / 180 - r * _math.pi * 35 / 180 / 2 for r in range(5)]  # +35°..−35°
+
+    rays = np.empty(45, dtype=np.float32)
+    idx = 0
+    for va in v_angles:
+        for ha in h_angles:
+            cos_va = _math.cos(va)
+            fwd = cos_va * _math.cos(ha)
+            left = cos_va * _math.sin(ha)
+            up = _math.sin(va)
+            u = int(round(cx + fx * (-left / fwd)))
+            v = int(round(cy + fy * (-up / fwd)))
+            if 0 <= u < w_img and 0 <= v < h_img:
+                u0, u1 = max(0, u - 1), min(w_img, u + 2)
+                v0, v1 = max(0, v - 1), min(h_img, v + 2)
+                patch = depth_img[v0:v1, u0:u1].ravel()
+                valid = patch[patch > 0]
+                raw = int(np.median(valid)) if valid.size > 0 else 0
+                d_m = float(raw) * scale if raw > 0 else depth_max
+            else:
+                d_m = depth_max
+            rays[idx] = min(d_m, depth_max)
+            idx += 1
+    return rays
+
+
 def backproject(x: int, y: int, z_m: float, intr) -> Tuple[float, float, float]:
     """Pinhole backprojection (x,y pixel + z meters -> body-frame X,Y,Z meters).
 
@@ -434,13 +475,18 @@ def main():
 
             cur_alt = current_rel_alt(mav, timeout=0.05) if mav is not None else None
 
+            # Sample the full 5×9 depth grid for LearnedPlanner (ReactivePlanner ignores it
+            # and uses the scalar clearance_m fallback path instead).
+            dfan = depth_grid_5x9(d, depth_scale, intr)
+
             # Horizontal-only approach: ground-level targets (chair, person, etc.)
             # sit BELOW the drone; if we navigate toward their 3D center the drone
             # descends into them. Pass a flattened target (up=0) so the planner
             # keeps altitude and stops when horizontally close.
             flat_target = ((target_xyz[0], target_xyz[1], 0.0)
                            if target_xyz is not None else None)
-            plan = planner.step(flat_target, clearance, altitude_m=cur_alt, dt=dt)
+            plan = planner.step(flat_target, clearance, altitude_m=cur_alt, dt=dt,
+                                depth_fan=dfan)
 
             # Altitude cap: no climbing above max_alt.
             if cur_alt is not None and cur_alt > args.max_alt and plan.vz > 0:
