@@ -1,41 +1,49 @@
 # Handoff prompt — make `gauntlet2` (chained under→over→through) work
 
-> ## STATUS (2026-06-18) — singles deploy-ready; gauntlet2 fails SAFE, not solved
+> ## STATUS (2026-06-18) — singles deploy-ready (recurrent); gauntlet2 NOT solved
 >
-> **Deploy-ready (end-to-end policy, NO planner):** robust single-obstacle avoidance (over / under /
-> through a corridor-spanning wall) — 20/20 under depth+target noise, ≥0.5 m clearance, within a
-> **4.0 m altitude cap**; ~95% on 300 random 3D courses. Best model: **policy_v13_dr** (hidden=128)
-> or policy_v10_dr. Validate locally (no Isaac) with `local_course.py --alt-cap 4.0 [--depth-noise
-> 0.10 --target-noise 0.20 --trials 20]` using `~/.astral-venv`.
+> **Deploy-ready (end-to-end, NO planner):** singles (over/under/through) solved by recurrent GRU
+> policy. **Best deploy model: `policy_v16rnn_dr.onnx`** (step-mode, hidden=128). Reaches 20/20
+> clean, ~20/20 noisy on all single-obstacle types, ≥0.5 m clearance, within 4.0 m alt cap.
+> `policy_v13_dr.onnx` (window/non-recurrent) also works for singles. Validate with
+> `local_course.py --onnx-name policy_v16rnn_dr.onnx --all --alt-cap 4.0`.
 >
-> **gauntlet2 is NOT solved end-to-end.** After 13 retrains (v5..v13) it **fails safe** — stalls/
-> stops, does NOT collide (0/20 under noise). The reactive 16-frame policy can't reliably execute
-> the multi-stage duck→climb→thread under a tight cap + noise.
+> **gauntlet2 is NOT solved.** v16rnn_dr retreats sideways (x regresses, y drifts to -2.5m) after
+> the ceiling duck instead of climbing the over-wall. 0/20 under noise (10/20 collision). Root cause:
+> with rollout=48 the terminal success reward for gauntlet (~70 ticks) was never in the training
+> window → PPO reinforced only single-obstacle behavior. v14rnn (BC-only recurrent) DOES initiate
+> the climb (z 0.79→1.43 at x=6.57) but collides (too slow to clear 2.6 m wall, needs ≥2.6 m at
+> x=7.5). v17rnn_dr (rollout=160, k_prog=3.0) degraded: reach=0.60, coll=0.40 — too aggressive,
+> gradient instability. v18rnn_dr (rollout=96, lr=1e-4, k_alt=0.7, k_goal=35) training now.
 >
-> ### Approaches tried (so the next session doesn't repeat them)
-> - **A\* hierarchical** (`HierarchicalPlanner`, `occupancy.py`): solved gauntlet2 with KNOWN boxes,
->   but a global planner needs map knowledge a forward-depth drone lacks, and online A* on
->   accumulated occupancy thrashes the target → **rejected as deploy path** (kept for reference).
-> - **Reward/curriculum retrains:** anti-stall (hover-to-timeout was cheaper than collision);
->   un-skirtable walls (HY=9/SPAN=18 → commit over/under, not skirt); altitude cap baked into BC
->   oracle + RL env (no fly-over cheat); altitude-recovery `k_alt`; clearance-margin `k_clear` +
->   sensor-noise DR (noise-robust singles); decorrelate altitude↔over/under (BC + RL) so it climbs
->   over from low; heavy direct gauntlet exposure; network capacity 64→128. Each fixed singles or
->   moved the gauntlet failure (stall ↔ ram ↔ over-climb) but none robustly completed it.
-> - **Confirmed root cause:** the policy used CURRENT ALTITUDE as the over/under cue; forced low by
->   the ceiling it wouldn't climb the next floor-wall. Decorrelation broke that (climbs over from
->   z=0.8 now), but in the *sequence* it still won't initiate the climb in the ~4 m gap after a duck.
+> **run_prompt.py**: ✅ `depth_grid_5x9()` now samples the real 5×9 forward depth grid from D435i
+> and passes `depth_fan` to `LearnedPlanner.step()`. Angles match `contract.py` exactly. Commit d17b233.
 >
-> ### Untried bigger swings (need a decision, not a knob)
-> True carried recurrent hidden state (vs the fixed 16-step window); a learned high-level mode/
-> sub-goal selector; or relaxed assumptions (wider spacing / correlated-not-white target noise).
+> ### Recurrent policy lineage (don't repeat)
+> - **v14rnn** (BC, 35ep, hidden=128): initiates climb in gauntlet (z rises to 1.43), but collides on
+>   ALL single-obstacle courses (collision at the obstacle face). BC-only ≠ deploy-ready singles.
+> - **v15rnn** (BC + heavy noise aug): collides everywhere; noise-aug BC with clean labels fails.
+> - **v16rnn_dr** (PPO rollout=48, warm v14rnn): fixes singles (reach=0.92 best), but rollout too
+>   short for gauntlet terminal reward → loses the climb commitment. Retreats/drifts sideways.
+> - **v17rnn_dr** (PPO rollout=160, k_prog=3.0, lr=2e-4): unstable — reach collapsed to 0.60,
+>   coll=0.40. Strong k_prog made it charge obstacles; long rollout amplified gradient instability.
+> - **v18rnn_dr** (PPO rollout=96, lr=1e-4, k_alt=0.7, k_goal=35, warm v16rnn_dr): training now.
+>   Rollout=96 should cover full gauntlet episodes (~70 ticks) for terminal credit; lower LR
+>   prevents instability. Check `/tmp/rl18rnn.log` on hoopoe.
 >
-> ### Still pending for full deploy
-> `run_prompt.py` feeds the policy only a center-clearance scalar — wire the real 5×9 depth-grid
-> sampling from RealSense (the policy's actual input) + run the ArduPilot SITL gate.
+> ### Key architecture facts (do not relitigate)
+> - `LearnedPlanner` auto-detects step-mode ONNX by checking for `h_in` input name; carries
+>   `self._h` tick-to-tick, zeros on `reset()`. No code changes needed for new recurrent models.
+> - With rollout=48 (T=48 steps × DT=0.33s = 16s) vs gauntlet length ~70 ticks (23s), terminal
+>   reward was almost never observed → this was the core PPO training gap.
+> - The gauntlet walls in eval have hy=4.0 (±4m), but training uses SPAN=18 (±9m). Policy does
+>   try to skirt at y≈-2.5 in the eval but can't escape in time before stall detector fires.
+>
+> ### Still pending
+> Run ArduPilot SITL gate (`sitl_validate.py`) with policy_v16rnn_dr on single-obstacle courses.
 >
 > ---
-> *(Original hierarchical-A\* note removed — superseded; see git log f6a175e/230d12f/6a02d31.)*
+> *(A\* hierarchical: rejected as deploy path. See git log f6a175e/230d12f/6a02d31/96e1289/d17b233.)*
 
 Paste everything below into a fresh Claude Code session (run from `~/code/ys/a`).
 
