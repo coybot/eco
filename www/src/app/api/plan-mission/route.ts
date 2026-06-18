@@ -133,6 +133,29 @@ function stripMarkdownFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 }
 
+async function planWithOllama(
+  instruction: string,
+  env: EnvironmentType,
+  nQuads: number,
+  nRovers: number,
+): Promise<MissionPlan> {
+  const res = await fetch('http://localhost:11434/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.OLLAMA_MODEL ?? 'llama3.2',
+      stream: false,
+      messages: [
+        { role: 'system', content: makeSystemPrompt(env, nQuads, nRovers) },
+        { role: 'user', content: instruction },
+      ],
+    }),
+  });
+  const data = await res.json();
+  const rawText: string = data?.message?.content ?? '';
+  return JSON.parse(stripMarkdownFences(rawText));
+}
+
 export async function POST(req: NextRequest) {
   if (!(await checkRateLimit(req))) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
@@ -160,6 +183,17 @@ export async function POST(req: NextRequest) {
 
   if (!instruction) {
     return NextResponse.json(buildDefaultPlan(env, nQuads, nRovers));
+  }
+
+  if (process.env.OFFLINE_MODE === 'true') {
+    try {
+      console.log('[plan-mission] offline mode — using local Ollama');
+      const plan = await planWithOllama(instruction, env, nQuads, nRovers);
+      return NextResponse.json(plan);
+    } catch (err) {
+      console.error('[plan-mission] Ollama error, using default plan:', err);
+      return NextResponse.json(buildDefaultPlan(env, nQuads, nRovers));
+    }
   }
 
   try {
