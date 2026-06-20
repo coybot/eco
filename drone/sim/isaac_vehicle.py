@@ -154,15 +154,20 @@ class IsaacVehicleBridge:
                             rendering_dt=self._physics_dt * 4,
                             stage_units_in_meters=1.0)
 
-        # `environment` may be a known name (office/warehouse/...) or, when the
-        # Ishmael scene resolver ran, a full USD URL / file path / omniverse path.
-        env_url = _resolve_env(environment)
-        try:
-            add_reference_to_stage(usd_path=env_url, prim_path="/World/Scene")
-            logger.info("Loaded scene %s", environment)
-        except Exception as e:
-            logger.warning("Scene load failed (%s); ground plane", e)
+        # `environment` may be a known name (office/warehouse/...), a full USD URL/path, or one
+        # of {"", "none", "ground"} to request a bare lit ground plane (used by the obstacle
+        # course eval, where our own cuboids are the challenge and we want guaranteed free space).
+        if environment in ("", "none", "ground"):
             self._world.scene.add_default_ground_plane()
+            logger.info("Bare ground plane (no USD scene)")
+        else:
+            env_url = _resolve_env(environment)
+            try:
+                add_reference_to_stage(usd_path=env_url, prim_path="/World/Scene")
+                logger.info("Loaded scene %s", environment)
+            except Exception as e:
+                logger.warning("Scene load failed (%s); ground plane", e)
+                self._world.scene.add_default_ground_plane()
 
         root = self._assets_root()
         cells = self._grid(len(roster))
@@ -380,6 +385,90 @@ class IsaacVehicleBridge:
         self.integrate_all(self._physics_dt * n_steps)
         self._world.step(render=render)
 
+    # -- obstacles (Isaac thread only) ------------------------------------------
+    def add_obstacle_box(self, name: str, position, half_extents,
+                         color=(0.8, 0.3, 0.2)) -> None:
+        """Spawn a static visible cuboid obstacle at world `position` (Isaac thread only).
+
+        `half_extents` is (hx, hy, hz) in meters. Used by the obstacle-course eval to place
+        things the drone must fly around; the cuboid renders in the camera and shows up in the
+        depth image exactly like a real obstacle.
+        """
+        from omni.isaac.core.objects import FixedCuboid
+        pos = np.asarray(position, dtype=float)
+        he = np.asarray(half_extents, dtype=float)
+        cube = FixedCuboid(
+            prim_path=f"/World/obstacle_{name}",
+            name=f"obstacle_{name}",
+            position=pos,
+            scale=2.0 * he,                # FixedCuboid size is full extent
+            color=np.asarray(color, dtype=float),
+        )
+        self._world.scene.add(cube)
+        for _ in range(3):
+            self._world.step(render=True)
+        print(f"[isaac] obstacle '{name}' at {pos.tolist()} half={he.tolist()}", flush=True)
+
+    def add_marker(self, drone_id: str, color=(0.1, 0.9, 0.2), radius: float = 0.5) -> None:
+        """Parent a bright visual sphere to a drone so it's clearly visible in third-person
+        renders (the stock Crazyflie body is only ~15 cm and reads as a speck). Isaac thread.
+        """
+        v = self.vehicles[drone_id]
+        from omni.isaac.core.objects import VisualSphere
+        sph = VisualSphere(
+            prim_path=f"{v.prim_path}/eco_marker",
+            name=f"marker_{drone_id}",
+            radius=radius,
+            color=np.asarray(color, dtype=float),
+        )
+        self._world.scene.add(sph)
+        for _ in range(2):
+            self._world.step(render=True)
+        print(f"[isaac] marker on {drone_id}", flush=True)
+
+    def add_lighting(self, sun_intensity: float = 3000.0, dome_intensity: float = 1500.0) -> None:
+        """Add a bright distant 'sun' + dome fill so renders aren't murky (Isaac thread)."""
+        try:
+            import omni.usd
+            from pxr import UsdLux, Gf, UsdGeom
+            stage = omni.usd.get_context().get_stage()
+            sun = UsdLux.DistantLight.Define(stage, "/World/eco_sun")
+            sun.CreateIntensityAttr(sun_intensity)
+            sun.CreateAngleAttr(1.0)
+            UsdGeom.Xformable(sun.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-45.0, 10.0, 0.0))
+            dome = UsdLux.DomeLight.Define(stage, "/World/eco_dome")
+            dome.CreateIntensityAttr(dome_intensity)
+            for _ in range(3):
+                self._world.step(render=True)
+            print("[isaac] lighting added", flush=True)
+        except Exception as e:
+            print(f"[isaac] lighting failed: {e}", flush=True)
+
+    def drop_trail(self, name: str, position, color=(0.1, 0.85, 1.0), radius: float = 0.12) -> None:
+        """Drop a small static sphere breadcrumb at a world position to trace the flight path.
+
+        Does NOT register in world.scene (static visual only) — registering keeps the name
+        reserved after delete_prim and collides when a path is reused on the next pass.
+        """
+        from omni.isaac.core.objects import VisualSphere
+        import numpy as _np
+        VisualSphere(prim_path=f"/World/trail_{name}", name=f"trail_{name}",
+                     radius=radius, color=_np.asarray(color, dtype=float),
+                     position=_np.asarray(position, dtype=float))
+
+    def clear_trails(self) -> None:
+        """Delete all breadcrumb prims (between passes/courses)."""
+        try:
+            from omni.isaac.core.utils.prims import delete_prim, get_prim_path
+            import omni.usd
+            stage = omni.usd.get_context().get_stage()
+            for prim in stage.Traverse():
+                p = str(prim.GetPath())
+                if p.startswith("/World/trail_"):
+                    delete_prim(p)
+        except Exception as e:
+            print(f"[isaac] clear_trails: {e}", flush=True)
+
     # -- thread-safe target setters / state getters (any thread) ----------------
     def set_drone_goal(self, drone_id: str, position) -> None:
         v = self.vehicles[drone_id]
@@ -409,6 +498,24 @@ class IsaacVehicleBridge:
         v = self.vehicles[drone_id]
         with v.lock:
             v.goal_yaw = float(yaw_rad)
+
+    def set_drone_pose(self, drone_id: str, position, yaw_rad: float = 0.0) -> None:
+        """Teleport a vehicle to an exact pose and clear its motion (Isaac thread).
+
+        Used to reset a drone to the course start between evaluation passes.
+        """
+        v = self.vehicles[drone_id]
+        with v.lock:
+            p = np.asarray(position, dtype=float)
+            if v.vtype == "rover":
+                p[2] = 0.0
+            v.position = p
+            v.yaw = float(yaw_rad)
+            v.goal = None
+            v.goal_yaw = None
+            v.velocity_cmd = None
+        self._apply_pose(v)
+        self._world.step(render=True)
 
     def get_drone_state(self, drone_id: str) -> dict:
         v = self.vehicles[drone_id]
