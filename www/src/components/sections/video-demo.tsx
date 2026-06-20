@@ -22,15 +22,27 @@ export function VideoDemoSection() {
           </div>
 
           <div className="aspect-video bg-card rounded-lg border border-border overflow-hidden shadow-xl">
-            <iframe
-              width="100%"
-              height="100%"
-              src="https://www.youtube-nocookie.com/embed/kCoSswh5azA"
-              title="Astral Demo"
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            ></iframe>
+            {process.env.NEXT_PUBLIC_OFFLINE_MODE === 'true' ? (
+              <video
+                className="w-full h-full object-cover"
+                src="/media/fleet-demo.mp4"
+                controls
+                autoPlay
+                muted
+                loop
+                playsInline
+              />
+            ) : (
+              <iframe
+                width="100%"
+                height="100%"
+                src="https://www.youtube-nocookie.com/embed/kCoSswh5azA"
+                title="Astral Demo"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              ></iframe>
+            )}
           </div>
         </motion.div>
       </div>
