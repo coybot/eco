@@ -1,0 +1,84 @@
+# Astral analog-pilot training — tasks for hoopoe (A100).
+# Usage (from repo root):
+#   just -f eco/drone/training/justfile deploy
+#   just -f eco/drone/training/justfile dataset episodes=4000
+#   just -f eco/drone/training/justfile train epochs=30
+#   just -f eco/drone/training/justfile pull
+#   just -f eco/drone/training/justfile smoke    # run unit tests on hoopoe
+
+hoopoe := "yusuf@hoopoe"
+remote_dir := "~/astral-training"
+model_out := "~/drone-data/bc_v2/models"
+local_models := "eco/drone/models"
+ssh_opts := "-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new"
+python := "/home/yusuf/isaac-sim-env/bin/python3"
+
+# Rsync the training package to hoopoe and install deps
+deploy:
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
+        "mkdir -p {{remote_dir}}/eco/drone/training/tests {{remote_dir}}/eco/drone/common ~/drone-data/bc_v2/models"
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
+        eco/__init__.py eco/drone/__init__.py \
+        {{hoopoe}}:{{remote_dir}}/eco/
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
+        eco/drone/__init__.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
+        eco/drone/training/__init__.py \
+        eco/drone/training/contract.py \
+        eco/drone/training/expert.py \
+        eco/drone/training/world2d.py \
+        eco/drone/training/dataset.py \
+        eco/drone/training/train.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/training/
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
+        eco/drone/training/tests/__init__.py \
+        eco/drone/training/tests/test_smoothness.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/training/tests/
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
+        eco/drone/common/reactive_planner.py \
+        eco/drone/common/data_recorder.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/common/
+    # Ensure torch + onnx available in the Isaac venv
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
+        "uv pip install --python {{python}} --quiet torch onnx onnxruntime pytest 2>&1 | tail -3"
+
+# Generate the BC dataset on hoopoe
+dataset eps="4000" seed="0" rfrac="0.4":
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
+        "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.dataset \
+            --out ~/drone-data/bc_v2 \
+            --episodes {{eps}} \
+            --rover-fraction {{rfrac}} \
+            --seed {{seed}}"
+
+# Train + export on hoopoe
+train epochs="30" hidden="64" version="v2":
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
+        "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.train \
+            --data ~/drone-data/bc_v2/dataset.npz \
+            --out {{model_out}} \
+            --epochs {{epochs}} \
+            --hidden {{hidden}} \
+            --version {{version}}"
+
+# Pull trained models back to local eco/drone/models/
+pull version="v2":
+    mkdir -p {{local_models}}
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
+        "{{hoopoe}}:{{model_out}}/policy_{{version}}.onnx" \
+        "{{hoopoe}}:{{model_out}}/policy_{{version}}_state_norm.npy" \
+        "{{hoopoe}}:{{model_out}}/policy_{{version}}_train_summary.json" \
+        {{local_models}}/
+
+# Run unit tests on hoopoe (no torch needed for most tests)
+smoke:
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
+        "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m pytest eco/drone/training/tests -q"
+
+# Full pipeline: deploy -> dataset -> train -> pull
+all episodes="4000" epochs="30":
+    just -f eco/drone/training/justfile deploy
+    just -f eco/drone/training/justfile dataset episodes={{episodes}}
+    just -f eco/drone/training/justfile train epochs={{epochs}}
+    just -f eco/drone/training/justfile pull

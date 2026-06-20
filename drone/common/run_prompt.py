@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.resolve()))
 from target_selector import parse as parse_prompt  # noqa: E402
 from grounding import GroundingDINO, GDetection  # noqa: E402
 from spatial_memory import SpatialMemory  # noqa: E402
-from reactive_planner import ReactivePlanner, PlanStep  # noqa: E402
+from reactive_planner import ReactivePlanner, PlanStep, make_planner  # noqa: E402
 
 
 def _ts() -> str:
@@ -75,6 +75,50 @@ def depth_at(depth_img: np.ndarray, scale: float, x: int, y: int, win: int = 5) 
     if vals.size == 0:
         return None
     return float(np.median(vals)) * scale
+
+
+def depth_grid_5x9(depth_img: np.ndarray, scale: float, intr, depth_max: float = 10.0) -> np.ndarray:
+    """Sample the 5×9 forward depth grid that matches the training state contract.
+
+    Layout: row-major top→bottom, left→right (matches contract.py RAY_DIRS).
+    HFOV = 90° (±45°, 9 cols), VFOV = 70° (±35°, 5 rows).
+    Body frame: fwd=+Z_cam, left=−X_cam, up=−Y_cam (matches backproject convention).
+    D435i at 640×480 covers ≈87°H×58°V, so 21/45 rays land inside the image (the
+    3 middle rows × 7 centre columns); the ±35° top/bottom rows and ±45° outer
+    columns are out of bounds and return depth_max (no-obstacle assumption — safe
+    but means the policy's far-peripheral vision is always "clear" at deploy).
+    Returns float32 array of shape (45,) in metres.
+    """
+    import math as _math
+    h_img, w_img = depth_img.shape
+    cx, cy, fx, fy = intr.ppx, intr.ppy, intr.fx, intr.fy
+
+    # Training ray angles (top→down, left→right)
+    h_angles = [_math.pi / 4 - c * _math.pi / 4 / 4 for c in range(9)]   # +45°..−45°
+    v_angles = [_math.pi * 35 / 180 - r * _math.pi * 35 / 180 / 2 for r in range(5)]  # +35°..−35°
+
+    rays = np.empty(45, dtype=np.float32)
+    idx = 0
+    for va in v_angles:
+        for ha in h_angles:
+            cos_va = _math.cos(va)
+            fwd = cos_va * _math.cos(ha)
+            left = cos_va * _math.sin(ha)
+            up = _math.sin(va)
+            u = int(round(cx + fx * (-left / fwd)))
+            v = int(round(cy + fy * (-up / fwd)))
+            if 0 <= u < w_img and 0 <= v < h_img:
+                u0, u1 = max(0, u - 1), min(w_img, u + 2)
+                v0, v1 = max(0, v - 1), min(h_img, v + 2)
+                patch = depth_img[v0:v1, u0:u1].ravel()
+                valid = patch[patch > 0]
+                raw = int(np.median(valid)) if valid.size > 0 else 0
+                d_m = float(raw) * scale if raw > 0 else depth_max
+            else:
+                d_m = depth_max
+            rays[idx] = min(d_m, depth_max)
+            idx += 1
+    return rays
 
 
 def backproject(x: int, y: int, z_m: float, intr) -> Tuple[float, float, float]:
@@ -299,6 +343,11 @@ def main():
                     help="Safety altitude cap (m). vz is zeroed above this.")
     ap.add_argument("--max-speed", type=float, default=1.0,
                     help="Planner max speed (m/s). Default 1.0 for indoor/tight spaces.")
+    ap.add_argument("--use-learned-planner", action="store_true",
+                    help="Use policy_v2.onnx GRU planner instead of the rule-based planner. "
+                         "Falls back silently to rules if onnxruntime or model is unavailable.")
+    ap.add_argument("--models-dir", type=str, default=None,
+                    help="Path to directory containing policy_v2.onnx (default: auto-detect).")
     args = ap.parse_args()
 
     # 1. Parse prompt
@@ -372,7 +421,13 @@ def main():
           f"fx={intr.fx:.1f} fy={intr.fy:.1f} ppx={intr.ppx:.1f} ppy={intr.ppy:.1f}")
 
     memory = SpatialMemory(merge_radius=1.5, alpha=0.4)
-    planner = ReactivePlanner(reach_threshold=args.reach_m, max_speed=args.max_speed)
+    planner = make_planner(
+        use_learned=args.use_learned_planner,
+        models_dir=args.models_dir,
+        reach_threshold=args.reach_m,
+        max_speed=args.max_speed,
+    )
+    print(f"{_ts()} planner: {'LearnedPlanner (policy_v2)' if args.use_learned_planner else 'ReactivePlanner (rule-based)'}")
 
     # ============ PHASE 1: go to nearest <target> ============
     print(f"\n{_ts()} === PHASE 1: find and reach nearest {parsed.target!r} ===")
@@ -423,13 +478,18 @@ def main():
 
             cur_alt = current_rel_alt(mav, timeout=0.05) if mav is not None else None
 
+            # Sample the full 5×9 depth grid for LearnedPlanner (ReactivePlanner ignores it
+            # and uses the scalar clearance_m fallback path instead).
+            dfan = depth_grid_5x9(d, depth_scale, intr)
+
             # Horizontal-only approach: ground-level targets (chair, person, etc.)
             # sit BELOW the drone; if we navigate toward their 3D center the drone
             # descends into them. Pass a flattened target (up=0) so the planner
             # keeps altitude and stops when horizontally close.
             flat_target = ((target_xyz[0], target_xyz[1], 0.0)
                            if target_xyz is not None else None)
-            plan = planner.step(flat_target, clearance, altitude_m=cur_alt, dt=dt)
+            plan = planner.step(flat_target, clearance, altitude_m=cur_alt, dt=dt,
+                                depth_fan=dfan)
 
             # Altitude cap: no climbing above max_alt.
             if cur_alt is not None and cur_alt > args.max_alt and plan.vz > 0:
