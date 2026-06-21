@@ -1,6 +1,17 @@
+import type { Metadata } from "next";
 import { Header, Footer } from "@/components/layout";
 import { JsonLd } from "@/components/json-ld";
 import { SITE, SITE_DEFAULT_DESCRIPTION } from "@/lib/site";
+import { socialMeta } from "@/lib/social-metadata";
+
+const DESC =
+  "Astral builds the autonomy stack for uncrewed systems — open SDK, closed-loop simulation, operator apps, and datasets. NDAA-compliant M1-A quadcopter and M1-G rover available.";
+
+export const metadata: Metadata = {
+  title: "Autonomous Drone Platform & SDK",
+  description: DESC,
+  ...socialMeta("/", "Autonomous Drone Platform & SDK | Astral", DESC),
+};
 import {
   HeroSection,
   VideoDemoSection,
