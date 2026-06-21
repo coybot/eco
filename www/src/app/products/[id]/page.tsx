@@ -65,7 +65,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         "@type": "Offer",
         price: product.price,
         priceCurrency: "USD",
-        availability: "https://schema.org/PreOrder",
+        availability: "https://schema.org/InStock",
         url: productUrl,
       },
     },
@@ -193,7 +193,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   </div>
                   <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                     <Truck className="h-4 w-4" />
-                    <span>Coming Soon</span>
+                    <span>30-Day Returns</span>
                   </div>
                 </div>
               </div>
