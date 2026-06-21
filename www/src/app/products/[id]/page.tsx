@@ -125,17 +125,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
                     className="object-contain"
                   />
                 </div>
-                {/* Thumbnail strip placeholder */}
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="w-20 h-20 bg-background rounded-md border border-border flex items-center justify-center cursor-pointer hover:border-amber-500/50 transition-colors"
-                    >
-                      <span className="text-xs text-muted-foreground">{i}</span>
-                    </div>
-                  ))}
-                </div>
               </div>
 
               {/* Product Info */}
