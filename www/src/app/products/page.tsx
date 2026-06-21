@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { products, formatPrice } from "@/lib/products";
+import { socialMeta } from "@/lib/social-metadata";
+
+const DESC = "Astral autonomous platforms: M1-A quadcopter and M1-G ground rover. NDAA-compliant, GPS-denied capable, Jetson Orin Nano on-device AI.";
 
 export const metadata: Metadata = {
   title: "Products",
-  description:
-    "Explore Astral's autonomous platforms. M1-A quadcopter and M1-G rover for missions in any environment.",
+  description: DESC,
+  ...socialMeta("/products", "Products | Astral", DESC),
 };
 
 export default function ProductsPage() {

@@ -3,11 +3,14 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { socialMeta } from "@/lib/social-metadata";
+
+const DESC = "Run the Astral SDK against ArduPilot SITL or Isaac Sim — test autonomy logic without hardware. Identical SDK API in sim and on real drones.";
 
 export const metadata: Metadata = {
   title: "Run in Simulation",
-  description:
-    "Run the Astral SDK against a simulator — ArduPilot SITL or Isaac Sim — without a drone.",
+  description: DESC,
+  ...socialMeta("/docs/simulation", "Run in Simulation | Astral", DESC),
 };
 
 export default function SimulationPage() {
