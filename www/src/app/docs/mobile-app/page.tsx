@@ -5,6 +5,7 @@ import { ArrowLeft, Smartphone, MessageSquare, Radio, Wifi } from "lucide-react"
 import { Header, Footer } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { socialMeta } from "@/lib/social-metadata";
+import { SITE } from "@/lib/site";
 
 const DESC = "Use the Astral iOS or Android app to onboard, command, and monitor your autonomous drones from anywhere via the cloud.";
 
@@ -282,10 +283,10 @@ export default function MobileAppPage() {
                   </CardContent>
                 </Card>
               </Link>
-              <Link href="/docs/api">
+              <a href={SITE.astralSdk} target="_blank" rel="noopener noreferrer">
                 <Card className="bg-card border-border hover:border-amber-500/50 transition-colors cursor-pointer">
                   <CardHeader>
-                    <CardTitle className="text-base">REST API reference</CardTitle>
+                    <CardTitle className="text-base">SDK & API on GitHub</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground">
@@ -294,7 +295,7 @@ export default function MobileAppPage() {
                     </p>
                   </CardContent>
                 </Card>
-              </Link>
+              </a>
             </div>
           </div>
         </section>
