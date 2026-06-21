@@ -49,23 +49,8 @@ export default function DocsPage() {
                 Documentation
               </h1>
               <p className="text-lg text-muted-foreground mb-8">
-                Everything you need to build with Astral. From getting started
-                to advanced fleet management.
+                SDK guides, simulation setup, and API reference. Full documentation lives on GitHub.
               </p>
-
-              {/* Search placeholder */}
-              <div className="max-w-xl mx-auto">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search documentation..."
-                    className="w-full h-12 px-4 pr-12 rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  <kbd className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-6 items-center gap-1 rounded border border-border bg-muted px-2 font-mono text-xs text-muted-foreground">
-                    ⌘K
-                  </kbd>
-                </div>
-              </div>
             </div>
           </div>
         </section>
