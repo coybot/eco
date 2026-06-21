@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { Header, Footer } from "@/components/layout"
 import {
@@ -12,10 +13,14 @@ import {
   MessageSquare,
   ChevronRight,
 } from "lucide-react"
+import { socialMeta } from "@/lib/social-metadata"
 
-export const metadata = {
-  title: "Astral Operator — Web, iOS & Android | Astral",
-  description: "Access Astral Operator on your preferred platform — web, iOS, or Android. Manage your drone fleet from anywhere.",
+const DESC = "Access Astral Operator on web, iOS, or Android. Real-time drone telemetry, mission control, and fleet management from any device."
+
+export const metadata: Metadata = {
+  title: "Astral Operator — Web, iOS & Android",
+  description: DESC,
+  ...socialMeta("/apps", "Astral Operator — Web, iOS & Android | Astral", DESC),
 }
 
 export default function AppsPage() {

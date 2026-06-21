@@ -5,11 +5,14 @@ import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { products, formatPrice } from "@/lib/products";
+import { socialMeta } from "@/lib/social-metadata";
+
+const DESC = "Compare the M1-A autonomous quadcopter and M1-G ground rover side-by-side — compute, sensors, runtime, payload, and use cases.";
 
 export const metadata: Metadata = {
   title: "Compare Platforms",
-  description:
-    "Compare Astral autonomous platforms side-by-side. M1-A quadcopter vs M1-G rover.",
+  description: DESC,
+  ...socialMeta("/compare", "Compare Platforms | Astral", DESC),
 };
 
 // Comparison data structure

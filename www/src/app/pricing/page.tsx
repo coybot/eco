@@ -6,11 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { JsonLd } from "@/components/json-ld";
+import { socialMeta } from "@/lib/social-metadata";
+
+const DESC = "Transparent pricing for Astral hardware and software. M1-A quadcopter from $9,000, M1-G rover from $4,000. Free SDK tier, Pro at $49/mo, Enterprise custom.";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description:
-    "Transparent pricing for Astral drones and services. Hardware, software, and enterprise solutions.",
+  description: DESC,
+  ...socialMeta("/pricing", "Pricing | Astral", DESC),
 };
 
 const hardwareProducts = [

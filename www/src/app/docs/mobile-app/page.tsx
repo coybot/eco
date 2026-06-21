@@ -4,11 +4,14 @@ import Link from "next/link";
 import { ArrowLeft, Smartphone, MessageSquare, Radio, Wifi } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { socialMeta } from "@/lib/social-metadata";
+
+const DESC = "Use the Astral iOS or Android app to onboard, command, and monitor your autonomous drones from anywhere via the cloud.";
 
 export const metadata: Metadata = {
-  title: "Mobile Apps — Astral Drone",
-  description:
-    "Use the Astral iOS or Android app to onboard, command, and monitor your drones from anywhere via the cloud.",
+  title: "Mobile Apps",
+  description: DESC,
+  ...socialMeta("/docs/mobile-app", "Mobile Apps | Astral", DESC),
 };
 
 const steps = [
