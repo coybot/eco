@@ -32,7 +32,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     slug: "yonder",
     title:
       "Yonder: A 4.65M-Frame Drone Navigation Dataset and the Cross-Simulator Generalization Gap",
-    venue: "NeurIPS 2026 Datasets & Benchmarks track (submission)",
+    venue: "Technical report",
     dateIso: "2026-05-01",
     schemaType: "Dataset",
     summary:
@@ -46,7 +46,7 @@ export const researchPapers: ResearchPaperMeta[] = [
       { label: "Frames", value: "4.65M" },
       { label: "Sensing", value: "stereo RGB, depth, IR, LiDAR-style, segmentation, pose" },
       { label: "License", value: "CC-BY-NC-4.0" },
-      { label: "Venue", value: "NeurIPS 2026 D&B (submission)" },
+      { label: "Host", value: "Hugging Face" },
     ],
     companionPostSlug: "yonder-drone-navigation-dataset",
     externalLinks: [
