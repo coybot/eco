@@ -1,16 +1,10 @@
 import { Metadata } from "next";
 import Link from "next/link";
-import {
-  Rocket,
-  Code,
-  Terminal,
-  BookOpen,
-  Cpu,
-  ArrowRight,
-} from "lucide-react";
+import { FlaskConical, Smartphone, Github, ArrowRight } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { SITE } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Documentation",
@@ -20,67 +14,25 @@ export const metadata: Metadata = {
 
 const quickLinks = [
   {
-    title: "Quickstart",
-    description: "Get your drone flying in under 10 minutes",
-    icon: Rocket,
-    href: "/docs/quickstart",
+    title: "Run in Simulation",
+    description: "Test your drone logic in ArduPilot SITL or Isaac Sim",
+    icon: FlaskConical,
+    href: "/docs/simulation",
+    external: false,
   },
   {
-    title: "SDK Overview",
-    description: "Build custom applications with our SDK",
-    icon: Code,
-    href: "/docs/sdk",
+    title: "Mobile App",
+    description: "iOS operator app for real-time control and monitoring",
+    icon: Smartphone,
+    href: "/docs/mobile-app",
+    external: false,
   },
   {
-    title: "API Reference",
-    description: "Complete REST API documentation",
-    icon: Terminal,
-    href: "/docs/api",
-  },
-  {
-    title: "Hardware Setup",
-    description: "Unbox and configure your drone",
-    icon: Cpu,
-    href: "/docs/hardware",
-  },
-];
-
-const sections = [
-  {
-    title: "Getting Started",
-    items: [
-      { name: "Introduction", href: "/docs/introduction" },
-      { name: "Quickstart Guide", href: "/docs/quickstart" },
-      { name: "Installation", href: "/docs/installation" },
-    ],
-  },
-  {
-    title: "Hardware",
-    items: [
-      { name: "M1-A Quadcopter", href: "/docs/hardware/m1a" },
-      { name: "Setup Guide", href: "/docs/hardware/setup" },
-      { name: "Maintenance", href: "/docs/hardware/maintenance" },
-    ],
-  },
-  {
-    title: "SDK",
-    items: [
-      { name: "Overview", href: "/docs/sdk/overview" },
-      { name: "Authentication", href: "/docs/sdk/authentication" },
-      { name: "Missions", href: "/docs/sdk/missions" },
-      { name: "Telemetry", href: "/docs/sdk/telemetry" },
-      { name: "Fleet Management", href: "/docs/sdk/fleet" },
-    ],
-  },
-  {
-    title: "Mission Control",
-    items: [
-      { name: "Overview", href: "/docs/mission-control" },
-      { name: "Mission Planning", href: "/docs/mission-control/planning" },
-      { name: "Simulation", href: "/docs/simulation" },
-      { name: "Mobile Apps", href: "/docs/mobile-app" },
-      { name: "Deployment", href: "/docs/mission-control/deployment" },
-    ],
+    title: "SDK & API on GitHub",
+    description: "Full source, quickstart, and API reference",
+    icon: Github,
+    href: SITE.astralSdk,
+    external: true,
   },
 ];
 
@@ -121,9 +73,9 @@ export default function DocsPage() {
         {/* Quick Links */}
         <section className="py-12 bg-card">
           <div className="container mx-auto px-4">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-              {quickLinks.map((link) => (
-                <Link key={link.title} href={link.href}>
+            <div className="grid sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
+              {quickLinks.map((link) => {
+                const inner = (
                   <Card className="h-full bg-background border-border hover:border-amber-500/50 transition-colors cursor-pointer group">
                     <CardContent className="p-6">
                       <div className="inline-flex p-3 rounded-lg bg-amber-500/10 mb-4">
@@ -137,38 +89,15 @@ export default function DocsPage() {
                       </p>
                     </CardContent>
                   </Card>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Documentation Sections */}
-        <section className="py-16 bg-background">
-          <div className="container mx-auto px-4">
-            <div className="max-w-6xl mx-auto">
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                {sections.map((section) => (
-                  <div key={section.title}>
-                    <h2 className="font-semibold text-lg mb-4">
-                      {section.title}
-                    </h2>
-                    <ul className="space-y-2">
-                      {section.items.map((item) => (
-                        <li key={item.name}>
-                          <Link
-                            href={item.href}
-                            className="text-muted-foreground hover:text-foreground transition-colors text-sm flex items-center group"
-                          >
-                            <BookOpen className="h-3 w-3 mr-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            {item.name}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+                );
+                return link.external ? (
+                  <a key={link.title} href={link.href} target="_blank" rel="noopener noreferrer">
+                    {inner}
+                  </a>
+                ) : (
+                  <Link key={link.title} href={link.href}>{inner}</Link>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -210,12 +139,12 @@ uv run python main.py`}
               </div>
 
               <div className="text-center mt-8">
-                <Link href="/docs/quickstart">
+                <a href={SITE.astralSdk} target="_blank" rel="noopener noreferrer">
                   <Button className="glow">
-                    Read the Quickstart
+                    View docs on GitHub
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
-                </Link>
+                </a>
               </div>
             </div>
           </div>
