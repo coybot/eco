@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
+import { SITE } from "@/lib/site";
 
-const footerLinks = {
+const footerLinks: Record<string, { name: string; href: string; external?: boolean }[]> = {
   Products: [
     { name: "M1-A Quadcopter", href: "/products/m1a" },
     { name: "M1-G Ground Rover", href: "/products/m1g" },
@@ -11,8 +12,10 @@ const footerLinks = {
   Developers: [
     { name: "Documentation", href: "/docs" },
     { name: "Run in Simulation", href: "/docs/simulation" },
+    { name: "Yonder Dataset", href: "/datasets/yonder" },
     { name: "Research", href: "/research" },
     { name: "Blog", href: "/blog" },
+    { name: "GitHub", href: SITE.githubOrg, external: true },
   ],
   Legal: [
     { name: "Privacy Policy", href: "/privacy" },
@@ -47,12 +50,23 @@ export function Footer() {
               <ul className="space-y-3">
                 {links.map((link) => (
                   <li key={link.name}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {link.name}
-                    </Link>
+                    {link.external ? (
+                      <a
+                        href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {link.name}
+                      </a>
+                    ) : (
+                      <Link
+                        href={link.href}
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {link.name}
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>

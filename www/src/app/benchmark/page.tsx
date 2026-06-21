@@ -27,7 +27,7 @@ const jsonLd = {
   measurementTechnique: "Closed-loop Isaac Sim flight trials with collision and position-error scoring",
   variableMeasured: "Mean position error (m), collision rate (%), directional accuracy, step-1 prediction error",
   isAccessibleForFree: true,
-  datePublished: "2026-05-02",
+  datePublished: "2025-03-07",
   keywords: [
     "drone navigation",
     "vision-language models",
@@ -582,11 +582,46 @@ export default function BenchmarkPage() {
           </div>
         </section>
 
+        {/* Cite */}
+        <section className="py-16 bg-background border-b border-border">
+          <div className="container mx-auto px-4 max-w-4xl">
+            <h2 className="text-2xl font-bold mb-2">Cite this work</h2>
+            <p className="text-muted-foreground text-sm mb-8">
+              If you use the benchmark or the Yonder dataset in your research, please cite:
+            </p>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Benchmark</h3>
+                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@misc{astral2025benchmark,
+  title  = {Closing the Metric Gap: A Closed-Loop Benchmark for
+             Vision-Language Drone Navigation},
+  author = {Astral},
+  year   = {2025},
+  url    = {https://astral.us/benchmark},
+  note   = {25 VLMs, 10{,}200 closed-loop Isaac Sim flight trials}
+}`}</pre>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Yonder dataset</h3>
+                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@dataset{astral2026yonder,
+  title     = {Yonder: A 4.65M-Frame Drone-Perspective Indoor
+               Navigation Dataset},
+  author    = {Astral},
+  year      = {2026},
+  publisher = {Hugging Face},
+  url       = {https://huggingface.co/datasets/astralhf/yonder},
+  license   = {CC-BY-NC-4.0}
+}`}</pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Related */}
         <section className="py-12 bg-background">
           <div className="container mx-auto px-4 max-w-4xl">
             <h2 className="text-lg font-semibold mb-5">Related</h2>
-            <div className="grid sm:grid-cols-3 gap-4 text-sm">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
               <Link href="/blog/why-vlm-drones-cant-beat-hovering" className="p-4 rounded-lg border border-border hover:border-amber-500/40 transition-colors">
                 <div className="font-medium mb-1">Full results write-up</div>
                 <div className="text-muted-foreground">Why every VLM lost to hovering and the architecture that fixed it</div>
@@ -599,6 +634,10 @@ export default function BenchmarkPage() {
                 <div className="font-medium mb-1">18-iteration engineering log</div>
                 <div className="text-muted-foreground">How the Track A architecture was built, iteration by iteration</div>
               </Link>
+              <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer" className="p-4 rounded-lg border border-border hover:border-amber-500/40 transition-colors">
+                <div className="font-medium mb-1">Code &amp; SDK</div>
+                <div className="text-muted-foreground">Benchmark runner, SDK, and simulation code on GitHub</div>
+              </a>
             </div>
           </div>
         </section>
