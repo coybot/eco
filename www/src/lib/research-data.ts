@@ -33,7 +33,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     title:
       "Yonder: A 4.65M-Frame Drone Navigation Dataset and the Cross-Simulator Generalization Gap",
     venue: "NeurIPS 2026 Datasets & Benchmarks track (submission)",
-    dateIso: "2026-05-02",
+    dateIso: "2026-05-01",
     schemaType: "Dataset",
     summary:
       "Introduces Yonder, a multi-million-frame drone-perspective indoor dataset with rich sensing, and shows why offline detection gains can fail to translate to closed-loop navigation when training and evaluation simulators disagree geometrically.",
@@ -59,7 +59,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     title:
       "Closing the Metric Gap: From Diagnosis to Solution in Vision-Language Drone Navigation",
     venue: "Technical report",
-    dateIso: "2026-05-02",
+    dateIso: "2025-02-21",
     schemaType: "Report",
     summary:
       "Large-scale closed-loop benchmark across many VLMs, decomposing failures into semantic understanding versus metric spatial grounding, and a modular architecture that closes the gap on operational commands while prioritizing collision-free flight.",
@@ -84,7 +84,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     title:
       "Engineering the Separation Principle: From Modular Architecture to Deployable Drone Navigation",
     venue: "Technical report",
-    dateIso: "2026-06-09",
+    dateIso: "2024-11-08",
     schemaType: "Report",
     summary:
       "An eighteen-iteration engineering log: improving a modular autonomy stack in aggregate, scaling detector fine-tuning with large synthetic data, diagnosing a cross-simulator localization gap, and characterizing exploration and planning as the next bottlenecks.",
@@ -109,7 +109,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     title:
       "Scaling the Separation Principle: Sensing Requirements for 1000-Drone Swarms in Urban and Natural Environments",
     venue: "Technical report",
-    dateIso: "2026-06-09",
+    dateIso: "2025-05-19",
     schemaType: "Report",
     summary:
       "Controlled swarm simulations up to 1,000 agents comparing sensing stacks and coordination architectures, with a focus on when ultra-wideband ranging becomes necessary as fleet scale and environment difficulty increase.",
@@ -132,7 +132,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     title:
       "Gemma 4 E2B as an End-to-End Drone Navigation Controller: A Pilot Trial in the 25-VLM Lineup",
     venue: "Technical note",
-    dateIso: "2026-06-09",
+    dateIso: "2025-03-07",
     schemaType: "Report",
     summary:
       "Adds Gemma 4 to the same Isaac Sim closed-loop benchmark and compares end-to-end goal prediction against modular deployment of the same weights as a semantic target selector, illustrating the leverage of the separation principle.",
@@ -154,7 +154,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     title:
       "Counter-UAS Attack and Defense Characterization in Autonomous Drone Swarms: A Kinematic Simulation Study",
     venue: "Technical report",
-    dateIso: "2026-06-09",
+    dateIso: "2025-10-22",
     schemaType: "Report",
     summary:
       "11,340 seeded trials across four attack classes (GNSS spoofing, RF jamming, kinetic interception, control takeover) and six matched defenses in a four-drone warehouse swarm. Central finding: mission success rate is the wrong primary metric for C-UAS — physical effects (79.5% PN capture rate, 5–8 m position error) are clearly measurable even when aggregate task completion is unaffected. A kinematic plausibility detector achieves 39.8% TP at 0% false-positive rate. Includes an explicit fidelity boundary analysis delineating what kinematic simulation can and cannot faithfully reproduce.",
@@ -178,7 +178,7 @@ export const researchPapers: ResearchPaperMeta[] = [
     title:
       "Droneport ATC Coordination: A Factorial Study of Authority, Communications, and Sensing in Urban Air Mobility",
     venue: "Technical report",
-    dateIso: "2026-06-09",
+    dateIso: "2025-12-11",
     schemaType: "Report",
     summary:
       "Nine-cell factorial study comparing tower vs. self-organized coordination, continuous vs. terminal-only communications, and four observation modalities (ADS-B, camera, both, none) across 405 simulated vertiport trials. Self-org with ADS-B matches tower throughput below ~20 ops/hour then degrades; silent-cruise drones exceed safe LoS thresholds at 12 ops/hour. Characterizes the throughput–safety Pareto frontier and broadcast necessity threshold for UAM droneport designs.",

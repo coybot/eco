@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu } from "lucide-react";
+import { Menu, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { SITE } from "@/lib/site";
 
 // Flat, crawlable nav. Every entry is a real <a href> to an index page that
 // exists and is rendered in the server HTML — no JS-only dropdowns. Sub-pages
@@ -48,7 +49,12 @@ export function Header() {
         </nav>
 
         {/* Desktop Actions */}
-        <div className="hidden lg:flex items-center space-x-4">
+        <div className="hidden lg:flex items-center space-x-2">
+          <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer">
+            <Button variant="ghost" size="icon" aria-label="GitHub">
+              <Github className="h-5 w-5" />
+            </Button>
+          </a>
           <Link href="/docs">
             <Button>Get Started</Button>
           </Link>
@@ -78,6 +84,12 @@ export function Header() {
                   <Link href="/docs" onClick={() => setMobileOpen(false)}>
                     <Button className="w-full">Get Started</Button>
                   </Link>
+                  <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)}>
+                    <Button variant="outline" className="w-full">
+                      <Github className="mr-2 h-4 w-4" />
+                      GitHub
+                    </Button>
+                  </a>
                 </div>
               </nav>
             </SheetContent>
