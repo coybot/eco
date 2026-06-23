@@ -90,3 +90,44 @@ If a fresh clone shows `Yusuf Saib <<work-email>>` in `git log -1`, the override
 4. `AWS_PROFILE=astral npx sst deploy --stage prod`.
 5. Verify the change at https://astral.us/<route> with `curl -I` or a browser. Static assets at https://astral.us/<path>.
 6. If something looks wrong, the page is cached at the CloudFront edge — wait a minute or hard-refresh.
+
+## Local demo mode (offline)
+
+The site supports a fully offline mode controlled by env vars — no code changes needed.
+
+| | Local dev | AWS prod |
+|---|---|---|
+| Video | `/media/fleet-demo.mp4` (local file) | YouTube embed |
+| AI planner | Ollama `llama3.2` at `localhost:11434` | Bedrock Claude Sonnet 4.6 |
+| Rate limiting | Disabled (no `RATE_LIMIT_TABLE`) | DynamoDB 100 req/IP/hr |
+
+### One-time setup (do while online)
+
+```bash
+# 1. Copy env template
+cp .env.local.example .env.local
+
+# 2. Install Ollama and pull the model
+brew install ollama
+ollama pull llama3.2
+
+# 3. Place the demo video (too large for git — get from iCloud / team drive)
+ffmpeg -i "/path/to/Fleet Demo.mp4" -c copy -movflags +faststart \
+  public/media/fleet-demo.mp4
+```
+
+### Run offline
+
+```bash
+ollama serve &
+npm run dev
+# → http://localhost:3000, fully offline
+```
+
+### Why `NEXT_PUBLIC_OFFLINE_MODE` works this way
+
+`NEXT_PUBLIC_*` vars are baked into the client bundle at `next build` time. `npm run dev` reads `.env.local` at startup, so the offline video/Ollama path is active locally. `sst deploy` runs on a machine without `.env.local`, so the YouTube/Bedrock path is active in production. No conditional build flags needed.
+
+### `fleet-demo.mp4` is gitignored
+
+The file is 169 MB — over GitHub's 100 MB per-file limit. It is listed in `.gitignore` and must be added manually per the steps above. If the video is missing, the offline video section will show a blank box (graceful degradation — no crash).
