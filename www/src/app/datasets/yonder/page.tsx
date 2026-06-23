@@ -48,7 +48,8 @@ export default function YonderDatasetPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <JsonLd data={[datasetLd, webPageLd]} />
+      <JsonLd data={datasetLd} />
+      <JsonLd data={webPageLd} />
       <Header />
       <main className="flex-1">
         <section className="py-16 bg-gradient-to-b from-background to-card">

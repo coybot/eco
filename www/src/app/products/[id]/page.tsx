@@ -93,7 +93,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <JsonLd data={jsonLd} />
+      {jsonLd.map((item, i) => <JsonLd key={i} data={item} />)}
       <Header />
       <main className="flex-1">
         {/* Breadcrumb */}

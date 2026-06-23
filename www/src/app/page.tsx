@@ -45,7 +45,8 @@ const websiteJsonLd = {
 export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col">
-      <JsonLd data={[organizationJsonLd, websiteJsonLd]} />
+      <JsonLd data={organizationJsonLd} />
+      <JsonLd data={websiteJsonLd} />
       <Header />
       <main className="flex-1">
         <HeroSection />
