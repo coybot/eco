@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_BASE_URL ?? "https://astral.us"
   ),
   title: {
-    default: "Astral - The Autonomous Drone Fleet Platform",
+    default: "Astral - Open Autonomy Stack for Drones & Rovers",
     template: "%s | Astral",
   },
   description:
