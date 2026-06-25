@@ -64,9 +64,40 @@ export function HeroSection() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white"
           >
-            The Autonomous Drone Platform.
+            Most vision-language models can't out-fly a hovering drone.
           </motion.h1>
 
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="mt-6 text-lg sm:text-xl text-white/70 max-w-2xl mx-auto"
+          >
+            We ran 10,200 closed-loop flight trials across 25 VLMs. The best
+            end-to-end model beat a stationary hover by just 0.8 m; most were
+            worse than doing nothing. Astral's modular stack reached 1.04 m —
+            and the full benchmark, dataset, and code are open.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="mt-8 flex flex-wrap gap-4 justify-center"
+          >
+            <a
+              href="/benchmark"
+              className="inline-flex items-center px-6 py-3 rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 transition-colors"
+            >
+              See the benchmark
+            </a>
+            <a
+              href="/docs"
+              className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 text-white font-semibold hover:bg-white/10 transition-colors"
+            >
+              Start building
+            </a>
+          </motion.div>
         </div>
       </div>
     </section>
