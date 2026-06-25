@@ -331,7 +331,7 @@ export default function EnterprisePage() {
                         0% collision rate, verified.
                       </h3>
                       <p className="text-sm text-muted-foreground mb-4">
-                        25 VLMs, 10,200 closed-loop trials. Every end-to-end model lost to a hovering baseline. Methodology is public.
+                        25 VLMs, 10,200 closed-loop trials. Most end-to-end models couldn't beat a hovering baseline. Methodology is public.
                       </p>
                       <Button variant="outline" className="w-full" asChild>
                         <Link href="/benchmark">View Benchmark</Link>

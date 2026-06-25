@@ -50,10 +50,10 @@ export function BenchmarkTeaserSection() {
                   Open Benchmark · 25 VLMs · 10,200 trials
                 </p>
                 <h2 className="text-3xl sm:text-4xl font-bold leading-tight">
-                  Every end-to-end model lost to a hovering drone.
+                  Most end-to-end models couldn't beat a hovering drone.
                 </h2>
                 <p className="mt-4 text-lg text-muted-foreground">
-                  We tested every major vision-language model in closed-loop flight. The result is why we build a modular stack instead — and why we publish the methodology so you can beat us.
+                  We tested 25 vision-language models in closed-loop flight. Most couldn't beat a stationary hover — and the best only beat it by 0.8 m. It's why we build a modular stack, and why we publish the full methodology and dataset.
                 </p>
               </div>
               <Button asChild size="lg" className="glow w-fit">

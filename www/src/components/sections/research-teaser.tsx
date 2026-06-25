@@ -23,7 +23,7 @@ export function ResearchTeaserSection() {
             <h2 className="text-3xl sm:text-4xl font-bold">Research-grade autonomy</h2>
             <p className="text-lg text-muted-foreground">
               We benchmarked 25 vision-language models across 10,200 closed-loop
-              flight trials — every one lost to a drone that just hovered. That
+              flight trials — most couldn't beat a drone that just hovered, and the best only beat it by 0.8 m. That
               result is why we build the way we do: we publish on the metric gap in
               vision-language navigation, modular architectures that separate
               semantics from geometry, swarm sensing requirements at scale, and
