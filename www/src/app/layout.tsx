@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     template: "%s | Astral",
   },
   description:
-    "Astral builds the autonomy stack for uncrewed systems. Open SDK, simulation, operator apps, and datasets — integrate your own platform or work with our NDAA-compliant M1-A quadcopter and M1-G rover.",
+    "Astral builds the open autonomy stack for uncrewed systems. In 10,200 closed-loop trials, most vision-language models couldn't beat a hovering drone — our modular stack reached 1.04 m. Open SDK, simulation, datasets, and NDAA-compliant hardware.",
   keywords: [
     "autonomous drones",
     "drone autonomy stack",

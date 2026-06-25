@@ -8,7 +8,7 @@ import { SITE } from "@/lib/site";
 import { socialMeta } from "@/lib/social-metadata";
 
 const DESCRIPTION =
-  "The closed-loop AI drone navigation benchmark. 25 VLMs, 10,200 flight trials, one surprising result: every end-to-end model lost to a hovering baseline. Submit your own architecture — we want to be beaten.";
+  "The closed-loop AI drone navigation benchmark: 25 VLMs, 10,200 Isaac Sim flight trials. Most end-to-end models couldn't beat a hovering baseline. Open methodology, dataset, and code — reproduce or extend it.";
 
 export const metadata: Metadata = {
   title: "Drone AI Benchmark",
@@ -170,14 +170,15 @@ export default function BenchmarkPage() {
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mb-4">
               We ran 10,200 closed-loop flight trials across 25 vision-language models
-              in Isaac Sim. Every end-to-end model lost to a drone that just hovered.
+              in Isaac Sim. Most end-to-end models couldn't beat a drone that just hovered —
+              and the best only beat it by 0.8 m.
               We published the results, the methodology, the dataset, and the models.
             </p>
             <p className="text-lg text-muted-foreground max-w-2xl mb-8">
-              <strong className="text-foreground">We want to be beaten.</strong>{" "}
-              Submit your architecture. If you outperform our modular stack,
-              we will put your result at the top of this table and write about it.
-              The goal is an honest leaderboard for the whole community — not a trophy case.
+              <strong className="text-foreground">An open, reproducible standard for closed-loop drone navigation.</strong>{" "}
+              The methodology, the Yonder dataset, and the scoring code are all public.
+              Reproduce our numbers, extend the task tiers, or run your own architecture
+              through the same harness. We add verified results to the table as they come in.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild size="lg">
@@ -529,12 +530,12 @@ export default function BenchmarkPage() {
                 <Trophy className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold mb-2">Submit your result</h2>
+                <h2 className="text-2xl font-bold mb-2">Submit a result</h2>
                 <p className="text-muted-foreground">
-                  We genuinely want to be beaten. If your architecture outperforms ours, we will put
-                  your result at the top of the table, link to your paper or repo, and write about
-                  what you did differently. The point of this benchmark is to find out what actually
-                  works on closed-loop drone navigation — not to defend our own numbers.
+                  Run your architecture through the same harness and send us the results file.
+                  We verify submissions against the scoring code and add them to the table above,
+                  credited to your org or team. Negative results are welcome — if you tried
+                  something and it failed, that is as useful as a win.
                 </p>
               </div>
             </div>
@@ -555,7 +556,6 @@ export default function BenchmarkPage() {
                 <ul className="list-disc pl-5 space-y-2 text-sm text-muted-foreground">
                   <li>Verify the results file is consistent with the reported numbers</li>
                   <li>Add your result to the table above, credited to your org/team</li>
-                  <li>If you beat our best result, we write a post about it</li>
                   <li>We do not gatekeep negative results — if you tried something and it failed, that is as useful as a win</li>
                 </ul>
               </div>

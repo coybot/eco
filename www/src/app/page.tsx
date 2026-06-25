@@ -5,7 +5,7 @@ import { SITE, SITE_DEFAULT_DESCRIPTION } from "@/lib/site";
 import { socialMeta } from "@/lib/social-metadata";
 
 const DESC =
-  "Astral builds the autonomy stack for uncrewed systems — open SDK, closed-loop simulation, operator apps, and datasets. NDAA-compliant M1-A quadcopter and M1-G rover available.";
+  "Astral builds the open autonomy stack for uncrewed systems. In 10,200 closed-loop trials, most vision-language models couldn't beat a hovering drone — our modular stack reached 1.04 m. Open SDK, simulation, datasets, and NDAA-compliant hardware.";
 
 export const metadata: Metadata = {
   title: "Autonomous Drone Platform & SDK",
