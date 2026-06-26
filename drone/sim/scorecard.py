@@ -320,7 +320,11 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
                 _base = rt.controller
                 def _mixed(agent, obs, _oc=onnx_ctrl, _bc=_base):
                     if agent.vclass.kinematics is Kinematics.UNICYCLE_2D:
-                        return _oc(agent, obs)
+                        action = np.asarray(_oc(agent, obs), np.float32).copy()
+                        # Apply only blind-slow — the ONNX handles deconfliction itself.
+                        if not getattr(agent, "sensor_ok", True):
+                            action[0] *= 0.08
+                        return action
                     return _bc(agent, obs)
                 runner.controller = _mixed
             else:

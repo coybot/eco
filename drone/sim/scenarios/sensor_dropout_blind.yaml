@@ -1,14 +1,21 @@
 # Family: agent/sensor failure
-# An agent's obstacle sensor fails (reports all-clear) while obstacles remain.
-# Tests whether the team compensates (slow down / rely on teammates' sightings).
+# A rover's obstacle sensor fails (reports all-clear) while a box sits in its path.
+# The sighted baseline can steer around the box; the blind rover hits it.
+# Quads fly at 5.5 m — above all obstacles — so they complete cleanly.
 name: sensor_dropout_blind
 environment: warehouse
-team: [quad x2, rover x1]
+team:
+  - {id: quad_0, type: quad, pos: [-12, -2, 5.5], goal: [12, -2, 5.5]}
+  - {id: quad_1, type: quad, pos: [-12,  2, 5.5], goal: [12,  2, 5.5]}
+  - {id: rover_0, type: rover, pos: [-12, 0, 0], goal: [12, 0, 0]}
 duration_s: 120
 obstacles:
-  - [3, 0, 1.5, 0.8, 2.0, 3.0]
-  - [6, 2, 1.5, 0.8, 2.0, 3.0]
-  - [6, -2, 1.5, 0.8, 2.0, 3.0]
+  # Small box directly in rover's forward path — sighted rover steers around it,
+  # blind rover hits it.
+  - [4, 0, 0.75, 0.5, 0.5, 0.75]
+  # Two flanking boxes forcing the sighted rover to commit to a side
+  - [7, -1.5, 0.75, 0.5, 0.5, 0.75]
+  - [7,  1.5, 0.75, 0.5, 0.5, 0.75]
 mission:
   type: goto
 injects:
