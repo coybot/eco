@@ -71,7 +71,7 @@ OUTPUT ONLY this exact JSON schema, no markdown, no explanation:
     { "id": "qc-01", "type": "quadcopter", "label": "QC-01" }
   ],
   "waypoints": [
-    { "vehicleId": "qc-01", "x": 0, "y": ${quadY}, "z": 0, "action": "scan", "duration": 3, "statusLabel": "scanning" }
+    { "vehicleId": "qc-01", "x": 0, "y": ${quadY}, "z": 0, "action": "scan", "duration": 12, "statusLabel": "scanning" }
   ],
   "targetType": "<singular noun for what is found/counted, e.g. \"car\" not \"cars\">",
   "targetCount": 0,
@@ -111,9 +111,9 @@ function buildDefaultPlan(env: EnvironmentType, nQuads: number, nRovers: number)
     const spread = (i - vehicles.length / 2) * 4;
     const y = v.type === 'quadcopter' ? cfg.quadY : cfg.roverY;
     return [
-      { vehicleId: v.id, x: xMid + spread, y, z: zMid + 4, action: 'move' as const, duration: 2, statusLabel: 'deploying' },
-      { vehicleId: v.id, x: xMid + spread, y, z: zMid, action: 'scan' as const, duration: 4, statusLabel: 'scanning' },
-      { vehicleId: v.id, x: xMid + spread, y, z: zMid - 4, action: 'report' as const, duration: 2, statusLabel: 'reporting' },
+      { vehicleId: v.id, x: xMid + spread, y, z: zMid + 4, action: 'move' as const, duration: 10, statusLabel: 'deploying' },
+      { vehicleId: v.id, x: xMid + spread, y, z: zMid, action: 'scan' as const, duration: 14, statusLabel: 'scanning' },
+      { vehicleId: v.id, x: xMid + spread, y, z: zMid - 4, action: 'report' as const, duration: 7, statusLabel: 'reporting' },
     ];
   });
 
@@ -153,7 +153,10 @@ async function planWithOllama(
   });
   const data = await res.json();
   const rawText: string = data?.message?.content ?? '';
-  return JSON.parse(stripMarkdownFences(rawText));
+  const plan = JSON.parse(stripMarkdownFences(rawText));
+  // Ollama sometimes ignores the schema and writes a different environment value — clamp it.
+  plan.environment = env;
+  return plan;
 }
 
 export async function POST(req: NextRequest) {

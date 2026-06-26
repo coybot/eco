@@ -351,7 +351,11 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
             {
                 "name": b.scenario,
                 "baseline_interventions": b.interventions,
+                "baseline_breakdown": b.intervention_breakdown,
+                "baseline_complete": b.mission_complete,
                 "policy_interventions": p.interventions,
+                "policy_breakdown": p.intervention_breakdown,
+                "policy_complete": p.mission_complete,
                 "delta": p.interventions - b.interventions,
             }
             for b, p in zip(baseline_scores, policy_scores)
