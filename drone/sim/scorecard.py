@@ -325,12 +325,18 @@ def _load_quad_onnx_controller(onnx_path: str):
         vf = c * float(wv[0]) - s * float(wv[1])
         vl = s * float(wv[0]) + c * float(wv[1])
         vu = float(wv[2])
-        depth = np.asarray(obs_obj.scan, dtype=np.float32)
-        if len(depth) != 45:
-            depth = np.full(45, 10.0, dtype=np.float32)
+        depth45 = np.asarray(obs_obj.scan, dtype=np.float32)
+        if len(depth45) != 45:
+            depth45 = np.full(45, 10.0, dtype=np.float32)
         raw = np.array([tf, tl, tu, dist, vf, vl, vu, yaw_err, 0.0,
                         float(agent.pos[2]), 0.0], dtype=np.float32)
-        state = np.concatenate([raw, depth])[None, None, :]   # (1,1,56)
+        expected_dim = int(in0.shape[-1]) if in0.shape[-1] else 56
+        if expected_dim == 83:
+            # Unified hetero policy: pad depth45 to 72 with zeros
+            sensor = np.concatenate([depth45, np.zeros(27, dtype=np.float32)])
+        else:
+            sensor = depth45
+        state = np.concatenate([raw, sensor])[None, None, :]   # (1,1,expected_dim)
         action, h_out = sess.run(None, {in0.name: state, in1.name: states[aid]})
         states[aid] = h_out
         spd = agent.vclass.max_speed_mps
