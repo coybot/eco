@@ -187,9 +187,9 @@ class TeamRuntime:
         sensor_ok = getattr(agent, "sensor_ok", True)
         if not sensor_ok:
             b.sensor_blind_ticks += 1
-            if b.sensor_blind_ticks < int(3.0 / max(self.world.dt, 1e-3)):
-                return np.zeros_like(np.asarray(action, np.float32))
-            scale *= 0.25
+            # Slow to 0.15x when blind to reduce obstacle collision rate.
+            # Don't full-hold — mission timeout counts as intervention too.
+            scale *= 0.15
         else:
             b.sensor_blind_ticks = 0
 
@@ -216,10 +216,12 @@ class TeamRuntime:
         elif b.convoy_hold_ticks >= self._CONVOY_TIMEOUT:
             b.convoy_hold_ticks = 0
 
-        # ---- jammed-isolated: slow down to avoid blind collisions ----
-        reachable = self.comms.reachable(self.world, agent.id)
-        if len(reachable) == 0:
-            scale *= 0.5   # half speed when comms cut — reduce blind nav collisions
+        # ---- jammed-isolated: slow down to reduce corridor wall hits ----
+        # Only apply when there's an active jamming zone — not when merely out-of-range.
+        if self.comms.jamming:
+            reachable = self.comms.reachable(self.world, agent.id)
+            if len(reachable) == 0:
+                scale *= 0.3   # 30% speed when jammed — safer in tight passages
 
         # ---- yield with timeout (non-convoy: wide-space deconfliction) ----
         # Only applies when NOT already in convoy hold, preventing double-application.
