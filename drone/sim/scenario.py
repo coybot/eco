@@ -345,7 +345,7 @@ def _h_tight_deconfliction(runner, world, inj):
     a higher altitude, staggered laterally so they don't pile up at one point.
     """
     pt = np.asarray(_xy3(inj.get("at_point", [0, 0, 2])), np.float32)
-    overfly_z = float(inj.get("overfly_z", 4.5))
+    overfly_z = float(inj.get("overfly_z", 5.5))
     quad_agents = [a for a in world.team_agents() if not a.vclass.planar]
     rover_agents = [a for a in world.team_agents() if a.vclass.planar]
     # rovers staggered through the gap (1m apart) to avoid goal collision

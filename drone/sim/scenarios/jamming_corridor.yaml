@@ -1,13 +1,18 @@
 # Family: comms/GPS degradation
-# A localized jamming zone sits over the route; links through it are nulled, but
-# agents outside keep talking. Tests partial-comms operation, not full blackout.
+# Two walls create a 6m wide corridor at y=0; agents must squeeze through while
+# a jamming zone nulls comms for anyone inside the bottle-neck. Tests graceful
+# comms degradation, not full blackout — agents outside the zone keep talking.
 name: jamming_corridor
 environment: warehouse
-team: [quad x2, rover x1]
+team:
+  - {id: quad_0, type: quad, pos: [-12, -1, 5.5], goal: [12, -1, 5.5]}
+  - {id: quad_1, type: quad, pos: [-12,  1, 5.5], goal: [12,  1, 5.5]}
+  - {id: rover_0, type: rover, pos: [-12, 0, 0], goal: [12, 0, 0]}
 duration_s: 120
 obstacles:
-  - [0, 4.0, 1.5, 0.5, 4.0, 3.0]    # wall forcing the team through a gap
-  - [0, -4.0, 1.5, 0.5, 4.0, 3.0]
+  # Walls flanking the corridor — agents at |y| < 3 can pass freely
+  - [0,  7.0, 1.5, 0.5, 4.0, 3.0]   # right wall, y=3..11
+  - [0, -7.0, 1.5, 0.5, 4.0, 3.0]   # left  wall, y=-11..-3
 mission:
   type: goto
 injects:
