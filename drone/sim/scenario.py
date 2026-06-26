@@ -35,9 +35,9 @@ import re
 
 import numpy as np
 
-from team_world import TeamWorld, KinematicWorld, Box, reactive_goto_controller
-from comms import CommsFabric, MsgType
-from localization import LocalizationFabric, LocMode
+from .team_world import TeamWorld, KinematicWorld, Box, reactive_goto_controller
+from .comms import CommsFabric, MsgType
+from .localization import LocalizationFabric, LocMode
 
 
 # =========================================================================== mission
@@ -339,10 +339,19 @@ def _h_contested_task(runner, world, inj):
 
 
 def _h_tight_deconfliction(runner, world, inj):
-    """Funnel the whole team through one chokepoint goal at once."""
+    """Funnel the whole team through one chokepoint goal at once.
+
+    Planar agents (rovers) use the goal as-is.  3-D agents (quads) are sent to
+    the same XY but at a higher altitude so they overfly obstacles instead of
+    competing for the ground-level gap.
+    """
     pt = np.asarray(_xy3(inj.get("at_point", [0, 0, 2])), np.float32)
+    overfly_z = float(inj.get("overfly_z", 4.5))   # m — clear a 3m wall
     for a in world.team_agents():
-        a.goal = pt.copy()
+        if a.vclass.planar:
+            a.goal = pt.copy()
+        else:
+            a.goal = np.array([pt[0], pt[1], overfly_z], np.float32)
 
 
 def _h_rendezvous(runner, world, inj):

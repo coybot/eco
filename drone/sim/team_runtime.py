@@ -31,8 +31,8 @@ import math
 
 import numpy as np
 
-from team_world import reactive_goto_controller
-from comms import MsgType
+from .team_world import reactive_goto_controller
+from .comms import MsgType
 
 
 # thresholds
@@ -50,6 +50,8 @@ class _Belief:
     sightings: dict = field(default_factory=dict)        # target_id -> np.ndarray
     my_task: str | None = None
     isolated_ticks: int = 0
+    yield_ticks: int = 0         # consecutive ticks spent yielding (yield-deadlock guard)
+    sensor_blind_ticks: int = 0  # consecutive ticks with sensor_ok=False
 
 
 class TeamRuntime:
@@ -167,20 +169,39 @@ class TeamRuntime:
         # no tasks (e.g. goto/patrol missions): keep whatever goal mission set
 
     # -- modulation (deconfliction + contingency speed) -------------------------
+    # max consecutive yield ticks before forcing through (prevents corridor deadlock)
+    _YIELD_TIMEOUT = 15
+
     def _modulate(self, agent, obs, action):
+        b = self.belief[agent.id]
         scale = 1.0
         conf = self.loc.confidence(agent)
         if conf < CONF_SLOW:
             scale *= max(0.3, conf)           # slow when unsure of position
-        if not agent.sensor_ok:
-            scale *= 0.4                       # blind: creep
-        # yield to a higher-priority (lower-rank) neighbor that is close & ahead
-        for nid, rel_body, _vel, _ovc in obs.neighbors:
-            ahead = rel_body[0] > 0 and abs(rel_body[1]) < 1.5
-            close = float(np.linalg.norm(rel_body[:2])) < 2.5
-            if ahead and close and self._rank.get(nid, 1e9) < self._rank[agent.id]:
-                scale *= 0.4
-                break
+
+        sensor_ok = getattr(agent, "sensor_ok", True)
+        if not sensor_ok:
+            b.sensor_blind_ticks += 1
+            # hold position for first 3s of blindness, then creep cautiously
+            if b.sensor_blind_ticks < int(3.0 / max(self.world.dt, 1e-3)):
+                return np.zeros_like(np.asarray(action, np.float32))
+            scale *= 0.25
+        else:
+            b.sensor_blind_ticks = 0
+
+        # yield to a higher-priority (lower-rank) neighbor that is close & ahead —
+        # but only up to _YIELD_TIMEOUT ticks to prevent narrow-corridor deadlock
+        yielding = False
+        if b.yield_ticks < self._YIELD_TIMEOUT:
+            for nid, rel_body, _vel, _ovc in obs.neighbors:
+                ahead = rel_body[0] > 0 and abs(rel_body[1]) < 1.5
+                close = float(np.linalg.norm(rel_body[:2])) < 2.5
+                if ahead and close and self._rank.get(nid, 1e9) < self._rank[agent.id]:
+                    scale *= 0.4
+                    yielding = True
+                    break
+        b.yield_ticks = (b.yield_ticks + 1) if yielding else 0
+
         action = np.asarray(action, np.float32).copy()
         if agent.vclass.planar:
             action[0] *= scale                 # linear speed only (keep steering)
