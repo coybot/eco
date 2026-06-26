@@ -390,6 +390,13 @@ class MultiAgentRoverEnv:
             scan = self._lidar_scan_agent(m, gps_drift)   # (n, L)
             if self.lidar_noise > 0:
                 scan = (scan + t.randn_like(scan) * self.lidar_noise).clamp(0.0, LIDAR_MAX)
+            # Sensor-dropout DR: at stage≥3, blank the lidar for a fraction of envs.
+            # Policy must learn to slow/stop when sensors are out rather than blundering.
+            if self.stage >= 3:
+                dropout_prob = min(0.10, (self.stage - 2) * 0.03)  # 3%/6%/9%/12% by stage
+                blind = (t.rand(self.n, device=self.dev) < dropout_prob)
+                scan[blind] = LIDAR_MAX  # report all-clear = agent doesn't know obstacles
+                # penalise via reward reduction handled by collision term naturally
             if self.target_noise > 0:
                 base[:, 0:2] += t.randn_like(base[:, 0:2]) * self.target_noise
 
