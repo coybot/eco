@@ -1,13 +1,21 @@
 # Family: coordination stress
-# The whole team is funneled through one chokepoint at once; they must deconflict
-# (take turns / separate in altitude) rather than collide.
+# Walls at x=0 create a 4m wide gap (y=-2..+2); all agents approach through the
+# gap while the tight_deconfliction inject at t=4s crowds them into the chokepoint
+# simultaneously — testing convoy serialization and height-layer separation.
+# Quads fly at 5.5m (above obstacle ceiling 4.5m), rovers thread the ground gap.
 name: chokepoint_deconfliction
 environment: warehouse
-team: [quad x3, rover x2]
+team:
+  - {id: quad_0, type: quad, pos: [-12, -1.0, 5.5], goal: [12, -1.0, 5.5]}
+  - {id: quad_1, type: quad, pos: [-12,  0.0, 5.5], goal: [12,  0.0, 5.5]}
+  - {id: quad_2, type: quad, pos: [-12,  1.0, 5.5], goal: [12,  1.0, 5.5]}
+  - {id: rover_0, type: rover, pos: [-12, -0.5, 0], goal: [12, -0.5, 0]}
+  - {id: rover_1, type: rover, pos: [-12,  0.5, 0], goal: [12,  0.5, 0]}
 duration_s: 120
 obstacles:
-  - [0, 3.0, 1.5, 0.6, 3.0, 3.0]    # gap centered at y=0, ~1m wide
-  - [0, -3.0, 1.5, 0.6, 3.0, 3.0]
+  # Walls with a 4m gap at y=0 — agents can pass at |y| < 2
+  - [0,  6.0, 1.5, 0.6, 4.0, 3.0]   # right wall y=2..10
+  - [0, -6.0, 1.5, 0.6, 4.0, 3.0]   # left  wall y=-10..-2
 injects:
   - {at: 4, do: tight_deconfliction, at_point: [10, 0, 2]}
 success:
