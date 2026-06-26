@@ -11,6 +11,16 @@ export type BlogPostMeta = {
 
 export const blogPosts: BlogPostMeta[] = [
   {
+    slug: "rover-nav-recurrent-rl-lidar",
+    title: "30 Minutes, 4.6 Kilobytes, Zero Collisions",
+    description:
+      "We trained a ground rover to navigate cluttered environments, tight gaps, and multi-room mazes using only a 360° lidar and a learned GRU reflex — no map, no planner, no demonstrations. 120 trials, zero collisions. A VFH analytic baseline fails completely on dense fields.",
+    date: "June 24, 2026",
+    dateIso: "2026-06-24",
+    category: "Research",
+    readTime: "12 min read",
+  },
+  {
     slug: "four-models-drone-autonomy",
     title: "Four Models, One Stack: Training the Full Perception–Reasoning–Action Pipeline for Autonomous Drones",
     description:

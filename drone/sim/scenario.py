@@ -341,17 +341,21 @@ def _h_contested_task(runner, world, inj):
 def _h_tight_deconfliction(runner, world, inj):
     """Funnel the whole team through one chokepoint goal at once.
 
-    Planar agents (rovers) use the goal as-is.  3-D agents (quads) are sent to
-    the same XY but at a higher altitude so they overfly obstacles instead of
-    competing for the ground-level gap.
+    Planar agents (rovers) use the goal as-is.  3-D agents (quads) overfly at
+    a higher altitude, staggered laterally so they don't pile up at one point.
     """
     pt = np.asarray(_xy3(inj.get("at_point", [0, 0, 2])), np.float32)
-    overfly_z = float(inj.get("overfly_z", 4.5))   # m — clear a 3m wall
-    for a in world.team_agents():
-        if a.vclass.planar:
-            a.goal = pt.copy()
-        else:
-            a.goal = np.array([pt[0], pt[1], overfly_z], np.float32)
+    overfly_z = float(inj.get("overfly_z", 4.5))
+    quad_agents = [a for a in world.team_agents() if not a.vclass.planar]
+    rover_agents = [a for a in world.team_agents() if a.vclass.planar]
+    # rovers staggered through the gap (1m apart) to avoid goal collision
+    for i, a in enumerate(rover_agents):
+        offset = (i - len(rover_agents) / 2) * 1.0
+        a.goal = np.array([pt[0], pt[1] + offset, pt[2]], np.float32)
+    # quads staggered laterally (1.5m apart) at overfly altitude
+    for i, a in enumerate(quad_agents):
+        offset = (i - len(quad_agents) / 2) * 1.5
+        a.goal = np.array([pt[0], pt[1] + offset, overfly_z], np.float32)
 
 
 def _h_rendezvous(runner, world, inj):

@@ -29,7 +29,7 @@ import math
 
 import numpy as np
 
-from vehicle_class import VehicleClass, Kinematics, Sensor, get_class, Role
+from .vehicle_class import VehicleClass, Kinematics, Sensor, get_class, Role
 
 
 # --------------------------------------------------------------------------- geometry

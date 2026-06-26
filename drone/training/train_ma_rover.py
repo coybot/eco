@@ -184,14 +184,28 @@ class MultiAgentRoverEnv:
             self._place_columns(env_idx, ne, n_obs=6)
             if (self._rand(ne) < 0.4).any():
                 self._place_gap_wall(env_idx, ne, slot=8)
+        elif stage == 4:
+            self._place_columns(env_idx, ne, n_obs=6)
+            wall_m = self._rand(ne) < 0.7
+            if wall_m.any():
+                self._place_gap_wall(env_idx, ne, slot=8, mask=wall_m,
+                                     gap_hy_lo=0.40, gap_hy_hi=0.85)  # tight gap
+            wall2 = self._rand(ne) < 0.45
+            if wall2.any():
+                self._place_gap_wall(env_idx, ne, slot=6,
+                                     cx_lo=0.55, cx_hi=0.75, mask=wall2,
+                                     gap_hy_lo=0.40, gap_hy_hi=0.85)
         else:
             self._place_columns(env_idx, ne, n_obs=6)
-            wall_m = self._rand(ne) < 0.6
+            wall_m = self._rand(ne) < 0.75
             if wall_m.any():
-                self._place_gap_wall(env_idx, ne, slot=8, mask=wall_m)
-            wall2 = self._rand(ne) < 0.35
+                self._place_gap_wall(env_idx, ne, slot=8, mask=wall_m,
+                                     gap_hy_lo=0.35, gap_hy_hi=0.75)  # very tight
+            wall2 = self._rand(ne) < 0.50
             if wall2.any():
-                self._place_gap_wall(env_idx, ne, slot=6, cx_lo=0.55, cx_hi=0.75, mask=wall2)
+                self._place_gap_wall(env_idx, ne, slot=6,
+                                     cx_lo=0.55, cx_hi=0.75, mask=wall2,
+                                     gap_hy_lo=0.35, gap_hy_hi=0.75)
 
         # Agent mask for dynamics DR
         ag_mask = t.zeros(self.n * self.M, device=self.dev, dtype=t.bool)
@@ -208,7 +222,8 @@ class MultiAgentRoverEnv:
             self.bmask[env_idx, k] = (self._rand(ne) > 0.15).float()
 
     def _place_gap_wall(self, env_idx, ne, slot=8, cx_lo=0.30, cx_hi=0.60,
-                        span=14.0, wall_hx=0.4, mask=None):
+                        span=14.0, wall_hx=0.4, mask=None,
+                        gap_hy_lo=0.65, gap_hy_hi=1.1):
         if mask is None:
             mask = self.t.ones(ne, dtype=self.t.bool, device=self.dev)
         gi = env_idx[mask]
@@ -217,7 +232,7 @@ class MultiAgentRoverEnv:
             return
         cx = self._rand(nm, lo=cx_lo * 20 - 10, hi=cx_hi * 20 - 10)
         gap_cy = self._rand(nm, lo=-1.6, hi=1.6)
-        gap_hy = self._rand(nm, lo=0.65, hi=1.1)
+        gap_hy = self._rand(nm, lo=gap_hy_lo, hi=gap_hy_hi)
         left_cy = (-span / 2 + gap_cy - gap_hy) / 2
         left_hy = ((gap_cy - gap_hy + span) / 2).clamp(min=0.1)
         right_cy = (gap_cy + gap_hy + span) / 2
