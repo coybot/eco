@@ -253,60 +253,110 @@ def _print_suite(report: dict):
               f"{str(s['min_separation']):7s} {s['comms_delivery_rate']:.2f}")
 
 
-def _load_onnx_controller(onnx_path: str):
-    """Return a controller function that wraps an ONNX rover policy.
-
-    The ONNX model has inputs (state[1,1,83], h_in[1,1,H]) and outputs
-    (action[1,2], h_out[1,1,H]).  Hidden size is inferred from a dry run.
-
-    The returned controller matches the signature expected by ScenarioRunner:
-        controller(agent, obs) -> np.ndarray[2]  (v_linear, yaw_rate)
-    """
+def _load_rover_onnx_controller(onnx_path: str):
+    """Wrap an ONNX rover policy (83-dim state, 2D unicycle action)."""
     try:
         import onnxruntime as ort
     except ImportError:
-        raise ImportError("onnxruntime is required to load a policy ONNX — pip install onnxruntime")
+        raise ImportError("onnxruntime required — pip install onnxruntime")
 
     sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-    in0 = sess.get_inputs()[0]
-    in1 = sess.get_inputs()[1]
+    in0, in1 = sess.get_inputs()[0], sess.get_inputs()[1]
     hidden = in1.shape[-1]
-    states: dict[str, np.ndarray] = {}   # per-agent GRU hidden state
+    states: dict[str, np.ndarray] = {}
 
     def controller(agent, obs_obj):
         import math
         aid = agent.id
         if aid not in states:
             states[aid] = np.zeros((1, 1, hidden), dtype=np.float32)
-        # Observation has body_target (3,), goal_dist, scan — use directly
         bt = np.asarray(obs_obj.body_target, dtype=np.float32)
         tf, tl = float(bt[0]), float(bt[1])
         dist = float(obs_obj.goal_dist)
         yaw_err = math.atan2(tl, tf) if dist > 1e-4 else 0.0
-        lidar = np.asarray(obs_obj.scan, dtype=np.float32) if obs_obj.scan is not None else np.full(72, 10.0, dtype=np.float32)
+        lidar = np.asarray(obs_obj.scan, dtype=np.float32)
         if len(lidar) != 72:
             lidar = np.full(72, 10.0, dtype=np.float32)
         raw = np.array([tf, tl, 0.0, dist, 0.0, 0.0, 0.0, yaw_err, 0.0, 0.0, 1.0],
                        dtype=np.float32)
-        state = np.concatenate([raw, lidar])[None, None, :]  # (1,1,83)
+        state = np.concatenate([raw, lidar])[None, None, :]   # (1,1,83)
         action, h_out = sess.run(None, {in0.name: state, in1.name: states[aid]})
         states[aid] = h_out
-        act2 = np.clip(action[0], [-2.0, -2.0], [2.0, 2.0])
-        from .vehicle_class import Kinematics
-        if agent.vclass.kinematics is Kinematics.HOLONOMIC_3D:
-            # pad unicycle [v, w] → holonomic [vx, 0, 0, w]
-            return np.array([act2[0], 0.0, 0.0, act2[1]], dtype=np.float32)
-        return act2
+        return np.clip(action[0, 0], [-2.0, -2.0], [2.0, 2.0]).astype(np.float32)
 
     return controller
 
 
-def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None) -> dict:
-    """Run the full suite twice — once with reactive baseline, once with ONNX policy.
+def _load_quad_onnx_controller(onnx_path: str):
+    """Wrap an ONNX quad policy (56-dim state, 4D holonomic action).
+
+    Observation construction matches contract.py exactly:
+      [0:3]   body_target (fwd, left, up)
+      [3]     goal_dist
+      [4:7]   body-frame velocity
+      [7]     yaw_err
+      [8]     yaw_rate (0 — not tracked in headless sim)
+      [9]     altitude
+      [10]    vehicle = 0.0 (quad)
+      [11:56] depth grid (45 rays, row-major)
+    """
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        raise ImportError("onnxruntime required — pip install onnxruntime")
+
+    sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    in0, in1 = sess.get_inputs()[0], sess.get_inputs()[1]
+    hidden = in1.shape[-1]
+    states: dict[str, np.ndarray] = {}
+
+    def controller(agent, obs_obj):
+        import math
+        aid = agent.id
+        if aid not in states:
+            states[aid] = np.zeros((1, 1, hidden), dtype=np.float32)
+        bt = np.asarray(obs_obj.body_target, dtype=np.float32)
+        tf, tl, tu = float(bt[0]), float(bt[1]), float(bt[2])
+        dist = float(obs_obj.goal_dist)
+        yaw_err = math.atan2(tl, tf) if dist > 1e-4 else 0.0
+        # body-frame velocity: rotate world vel by -yaw
+        c, s = math.cos(-agent.yaw), math.sin(-agent.yaw)
+        wv = agent.vel
+        vf = c * float(wv[0]) - s * float(wv[1])
+        vl = s * float(wv[0]) + c * float(wv[1])
+        vu = float(wv[2])
+        depth = np.asarray(obs_obj.scan, dtype=np.float32)
+        if len(depth) != 45:
+            depth = np.full(45, 10.0, dtype=np.float32)
+        raw = np.array([tf, tl, tu, dist, vf, vl, vu, yaw_err, 0.0,
+                        float(agent.pos[2]), 0.0], dtype=np.float32)
+        state = np.concatenate([raw, depth])[None, None, :]   # (1,1,56)
+        action, h_out = sess.run(None, {in0.name: state, in1.name: states[aid]})
+        states[aid] = h_out
+        spd = agent.vclass.max_speed_mps
+        return np.clip(action[0, 0], [-spd, -spd, -spd, -2.0],
+                       [spd, spd, spd, 2.0]).astype(np.float32)
+
+    return controller
+
+
+# Keep the old name as an alias so any external callers don't break.
+_load_onnx_controller = _load_rover_onnx_controller
+
+
+def compare_runs(scenarios_dir: str, rover_onnx: str,
+                 quad_onnx: str | None = None,
+                 out_path: str | None = None) -> dict:
+    """Run the full suite twice — once with reactive baseline, once with ONNX policies.
+
+    rover_onnx: path to rover ONNX (83-dim → 2D unicycle).
+    quad_onnx:  optional path to quad ONNX (56-dim → 4D holonomic). When omitted,
+                quads fall back to TeamRuntime (same as baseline).
 
     Returns a comparison dict with per-scenario delta in interventions and a
-    headline delta_level (positive = ONNX policy improved the autonomy level).
+    headline delta_level (positive = policy improved the autonomy level).
     """
+    from .vehicle_class import Kinematics
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
 
     def _run_suite(use_onnx=False):
@@ -315,19 +365,17 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
             runner = ScenarioRunner(Scenario.from_yaml(str(f)))
             rt = TeamRuntime(runner)
             if use_onnx:
-                onnx_ctrl = _load_onnx_controller(onnx_path)
-                from .vehicle_class import Kinematics
+                rover_ctrl = _load_rover_onnx_controller(rover_onnx)
+                quad_ctrl = (_load_quad_onnx_controller(quad_onnx)
+                             if quad_onnx else None)
                 _base = rt.controller
-                def _mixed(agent, obs, _oc=onnx_ctrl, _bc=_base):
+
+                def _mixed(agent, obs, _rc=rover_ctrl, _qc=quad_ctrl, _bc=_base):
                     if agent.vclass.kinematics is Kinematics.UNICYCLE_2D:
-                        action = np.asarray(_oc(agent, obs), np.float32).copy()
-                        # Blind: slow forward motion and dampen turning (prevents
-                        # spinning-in-place from unguided policy output).
+                        action = np.asarray(_rc(agent, obs), np.float32).copy()
                         if not getattr(agent, "sensor_ok", True):
                             action[0] *= 0.08
                             action[1] *= 0.2
-                        # Soft convoy: slow when teammate is directly ahead and
-                        # within 2m — breaks ONNX rover deadlock without full stop.
                         for _nid, rel_body, _vel, _ovc in obs.neighbors:
                             if (float(rel_body[0]) > 0.3
                                     and abs(float(rel_body[1])) < 0.8
@@ -335,7 +383,13 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
                                 action[0] *= 0.4
                                 break
                         return action
+                    elif _qc is not None:
+                        action = np.asarray(_qc(agent, obs), np.float32).copy()
+                        if not getattr(agent, "sensor_ok", True):
+                            action[:3] *= 0.08   # blind quad: almost stop
+                        return action
                     return _bc(agent, obs)
+
                 runner.controller = _mixed
             else:
                 runner.controller = rt.controller
@@ -356,7 +410,7 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
         },
         "policy": {
             "autonomy_level": pol_level, "rationale": pol_rat,
-            "onnx_path": onnx_path,
+            "rover_onnx": rover_onnx, "quad_onnx": quad_onnx,
             "mean_interventions": round(sum(s.interventions for s in policy_scores) / max(len(policy_scores), 1), 2),
             "mission_success_rate": round(sum(s.mission_complete for s in policy_scores) / max(len(policy_scores), 1), 3),
         },
@@ -402,20 +456,116 @@ def _print_comparison(cmp: dict):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Autonomy scorecard CLI")
     ap.add_argument("--scenarios", default=None, help="directory of YAML scenarios")
-    ap.add_argument("--policy", default=None,
-                    help="ONNX rover policy to compare against reactive baseline")
+    ap.add_argument("--rover-policy", "--policy", default=None, dest="rover_policy",
+                    help="ONNX rover policy (83-dim → 2D) to compare against baseline")
+    ap.add_argument("--quad-policy", default=None,
+                    help="ONNX quad policy (56-dim → 4D); omit to keep quads on TeamRuntime")
+    ap.add_argument("--record-video", default=None, metavar="DIR",
+                    help="save per-scenario overhead MP4s to this directory")
     ap.add_argument("--out", default=None, help="write report JSON to this path")
+    ap.add_argument("--smart-layer", default=None, choices=["rule", "llm"],
+                    help="enable smart layer (rule=RuleBasedSmart, llm=LLMSmart via hoopoe)")
     args = ap.parse_args()
 
     _here = Path(__file__).resolve().parent
     scn_dir = args.scenarios or str(_here / "scenarios")
 
-    if args.policy:
-        cmp = compare_runs(scn_dir, args.policy, out_path=args.out)
+    # Renderer (optional)
+    renderer = None
+    if args.record_video:
+        try:
+            from .render import OverheadRenderer
+            renderer = OverheadRenderer()
+            Path(args.record_video).mkdir(parents=True, exist_ok=True)
+        except ImportError:
+            print("  [warn] matplotlib not available — --record-video ignored")
+
+    # Smart layer (optional)
+    smart = None
+    if args.smart_layer:
+        from .smart_layer import RuleBasedSmart, LLMSmart
+        smart = LLMSmart() if args.smart_layer == "llm" else RuleBasedSmart()
+
+    if args.rover_policy:
+        cmp = compare_runs(scn_dir, args.rover_policy,
+                           quad_onnx=args.quad_policy,
+                           out_path=args.out)
         _print_comparison(cmp)
+        if renderer and args.record_video:
+            _record_comparison_videos(scn_dir, args.rover_policy,
+                                      args.quad_policy, args.record_video, renderer, smart)
     else:
         rep = score_suite(scn_dir, use_runtime=True)
         _print_suite(rep)
         out = args.out or str(_here / "scorecard_baseline.json")
         Path(out).write_text(json.dumps(rep, indent=2))
         print(f"\n  wrote {out}")
+        if renderer and args.record_video:
+            _record_baseline_videos(scn_dir, args.record_video, renderer, smart)
+
+
+def _record_comparison_videos(scenarios_dir, rover_onnx, quad_onnx, video_dir, renderer, smart):
+    from .vehicle_class import Kinematics
+    files = sorted(Path(scenarios_dir).glob("*.yaml"))
+    rover_ctrl = _load_rover_onnx_controller(rover_onnx)
+    quad_ctrl = _load_quad_onnx_controller(quad_onnx) if quad_onnx else None
+    for f in files:
+        runner = ScenarioRunner(Scenario.from_yaml(str(f)))
+        rt = TeamRuntime(runner)
+        _base = rt.controller
+
+        def _mixed(agent, obs, _rc=rover_ctrl, _qc=quad_ctrl, _bc=_base):
+            if agent.vclass.kinematics is Kinematics.UNICYCLE_2D:
+                action = np.asarray(_rc(agent, obs), np.float32).copy()
+                if not getattr(agent, "sensor_ok", True):
+                    action[0] *= 0.08; action[1] *= 0.2
+                for _nid, rel_body, _vel, _ovc in obs.neighbors:
+                    if (float(rel_body[0]) > 0.3 and abs(float(rel_body[1])) < 0.8
+                            and float(np.linalg.norm(rel_body[:2])) < 2.0):
+                        action[0] *= 0.4; break
+                return action
+            elif _qc is not None:
+                action = np.asarray(_qc(agent, obs), np.float32).copy()
+                if not getattr(agent, "sensor_ok", True):
+                    action[:3] *= 0.08
+                return action
+            return _bc(agent, obs)
+
+        runner.controller = _mixed
+        det = _Detector(runner)
+        max_s = runner.scenario.duration_s
+        ticks = int(max_s / runner.world.dt)
+        frames = []
+        renderer.reset(runner.scenario.name, runner.world.backend.obstacles())
+        for _ in range(ticks):
+            runner.step()
+            det.update()
+            frames.append(renderer.capture_frame(
+                list(runner.world.agents.values()), det.total, runner.world.t))
+            if runner.mission.complete(runner.world):
+                break
+        out_path = str(Path(video_dir) / f"{runner.scenario.name}.mp4")
+        renderer.save_mp4(frames, out_path)
+        print(f"  video → {out_path}")
+
+
+def _record_baseline_videos(scenarios_dir, video_dir, renderer, smart):
+    files = sorted(Path(scenarios_dir).glob("*.yaml"))
+    for f in files:
+        runner = ScenarioRunner(Scenario.from_yaml(str(f)))
+        rt = TeamRuntime(runner)
+        runner.controller = rt.controller
+        det = _Detector(runner)
+        ticks = int(runner.scenario.duration_s / runner.world.dt)
+        frames = []
+        renderer.reset(runner.scenario.name, runner.world.backend.obstacles())
+        for _ in range(ticks):
+            runner.step()
+            det.update()
+            frames.append(renderer.capture_frame(
+                list(runner.world.agents.values()), det.total, runner.world.t))
+            if runner.mission.complete(runner.world):
+                break
+        out_path = str(Path(video_dir) / f"{runner.scenario.name}_baseline.mp4")
+        renderer.save_mp4(frames, out_path)
+        print(f"  video → {out_path}")

@@ -1,0 +1,22 @@
+name: hostile_recon
+environment: city
+team:
+  - {id: quad_0, type: quad, pos: [-10,  3, 5], goal: [10,  3, 5]}
+  - {id: quad_1, type: quad, pos: [-10, -3, 5], goal: [10, -3, 5]}
+  - {id: rover_0, type: rover, pos: [-10, 0, 0], goal: [10,  0, 0]}
+duration_s: 60
+obstacles:
+  - [2,  6, 2.0, 0.6, 2.5, 4.0]
+  - [2, -6, 2.0, 0.6, 2.5, 4.0]
+  - [-4, 0, 2.0, 1.0, 2.0, 4.0]
+  - [7,  3, 2.0, 0.6, 2.0, 4.0]
+injects:
+  # Comms dead from t=0 (full isolation)
+  - {at: 0,  do: comms_blackout}
+  - {at: 4,  do: spawn_dynamic, path: [[14, 5, 4],[-14,-5, 4]], speed: 5.0}
+  - {at: 4,  do: spawn_dynamic, path: [[14,-5, 4],[-14, 5, 4]], speed: 5.0}
+  - {on: target_found, do: gps_spoof, agent: any, vel: [0.3, 0.15, 0.0]}
+  - {at: 5,  do: wind_shift, wind: [0.5, 0.3, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true

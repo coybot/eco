@@ -1,0 +1,18 @@
+name: time_siege
+environment: warehouse
+# 30 seconds, 6 targets — forces maximum parallel coverage with no wasted motion
+team:
+  - {id: quad_0,  type: quad,  pos: [0,  2, 5], goal: [10,  5, 5]}
+  - {id: rover_0, type: rover, pos: [0,  0, 0], goal: [ 8,  0, 0]}
+  - {id: rover_1, type: rover, pos: [0, -2, 0], goal: [-8, -5, 0]}
+duration_s: 30
+obstacles:
+  - [5,  5, 2.0, 0.5, 2.5, 4.0]
+  - [5, -5, 2.0, 0.5, 2.5, 4.0]
+  - [-4, 0, 2.0, 0.8, 2.0, 4.0]
+injects:
+  - {at: 3, do: wind_shift, wind: [0.3, 0.2, 0.0]}
+  - {at: 5, do: spawn_dynamic, path: [[12, 0, 4],[-12, 0, 4],[12, 0, 4]], speed: 5.0}
+success:
+  mission_complete: true
+  no_collisions: true

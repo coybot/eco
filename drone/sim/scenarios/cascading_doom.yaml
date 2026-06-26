@@ -1,0 +1,22 @@
+name: cascading_doom
+environment: warehouse
+team:
+  - {id: quad_0,  type: quad,  pos: [-10,  3, 5], goal: [10,  3, 5]}
+  - {id: quad_1,  type: quad,  pos: [-10, -3, 5], goal: [10, -3, 5]}
+  - {id: rover_0, type: rover, pos: [-10,  2, 0], goal: [10,  2, 0]}
+  - {id: rover_1, type: rover, pos: [-10, -2, 0], goal: [10, -2, 0]}
+duration_s: 90
+obstacles:
+  - [3,  6, 1.5, 0.5, 3.0, 3.0]
+  - [3, -6, 1.5, 0.5, 3.0, 3.0]
+  - [-3, 0, 1.5, 1.0, 2.0, 3.0]
+injects:
+  # One agent fails every 15s — surviving agents must complete 4 targets
+  - {at: 3,  do: wind_shift,    wind: [0.4, 0.3, 0.0]}
+  - {at: 15, do: agent_failure, agent: quad_1}
+  - {at: 30, do: agent_failure, agent: rover_1}
+  - {at: 15, do: comms_blackout}
+  - {at: 45, do: gps_spoof,     agent: any, vel: [0.2, 0.1, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true
