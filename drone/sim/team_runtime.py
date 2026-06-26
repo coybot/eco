@@ -187,9 +187,9 @@ class TeamRuntime:
         sensor_ok = getattr(agent, "sensor_ok", True)
         if not sensor_ok:
             b.sensor_blind_ticks += 1
-            # Slow to 0.15x when blind to reduce obstacle collision rate.
-            # Don't full-hold — mission timeout counts as intervention too.
-            scale *= 0.15
+            # 0.08x ≈ 0.16 m/s max — slow enough that hitting walls mid-step is
+            # unlikely; fast enough to still make ~10m progress in 120s window.
+            scale *= 0.08
         else:
             b.sensor_blind_ticks = 0
 
@@ -222,6 +222,12 @@ class TeamRuntime:
             reachable = self.comms.reachable(self.world, agent.id)
             if len(reachable) == 0:
                 scale *= 0.3   # 30% speed when jammed — safer in tight passages
+
+        # ---- emergency brake: any teammate within 1.2m → near-zero speed ----
+        for nid, rel_body, _vel, _ovc in obs.neighbors:
+            if float(np.linalg.norm(rel_body[:3])) < 1.2:
+                scale *= 0.05  # emergency near-stop — prevents quad-quad collision
+                break
 
         # ---- yield with timeout (non-convoy: wide-space deconfliction) ----
         # Only applies when NOT already in convoy hold, preventing double-application.
