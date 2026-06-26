@@ -326,6 +326,14 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
                         if not getattr(agent, "sensor_ok", True):
                             action[0] *= 0.08
                             action[1] *= 0.2
+                        # Soft convoy: slow when teammate is directly ahead and
+                        # within 2m — breaks ONNX rover deadlock without full stop.
+                        for _nid, rel_body, _vel, _ovc in obs.neighbors:
+                            if (float(rel_body[0]) > 0.3
+                                    and abs(float(rel_body[1])) < 0.8
+                                    and float(np.linalg.norm(rel_body[:2])) < 2.0):
+                                action[0] *= 0.4
+                                break
                         return action
                     return _bc(agent, obs)
                 runner.controller = _mixed
