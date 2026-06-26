@@ -41,8 +41,10 @@ drone/common/certs/thing-name.txt
 # Large / generated model weights
 *.gguf
 *.onnx
+*.onnx.data
 *.pt
 *.pth
+*.npy
 *.engine
 *.trt
 *.bin
