@@ -274,28 +274,29 @@ def _load_onnx_controller(onnx_path: str):
     states: dict[str, np.ndarray] = {}   # per-agent GRU hidden state
 
     def controller(agent, obs_obj):
-        from vehicle_class import ROVER
+        import math
         aid = agent.id
         if aid not in states:
             states[aid] = np.zeros((1, 1, hidden), dtype=np.float32)
-        # obs_obj is an Observation; build raw state matching rover_contract
-        import math
-        pos = obs_obj.pos
-        goal = obs_obj.goal if obs_obj.goal is not None else pos
-        dx, dy = goal[0] - pos[0], goal[1] - pos[1]
-        yaw = float(obs_obj.yaw) if hasattr(obs_obj, "yaw") else 0.0
-        c, s = math.cos(-yaw), math.sin(-yaw)
-        tf = c * dx - s * dy
-        tl = s * dx + c * dy
-        dist = math.hypot(tf, tl)
-        yaw_err = math.atan2(tl, tf)
+        # Observation has body_target (3,), goal_dist, scan — use directly
+        bt = np.asarray(obs_obj.body_target, dtype=np.float32)
+        tf, tl = float(bt[0]), float(bt[1])
+        dist = float(obs_obj.goal_dist)
+        yaw_err = math.atan2(tl, tf) if dist > 1e-4 else 0.0
         lidar = np.asarray(obs_obj.scan, dtype=np.float32) if obs_obj.scan is not None else np.full(72, 10.0, dtype=np.float32)
+        if len(lidar) != 72:
+            lidar = np.full(72, 10.0, dtype=np.float32)
         raw = np.array([tf, tl, 0.0, dist, 0.0, 0.0, 0.0, yaw_err, 0.0, 0.0, 1.0],
                        dtype=np.float32)
         state = np.concatenate([raw, lidar])[None, None, :]  # (1,1,83)
         action, h_out = sess.run(None, {in0.name: state, in1.name: states[aid]})
         states[aid] = h_out
-        return np.clip(action[0], [-2.0, -2.0], [2.0, 2.0])
+        act2 = np.clip(action[0], [-2.0, -2.0], [2.0, 2.0])
+        from vehicle_class import Kinematics
+        if agent.vclass.kinematics is Kinematics.HOLONOMIC_3D:
+            # pad unicycle [v, w] → holonomic [vx, 0, 0, w]
+            return np.array([act2[0], 0.0, 0.0, act2[1]], dtype=np.float32)
+        return act2
 
     return controller
 
@@ -308,25 +309,27 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
     """
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
 
-    def _run_suite(controller_factory=None):
+    def _run_suite(use_onnx=False):
         scores = []
         for f in files:
             runner = ScenarioRunner(Scenario.from_yaml(str(f)))
-            if controller_factory is None:
-                rt = TeamRuntime(runner)
-                runner.controller = rt.controller
+            rt = TeamRuntime(runner)
+            if use_onnx:
+                onnx_ctrl = _load_onnx_controller(onnx_path)
+                from vehicle_class import Kinematics
+                _base = rt.controller
+                def _mixed(agent, obs, _oc=onnx_ctrl, _bc=_base):
+                    if agent.vclass.kinematics is Kinematics.UNICYCLE_2D:
+                        return _oc(agent, obs)
+                    return _bc(agent, obs)
+                runner.controller = _mixed
             else:
-                runner.controller = controller_factory()
+                runner.controller = rt.controller
             scores.append(score_run(runner, use_runtime=False))
         return scores
 
-    baseline_scores = _run_suite(None)
-    onnx_ctrl = _load_onnx_controller(onnx_path)
-
-    def _onnx_factory():
-        return _load_onnx_controller(onnx_path)
-
-    policy_scores = _run_suite(_onnx_factory)
+    baseline_scores = _run_suite(use_onnx=False)
+    policy_scores = _run_suite(use_onnx=True)
 
     base_level, base_rat = autonomy_level(baseline_scores)
     pol_level, pol_rat = autonomy_level(policy_scores)
