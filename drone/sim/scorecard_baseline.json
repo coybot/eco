@@ -1,0 +1,250 @@
+{
+  "autonomy_level": 2,
+  "rationale": "mean 1.33 interventions/scenario, 67% success",
+  "n_scenarios": 12,
+  "mission_success_rate": 0.667,
+  "total_interventions": 16,
+  "mean_interventions": 1.33,
+  "scenarios": [
+    {
+      "scenario": "battery_rtl",
+      "mission_complete": true,
+      "targets_found": 3,
+      "targets_total": 3,
+      "t_end": 14.5,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.03,
+      "comms_delivery_rate": 0.9956709956709957,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "chokepoint_deconfliction",
+      "mission_complete": false,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 120.0,
+      "interventions": 5,
+      "intervention_breakdown": {
+        "collision": 3,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "collisions": 3,
+      "min_separation": 1.03,
+      "comms_delivery_rate": 0.7593828190158466,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "combined_stress",
+      "mission_complete": true,
+      "targets_found": 4,
+      "targets_total": 4,
+      "t_end": 14.5,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.02,
+      "comms_delivery_rate": 0.24880382775119617,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "comms_blackout_search",
+      "mission_complete": true,
+      "targets_found": 4,
+      "targets_total": 4,
+      "t_end": 9.1,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.03,
+      "comms_delivery_rate": 0.32634032634032634,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "contested_task",
+      "mission_complete": true,
+      "targets_found": 2,
+      "targets_total": 2,
+      "t_end": 8.1,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.03,
+      "comms_delivery_rate": 0.9973753280839895,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "gps_spoof_recon",
+      "mission_complete": true,
+      "targets_found": 2,
+      "targets_total": 2,
+      "t_end": 7.8,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 2.14,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.08,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "intruder_avoidance",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 17.1,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.03,
+      "comms_delivery_rate": 0.9948630136986302,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "jamming_corridor",
+      "mission_complete": false,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 120.0,
+      "interventions": 4,
+      "intervention_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "collisions": 2,
+      "min_separation": 1.82,
+      "comms_delivery_rate": 0.07777777777777778,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "sensor_dropout_blind",
+      "mission_complete": false,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 120.0,
+      "interventions": 5,
+      "intervention_breakdown": {
+        "collision": 3,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "collisions": 3,
+      "min_separation": 1.82,
+      "comms_delivery_rate": 0.8298611111111112,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "target_relocated",
+      "mission_complete": true,
+      "targets_found": 2,
+      "targets_total": 2,
+      "t_end": 8.1,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.83,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.08,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "teammate_lost_resilience",
+      "mission_complete": true,
+      "targets_found": 4,
+      "targets_total": 4,
+      "t_end": 14.8,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.03,
+      "comms_delivery_rate": 0.9958847736625515,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "wind_gust",
+      "mission_complete": false,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 120.0,
+      "interventions": 2,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "collisions": 0,
+      "min_separation": 1.03,
+      "comms_delivery_rate": 0.9986111111111111,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    }
+  ]
+}

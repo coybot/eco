@@ -1,0 +1,18 @@
+# Family: agent/sensor failure
+# An agent's obstacle sensor fails (reports all-clear) while obstacles remain.
+# Tests whether the team compensates (slow down / rely on teammates' sightings).
+name: sensor_dropout_blind
+environment: warehouse
+team: [quad x2, rover x1]
+duration_s: 120
+obstacles:
+  - [3, 0, 1.5, 0.8, 2.0, 3.0]
+  - [6, 2, 1.5, 0.8, 2.0, 3.0]
+  - [6, -2, 1.5, 0.8, 2.0, 3.0]
+mission:
+  type: goto
+injects:
+  - {at: 8, do: sensor_dropout, agent: rover_0}
+success:
+  mission_complete: true
+  no_collisions: true

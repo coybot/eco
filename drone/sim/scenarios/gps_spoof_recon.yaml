@@ -1,0 +1,16 @@
+# Family: comms/GPS degradation
+# GPS spoof begins the moment the first target is found: the agent becomes
+# confidently mislocalized. Tests detection/robustness to a deceptive fix.
+name: gps_spoof_recon
+environment: city
+team: [quad x2]
+duration_s: 120
+mission:
+  type: area_search
+  region: [-12, -12, 12, 12]
+  targets: [[10, 0], [-10, 0]]
+injects:
+  - {on: target_found, do: gps_spoof, agent: any, vel: [0.4, 0.2, 0.0]}
+success:
+  targets_found: all
+  no_collisions: true

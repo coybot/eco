@@ -1,0 +1,14 @@
+# Family: dynamic world events
+# A sustained wind shift pushes every vehicle off course; the team must still
+# reach its goals against the drift.
+name: wind_gust
+environment: wilderness
+team: [quad x2, rover x2]
+duration_s: 120
+mission:
+  type: goto
+injects:
+  - {at: 10, do: wind_shift, vector: [0.0, 0.8, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true

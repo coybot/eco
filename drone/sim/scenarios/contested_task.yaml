@@ -1,0 +1,16 @@
+# Family: coordination stress
+# Two agents are pushed to claim the same point. With comms up they should arbitrate
+# (one yields); under the baseline this exposes redundant-work / near-miss behavior.
+name: contested_task
+environment: warehouse
+team: [quad x2, rover x2]
+duration_s: 120
+mission:
+  type: area_search
+  region: [-12, -12, 12, 12]
+  targets: [[9, 0], [-9, 0]]
+injects:
+  - {at: 5, do: contested_task, at_point: [9, 0, 2], agents: [quad_0, quad_1]}
+success:
+  targets_found: all
+  no_collisions: true
