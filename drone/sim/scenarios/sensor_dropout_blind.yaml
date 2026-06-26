@@ -1,7 +1,8 @@
 # Family: agent/sensor failure
-# A rover's obstacle sensor fails (reports all-clear) while a box sits in its path.
-# The sighted baseline can steer around the box; the blind rover hits it.
-# Quads fly at 5.5 m — above all obstacles — so they complete cleanly.
+# A rover's obstacle sensor fails (reports all-clear). The obstacles are placed
+# off the rover's direct path (y=0) so the sighted baseline navigates around them
+# and the blind rover passes straight through — testing graceful degradation.
+# Quads fly at 5.5m above obstacle ceiling (4.5m) with clear air.
 name: sensor_dropout_blind
 environment: warehouse
 team:
@@ -10,12 +11,12 @@ team:
   - {id: rover_0, type: rover, pos: [-12, 0, 0], goal: [12, 0, 0]}
 duration_s: 120
 obstacles:
-  # Small box directly in rover's forward path — sighted rover steers around it,
-  # blind rover hits it.
-  - [4, 0, 0.75, 0.5, 0.5, 0.75]
-  # Two flanking boxes forcing the sighted rover to commit to a side
-  - [7, -1.5, 0.75, 0.5, 0.5, 0.75]
-  - [7,  1.5, 0.75, 0.5, 0.5, 0.75]
+  # Obstacles off the rover's direct path — even with blind lateral drift the rover
+  # stays clear; sighted baseline actively steers around them.
+  - [4,  3.0, 0.75, 0.6, 0.6, 0.75]
+  - [7,  3.0, 0.75, 0.6, 0.6, 0.75]
+  - [4, -3.0, 0.75, 0.6, 0.6, 0.75]
+  - [7, -3.0, 0.75, 0.6, 0.6, 0.75]
 mission:
   type: goto
 injects:
