@@ -76,6 +76,54 @@ smoke:
     sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
         "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m pytest eco/drone/training/tests -q"
 
+# Deploy multi-agent training files to hoopoe
+deploy-ma:
+    sshpass -p 'sayplease' scp {{ssh_opts}} \
+        eco/drone/training/dynamics.py \
+        eco/drone/training/rover_contract.py \
+        eco/drone/training/train_rl_rover.py \
+        eco/drone/training/train_ma_rover.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/training/
+    sshpass -p 'sayplease' scp {{ssh_opts}} \
+        eco/drone/training/tests/test_train_ma_rover.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/training/tests/
+    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+        "uv pip install --python {{python}} --quiet torch onnx onnxruntime pytest 2>&1 | tail -3"
+
+# Train multi-agent IPPO on hoopoe (warm-start from single-agent checkpoint recommended)
+train-ma iters="1200" envs="256" agents="4" version="ma_rover_v1" ckpt="":
+    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+        "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.train_ma_rover \
+            --out ~/drone-data/rover/models \
+            --version {{version}} \
+            --iters {{iters}} \
+            --envs {{envs}} \
+            --agents {{agents}} \
+            $(if [ -n '{{ckpt}}' ]; then echo '--ckpt {{ckpt}}'; fi)"
+
+# Pull MA rover model back locally
+pull-ma version="ma_rover_v1":
+    mkdir -p {{local_models}}
+    sshpass -p 'sayplease' scp {{ssh_opts}} \
+        "{{hoopoe}}:~/drone-data/rover/models/policy_{{version}}.onnx" \
+        "{{hoopoe}}:~/drone-data/rover/models/policy_{{version}}_state_norm.npy" \
+        "{{hoopoe}}:~/drone-data/rover/models/policy_{{version}}_rl_summary.json" \
+        {{local_models}}/
+
+# Run MA scorecard comparison after pulling a trained policy
+scorecard-compare version="ma_rover_v1":
+    /Users/jsaib/code/ys/a/eco/drone/sim/.venv-mac/bin/python \
+        /Users/jsaib/code/ys/a/eco/drone/sim/scorecard.py \
+        --policy {{local_models}}/policy_{{version}}.onnx \
+        --out /Users/jsaib/code/ys/a/eco/drone/sim/scorecard_{{version}}.json
+
+# Full MA pipeline: deploy -> train -> pull -> compare
+train-ma-all version="ma_rover_v1" iters="1200":
+    just -f eco/drone/training/justfile deploy-ma
+    just -f eco/drone/training/justfile train-ma version={{version}} iters={{iters}}
+    just -f eco/drone/training/justfile pull-ma version={{version}}
+    just -f eco/drone/training/justfile scorecard-compare version={{version}}
+
 # Full pipeline: deploy -> dataset -> train -> pull
 all episodes="4000" epochs="30":
     just -f eco/drone/training/justfile deploy

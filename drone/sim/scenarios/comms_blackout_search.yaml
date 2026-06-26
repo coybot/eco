@@ -1,0 +1,15 @@
+# Family: comms/GPS degradation
+# Team must keep searching after the mesh goes dark mid-mission (local-info-only).
+name: comms_blackout_search
+environment: warehouse
+team: [quad x2, rover x2]
+duration_s: 120
+mission:
+  type: area_search
+  region: [-12, -12, 12, 12]
+  targets: [[9, 7], [-8, 6], [7, -8], [-9, -7]]
+injects:
+  - {at: 3, do: comms_blackout}
+success:
+  targets_found: all
+  no_collisions: true

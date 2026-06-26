@@ -1,0 +1,16 @@
+# Family: agent/sensor failure
+# A teammate drops out mid-search; survivors must re-cover its tasks.
+name: teammate_lost_resilience
+environment: warehouse
+team: [quad x2, rover x2]
+duration_s: 140
+mission:
+  type: area_search
+  region: [-12, -12, 12, 12]
+  targets: [[9, 8], [-8, 7], [8, -9], [-9, -8]]
+injects:
+  - {at: 2, do: agent_failure, agent: quad_0}
+  - {at: 5, do: agent_failure, agent: rover_1}
+success:
+  targets_found: all
+  no_collisions: true
