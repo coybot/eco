@@ -1,0 +1,15 @@
+# Family: dynamic world events
+# A target moves after the search starts; the team must re-plan toward the new spot.
+name: target_relocated
+environment: warehouse
+team: [quad x2]
+duration_s: 120
+mission:
+  type: area_search
+  region: [-12, -12, 12, 12]
+  targets: [[10, 8], [-9, -7]]
+injects:
+  - {at: 12, do: move_target, target: t0, to: [-10, 9, 0]}
+success:
+  targets_found: all
+  no_collisions: true
