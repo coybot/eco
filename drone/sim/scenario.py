@@ -347,15 +347,24 @@ def _h_tight_deconfliction(runner, world, inj):
     pt = np.asarray(_xy3(inj.get("at_point", [0, 0, 2])), np.float32)
     overfly_z = float(inj.get("overfly_z", 5.5))
     quad_agents = [a for a in world.team_agents() if not a.vclass.planar]
-    rover_agents = [a for a in world.team_agents() if a.vclass.planar]
-    # rovers staggered through the gap (1m apart) to avoid goal collision;
+    # Sort rovers by Y so agent with lowest Y gets lowest Y goal — prevents
+    # goal-crossing which forces rovers to pass through each other.
+    rover_agents = sorted(
+        (a for a in world.team_agents() if a.vclass.planar),
+        key=lambda a: float(a.pos[1]),
+    )
+    # rovers staggered through the gap (1.5m apart) — keeps surface separation
+    # above the 0.4m near_miss pad while staying well clear of gap walls;
+    # use (i-(N-1)/2) for symmetric offsets centred on at_point Y;
     # use agent's current Z so all_reached(tol=1.5) doesn't fail on altitude gap
+    n_rov = len(rover_agents)
     for i, a in enumerate(rover_agents):
-        offset = (i - len(rover_agents) / 2) * 1.0
+        offset = (i - (n_rov - 1) / 2) * 1.5
         a.goal = np.array([pt[0], pt[1] + offset, a.pos[2]], np.float32)
     # quads staggered laterally (1.5m apart) at overfly altitude
+    n_q = len(quad_agents)
     for i, a in enumerate(quad_agents):
-        offset = (i - len(quad_agents) / 2) * 1.5
+        offset = (i - (n_q - 1) / 2) * 1.5
         a.goal = np.array([pt[0], pt[1] + offset, overfly_z], np.float32)
 
 
