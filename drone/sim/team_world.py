@@ -69,6 +69,32 @@ def _ray_aabb_2d(ox: float, oy: float, dx: float, dy: float, box: Box, max_d: fl
     return min(t, max_d)
 
 
+def _ray_aabb_3d(ox: float, oy: float, oz: float,
+                 dx: float, dy: float, dz: float,
+                 box: Box, max_d: float) -> float:
+    """Distance along a 3D unit ray to an AABB, or max_d if no hit. Slab method."""
+    eps = 1e-7
+    tmin, tmax = -math.inf, math.inf
+    for o, d, lo, hi in (
+        (ox, dx, box.center[0] - box.half[0], box.center[0] + box.half[0]),
+        (oy, dy, box.center[1] - box.half[1], box.center[1] + box.half[1]),
+        (oz, dz, box.center[2] - box.half[2], box.center[2] + box.half[2]),
+    ):
+        if abs(d) < eps:
+            if not (lo <= o <= hi):
+                return max_d
+        else:
+            t1, t2 = (lo - o) / d, (hi - o) / d
+            if t1 > t2:
+                t1, t2 = t2, t1
+            tmin = max(tmin, t1)
+            tmax = min(tmax, t2)
+    if tmax < tmin or tmax < 0:
+        return max_d
+    t = tmin if tmin >= 0 else 0.0
+    return min(t, max_d)
+
+
 # --------------------------------------------------------------------------- agent
 @dataclass
 class Agent:
@@ -169,6 +195,30 @@ def _wrap_pi(a: float) -> float:
 _LIDAR_RAYS = 72
 _LIDAR_ANGLES = tuple(2 * math.pi * i / _LIDAR_RAYS for i in range(_LIDAR_RAYS))
 
+# Forward depth grid for quads — mirrors contract.py geometry exactly.
+# 5 rows (top→bottom, ±35°) × 9 cols (left→right, ±45°) = 45 rays, row-major.
+_DEPTH_COLS = 9
+_DEPTH_ROWS = 5
+_DEPTH_HFOV = math.radians(90.0)
+_DEPTH_VFOV = math.radians(70.0)
+
+
+def _make_depth_dirs() -> tuple:
+    """Body-frame unit ray directions (fwd, left, up) for the 45-ray depth grid."""
+    dirs = []
+    for r in range(_DEPTH_ROWS):
+        pitch = _DEPTH_VFOV / 2.0 - r * _DEPTH_VFOV / (_DEPTH_ROWS - 1)
+        for c in range(_DEPTH_COLS):
+            yaw = _DEPTH_HFOV / 2.0 - c * _DEPTH_HFOV / (_DEPTH_COLS - 1)
+            ce = math.cos(pitch)
+            dirs.append((ce * math.cos(yaw), ce * math.sin(yaw), math.sin(pitch)))
+    return tuple(dirs)
+
+
+_DEPTH_BODY_DIRS = _make_depth_dirs()   # 45 × (fwd, left, up)
+# Horizontal yaw angle per ray (for 2D repulsion direction in reactive controller).
+_DEPTH_YAW_ANGLES = tuple(math.atan2(dl, df) for df, dl, _ in _DEPTH_BODY_DIRS)
+
 
 def lidar_ray_angles() -> tuple[float, ...]:
     return _LIDAR_ANGLES
@@ -242,12 +292,11 @@ class TeamWorld:
     def _scan(self, me: Agent, boxes: list[Box]) -> tuple[np.ndarray, float]:
         """Sensing-modality output + min clearance. Modality from VehicleClass.sensor."""
         max_d = KinematicWorld.SENSE_MAX
+        n_rays = _LIDAR_RAYS if me.vclass.sensor is Sensor.LIDAR_360 else _DEPTH_COLS * _DEPTH_ROWS
         if not me.sensor_ok:   # sensor_dropout inject: blind (reports all-clear)
-            n = 72 if me.vclass.sensor is Sensor.LIDAR_360 else 9
-            return np.full(n, max_d, dtype=np.float32), max_d
-        px, py = float(me.pos[0]), float(me.pos[1])
+            return np.full(n_rays, max_d, dtype=np.float32), max_d
+        px, py, pz = float(me.pos[0]), float(me.pos[1]), float(me.pos[2])
         if me.vclass.sensor is Sensor.LIDAR_360:
-            
             angles = lidar_ray_angles()
             scan = np.full(len(angles), max_d, dtype=np.float32)
             for i, a in enumerate(angles):
@@ -257,14 +306,17 @@ class TeamWorld:
                 for b in boxes:
                     d = min(d, _ray_aabb_2d(px, py, dx, dy, b, max_d))
                 scan[i] = d
-        else:  # FORWARD_DEPTH: coarse forward fan (min over a ±45° sweep)
-            scan = np.full(9, max_d, dtype=np.float32)
-            for i in range(9):
-                wa = me.yaw + math.radians(45 - i * 90 / 8)
-                dx, dy = math.cos(wa), math.sin(wa)
+        else:
+            # FORWARD_DEPTH: full 5×9 = 45-ray 2D depth grid matching contract.py.
+            # Body dirs (fwd, left, up) rotated by agent yaw into world frame.
+            c_yaw, s_yaw = math.cos(me.yaw), math.sin(me.yaw)
+            scan = np.full(_DEPTH_COLS * _DEPTH_ROWS, max_d, dtype=np.float32)
+            for i, (df, dl, du) in enumerate(_DEPTH_BODY_DIRS):
+                wx = c_yaw * df - s_yaw * dl
+                wy = s_yaw * df + c_yaw * dl
                 d = max_d
                 for b in boxes:
-                    d = min(d, _ray_aabb_2d(px, py, dx, dy, b, max_d))
+                    d = min(d, _ray_aabb_3d(px, py, pz, wx, wy, du, b, max_d))
                 scan[i] = d
         min_clear = self._min_surface_dist(me, boxes)
         return scan, min_clear
@@ -356,12 +408,14 @@ def reactive_goto_controller(slow_radius: float = 2.0,
         # static obstacle: push away from the closest scan ray's direction
         if obs.scan.size and obs.min_clearance < avoid_radius:
             ang = (lidar_ray_angles() if vc.sensor is Sensor.LIDAR_360
-                   else [math.radians(45 - i * 90 / 8) for i in range(9)])
+                   else _DEPTH_YAW_ANGLES)
             k = int(np.argmin(obs.scan))
             a = ang[k]
             mag = (avoid_radius - obs.min_clearance) / avoid_radius
             rep[0] -= math.cos(a) * mag
             rep[1] -= math.sin(a) * mag
+            if vc.sensor is Sensor.FORWARD_DEPTH:
+                rep[2] -= _DEPTH_BODY_DIRS[k][2] * mag   # vertical repulsion for quads
         return rep
 
     def ctl(agent: Agent, obs: Observation) -> np.ndarray:

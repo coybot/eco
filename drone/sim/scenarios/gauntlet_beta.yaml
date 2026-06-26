@@ -1,0 +1,22 @@
+name: gauntlet_beta
+environment: warehouse
+team:
+  - {id: quad_0,  type: quad,  pos: [-10, 0, 4],   goal: [10,  2, 4]}
+  - {id: rover_0, type: rover, pos: [-10, 4, 0],   goal: [10,  4, 0]}
+  - {id: rover_1, type: rover, pos: [-10, 0, 0],   goal: [10,  0, 0]}
+  - {id: rover_2, type: rover, pos: [-10,-4, 0],   goal: [10, -4, 0]}
+duration_s: 50
+obstacles:
+  - [0,  6, 1.5, 0.6, 2.0, 3.0]
+  - [0, -6, 1.5, 0.6, 2.0, 3.0]
+  - [5,  0, 1.5, 0.6, 4.0, 3.0]
+  - [-5, 0, 1.5, 0.6, 4.0, 3.0]
+injects:
+  - {at: 0,  do: sensor_dropout, agent: all}
+  - {at: 3,  do: jamming_zone,   center: [0, 0, 0], radius: 8.0}
+  - {at: 10, do: agent_failure,  agent: quad_0}
+  - {at: 20, do: agent_failure,  agent: rover_2}
+  - {at: 3,  do: wind_shift,     wind: [0.5, -0.3, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true

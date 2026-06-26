@@ -1,0 +1,24 @@
+name: multi_chokepoint
+environment: warehouse
+team:
+  - {id: quad_0,  type: quad,  pos: [-14,  4, 5.5], goal: [14,  4, 5.5]}
+  - {id: quad_1,  type: quad,  pos: [-14,  0, 5.5], goal: [14,  0, 5.5]}
+  - {id: quad_2,  type: quad,  pos: [-14, -4, 5.5], goal: [14, -4, 5.5]}
+  - {id: rover_0, type: rover, pos: [-14,  2, 0],   goal: [14,  2, 0]}
+  - {id: rover_1, type: rover, pos: [-14, -2, 0],   goal: [14, -2, 0]}
+duration_s: 50
+obstacles:
+  # First chokepoint at x=-4: 4m gap at y=0
+  - [-4,  6, 1.5, 0.5, 5.0, 3.0]
+  - [-4, -6, 1.5, 0.5, 5.0, 3.0]
+  # Second chokepoint at x=4: 4m gap at y=0
+  - [4,   6, 1.5, 0.5, 5.0, 3.0]
+  - [4,  -6, 1.5, 0.5, 5.0, 3.0]
+injects:
+  # Comms dead inside both chokepoints
+  - {at: 0, do: jamming_zone, center: [-4, 0, 0], radius: 4.5}
+  - {at: 0, do: jamming_zone, center: [ 4, 0, 0], radius: 4.5}
+  - {at: 5, do: wind_shift, wind: [0.4, 0.0, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true
