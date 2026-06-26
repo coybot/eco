@@ -112,13 +112,13 @@ export function PlazaSimSection() {
   // chat + mission state
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [missionSent, setMissionSent] = useState(false);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const planRef = useRef<MissionPlan | null>(null);
   const msgIdRef = useRef(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const pipCanvasRef = useRef<HTMLCanvasElement>(null);
+  const pipCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const simCanvasWrapperRef = useRef<HTMLDivElement>(null);
   const prevMissionCompleteRef = useRef(false);
 
@@ -208,13 +208,21 @@ export function PlazaSimSection() {
     setDisplayCount(0);
     setReportLineIdx(0);
     setMissionSent(true);
-    setSelectedVehicleId(null);
+    setSelectedVehicleIds([]);
     msgIdRef.current = 0;
     prevMissionCompleteRef.current = false;
     setMessages([
       { id: `msg-${++msgIdRef.current}`, sender: "user", label: "You", text: text || "Search the area and report" },
       { id: `msg-${++msgIdRef.current}`, sender: "dispatch", label: "Central Dispatch", text: "Analyzing environment, assembling fleet…" },
     ]);
+
+    // Auto-enter fullscreen and select first vehicle for camera view
+    setTimeout(() => {
+      const el = simCanvasWrapperRef.current;
+      if (el && !document.fullscreenElement) {
+        el.requestFullscreen().catch(() => {});
+      }
+    }, 100);
 
     // Capture the current 3D scene so the AI can see what's actually there
     const glCanvas = simCanvasWrapperRef.current?.querySelector('canvas');
@@ -228,11 +236,15 @@ export function PlazaSimSection() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const newPlan: MissionPlan = await res.json();
+      // Clamp waypoint durations so the sim never runs unrealistically fast
+      newPlan.waypoints = newPlan.waypoints.map(wp => ({ ...wp, duration: Math.max(wp.duration, 10) }));
       newPlan.planVersion = ++planVersionRef.current;
       setPlan(newPlan);
       const labels: Record<string, string> = {};
       newPlan.vehicles.forEach((v) => { labels[v.id] = "standby"; });
       setVehicleLabels(labels);
+      // Auto-select all vehicles so all cameras show simultaneously
+      setSelectedVehicleIds(newPlan.vehicles.map(v => v.id));
       setMessages((prev) => [
         ...prev,
         {
@@ -266,6 +278,13 @@ export function PlazaSimSection() {
     return vehicles.every((v) => (vehicleLabels[v.id] ?? "") === "mission ✓");
   }, [missionSent, vehicles, vehicleLabels]);
 
+  // Exit fullscreen when mission completes
+  useEffect(() => {
+    if (missionComplete && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, [missionComplete]);
+
   // Dispatch final count message when all units reach mission ✓
   useEffect(() => {
     if (missionComplete && !prevMissionCompleteRef.current && missionSent) {
@@ -292,11 +311,6 @@ export function PlazaSimSection() {
     if (plan && plan.reportLines.length > 1) return Math.min(85, (reportLineIdx / (plan.reportLines.length - 1)) * 80);
     return 5;
   }, [missionSent, missionComplete, totalTargets, displayCount, plan, reportLineIdx]);
-
-  const selectedVehicle = useMemo(
-    () => vehicles.find((v) => v.id === selectedVehicleId) ?? null,
-    [vehicles, selectedVehicleId]
-  );
 
   return (
     <section className="py-20 bg-background overflow-hidden">
@@ -460,8 +474,8 @@ export function PlazaSimSection() {
                 onTargetDetected={onTargetDetected}
                 onWaypointLabel={onWaypointLabel}
                 missionActive={missionSent && !missionComplete}
-                selectedVehicleId={selectedVehicleId}
-                pipCanvasRef={pipCanvasRef}
+                selectedVehicleIds={selectedVehicleIds}
+                pipCanvasesRef={pipCanvasesRef}
                 isMobile={isMobile}
               />
             )}
@@ -498,51 +512,58 @@ export function PlazaSimSection() {
               )}
             </AnimatePresence>
 
-            {/* PiP for selected vehicle */}
-            {selectedVehicle && (
-              <div className="absolute bottom-3 right-3 w-48 rounded-xl overflow-hidden border border-white/20 bg-black shadow-2xl z-10">
-                <div className="flex items-center justify-between px-2.5 pt-1.5 pb-1.5 border-b border-white/10">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                    <span className="text-[10px] text-white/70 font-mono font-medium truncate">
-                      {selectedVehicle.label} · CAM
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setSelectedVehicleId(null)}
-                    className="text-white/40 hover:text-white/80 transition-colors ml-2 shrink-0"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                      <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                </div>
-                <div className="relative bg-[#050d18]">
-                  <canvas
-                    ref={pipCanvasRef}
-                    width={192}
-                    height={108}
-                    className="w-full block"
-                  />
-                  {/* HUD overlay */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    {/* Scan lines */}
-                    <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_3px,rgba(0,0,0,0.07)_3px,rgba(0,0,0,0.07)_4px)]" />
-                    {/* Corner brackets */}
-                    <div className="absolute inset-2">
-                      <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-amber-400/50" />
-                      <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-amber-400/50" />
-                      <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-amber-400/50" />
-                      <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-amber-400/50" />
+            {/* PiP cameras — one per selected vehicle, stacked bottom-left */}
+            {selectedVehicleIds.length > 0 && (
+              <div className="absolute bottom-3 left-3 flex flex-col gap-1.5 z-10 max-h-[calc(100%-1.5rem)] overflow-y-auto">
+                {selectedVehicleIds.map(vid => {
+                  const vehicle = vehicles.find(v => v.id === vid);
+                  if (!vehicle) return null;
+                  return (
+                    <div key={vid} className="w-44 rounded-xl overflow-hidden border border-white/20 bg-black shadow-2xl shrink-0">
+                      <div className="flex items-center justify-between px-2.5 pt-1.5 pb-1.5 border-b border-white/10">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                          <span className="text-[10px] text-white/70 font-mono font-medium truncate">
+                            {vehicle.label} · CAM
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setSelectedVehicleIds(prev => prev.filter(id => id !== vid))}
+                          className="text-white/40 hover:text-white/80 transition-colors ml-2 shrink-0"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                            <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="relative bg-[#050d18]">
+                        <canvas
+                          ref={el => {
+                            if (el) pipCanvasesRef.current.set(vid, el);
+                            else pipCanvasesRef.current.delete(vid);
+                          }}
+                          width={192}
+                          height={108}
+                          className="w-full block"
+                        />
+                        <div className="absolute inset-0 pointer-events-none">
+                          <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_3px,rgba(0,0,0,0.07)_3px,rgba(0,0,0,0.07)_4px)]" />
+                          <div className="absolute inset-2">
+                            <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-amber-400/50" />
+                            <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-amber-400/50" />
+                            <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-amber-400/50" />
+                            <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-amber-400/50" />
+                          </div>
+                          <div className="absolute bottom-1.5 left-0 right-0 flex justify-center">
+                            <span className={`text-[9px] font-mono uppercase tracking-wider ${statusColor(vehicleLabels[vid] ?? "standby")}`}>
+                              {vehicleLabels[vid] ?? "standby"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    {/* Status label */}
-                    <div className="absolute bottom-1.5 left-0 right-0 flex justify-center">
-                      <span className={`text-[9px] font-mono uppercase tracking-wider ${statusColor(vehicleLabels[selectedVehicle.id] ?? "standby")}`}>
-                        {vehicleLabels[selectedVehicle.id] ?? "standby"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             )}
 
@@ -556,12 +577,14 @@ export function PlazaSimSection() {
               <div className="text-white/20 text-[10px] font-mono px-1">Awaiting fleet…</div>
             ) : (
               vehicles.map((v) => {
-                const isSelected = selectedVehicleId === v.id;
+                const isSelected = selectedVehicleIds.includes(v.id);
                 const status = vehicleLabels[v.id] ?? "standby";
                 return (
                   <button
                     key={v.id}
-                    onClick={() => setSelectedVehicleId((prev) => (prev === v.id ? null : v.id))}
+                    onClick={() => setSelectedVehicleIds(prev =>
+                      prev.includes(v.id) ? prev.filter(id => id !== v.id) : [...prev, v.id]
+                    )}
                     className={`rounded-lg border px-3 py-2.5 text-left text-xs font-mono transition-colors ${
                       isSelected
                         ? "border-amber-500/60 bg-amber-500/10 text-amber-400"

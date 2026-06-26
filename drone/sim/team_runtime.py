@@ -50,8 +50,9 @@ class _Belief:
     sightings: dict = field(default_factory=dict)        # target_id -> np.ndarray
     my_task: str | None = None
     isolated_ticks: int = 0
-    yield_ticks: int = 0         # consecutive ticks spent yielding (yield-deadlock guard)
-    sensor_blind_ticks: int = 0  # consecutive ticks with sensor_ok=False
+    yield_ticks: int = 0          # consecutive ticks spent yielding (yield-deadlock guard)
+    convoy_hold_ticks: int = 0    # ticks in convoy-queue mode (chokepoint serialization)
+    sensor_blind_ticks: int = 0   # consecutive ticks with sensor_ok=False
 
 
 class TeamRuntime:
@@ -168,43 +169,77 @@ class TeamRuntime:
                     return
         # no tasks (e.g. goto/patrol missions): keep whatever goal mission set
 
-    # -- modulation (deconfliction + contingency speed) -------------------------
-    # max consecutive yield ticks before forcing through (prevents corridor deadlock)
-    _YIELD_TIMEOUT = 15
+    # Convoy queuing: planar agents serialise through narrow gaps.
+    # Lower-priority agent waits until the higher-priority one is _CONVOY_CLEAR m ahead,
+    # measured in forward body-frame (x > 0). Timeout prevents infinite hold.
+    _CONVOY_CLOSE = 1.5    # m — within this lateral+forward distance triggers convoy
+    _CONVOY_CLEAR = 3.0    # m forward before follower is released
+    _CONVOY_TIMEOUT = 60   # 6 s timeout — force through if leader is stuck too
 
     def _modulate(self, agent, obs, action):
         b = self.belief[agent.id]
         scale = 1.0
         conf = self.loc.confidence(agent)
         if conf < CONF_SLOW:
-            scale *= max(0.3, conf)           # slow when unsure of position
+            scale *= max(0.3, conf)
 
+        # ---- sensor blind: hold then creep ----
         sensor_ok = getattr(agent, "sensor_ok", True)
         if not sensor_ok:
             b.sensor_blind_ticks += 1
-            # hold position for first 3s of blindness, then creep cautiously
             if b.sensor_blind_ticks < int(3.0 / max(self.world.dt, 1e-3)):
                 return np.zeros_like(np.asarray(action, np.float32))
             scale *= 0.25
         else:
             b.sensor_blind_ticks = 0
 
-        # yield to a higher-priority (lower-rank) neighbor that is close & ahead —
-        # but only up to _YIELD_TIMEOUT ticks to prevent narrow-corridor deadlock
-        yielding = False
-        if b.yield_ticks < self._YIELD_TIMEOUT:
+        # ---- convoy queuing (planar agents only) ----
+        # Only activates when a higher-priority planar neighbour is directly ahead
+        # and very close — indicating both are approaching the same gap.
+        if agent.vclass.planar and b.convoy_hold_ticks < self._CONVOY_TIMEOUT:
+            holding = False
             for nid, rel_body, _vel, _ovc in obs.neighbors:
-                ahead = rel_body[0] > 0 and abs(rel_body[1]) < 1.5
+                # Must be ahead (positive body-x) and laterally aligned (same gap)
+                fwd = float(rel_body[0])
+                lat = abs(float(rel_body[1]))
+                dist = float(np.linalg.norm(rel_body[:2]))
+                if (fwd > 0 and lat < 0.8 and dist < self._CONVOY_CLOSE
+                        and self._rank.get(nid, 1e9) < self._rank[agent.id]):
+                    # hold until leader is _CONVOY_CLEAR m ahead in forward direction
+                    if fwd < self._CONVOY_CLEAR:
+                        scale *= 0.0
+                        b.convoy_hold_ticks += 1
+                        holding = True
+                    break
+            if not holding:
+                b.convoy_hold_ticks = 0
+        elif b.convoy_hold_ticks >= self._CONVOY_TIMEOUT:
+            b.convoy_hold_ticks = 0
+
+        # ---- jammed-isolated: slow down to avoid blind collisions ----
+        reachable = self.comms.reachable(self.world, agent.id)
+        if len(reachable) == 0:
+            scale *= 0.5   # half speed when comms cut — reduce blind nav collisions
+
+        # ---- yield with timeout (non-convoy: wide-space deconfliction) ----
+        # Only applies when NOT already in convoy hold, preventing double-application.
+        if scale > 0 and b.yield_ticks < 15:
+            for nid, rel_body, _vel, _ovc in obs.neighbors:
+                ahead = float(rel_body[0]) > 0 and abs(float(rel_body[1])) < 1.5
                 close = float(np.linalg.norm(rel_body[:2])) < 2.5
                 if ahead and close and self._rank.get(nid, 1e9) < self._rank[agent.id]:
                     scale *= 0.4
-                    yielding = True
+                    b.yield_ticks += 1
                     break
-        b.yield_ticks = (b.yield_ticks + 1) if yielding else 0
+            else:
+                b.yield_ticks = 0
+        elif b.yield_ticks >= 15:
+            b.yield_ticks = 0
 
+        # ---- apply scale ----
         action = np.asarray(action, np.float32).copy()
         if agent.vclass.planar:
-            action[0] *= scale                 # linear speed only (keep steering)
+            action[0] *= scale
         else:
             action[:3] *= scale
         return action

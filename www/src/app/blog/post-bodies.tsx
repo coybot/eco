@@ -12,6 +12,210 @@ function Prose({ children }: { children: ReactNode }) {
 
 export function BlogPostBody({ slug }: { slug: string }) {
   switch (slug) {
+    case "rover-nav-recurrent-rl-lidar":
+      return (
+        <Prose>
+          <p>
+            We wanted a ground rover that could drive itself through obstacles — not by building a
+            map, not by running A*, not by following a script. Just raw reactive navigation: sense,
+            think, steer. And we wanted it deployable on the hardware we actually have: a Jetson Orin
+            Nano, a commodity 360° lidar, and a ROS 2 stack.
+          </p>
+          <p>
+            Here&apos;s what we ended up with: a 4.6 KB neural network that navigates a 4-room maze,
+            a dense column field, and a tight gap — 120 trials, zero collisions — trained in 30
+            minutes on a pair of RTX 5090s. And when we put a Vector Field Histogram planner
+            through the same courses under the same noise conditions, it failed completely on the
+            cluttered field: 0 out of 20 reaches, 20 out of 20 collisions.
+          </p>
+
+          <h2>The Setup</h2>
+          <p>
+            The rover is a differential-drive ground vehicle. Its sensors:
+          </p>
+          <ul>
+            <li>
+              <strong>360° lidar</strong>: 72 rays at 5° spacing, 10m range — a horizontal sweep
+              of everything around it
+            </li>
+            <li>
+              <strong>Odometry</strong>: linear velocity and yaw rate from wheel encoders
+            </li>
+            <li>
+              <strong>Goal vector</strong>: where the rover needs to go, expressed in its own body
+              frame (forward/left distance)
+            </li>
+          </ul>
+          <p>
+            That&apos;s 83 numbers going into the policy. Two numbers come out: linear speed and
+            turn rate, wired directly to <code>/cmd_vel</code>. No perception stack. No planner.
+            No map.
+          </p>
+
+          <h2>Why Not A*?</h2>
+          <p>
+            A* is a great algorithm if you have a map. We don&apos;t. The rover encounters
+            obstacles for the first time when it sees them in the lidar scan. Any planning
+            algorithm that requires knowing the environment in advance is off the table.
+          </p>
+          <p>
+            What we want instead is something closer to how a skilled cyclist navigates a crowded
+            street: a reflexive policy that reads the immediate environment and acts, informed by a
+            sense of momentum and history built up over the past few seconds. That&apos;s a
+            recurrent neural network.
+          </p>
+
+          <h2>The Policy</h2>
+          <p>
+            The architecture is a GRU with 256 hidden units — separately for the actor and
+            critic (shared hidden state leads to training instabilities we&apos;d seen before).
+            The actor GRU reads the current 83-dimensional observation, updates its hidden state,
+            and passes that through a two-layer MLP to produce the action:
+          </p>
+          <p>
+            <code>obs (83-dim, raw) → normalize → GRU(256) → MLP(256→256→2) → [v, ω]</code>
+          </p>
+          <p>
+            The hidden state is the policy&apos;s short-term memory. It&apos;s what lets the rover
+            know it&apos;s been spinning for 3 seconds and should try something different. It&apos;s
+            what lets it commit to passing through a gap even as the gap momentarily disappears from
+            some rays. It&apos;s the difference between a policy that gets stuck in symmetric
+            situations and one that breaks them.
+          </p>
+          <p>
+            At deployment, the hidden state (256 floats) lives on the Jetson between inference
+            calls. Each call takes the current lidar scan and odometry, passes them through the GRU,
+            and returns the updated hidden state alongside the action. The whole thing fits in a
+            4.6 KB ONNX file.
+          </p>
+
+          <h2>How We Trained It</h2>
+          <p>
+            <strong>Pure RL, from scratch, no demonstrations.</strong> We used PPO with a
+            vectorised GPU environment — 512 parallel rovers running simultaneously, each in its
+            own randomised obstacle layout. The simulator is pure PyTorch: batched 2D ray-AABB
+            intersection for lidar, unicycle kinematics for dynamics, domain randomization for
+            wheel lag, latency, and wind drift. Training time: about 30 minutes on dual RTX 5090s
+            for 800 update iterations.
+          </p>
+          <p>
+            The reward signal combines dense shaping and sparse terminal terms. The
+            <strong> proximity penalty</strong> deserves special mention: without it, the policy
+            learns to graze obstacles because the collision penalty only fires at &lt;0.3m. With it,
+            staying 0.5m from surfaces is consistently better than cutting close — and the policy
+            learns to keep buffer distance as a standing strategy, not just in emergencies.
+          </p>
+
+          <h2>Curriculum</h2>
+          <p>
+            We didn&apos;t throw the hard problems at the policy from the start. Training has four
+            stages:
+          </p>
+          <ul>
+            <li><strong>Stage 0 (iters 0–199)</strong>: Empty field. Just learn to drive toward a goal.</li>
+            <li><strong>Stage 1 (200–399)</strong>: 3–4 random columns per episode. Learn basic avoidance.</li>
+            <li><strong>Stage 2 (400–599)</strong>: 8 columns + gap walls, domain randomisation ramping up.</li>
+            <li><strong>Stage 3 (600–799)</strong>: Full slalom gauntlet: double walls, offset gaps, dense columns. Full DR.</li>
+          </ul>
+          <p>
+            In-training reach at Stage 3 stabilises around 45–56% — which sounds bad until you
+            run the named evaluation courses. The Stage 3 gauntlet is harder than any of our test
+            courses. 100% deployment success despite 45% in-training reach is a real phenomenon:
+            hard-stage training builds robustness that shows up at test time, not in the training
+            metric.
+          </p>
+
+          <h2>Results: RL vs. VFH</h2>
+          <p>
+            We ran 20 trials on each of 6 named courses with realistic sensor noise (lidar
+            σ=0.05m matching RPLidar A2 specs, odometry σ=0.10m). We also ran a Vector Field
+            Histogram baseline on the same courses under identical conditions — same noise, same
+            seeds, same courses.
+          </p>
+          <p>
+            VFH is a well-established reactive planner: build a polar obstacle-density histogram
+            from the lidar scan, find the free sector closest to the goal, steer toward it. It has
+            no memory. It acts on the current scan alone.
+          </p>
+          <ul>
+            <li><strong>Straight</strong>: RL 20/20, VFH 20/20 — both trivial</li>
+            <li><strong>Slalom</strong>: RL 20/20 (min clearance 1.24m), VFH 20/20 (0.88m)</li>
+            <li><strong>Tight gap</strong>: RL 20/20 (0.77m), VFH 20/20 (0.78m) — essentially equal</li>
+            <li><strong>Double gap</strong>: RL 20/20 (1.10m), VFH 20/20 (0.77m)</li>
+            <li><strong>Cluttered</strong>: RL <strong>20/20 (0.60m)</strong>, VFH <strong>0/20 — 20 collisions</strong></li>
+            <li><strong>Maze (4-room)</strong>: RL 20/20 (1.54m), VFH 20/20 (0.96m)</li>
+          </ul>
+          <p>
+            Total: RL 120/120 reach, 0 collisions. VFH 100/120, 20 collisions.
+          </p>
+          <p>
+            The cluttered field failure is interpretable. VFH steers toward whichever sector is
+            instantaneously clearest. In a dense column field, the &quot;clearest&quot; sector
+            changes every scan as the rover moves — columns shadow and unshadow each other. The
+            planner oscillates, gets wedged between columns, and collides. The GRU policy
+            threads the field in a continuous sweeping motion because its hidden state carries
+            recent heading and velocity history, letting it track which gaps it&apos;s already
+            committed to and which way it came from.
+          </p>
+          <p>
+            On the structured courses (slalom, maze), VFH does fine — no memory needed. On the
+            unstructured dense field, memory is the difference between 100% and 0%.
+          </p>
+
+          <h2>What Surprised Us</h2>
+          <p>
+            <strong>The clearance penalty is not optional.</strong> Every variant we tried without
+            it learned to graze obstacles. Not recklessly — strategically, because grazing was
+            faster and the reward signal agreed. The proximity penalty is what makes the policy
+            physically safe, not just statistically uncollidey. You can see this in the clearance
+            numbers: the RL policy keeps 1.24m minimum clearance on slalom, 1.54m in the maze.
+            VFH achieves 0.88m and 0.96m on the same courses without an explicit clearance
+            objective.
+          </p>
+          <p>
+            <strong>4.6 KB is enough.</strong> The ONNX file is 4.6 kilobytes. 656K parameters
+            total, with the GRU carrying the memory load. This is not a large model problem — it
+            is a representation problem, and 256 hidden units is sufficient representation for
+            reactive obstacle avoidance in 2D.
+          </p>
+          <p>
+            <strong>360° lidar beats forward camera for avoidance.</strong> We also have a forward
+            camera. We chose lidar as the primary avoidance sensor and we&apos;re glad: it covers
+            full 360°, requires no feature extraction, has near-zero sim-to-real gap, and
+            produces exactly the 72-number input we need. The camera is great for object
+            recognition. It&apos;s overkill — and slower — for collision avoidance.
+          </p>
+
+          <h2>What&apos;s Next</h2>
+          <p>
+            The obvious next step is sim-to-real: wire the ONNX runner to the Jetson, connect the
+            RPLidar A2 and wheel odometry, run it through a physical version of one of these courses.
+            The ONNX runner is already written. The ROS 2 interface is <code>/cmd_vel</code>.
+            This is a connector problem, not a policy problem.
+          </p>
+          <p>
+            Beyond that: moving obstacles (pedestrians, other rovers), camera integration for narrow
+            gap threading, and a goal sequencer on top of the reactive policy to handle long-horizon
+            navigation without per-environment mapping.
+          </p>
+
+          <h2>The Code</h2>
+          <p>
+            Everything is in <code>eco/drone/training/</code>:
+          </p>
+          <ul>
+            <li><code>rover_contract.py</code> — state/action spec, normalization constants</li>
+            <li><code>train_rl_rover.py</code> — full PPO training code</li>
+            <li><code>local_course_rover.py</code> — headless validation runner, 6 named courses</li>
+            <li><code>vfh_baseline_eval.py</code> — VFH baseline on the same 6 courses</li>
+            <li><code>render_rover_demo.py</code> — top-down map + lidar polar video renderer</li>
+          </ul>
+          <p>
+            30 minutes. 4.6 KB. Zero collisions.
+          </p>
+        </Prose>
+      );
+
     case "how-to-make-autonomous-drones-smarter":
       return (
         <Prose>
