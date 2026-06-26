@@ -1,0 +1,22 @@
+name: gauntlet_gamma
+environment: city
+team:
+  - {id: quad_0, type: quad, pos: [-10,  4, 5], goal: [10,  4, 5]}
+  - {id: quad_1, type: quad, pos: [-10,  0, 5], goal: [10,  0, 5]}
+  - {id: quad_2, type: quad, pos: [-10, -4, 5], goal: [10, -4, 5]}
+  - {id: rover_0, type: rover, pos: [-10, 0, 0], goal: [10,  0, 0]}
+duration_s: 45
+obstacles:
+  - [2,  5, 1.5, 0.5, 3.0, 3.0]
+  - [2, -5, 1.5, 0.5, 3.0, 3.0]
+  - [-4, 0, 1.5, 1.0, 2.5, 3.0]
+injects:
+  - {at: 2,  do: gps_loss,    agent: all}
+  - {at: 3,  do: wind_shift,  wind: [0.7, 0.5, 0.0]}
+  - {at: 5,  do: spawn_dynamic, path: [[15, 8, 4],[-15,-8, 4]], speed: 6.0}
+  - {at: 5,  do: spawn_dynamic, path: [[15, 0, 4],[-15, 0, 4]], speed: 6.0}
+  - {at: 5,  do: spawn_dynamic, path: [[15,-8, 4],[-15, 8, 4]], speed: 6.0}
+  - {at: 15, do: sensor_dropout, agent: rover_0}
+success:
+  mission_complete: true
+  no_collisions: true

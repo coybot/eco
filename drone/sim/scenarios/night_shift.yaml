@@ -1,0 +1,23 @@
+name: night_shift
+environment: warehouse
+# All agents blind from the start — slow creep through a multi-obstacle maze, 4 targets
+team:
+  - {id: quad_0,  type: quad,  pos: [-10,  0, 5], goal: [10,  4, 5]}
+  - {id: rover_0, type: rover, pos: [-10,  3, 0], goal: [10,  3, 0]}
+  - {id: rover_1, type: rover, pos: [-10,  0, 0], goal: [10,  0, 0]}
+  - {id: rover_2, type: rover, pos: [-10, -3, 0], goal: [10, -4, 0]}
+duration_s: 90
+obstacles:
+  - [-5,  5, 1.5, 0.6, 2.5, 3.0]
+  - [-5, -5, 1.5, 0.6, 2.5, 3.0]
+  - [ 0,  0, 1.5, 1.0, 2.0, 3.0]
+  - [ 5,  4, 1.5, 0.6, 2.0, 3.0]
+  - [ 5, -4, 1.5, 0.6, 2.0, 3.0]
+  - [ 2,  7, 1.5, 0.5, 2.5, 3.0]
+  - [ 2, -7, 1.5, 0.5, 2.5, 3.0]
+injects:
+  - {at: 0, do: sensor_dropout, agent: all}
+  - {at: 0, do: wind_shift, wind: [0.2, 0.1, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true
