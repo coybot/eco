@@ -31,8 +31,8 @@ import json
 
 import numpy as np
 
-from scenario import Scenario, ScenarioRunner
-from team_runtime import TeamRuntime
+from .scenario import Scenario, ScenarioRunner
+from .team_runtime import TeamRuntime
 
 
 # thresholds
@@ -292,7 +292,7 @@ def _load_onnx_controller(onnx_path: str):
         action, h_out = sess.run(None, {in0.name: state, in1.name: states[aid]})
         states[aid] = h_out
         act2 = np.clip(action[0], [-2.0, -2.0], [2.0, 2.0])
-        from vehicle_class import Kinematics
+        from .vehicle_class import Kinematics
         if agent.vclass.kinematics is Kinematics.HOLONOMIC_3D:
             # pad unicycle [v, w] → holonomic [vx, 0, 0, w]
             return np.array([act2[0], 0.0, 0.0, act2[1]], dtype=np.float32)
@@ -316,7 +316,7 @@ def compare_runs(scenarios_dir: str, onnx_path: str, out_path: str | None = None
             rt = TeamRuntime(runner)
             if use_onnx:
                 onnx_ctrl = _load_onnx_controller(onnx_path)
-                from vehicle_class import Kinematics
+                from .vehicle_class import Kinematics
                 _base = rt.controller
                 def _mixed(agent, obs, _oc=onnx_ctrl, _bc=_base):
                     if agent.vclass.kinematics is Kinematics.UNICYCLE_2D:
