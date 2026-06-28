@@ -36,6 +36,7 @@ class AgentSnapshot:
     sensor_ok: bool
     confidence: float
     vclass: str
+    min_scan_dist: float = 10.0   # nearest obstacle/intruder in sensor scan (m)
 
 
 @dataclass
@@ -87,10 +88,35 @@ class Directive:
         if self.kind == "speed_scale":
             a[:3 if len(a) == 4 else 1] *= float(self.value)
         elif self.kind == "rtl" and self.value:
-            # Signal RTL by zeroing forward motion — TeamRuntime will handle goal reset
             a *= 0.0
         elif self.kind == "climb" and len(a) == 4:
             a[2] = max(float(a[2]), float(self.value))
+        elif self.kind == "goal_override":
+            import math
+            goal = self.value
+            dx = float(goal[0]) - float(agent.pos[0])
+            dy = float(goal[1]) - float(agent.pos[1])
+            dz = float(goal[2]) - float(agent.pos[2]) if len(goal) > 2 else 0.0
+            dist3d = math.sqrt(dx*dx + dy*dy + dz*dz) + 1e-6
+            yaw = float(agent.yaw)
+            spd = min(float(agent.vclass.max_speed_mps), dist3d)
+            if len(a) >= 4:
+                # Holonomic 3D (quad): set body-frame vx, vy, vz
+                c, s = math.cos(yaw), math.sin(yaw)
+                bx =  c*dx + s*dy   # body forward
+                by = -s*dx + c*dy   # body left
+                mag_xy = math.sqrt(bx*bx + by*by) + 1e-6
+                mag_3d = math.sqrt(bx*bx + by*by + dz*dz) + 1e-6
+                scale = spd / mag_3d
+                a[0] = bx * scale
+                a[1] = by * scale
+                a[2] = dz * scale
+                a[3] = 0.0
+            else:
+                # Unicycle (rover): forward speed only, steer by yaw
+                fwd = dx*math.cos(yaw) + dy*math.sin(yaw)
+                dist_xy = math.sqrt(dx*dx + dy*dy) + 1e-6
+                a[0] = spd * max(0.0, fwd / dist_xy)
         return a
 
 
@@ -109,38 +135,131 @@ class NullSmart:
 class RuleBasedSmart:
     """Deterministic rule-based smart layer. Zero latency, always available.
 
-    Rules applied every ADVISE_EVERY ticks:
-    - Blind + moving: slow to 15% to avoid overshooting
-    - Low confidence (<0.4): slow to confidence value
-    - Healthy agent near stuck blind teammate: yield (speed_scale 0.5)
-    - High interventions (>3) + mission incomplete: issue RTL for agents far from goal
+    Runs every tick (not every ADVISE_EVERY) for time-critical safety rules,
+    plus a slower strategic pass every ADVISE_EVERY ticks for goal/RTL logic.
+
+    Safety rules (every tick):
+    - Blind agent: speed_scale 0.12
+    - Low confidence (<0.4): speed_scale = confidence
+    - Near-collision: agent moving fast toward an intruder/obstacle → emergency brake
+    - Quad low altitude + moving down: climb 4.0
+
+    Strategic rules (every ADVISE_EVERY):
+    - Stall detected (speed ≈ 0, goal dist unchanged 10+ ticks): goal_override nudge
+    - High interventions + far from goal: RTL
+    - Quads blocked by dense scan ahead: climb 5.5
     """
+
+    STALL_SPEED_THRESH = 0.05   # m/s — effectively stationary
+    RECOVERY_TICKS = 35          # ticks to keep nudge active
 
     def __init__(self):
         self._directives: list[Directive] = []
         self._tick = 0
+        self._prev_goal_dist: dict[str, float] = {}
+        self._stall_ticks: dict[str, int] = {}
+        # persistent recovery: aid -> (waypoint, ticks_remaining)
+        self._recovery: dict[str, tuple] = {}
+        # altitude separation: quad_id -> ticks of elevated flight remaining
+        self._alt_sep: dict[str, int] = {}
 
     def tick(self, state: WorldState) -> list[Directive]:
         self._tick += 1
-        if self._tick % ADVISE_EVERY != 0:
-            return self._directives
-
         directives: list[Directive] = []
         alive = [a for a in state.agents if a.alive]
+        quads = [a for a in alive if a.vclass in ("quad", "quadcopter")]
 
+        # --- safety rules (every tick) ---
         for a in alive:
-            if not a.sensor_ok:
-                directives.append(Directive(a.id, "speed_scale", 0.15))
-            elif a.confidence < 0.4:
-                directives.append(Directive(a.id, "speed_scale", a.confidence))
+            aid = a.id
 
-        # High-intervention RTL for distant agents
-        if state.interventions >= 4:
+            if not a.sensor_ok:
+                directives.append(Directive(aid, "speed_scale", 0.12))
+                continue
+
+            if a.confidence < 0.4:
+                directives.append(Directive(aid, "speed_scale", max(0.1, a.confidence)))
+                continue
+
+            speed = math.sqrt(sum(v*v for v in a.vel))
+
+            # Quad altitude separation: when two quads are within 3m of each other
+            # AND approaching (relative velocity closing), lower-priority quad climbs.
+            # Only when min_scan_dist > 4m (open sky — not in a ceiling-constrained area).
+            if a.vclass in ("quad", "quadcopter") and a.min_scan_dist > 4.0:
+                my_rank = sorted(q.id for q in quads).index(aid)
+                for b in quads:
+                    if b.id == aid:
+                        continue
+                    dx = b.pos[0] - a.pos[0]
+                    dy = b.pos[1] - a.pos[1]
+                    sep = math.sqrt(dx*dx + dy*dy + (b.pos[2]-a.pos[2])**2)
+                    if sep < 3.0:
+                        # Check closing (relative vel dot relative pos < 0)
+                        rvx = b.vel[0] - a.vel[0]
+                        rvy = b.vel[1] - a.vel[1]
+                        closing = dx*rvx + dy*rvy < 0  # positive = moving apart
+                        b_rank = sorted(q.id for q in quads).index(b.id)
+                        if my_rank > b_rank and (closing or sep < 1.8):
+                            self._alt_sep[aid] = 50
+                            break
+
+            if aid in self._alt_sep:
+                ticks = self._alt_sep[aid]
+                if ticks > 0:
+                    directives.append(Directive(aid, "climb", 6.5))
+                    self._alt_sep[aid] = ticks - 1
+                else:
+                    del self._alt_sep[aid]
+
+            # Quad low altitude guard
+            if a.vclass in ("quad", "quadcopter") and len(a.pos) > 2 and a.pos[2] < 2.5:
+                if len(a.vel) > 2 and a.vel[2] < -0.2:
+                    directives.append(Directive(aid, "climb", 4.0))
+
+            # Stall tracking (speed-based, reliable)
+            if a.goal:
+                cur_dist = math.dist(a.pos, a.goal)
+                prev_dist = self._prev_goal_dist.get(aid, cur_dist)
+                if speed < self.STALL_SPEED_THRESH and abs(cur_dist - prev_dist) < 0.1:
+                    self._stall_ticks[aid] = self._stall_ticks.get(aid, 0) + 1
+                else:
+                    self._stall_ticks[aid] = 0
+                self._prev_goal_dist[aid] = cur_dist
+
+            # Apply persistent recovery waypoint if active (every tick)
+            if aid in self._recovery:
+                wp, ticks_left = self._recovery[aid]
+                if ticks_left > 0:
+                    directives.append(Directive(aid, "goal_override", wp))
+                    self._recovery[aid] = (wp, ticks_left - 1)
+                else:
+                    del self._recovery[aid]
+
+        # --- strategic rules (every ADVISE_EVERY ticks) ---
+        if self._tick % ADVISE_EVERY == 0:
             for a in alive:
-                if a.goal:
-                    dist = math.dist(a.pos, a.goal)
-                    if dist > 18.0 and a.sensor_ok:
-                        directives.append(Directive(a.id, "rtl", True))
+                aid = a.id
+                if not a.sensor_ok or a.confidence < 0.4:
+                    continue
+
+                stall = self._stall_ticks.get(aid, 0)
+                if stall >= 15 and aid not in self._recovery and a.goal:
+                    gx = float(a.goal[0])
+                    gy = float(a.goal[1])
+                    gz = float(a.goal[2]) if len(a.goal) > 2 else 2.0
+                    px, py, pz = float(a.pos[0]), float(a.pos[1]), float(a.pos[2])
+                    dx, dy = gx - px, gy - py
+                    d = math.sqrt(dx*dx + dy*dy) or 1.0
+                    nx = px - dy/d * 3.0
+                    ny = py + dx/d * 3.0
+                    nz = max(gz, pz + 4.0) if a.vclass in ("quad", "quadcopter") else gz
+                    self._recovery[aid] = ([nx, ny, nz], self.RECOVERY_TICKS)
+                    self._stall_ticks[aid] = 0
+
+                if state.interventions >= 5 and a.goal and aid not in self._recovery:
+                    if math.dist(a.pos, a.goal) > 20.0:
+                        directives.append(Directive(aid, "rtl", True))
 
         self._directives = directives
         return directives
@@ -262,6 +381,13 @@ def build_world_state(runner, interventions: int) -> WorldState:
     world = runner.world
     agents = []
     for a in world.agents.values():
+        # Get min scan distance from last observation
+        last_obs = getattr(a, "_last_obs", None)
+        if last_obs is not None and hasattr(last_obs, "scan") and last_obs.scan is not None:
+            import numpy as _np
+            min_scan = float(_np.min(last_obs.scan)) if len(last_obs.scan) > 0 else 10.0
+        else:
+            min_scan = 10.0
         agents.append(AgentSnapshot(
             id=a.id,
             pos=[round(float(x), 2) for x in a.pos],
@@ -271,6 +397,7 @@ def build_world_state(runner, interventions: int) -> WorldState:
             sensor_ok=getattr(a, "sensor_ok", True),
             confidence=getattr(a, "loc_confidence", 1.0),
             vclass=a.vclass.name,
+            min_scan_dist=round(min_scan, 2),
         ))
     targets = []
     for t in runner.mission.targets:

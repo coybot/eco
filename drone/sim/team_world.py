@@ -362,6 +362,7 @@ class TeamWorld:
         collisions = 0
         for a in self.live_agents():
             obs = self.observe(a)
+            a._last_obs = obs                  # cache for smart layer scan access
             ctl = a.controller or controller   # per-agent override (scripted intruders)
             action = ctl(a, obs)
             self.backend.integrate(a, np.asarray(action, dtype=np.float32), self.dt)
