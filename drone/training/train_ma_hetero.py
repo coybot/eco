@@ -428,7 +428,7 @@ class HeteroEnv:
             coll_static = ((surf < 0) & (self.bmask > 0.5)).any(dim=1).float()
             rew -= coll_static * 3.0
 
-            # Progress reward
+            # Progress reward — sparse goal + dense shaping
             dx_g = self.gx[ag_idx] - self.x[ag_idx]
             dy_g = self.gy[ag_idx] - self.y[ag_idx]
             dz_g = self.gz[ag_idx] - self.z[ag_idx]
@@ -437,6 +437,9 @@ class HeteroEnv:
             self.reached[ag_idx] = t.where(reached_now, t.ones_like(self.reached[ag_idx]),
                                            self.reached[ag_idx])
             rew += reached_now.float() * 10.0
+            # Dense: reward progress toward goal (potential-based shaping)
+            not_reached = (self.reached[ag_idx] < 0.5)
+            rew += not_reached.float() * (0.3 / (dist_now + 1.0))
 
         # Team deconfliction reward
         for m1 in range(M):
@@ -532,6 +535,8 @@ def main():
     ap.add_argument("--version", default="hetero_v1")
     ap.add_argument("--out", default=".")
     ap.add_argument("--ckpt", default=None)
+    ap.add_argument("--min-reach", type=float, default=0.0,
+                    help="advance curriculum only when smoothed reach > this (0=fixed schedule)")
     args = ap.parse_args()
 
     import torch
@@ -550,7 +555,7 @@ def main():
     ac.std.copy_(std.to(dev))
 
     if args.ckpt:
-        ckpt = torch.load(args.ckpt, map_location=dev)
+        ckpt = torch.load(args.ckpt, map_location=dev, weights_only=False)
         ac.load_state_dict(ckpt["state_dict"], strict=False)
         print(f"  loaded checkpoint {args.ckpt}")
 
@@ -576,8 +581,21 @@ def main():
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Adaptive curriculum state
+    current_stage = 0
+    stage_reach_ema = 0.0
+    min_reach = args.min_reach  # advance only when ema reach > this
+
     for it in range(1, args.iters + 1):
-        stage = curriculum_stage(it)
+        # Advance stage: adaptive (--min-reach > 0) or fixed schedule
+        if min_reach > 0:
+            if stage_reach_ema > min_reach and current_stage < 5:
+                current_stage += 1
+                stage_reach_ema = 0.0
+                print(f"  it={it}: reached {min_reach:.2f} → advance to stage {current_stage}")
+        else:
+            current_stage = curriculum_stage(it)
+        stage = current_stage
         cfg = _stage_config(stage)
         new_Mq, new_Mr = cfg["M_q"], cfg["M_r"]
         if new_Mq != env.M_q or new_Mr != env.M_r:
@@ -667,9 +685,10 @@ def main():
             opt.step()
 
         mean_reach = reach_sum / max(step_count, 1)
+        stage_reach_ema = 0.9 * stage_reach_ema + 0.1 * mean_reach
         if it % 20 == 0:
             print(f"it {it:4d}  stage={stage}  M={M_q}q+{M_r}r  "
-                  f"reach={mean_reach:.2f}  loss={loss.item():.3f}")
+                  f"reach={mean_reach:.2f}  ema={stage_reach_ema:.2f}  loss={loss.item():.3f}")
 
         if mean_reach > best_reach and stage >= 2:
             best_reach = mean_reach
