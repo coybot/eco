@@ -563,12 +563,12 @@ def main():
     T, N = args.rollout, args.envs
 
     def curriculum_stage(it):
-        if it < 200:  return 0
-        if it < 400:  return 1
-        if it < 800:  return 2
-        if it < 1500: return 3
-        if it < 2500: return 4
-        return 5
+        if it < 2000:  return 0   # rovers only — learn basic navigation
+        if it < 4000:  return 1   # quads only — learn 3D navigation
+        if it < 6000:  return 2   # 1q+1r — learn coordination basics
+        if it < 9000:  return 3   # 2q+2r + obstacles
+        if it < 12000: return 4   # 2q+2r + comms/GPS
+        return 5                   # 3q+3r full gauntlet
 
     # Start with stage 0 config
     s0 = _stage_config(0)
