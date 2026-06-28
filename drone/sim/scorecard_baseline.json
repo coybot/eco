@@ -1,28 +1,28 @@
 {
-  "autonomy_level": 2,
-  "rationale": "mean 2.69 interventions/scenario, 62% success",
+  "autonomy_level": 3,
+  "rationale": "mean 1.94 interventions/scenario, 88% success",
   "n_scenarios": 16,
-  "mission_success_rate": 0.625,
-  "total_interventions": 43,
-  "mean_interventions": 2.69,
+  "mission_success_rate": 0.875,
+  "total_interventions": 31,
+  "mean_interventions": 1.94,
   "scenarios": [
     {
       "scenario": "asymmetric_extract",
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 15.0,
-      "interventions": 2,
+      "t_end": 13.6,
+      "interventions": 1,
       "intervention_breakdown": {
-        "collision": 2,
+        "collision": 1,
         "near_miss": 0,
         "stall": 0,
         "lost": 0,
         "mission_timeout": 0
       },
-      "collisions": 2,
-      "min_separation": 1.93,
-      "comms_delivery_rate": 0.7375,
+      "collisions": 1,
+      "min_separation": 2.52,
+      "comms_delivery_rate": 0.7301136363636364,
       "mean_loc_error": 0.05,
       "mean_confidence": 0.99
     },
@@ -31,7 +31,7 @@
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 11.8,
+      "t_end": 12.0,
       "interventions": 2,
       "intervention_breakdown": {
         "collision": 2,
@@ -41,8 +41,8 @@
         "mission_timeout": 0
       },
       "collisions": 2,
-      "min_separation": 2.19,
-      "comms_delivery_rate": 0.9219858156028369,
+      "min_separation": 2.33,
+      "comms_delivery_rate": 0.9027777777777778,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
     },
@@ -51,7 +51,87 @@
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 28.3,
+      "t_end": 40.8,
+      "interventions": 3,
+      "intervention_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 2,
+      "min_separation": 1.81,
+      "comms_delivery_rate": 0.10967741935483871,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "final_boss",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 16.9,
+      "interventions": 4,
+      "intervention_breakdown": {
+        "collision": 4,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 4,
+      "min_separation": 1.83,
+      "comms_delivery_rate": 0.09156050955414012,
+      "mean_loc_error": 0.09,
+      "mean_confidence": 0.98
+    },
+    {
+      "scenario": "formation_crush",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 5.9,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 1.48,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "gauntlet_alpha",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 23.2,
+      "interventions": 2,
+      "intervention_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 2,
+      "min_separation": 1.18,
+      "comms_delivery_rate": 0.08165680473372781,
+      "mean_loc_error": 0.07,
+      "mean_confidence": 1.0
+    },
+    {
+      "scenario": "gauntlet_beta",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 21.6,
       "interventions": 3,
       "intervention_breakdown": {
         "collision": 3,
@@ -61,88 +141,8 @@
         "mission_timeout": 0
       },
       "collisions": 3,
-      "min_separation": 1.91,
-      "comms_delivery_rate": 0.1619047619047619,
-      "mean_loc_error": 0.07,
-      "mean_confidence": 1.0
-    },
-    {
-      "scenario": "final_boss",
-      "mission_complete": false,
-      "targets_found": 0,
-      "targets_total": 0,
-      "t_end": 60.0,
-      "interventions": 7,
-      "intervention_breakdown": {
-        "collision": 4,
-        "near_miss": 0,
-        "stall": 2,
-        "lost": 0,
-        "mission_timeout": 1
-      },
-      "collisions": 4,
-      "min_separation": 1.84,
-      "comms_delivery_rate": 0.02691317575473906,
-      "mean_loc_error": 0.1,
-      "mean_confidence": 0.97
-    },
-    {
-      "scenario": "formation_crush",
-      "mission_complete": false,
-      "targets_found": 0,
-      "targets_total": 0,
-      "t_end": 45.0,
-      "interventions": 2,
-      "intervention_breakdown": {
-        "collision": 0,
-        "near_miss": 0,
-        "stall": 1,
-        "lost": 0,
-        "mission_timeout": 1
-      },
-      "collisions": 0,
-      "min_separation": 1.25,
-      "comms_delivery_rate": 0.33055555555555555,
-      "mean_loc_error": 0.07,
-      "mean_confidence": 1.0
-    },
-    {
-      "scenario": "gauntlet_alpha",
-      "mission_complete": false,
-      "targets_found": 0,
-      "targets_total": 0,
-      "t_end": 45.0,
-      "interventions": 4,
-      "intervention_breakdown": {
-        "collision": 2,
-        "near_miss": 0,
-        "stall": 1,
-        "lost": 0,
-        "mission_timeout": 1
-      },
-      "collisions": 2,
-      "min_separation": 1.14,
-      "comms_delivery_rate": 0.04011627906976744,
-      "mean_loc_error": 0.07,
-      "mean_confidence": 1.0
-    },
-    {
-      "scenario": "gauntlet_beta",
-      "mission_complete": true,
-      "targets_found": 0,
-      "targets_total": 0,
-      "t_end": 21.0,
-      "interventions": 4,
-      "intervention_breakdown": {
-        "collision": 4,
-        "near_miss": 0,
-        "stall": 0,
-        "lost": 0,
-        "mission_timeout": 0
-      },
-      "collisions": 4,
-      "min_separation": 2.78,
-      "comms_delivery_rate": 0.2967032967032967,
+      "min_separation": 2.98,
+      "comms_delivery_rate": 0.34153005464480873,
       "mean_loc_error": 0.06,
       "mean_confidence": 1.0
     },
@@ -161,7 +161,7 @@
         "mission_timeout": 1
       },
       "collisions": 0,
-      "min_separation": 1.27,
+      "min_separation": 0.96,
       "comms_delivery_rate": 0.05,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
@@ -171,7 +171,7 @@
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 12.3,
+      "t_end": 14.7,
       "interventions": 1,
       "intervention_breakdown": {
         "collision": 1,
@@ -181,10 +181,10 @@
         "mission_timeout": 0
       },
       "collisions": 1,
-      "min_separation": 2.23,
-      "comms_delivery_rate": 0.9294871794871795,
-      "mean_loc_error": 0.2,
-      "mean_confidence": 0.91
+      "min_separation": 3.3,
+      "comms_delivery_rate": 0.9209621993127147,
+      "mean_loc_error": 0.23,
+      "mean_confidence": 0.89
     },
     {
       "scenario": "hostile_recon",
@@ -211,7 +211,7 @@
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 19.4,
+      "t_end": 19.1,
       "interventions": 2,
       "intervention_breakdown": {
         "collision": 2,
@@ -222,7 +222,7 @@
       },
       "collisions": 2,
       "min_separation": 3.02,
-      "comms_delivery_rate": 0.4961139896373057,
+      "comms_delivery_rate": 0.4986842105263158,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
     },
@@ -242,27 +242,27 @@
       },
       "collisions": 3,
       "min_separation": 2.0,
-      "comms_delivery_rate": 0.9597222222222223,
+      "comms_delivery_rate": 0.9634259259259259,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
     },
     {
       "scenario": "pursuit_corridor",
-      "mission_complete": false,
+      "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 60.0,
-      "interventions": 3,
+      "t_end": 27.3,
+      "interventions": 0,
       "intervention_breakdown": {
         "collision": 0,
         "near_miss": 0,
-        "stall": 2,
+        "stall": 0,
         "lost": 0,
-        "mission_timeout": 1
+        "mission_timeout": 0
       },
       "collisions": 0,
-      "min_separation": 2.07,
-      "comms_delivery_rate": 0.0884375,
+      "min_separation": 2.45,
+      "comms_delivery_rate": 0.20790629575402636,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
     },
@@ -271,7 +271,7 @@
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 16.2,
+      "t_end": 16.4,
       "interventions": 2,
       "intervention_breakdown": {
         "collision": 2,
@@ -281,8 +281,8 @@
         "mission_timeout": 0
       },
       "collisions": 2,
-      "min_separation": 3.92,
-      "comms_delivery_rate": 0.25773195876288657,
+      "min_separation": 3.14,
+      "comms_delivery_rate": 0.2727272727272727,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
     },
@@ -291,7 +291,7 @@
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 16.8,
+      "t_end": 18.4,
       "interventions": 1,
       "intervention_breakdown": {
         "collision": 1,
@@ -301,8 +301,8 @@
         "mission_timeout": 0
       },
       "collisions": 1,
-      "min_separation": 2.15,
-      "comms_delivery_rate": 0.917910447761194,
+      "min_separation": 2.55,
+      "comms_delivery_rate": 0.9478458049886621,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
     },
@@ -311,7 +311,7 @@
       "mission_complete": true,
       "targets_found": 0,
       "targets_total": 0,
-      "t_end": 12.7,
+      "t_end": 11.9,
       "interventions": 1,
       "intervention_breakdown": {
         "collision": 1,
@@ -322,7 +322,7 @@
       },
       "collisions": 1,
       "min_separation": 1.02,
-      "comms_delivery_rate": 0.9595959595959596,
+      "comms_delivery_rate": 0.967741935483871,
       "mean_loc_error": 0.07,
       "mean_confidence": 1.0
     }
