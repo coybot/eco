@@ -165,14 +165,36 @@ class _Detector:
 
 
 def score_run(runner: ScenarioRunner, use_runtime: bool = True,
-              max_s: float | None = None) -> ScenarioScore:
+              max_s: float | None = None, smart=None) -> ScenarioScore:
+    rt = None
     if use_runtime:
         rt = TeamRuntime(runner)
-        runner.controller = rt.controller
+        base_ctrl = rt.controller
+        if smart is not None:
+            def _smart_controller(agent, obs, _bc=base_ctrl, _sm=smart, _rt=rt,
+                                  _det_ref=[0]):
+                action = _bc(agent, obs)
+                from .smart_layer import build_world_state
+                # build world state once per tick (cached on runner by tick number)
+                if not hasattr(runner, "_smart_ws_cache") or runner._smart_ws_cache[0] != runner.world.tick:
+                    runner._smart_ws_cache = (runner.world.tick,
+                                              build_world_state(runner, getattr(runner, "_smart_intv", 0)))
+                ws = runner._smart_ws_cache[1]
+                directives = _sm.tick(ws)
+                a = np.asarray(action, dtype=np.float32).copy()
+                for d in directives:
+                    if d.agent_id is None or d.agent_id == agent.id:
+                        a = d.apply(agent, a)
+                return a
+            runner.controller = _smart_controller
+        else:
+            runner.controller = base_ctrl
     det = _Detector(runner)
     max_s = max_s or runner.scenario.duration_s
     ticks = int(max_s / runner.world.dt)
     for _ in range(ticks):
+        if smart is not None:
+            runner._smart_intv = det.total
         runner.step()
         det.update()
         if runner.mission.complete(runner.world):
@@ -218,9 +240,11 @@ def autonomy_level(scores: list[ScenarioScore]) -> tuple[int, str]:
     return 0, "no missions completed"
 
 
-def score_suite(scenarios_dir: str = "scenarios", use_runtime: bool = True) -> dict:
+def score_suite(scenarios_dir: str = "scenarios", use_runtime: bool = True,
+                smart=None) -> dict:
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
-    scores = [score_run(ScenarioRunner(Scenario.from_yaml(str(f))), use_runtime=use_runtime)
+    scores = [score_run(ScenarioRunner(Scenario.from_yaml(str(f))),
+                        use_runtime=use_runtime, smart=smart)
               for f in files]
     level, rationale = autonomy_level(scores)
     return {
@@ -459,57 +483,6 @@ def _print_comparison(cmp: dict):
         print(f"  {s['name']:28s} {s['baseline_interventions']:<5d} {s['policy_interventions']:<6d} {sign}{d}")
 
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Autonomy scorecard CLI")
-    ap.add_argument("--scenarios", default=None, help="directory of YAML scenarios")
-    ap.add_argument("--rover-policy", "--policy", default=None, dest="rover_policy",
-                    help="ONNX rover policy (83-dim → 2D) to compare against baseline")
-    ap.add_argument("--quad-policy", default=None,
-                    help="ONNX quad policy (56-dim → 4D); omit to keep quads on TeamRuntime")
-    ap.add_argument("--record-video", default=None, metavar="DIR",
-                    help="save per-scenario overhead MP4s to this directory")
-    ap.add_argument("--out", default=None, help="write report JSON to this path")
-    ap.add_argument("--smart-layer", default=None, choices=["rule", "llm"],
-                    help="enable smart layer (rule=RuleBasedSmart, llm=LLMSmart via hoopoe)")
-    args = ap.parse_args()
-
-    _here = Path(__file__).resolve().parent
-    scn_dir = args.scenarios or str(_here / "scenarios")
-
-    # Renderer (optional)
-    renderer = None
-    if args.record_video:
-        try:
-            from .render import OverheadRenderer
-            renderer = OverheadRenderer()
-            Path(args.record_video).mkdir(parents=True, exist_ok=True)
-        except ImportError:
-            print("  [warn] matplotlib not available — --record-video ignored")
-
-    # Smart layer (optional)
-    smart = None
-    if args.smart_layer:
-        from .smart_layer import RuleBasedSmart, LLMSmart
-        smart = LLMSmart() if args.smart_layer == "llm" else RuleBasedSmart()
-
-    if args.rover_policy:
-        cmp = compare_runs(scn_dir, args.rover_policy,
-                           quad_onnx=args.quad_policy,
-                           out_path=args.out)
-        _print_comparison(cmp)
-        if renderer and args.record_video:
-            _record_comparison_videos(scn_dir, args.rover_policy,
-                                      args.quad_policy, args.record_video, renderer, smart)
-    else:
-        rep = score_suite(scn_dir, use_runtime=True)
-        _print_suite(rep)
-        out = args.out or str(_here / "scorecard_baseline.json")
-        Path(out).write_text(json.dumps(rep, indent=2))
-        print(f"\n  wrote {out}")
-        if renderer and args.record_video:
-            _record_baseline_videos(scn_dir, args.record_video, renderer, smart)
-
-
 def _record_comparison_videos(scenarios_dir, rover_onnx, quad_onnx, video_dir, renderer, smart):
     from .vehicle_class import Kinematics
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
@@ -575,3 +548,55 @@ def _record_baseline_videos(scenarios_dir, video_dir, renderer, smart):
         out_path = str(Path(video_dir) / f"{runner.scenario.name}_baseline.mp4")
         renderer.save_mp4(frames, out_path)
         print(f"  video → {out_path}")
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description="Autonomy scorecard CLI")
+    ap.add_argument("--scenarios", default=None, help="directory of YAML scenarios")
+    ap.add_argument("--rover-policy", "--policy", default=None, dest="rover_policy",
+                    help="ONNX rover policy (83-dim → 2D) to compare against baseline")
+    ap.add_argument("--quad-policy", default=None,
+                    help="ONNX quad policy (56-dim → 4D); omit to keep quads on TeamRuntime")
+    ap.add_argument("--record-video", default=None, metavar="DIR",
+                    help="save per-scenario overhead MP4s to this directory")
+    ap.add_argument("--out", default=None, help="write report JSON to this path")
+    ap.add_argument("--smart-layer", default=None, choices=["rule", "llm"],
+                    help="enable smart layer (rule=RuleBasedSmart, llm=LLMSmart via hoopoe)")
+    args = ap.parse_args()
+
+    _here = Path(__file__).resolve().parent
+    scn_dir = args.scenarios or str(_here / "scenarios")
+
+    # Renderer (optional)
+    renderer = None
+    if args.record_video:
+        try:
+            from .render import OverheadRenderer
+            renderer = OverheadRenderer()
+            Path(args.record_video).mkdir(parents=True, exist_ok=True)
+        except ImportError:
+            print("  [warn] matplotlib not available — --record-video ignored")
+
+    # Smart layer (optional)
+    smart = None
+    if args.smart_layer:
+        from .smart_layer import RuleBasedSmart, LLMSmart
+        smart = LLMSmart() if args.smart_layer == "llm" else RuleBasedSmart()
+
+    if args.rover_policy:
+        cmp = compare_runs(scn_dir, args.rover_policy,
+                           quad_onnx=args.quad_policy,
+                           out_path=args.out)
+        _print_comparison(cmp)
+        if renderer and args.record_video:
+            _record_comparison_videos(scn_dir, args.rover_policy,
+                                      args.quad_policy, args.record_video, renderer, smart)
+    else:
+        rep = score_suite(scn_dir, use_runtime=True, smart=smart)
+        _print_suite(rep)
+        out = args.out or str(_here / "scorecard_baseline.json")
+        Path(out).write_text(json.dumps(rep, indent=2))
+        print(f"\n  wrote {out}")
+        if renderer and args.record_video:
+            _record_baseline_videos(scn_dir, args.record_video, renderer, smart)
+
