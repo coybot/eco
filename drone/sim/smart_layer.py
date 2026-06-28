@@ -113,10 +113,14 @@ class Directive:
                 a[2] = dz * scale
                 a[3] = 0.0
             else:
-                # Unicycle (rover): forward speed only, steer by yaw
-                fwd = dx*math.cos(yaw) + dy*math.sin(yaw)
+                # Unicycle (rover): override both speed and yaw rate to drive
+                # directly to goal, ignoring intruder/teammate repulsion on yaw.
                 dist_xy = math.sqrt(dx*dx + dy*dy) + 1e-6
-                a[0] = spd * max(0.0, fwd / dist_xy)
+                desired_yaw = math.atan2(dy, dx)
+                yaw_err = (desired_yaw - yaw + math.pi) % (2*math.pi) - math.pi
+                max_yr = float(getattr(agent.vclass, 'max_yaw_rate_rads', 2.0))
+                a[1] = max_yr * yaw_err / (abs(yaw_err) + 0.3)
+                a[0] = spd * max(0.0, math.cos(yaw_err))
         return a
 
 
@@ -221,7 +225,9 @@ class RuleBasedSmart:
             if a.goal:
                 cur_dist = math.dist(a.pos, a.goal)
                 prev_dist = self._prev_goal_dist.get(aid, cur_dist)
-                if speed < self.STALL_SPEED_THRESH and abs(cur_dist - prev_dist) < 0.1:
+                if cur_dist < 1.5:
+                    self._stall_ticks[aid] = 0  # at goal — not a stall
+                elif speed < self.STALL_SPEED_THRESH and abs(cur_dist - prev_dist) < 0.1:
                     self._stall_ticks[aid] = self._stall_ticks.get(aid, 0) + 1
                 else:
                     self._stall_ticks[aid] = 0
@@ -235,6 +241,19 @@ class RuleBasedSmart:
                     self._recovery[aid] = (wp, ticks_left - 1)
                 else:
                     del self._recovery[aid]
+            elif a.goal and a.confidence >= 0.4:
+                # Near-goal lock: override intruder-induced repulsion/emergency-brake
+                # when almost at goal. Guards against teammate proximity to avoid
+                # suppressing legitimate collision-avoidance brakes.
+                goal_dist = math.dist(a.pos, a.goal)
+                if goal_dist < 2.0:
+                    min_team_d = min(
+                        (math.sqrt(sum((bp - ap) ** 2 for bp, ap in zip(b.pos, a.pos)))
+                         for b in alive if b.id != aid),
+                        default=99.0
+                    )
+                    if min_team_d > 2.0:
+                        directives.append(Directive(aid, "goal_override", a.goal))
 
         # --- strategic rules (every ADVISE_EVERY ticks) ---
         if self._tick % ADVISE_EVERY == 0:
