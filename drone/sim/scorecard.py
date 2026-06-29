@@ -166,6 +166,8 @@ class _Detector:
 
 def score_run(runner: ScenarioRunner, use_runtime: bool = True,
               max_s: float | None = None, smart=None) -> ScenarioScore:
+    if smart is not None and hasattr(smart, "_reset_state"):
+        smart._reset_state()  # clear per-scenario stale state (stall_ticks, recovery, etc.)
     rt = None
     if use_runtime:
         rt = TeamRuntime(runner)

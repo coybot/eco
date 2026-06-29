@@ -8,12 +8,12 @@ team:
   - {id: rover_1, type: rover, pos: [-14, -2, 0],   goal: [14, -2, 0]}
 duration_s: 50
 obstacles:
-  # First chokepoint at x=-4: 4m gap at y=0
-  - [-4,  6, 1.5, 0.5, 5.0, 3.0]
-  - [-4, -6, 1.5, 0.5, 5.0, 3.0]
-  # Second chokepoint at x=4: 4m gap at y=0
-  - [4,   6, 1.5, 0.5, 5.0, 3.0]
-  - [4,  -6, 1.5, 0.5, 5.0, 3.0]
+  # First chokepoint at x=-4: gap at y=0, faces at y=±3.1 (1.1m clear of rover paths y=±2)
+  - [-4,  6, 1.5, 0.5, 2.9, 3.0]
+  - [-4, -6, 1.5, 0.5, 2.9, 3.0]
+  # Second chokepoint at x=4: same
+  - [4,   6, 1.5, 0.5, 2.9, 3.0]
+  - [4,  -6, 1.5, 0.5, 2.9, 3.0]
 injects:
   # Comms dead inside both chokepoints
   - {at: 0, do: jamming_zone, center: [-4, 0, 0], radius: 4.5}
