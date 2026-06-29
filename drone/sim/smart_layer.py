@@ -11,6 +11,7 @@ Three implementations:
 """
 from __future__ import annotations
 
+import heapq
 import json
 import math
 import threading
@@ -53,6 +54,7 @@ class WorldState:
     interventions: int
     comms_delivery_rate: float
     active_injects: list[str]
+    obstacles: list[list[float]] = field(default_factory=list)  # [cx,cy,cz,hx,hy,hz]
 
     def to_prompt(self) -> str:
         """Compact text description for LLM consumption."""
@@ -124,6 +126,145 @@ class Directive:
         return a
 
 
+# --------------------------------------------------------------------------- path helpers
+
+def _direct_path_hits_obstacle(
+    px: float, py: float, gx: float, gy: float,
+    obstacles: list[list[float]], agent_radius: float,
+) -> bool:
+    """Return True if the straight line from (px,py) to (gx,gy) passes
+    within agent_radius of any obstacle's 2-D footprint."""
+    dx, dy = gx - px, gy - py
+    dist = math.sqrt(dx**2 + dy**2)
+    if dist < 0.5:
+        return False
+    n = max(3, int(dist / 0.5))
+    for i in range(1, n):
+        t = i / n
+        sx, sy = px + dx * t, py + dy * t
+        for obs in obstacles:
+            cx, cy, hx, hy = obs[0], obs[1], obs[3], obs[4]
+            if abs(sx - cx) < hx + agent_radius and abs(sy - cy) < hy + agent_radius:
+                return True
+    return False
+
+
+# --------------------------------------------------------------------------- A* path planner
+_GRID_RES = 0.75  # m per grid cell
+
+
+def _astar_waypoint(
+    px: float, py: float,
+    gx: float, gy: float,
+    obstacles: list[list[float]],
+    agent_radius: float,
+    lookahead_m: float = 3.0,
+) -> list[float] | None:
+    """Return next waypoint along an A* path from (px,py) toward (gx,gy).
+
+    Builds a 2-D grid padded by agent_radius around each obstacle and runs A*.
+    Returns the world-frame [wx, wy] ~lookahead_m ahead on the path, or None
+    if the goal is already very close or no path found.
+    """
+    if math.sqrt((gx-px)**2 + (gy-py)**2) < 1.5:
+        return None
+
+    res = _GRID_RES
+    margin = 3.0
+    x0 = min(px, gx) - margin
+    y0 = min(py, gy) - margin
+    x1 = max(px, gx) + margin
+    y1 = max(py, gy) + margin
+    nx = max(4, int((x1 - x0) / res) + 1)
+    ny = max(4, int((y1 - y0) / res) + 1)
+
+    # Build blocked-cell set
+    blocked: set[tuple[int, int]] = set()
+    pad = agent_radius + 0.1
+    for obs in obstacles:
+        cx, cy, _cz, hx, hy = obs[0], obs[1], obs[2], obs[3], obs[4]
+        # Grid cells whose centers are within pad of the obstacle footprint
+        ix_lo = max(0, int((cx - hx - pad - x0) / res) - 1)
+        ix_hi = min(nx - 1, int((cx + hx + pad - x0) / res) + 1)
+        iy_lo = max(0, int((cy - hy - pad - y0) / res) - 1)
+        iy_hi = min(ny - 1, int((cy + hy + pad - y0) / res) + 1)
+        for ix in range(ix_lo, ix_hi + 1):
+            for iy in range(iy_lo, iy_hi + 1):
+                wx = x0 + ix * res
+                wy = y0 + iy * res
+                dx = max(0.0, abs(wx - cx) - hx)
+                dy = max(0.0, abs(wy - cy) - hy)
+                if math.sqrt(dx*dx + dy*dy) < pad:
+                    blocked.add((ix, iy))
+
+    def to_grid(wx: float, wy: float) -> tuple[int, int]:
+        return (int((wx - x0) / res), int((wy - y0) / res))
+
+    def to_world(ix: int, iy: int) -> tuple[float, float]:
+        return (x0 + ix * res, y0 + iy * res)
+
+    si, sj = to_grid(px, py)
+    gi, gj = to_grid(gx, gy)
+    si = max(0, min(nx-1, si)); sj = max(0, min(ny-1, sj))
+    gi = max(0, min(nx-1, gi)); gj = max(0, min(ny-1, gj))
+
+    if (si, sj) == (gi, gj):
+        return None
+
+    # A* search
+    DIRS = [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]
+    COSTS = [1.0, 1.0, 1.0, 1.0, 1.414, 1.414, 1.414, 1.414]
+    g_cost: dict[tuple[int,int], float] = {(si, sj): 0.0}
+    came_from: dict[tuple[int,int], tuple[int,int]] = {}
+    h = lambda i, j: math.sqrt((i-gi)**2 + (j-gj)**2)
+    heap = [(h(si, sj), si, sj)]
+
+    while heap:
+        f, ci, cj = heapq.heappop(heap)
+        if (ci, cj) == (gi, gj):
+            break
+        if f > g_cost.get((ci, cj), math.inf) + h(ci, cj) + 0.001:
+            continue
+        for (di, dj), cost in zip(DIRS, COSTS):
+            ni, nj = ci + di, cj + dj
+            if not (0 <= ni < nx and 0 <= nj < ny):
+                continue
+            if (ni, nj) in blocked:
+                continue
+            ng = g_cost[(ci, cj)] + cost
+            if ng < g_cost.get((ni, nj), math.inf):
+                g_cost[(ni, nj)] = ng
+                came_from[(ni, nj)] = (ci, cj)
+                heapq.heappush(heap, (ng + h(ni, nj), ni, nj))
+    else:
+        return None  # no path found
+
+    # Reconstruct path
+    path = []
+    cur = (gi, gj)
+    while cur in came_from:
+        path.append(cur)
+        cur = came_from[cur]
+    path.reverse()
+
+    if not path:
+        return None
+
+    # Pick first waypoint at lookahead_m distance along path
+    dist = 0.0
+    prev = (si, sj)
+    for cell in path:
+        wx, wy = to_world(*cell)
+        dx = wx - to_world(*prev)[0]
+        dy = wy - to_world(*prev)[1]
+        dist += math.sqrt(dx*dx + dy*dy)
+        prev = cell
+        if dist >= lookahead_m:
+            return [wx, wy]
+    # Path shorter than lookahead: return goal
+    return [gx, gy]
+
+
 # --------------------------------------------------------------------------- implementations
 class NullSmart:
     """No-op baseline."""
@@ -158,6 +299,9 @@ class RuleBasedSmart:
     RECOVERY_TICKS = 35          # ticks to keep nudge active
 
     def __init__(self):
+        self._reset_state()
+
+    def _reset_state(self):
         self._directives: list[Directive] = []
         self._tick = 0
         self._prev_goal_dist: dict[str, float] = {}
@@ -178,7 +322,8 @@ class RuleBasedSmart:
             aid = a.id
 
             if not a.sensor_ok:
-                directives.append(Directive(aid, "speed_scale", 0.12))
+                # team_runtime already applies 0.08x scale for blind agents;
+                # no further speed_scale needed here (stacking would be too slow)
                 continue
 
             if a.confidence < 0.4:
@@ -425,6 +570,13 @@ def build_world_state(runner, interventions: int) -> WorldState:
             found=t.found,
         ))
     active = getattr(runner, "_fired_injects", [])
+    obs_list: list[list[float]] = []
+    try:
+        for box in world.backend.obstacles():
+            obs_list.append([round(float(x), 2) for x in box.center]
+                            + [round(float(x), 2) for x in box.half])
+    except Exception:
+        pass
     return WorldState(
         t=round(world.t, 1),
         agents=agents,
@@ -432,4 +584,5 @@ def build_world_state(runner, interventions: int) -> WorldState:
         interventions=interventions,
         comms_delivery_rate=runner.comms.stats.delivery_rate,
         active_injects=active,
+        obstacles=obs_list,
     )
