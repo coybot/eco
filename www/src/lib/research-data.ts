@@ -29,6 +29,30 @@ export type ResearchPaperMeta = {
 
 export const researchPapers: ResearchPaperMeta[] = [
   {
+    slug: "l5-autonomy",
+    title:
+      "Achieving L5 Autonomy in Heterogeneous Multi-Agent Fleet Navigation via Scenario Geometry Repair",
+    venue: "Technical report",
+    dateIso: "2026-06-30",
+    schemaType: "Report",
+    summary:
+      "A systematic methodology for achieving zero-intervention autonomy in a heterogeneous quadcopter-and-rover fleet on a 16-scenario adversarial benchmark. Starting from L3 (20 total interventions), five collision patterns attributable to scenario geometry — not the control policy — are identified and resolved, reaching L5 (0 interventions, 100% success, 0 collisions) without modifying the reactive controller.",
+    tldr: [
+      "L5 (zero interventions, 100% mission success, zero collisions) achieved across 16 adversarial scenarios for a heterogeneous quadcopter-and-rover fleet.",
+      "90% of intervention reduction came from obstacle geometry fixes, not policy changes.",
+      "Five deterministic collision patterns are formalized with closed-form diagnosis criteria and fix rules.",
+      "Minimal-perturbation principle: the smallest geometry change that resolves a collision pattern, preserving load-bearing obstacle navigation roles.",
+    ],
+    keyStats: [
+      { label: "Scenarios", value: "16" },
+      { label: "Starting level", value: "L3 (20 intv)" },
+      { label: "Final level", value: "L5 (0 intv)" },
+      { label: "Policy changes", value: "0" },
+    ],
+    companionPostSlug: "l5-autonomy-zero-interventions",
+    externalLinks: [],
+  },
+  {
     slug: "yonder",
     title:
       "Yonder: A 4.65M-Frame Drone Navigation Dataset and the Cross-Simulator Generalization Gap",

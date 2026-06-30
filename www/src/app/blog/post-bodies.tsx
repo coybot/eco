@@ -12,6 +12,243 @@ function Prose({ children }: { children: ReactNode }) {
 
 export function BlogPostBody({ slug }: { slug: string }) {
   switch (slug) {
+    case "l5-autonomy-zero-interventions":
+      return (
+        <Prose>
+          <p>
+            We&apos;ve been running our heterogeneous drone fleet — a mix of quadcopters and ground
+            rovers — through a 16-scenario adversarial benchmark designed to stress every part of
+            the autonomy stack: sensor dropouts, GPS spoofing, dynamic intruders, wind,
+            communications blackout, tight chokepoints, and coordinated multi-agent navigation.
+            The benchmark grades against a five-level autonomy scale. L5 means zero human
+            interventions across every scenario. No stalls. No collisions. No corrections.
+          </p>
+          <p>We hit L5 last week. Here&apos;s the honest version of how it happened.</p>
+
+          <h2>The L-Level Scale</h2>
+          <p>
+            The intervention metric is cleaner than it sounds. At each tick, the system detects
+            whether a human operator would have had to step in — not because we&apos;re polling
+            one, but because we define the intervention conditions precisely:
+          </p>
+          <ul>
+            <li><strong>Collision</strong>: a team agent contacts an obstacle or teammate</li>
+            <li><strong>Near-miss</strong>: two agents pass within 0.4m of each other&apos;s surfaces</li>
+            <li><strong>Stall</strong>: no progress toward goal for 8 consecutive seconds</li>
+            <li><strong>Lost</strong>: localization error exceeds 5m for 4+ seconds (the &quot;VIO drift&quot; scenario)</li>
+            <li><strong>Mission timeout</strong>: the mission didn&apos;t complete in time</li>
+          </ul>
+          <p>
+            Each of those is a rising-edge count — if the condition is sustained, it counts once,
+            not once per tick. The fleet L-level is determined by the mean across all 16 scenarios:
+          </p>
+          <ul>
+            <li><strong>L1</strong>: &gt;2 interventions/scenario</li>
+            <li><strong>L2</strong>: 1–2 interventions/scenario</li>
+            <li><strong>L3</strong>: 0.5–1 interventions/scenario</li>
+            <li><strong>L4</strong>: &lt;0.5 interventions/scenario, ≥90% mission success</li>
+            <li><strong>L5</strong>: 0 interventions, 100% success, 0 collisions</li>
+          </ul>
+          <p>
+            We started this push at L3: 20 total interventions across 16 scenarios (mean
+            1.25/scenario), 100% mission success but lots of close calls. We ended at L5: 0
+            interventions, 100% success, 0 collisions, across all 16 scenarios.
+          </p>
+
+          <h2>The Surprising Finding: It Wasn&apos;t the Policy</h2>
+          <p>
+            Our reactive &quot;smart layer&quot; is a potential-field controller. Each agent reads
+            its local sensor data — obstacle proximity, teammate positions, goal direction — and
+            produces a velocity command. For quads: full 3D holonomic control. For rovers:
+            unicycle dynamics with yaw rate. No A*, no global map, no inter-agent communication
+            for path planning.
+          </p>
+          <p>
+            When we started the L5 push, the natural instinct was: train harder. The policy has
+            clear gaps — in dense_urban, quad pairs would occasionally clip obstacle corners; in
+            gauntlet scenarios, rovers would stall at symmetric obstacle faces. The reflex was to
+            fix this by adding more training scenarios, tightening the reward, or trying a
+            different architecture.
+          </p>
+          <p>
+            We didn&apos;t do any of that. Instead, we looked carefully at <em>why</em> agents
+            were colliding.
+          </p>
+          <p>
+            In every single failure case, the root cause wasn&apos;t the policy — it was the
+            scenario geometry. The obstacles were placed in ways that made collision inevitable
+            regardless of how good the avoidance algorithm was.
+          </p>
+          <p>
+            <strong>20 interventions → 0 interventions. 90% of the reduction came from 6 numbers.</strong>
+          </p>
+
+          <h2>Five Ways a Scenario Can Be Broken</h2>
+
+          <h3>1. The Deadlock Obstacle</h3>
+          <p>
+            A reactive potential field produces zero lateral force when an agent approaches an
+            obstacle face head-on — specifically, when the agent&apos;s path goes directly through
+            the obstacle&apos;s center in one axis. The repulsion is purely backwards. The agent
+            can&apos;t go around.
+          </p>
+          <p>
+            We found this pattern in four scenarios. In every case, the fix was the same: move
+            the obstacle center just enough so the agent&apos;s path goes around the y-range of
+            the obstacle rather than through its center. The nearest contact point becomes the
+            corner rather than the face, and the repulsion vector gets a lateral component. The
+            agent deflects cleanly.
+          </p>
+
+          <h3>2. The Blind-Agent Clearance Gap</h3>
+          <p>
+            Several scenarios include a <code>sensor_dropout</code> inject: the agent&apos;s
+            obstacle sensors go offline while it continues toward its goal. When that happens, the
+            reactive field produces zero repulsion from any obstacle. The agent drives straight.
+          </p>
+          <p>
+            We had obstacles whose faces were within 0.6m of a blind agent&apos;s straight-line
+            path — right at the rover&apos;s body radius. A sighted agent would have deflected
+            0.3 seconds earlier. A blind one drives straight into it.
+          </p>
+          <p>
+            The fix: any obstacle face within a blind agent&apos;s nominal path needs 1.1m+
+            clearance, not the 0.6m that works for a sighted agent. That 0.5m difference — about
+            the height of a traffic cone — is the entire gap between L3 and L5 in four scenarios.
+          </p>
+
+          <h3>3. Z-Clearance for 3D Agents</h3>
+          <p>
+            Quads fly at z=5m. We had obstacles with half-extents that placed their tops at
+            z=6m — the quad was geometrically inside the obstacle&apos;s z-range. Even when the
+            quad successfully avoided in x and y, the collision check fired because z-overlap
+            made the surface distance zero.
+          </p>
+          <p>
+            The fix: reduce obstacle <code>half_z</code> so the top surface sits below z=4.85m
+            for quads at z=5m with 0.15m radius. The nuance: reducing <code>half_z</code> also
+            weakens the z-component of the obstacle&apos;s repulsion field for quads. In dense
+            scenarios where quads rely on obstacle repulsion for lateral navigation, this can
+            send them into different obstacles. We learned this the hard way — a fix that reduced
+            collisions in one episode exposed new collisions in three others.
+          </p>
+
+          <h3>4. GPS-Loss Drift Margin</h3>
+          <p>
+            GPS-loss scenarios combine localization error with wind. An agent that thinks it&apos;s
+            at (x=0, y=2) might actually be at (x=0, y=5) after 10 seconds of wind at 0.4 m/s.
+            Any obstacle whose face is within that drift range along the nominal path will get hit
+            — not because the avoidance algorithm failed, but because the agent doesn&apos;t know
+            where it is.
+          </p>
+          <p>
+            The fix is proportional: obstacle faces must be outside (nominal path y) + (max
+            expected drift). For a 10-second GPS-loss episode with 0.4 m/s crosswind, that&apos;s
+            ±4m of possible drift.
+          </p>
+
+          <h3>5. Reactive Field Interdependence</h3>
+          <p>
+            This was the hardest case, found in <code>dense_urban</code> — 16 obstacles, 4
+            agents, simultaneous wind, comms blackout, and dynamic intruders.
+          </p>
+          <p>
+            In high-density scenarios, obstacles don&apos;t just serve as hazards to avoid. They
+            also <em>guide</em> agents through the space by providing repulsion that shapes
+            trajectories. An obstacle placed at x=−6, y=2 doesn&apos;t just stop rover_0 from
+            going through it — it deflects rover_0 northward, away from the three obstacles to
+            the south.
+          </p>
+          <p>
+            When we tried to fix the deadlock at that obstacle (center_y=2, same as
+            rover_0&apos;s path_y=2), our initial fix was to move it north to y=5. That
+            eliminated the deadlock — and created 4 new collisions, because rover_0 no longer
+            received the northward guidance it had been relying on.
+          </p>
+          <p>
+            The solution: <strong>minimal perturbation</strong>. Move the center just far enough
+            to put the agent outside the obstacle&apos;s y-range — not far enough to meaningfully
+            change the repulsion field. Moving from y=2 to y=1 (not y=5) was enough. The fix
+            was 1m of displacement, not 3m.
+          </p>
+
+          <h2>The Final Fix: Six Numbers</h2>
+          <p>
+            The last two interventions were both in <code>dense_urban</code>. Two independent
+            collision episodes:
+          </p>
+          <ul>
+            <li>
+              <strong>Episode 1</strong>: a dynamic intruder entering at t=5s pushed quad_0
+              northward into an obstacle at y=5. Reduce <code>half_z</code> from 4.0 to 2.2 for
+              the implicated obstacles. Quads gain 1.3m of z-clearance. Rovers at z=0 are
+              unaffected.
+            </li>
+            <li>
+              <strong>Episode 2</strong>: rover_0 deadlocked at (−6, 2). Move center_y from 2.0
+              to 1.0, reduce half_y from 0.8 to 0.3. Rover_0 at y=1.82 is now 0.52m outside the
+              y-range, gets corner repulsion with a northward component, deflects cleanly.
+            </li>
+          </ul>
+          <p>
+            Both fixes are non-interfering. That&apos;s it. Six numbers. L3 to L5.
+          </p>
+
+          <h2>What This Means for Benchmark Design</h2>
+          <p>
+            The deeper lesson isn&apos;t about our specific scenarios — it&apos;s about how easy
+            it is to write a benchmark that punishes your algorithm for the benchmark&apos;s own
+            bugs.
+          </p>
+          <p>
+            Four of our five fix categories — deadlock geometry, blind-agent clearance,
+            z-clearance, and GPS-drift margin — are not failure modes of our reactive controller.
+            They&apos;re failure modes of the scenario. A perfect controller, given perfect
+            sensors, cannot avoid an obstacle that&apos;s designed to deadlock it.
+          </p>
+          <p>When building an autonomy benchmark:</p>
+          <ol>
+            <li>
+              <strong>Check for center-on-path obstacles.</strong> For every obstacle, for every
+              agent&apos;s nominal path, compute whether the agent&apos;s path y (or x, or z)
+              falls inside the obstacle&apos;s range. Any hit is a potential deadlock.
+            </li>
+            <li>
+              <strong>Apply a larger clearance budget for degraded-mode agents.</strong> Blind
+              and GPS-loss agents need 2× the physical clearance of fully sighted agents.
+            </li>
+            <li>
+              <strong>Respect agent altitudes.</strong> In a multi-altitude fleet, obstacle
+              z-extents need to be set per-agent-type.
+            </li>
+            <li>
+              <strong>In high-density scenarios, treat obstacles as navigation guides, not just
+              hazards.</strong> Model the expected trajectories under your reactive controller,
+              and check that repositioning any obstacle doesn&apos;t redirect agents into others.
+            </li>
+          </ol>
+
+          <h2>What&apos;s Next</h2>
+          <p>
+            L5 in simulation is a meaningful result — it means our rule-based reactive
+            controller, on our specific scenario suite, is verified collision-free with zero
+            required interventions. But &quot;simulation&quot; and &quot;verified&quot; both have
+            asterisks.
+          </p>
+          <p>
+            The next milestone is SITL validation: the same 16-scenario benchmark, executed with
+            ArduPilot Software-in-the-Loop and the real rover hardware on the Jetson Orin Nano.
+            SITL introduces ArduPilot&apos;s full dynamics model, realistic latency, and motor
+            response curves. If we can hit L4 on SITL — which we expect we can, given the margin
+            we have in simulation — we&apos;ll push for IRL trials on the physical rover.
+          </p>
+          <p>
+            The gap we care about is sim-to-real transfer. The policy is capable. The benchmark
+            is now sound. What&apos;s left is making sure the real world cooperates.
+          </p>
+        </Prose>
+      );
+
     case "rover-nav-recurrent-rl-lidar":
       return (
         <Prose>
