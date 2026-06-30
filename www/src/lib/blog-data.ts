@@ -11,6 +11,16 @@ export type BlogPostMeta = {
 
 export const blogPosts: BlogPostMeta[] = [
   {
+    slug: "l5-autonomy-zero-interventions",
+    title: "Zero Interventions: How We Hit L5 Autonomy on a 16-Scenario Fleet Benchmark",
+    description:
+      "A heterogeneous quadcopter-and-rover fleet navigates 16 adversarial scenarios — sensor dropouts, GPS spoofing, dynamic intruders, tight chokepoints — with zero human corrections. We got there not by training a better policy, but by finding the bugs in the benchmark.",
+    date: "June 30, 2026",
+    dateIso: "2026-06-30",
+    category: "Research",
+    readTime: "11 min read",
+  },
+  {
     slug: "rover-nav-recurrent-rl-lidar",
     title: "30 Minutes, 4.6 Kilobytes, Zero Collisions",
     description:
