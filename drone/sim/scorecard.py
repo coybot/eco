@@ -31,8 +31,12 @@ import json
 
 import numpy as np
 
-from .scenario import Scenario, ScenarioRunner
-from .team_runtime import TeamRuntime
+try:  # packaged (eco.drone.sim) vs flat (sim/ on path) — see conftest
+    from .scenario import Scenario, ScenarioRunner
+    from .team_runtime import TeamRuntime
+except ImportError:
+    from scenario import Scenario, ScenarioRunner
+    from team_runtime import TeamRuntime
 
 
 # thresholds
@@ -193,7 +197,10 @@ def score_run(runner: ScenarioRunner, use_runtime: bool = True,
             def _smart_controller(agent, obs, _bc=base_ctrl, _sm=smart, _rt=rt,
                                   _det_ref=[0]):
                 action = _bc(agent, obs)
-                from .smart_layer import build_world_state
+                try:
+                    from .smart_layer import build_world_state
+                except ImportError:
+                    from smart_layer import build_world_state
                 # build world state once per tick (cached on runner by tick number)
                 if not hasattr(runner, "_smart_ws_cache") or runner._smart_ws_cache[0] != runner.world.tick:
                     runner._smart_ws_cache = (runner.world.tick,
@@ -406,7 +413,10 @@ def compare_runs(scenarios_dir: str, rover_onnx: str,
     Returns a comparison dict with per-scenario delta in interventions and a
     headline delta_level (positive = policy improved the autonomy level).
     """
-    from .vehicle_class import Kinematics
+    try:
+        from .vehicle_class import Kinematics
+    except ImportError:
+        from vehicle_class import Kinematics
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
 
     def _run_suite(use_onnx=False):
@@ -504,7 +514,10 @@ def _print_comparison(cmp: dict):
 
 
 def _record_comparison_videos(scenarios_dir, rover_onnx, quad_onnx, video_dir, renderer, smart):
-    from .vehicle_class import Kinematics
+    try:
+        from .vehicle_class import Kinematics
+    except ImportError:
+        from vehicle_class import Kinematics
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
     rover_ctrl = _load_rover_onnx_controller(rover_onnx)
     quad_ctrl = _load_quad_onnx_controller(quad_onnx) if quad_onnx else None
