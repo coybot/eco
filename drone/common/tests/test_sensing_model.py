@@ -25,22 +25,32 @@ def test_realistic_clearance_is_sensor_derived_not_oracle():
     assert obs_i.min_clearance != obs_r.min_clearance
 
 
-def test_scorecard_attributes_failures_by_agent():
-    """A realistic-sensing suite run yields per-agent failure records; ideal is clean."""
+def test_realistic_sensing_achieves_L5():
+    """Regression lock: after Stages 1+3, the suite is L5 under BOTH sensing models
+    (with the RuleBasedSmart advisor) — 0 interventions, 0 collisions, 100% success,
+    no attributed failures. This is the 'L5 under realistic sensing' milestone."""
     from eco.drone.sim.scorecard import score_suite
     from eco.drone.sim.smart_layer import RuleBasedSmart
     import pathlib
     scn = str(pathlib.Path(__file__).resolve().parents[2] / "sim" / "scenarios")
 
-    ideal = score_suite(scn, use_runtime=True, smart=RuleBasedSmart(), sensing="ideal")
-    assert ideal["autonomy_level"] == 5
-    assert all(len(s["failures"]) == 0 for s in ideal["scenarios"])
+    for mode in ("ideal", "realistic"):
+        rep = score_suite(scn, use_runtime=True, smart=RuleBasedSmart(), sensing=mode)
+        assert rep["autonomy_level"] == 5, f"{mode}: expected L5, got L{rep['autonomy_level']}"
+        assert all(len(s["failures"]) == 0 for s in rep["scenarios"]), f"{mode}: unexpected failures"
 
-    real = score_suite(scn, use_runtime=True, smart=RuleBasedSmart(), sensing="realistic")
-    assert real["autonomy_level"] < 5
-    all_failures = [f for s in real["scenarios"] for f in s["failures"]]
-    assert all_failures, "expected attributed failures under realistic sensing"
-    # every record is (t, cause, agent_id, vclass, detail)
+
+def test_scorecard_attribution_is_wellformed():
+    """The per-agent attribution plumbing produces well-formed records. Forced by
+    running the raw reactive layer (no smart advisor) under realistic sensing, which
+    is the pre-Stage-1 baseline and does fail — exercising the attribution path."""
+    from eco.drone.sim.scorecard import score_suite
+    import pathlib
+    scn = str(pathlib.Path(__file__).resolve().parents[2] / "sim" / "scenarios")
+
+    raw = score_suite(scn, use_runtime=True, smart=None, sensing="realistic")
+    all_failures = [f for s in raw["scenarios"] for f in s["failures"]]
+    assert all_failures, "expected attributed failures for the raw (no-advisor) baseline"
     for t, cause, aid, vclass, detail in all_failures:
         assert cause in ("collision", "near_miss", "stall", "lost", "mission_timeout")
         assert vclass in ("quadcopter", "rover")

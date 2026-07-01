@@ -391,7 +391,7 @@ class RuleBasedSmart:
                 # when almost at goal. Guards against teammate proximity to avoid
                 # suppressing legitimate collision-avoidance brakes.
                 goal_dist = math.dist(a.pos, a.goal)
-                if goal_dist < 2.0:
+                if goal_dist < 3.0:
                     min_team_d = min(
                         (math.sqrt(sum((bp - ap) ** 2 for bp, ap in zip(b.pos, a.pos)))
                          for b in alive if b.id != aid),
