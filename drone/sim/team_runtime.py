@@ -31,8 +31,12 @@ import math
 
 import numpy as np
 
-from .team_world import reactive_goto_controller
-from .comms import MsgType
+try:  # packaged (eco.drone.sim) vs flat (sim/ on path) — see conftest
+    from .team_world import reactive_goto_controller
+    from .comms import MsgType
+except ImportError:
+    from team_world import reactive_goto_controller
+    from comms import MsgType
 
 
 # thresholds
