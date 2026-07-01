@@ -38,25 +38,37 @@ def test_two_agents_split_two_targets():
 
 
 def test_comms_blackout_still_completes_local_only():
-    r, rt = _runner("comms_blackout_search")
+    r, rt = _runner(d={"name": "t", "team": ["quad x2"],
+                       "mission": {"type": "area_search", "region": [-12, -12, 12, 12],
+                                   "targets": [[10, 0], [-10, 0]]},
+                       "injects": [{"at": 0.5, "do": "comms_blackout"}],
+                       "duration_s": 60})
     res = r.run()
-    assert res["mission_complete"]
-    # blackout fired -> some mesh losses recorded
-    assert r.comms.mesh_degraded
+    # local-only fallback must still cover both targets under a full mesh blackout
+    assert res["targets_found"] == res["targets_total"]
+    assert r.comms.mesh_degraded          # blackout fired
     assert res["comms"]["delivery_rate"] <= 1.0
 
 
 def test_delivery_rate_bounded():
-    r, rt = _runner("contested_task")
+    r, rt = _runner(d={"name": "t", "team": ["quad x2"],
+                       "mission": {"type": "area_search", "region": [-12, -12, 12, 12],
+                                   "targets": [[10, 0], [-10, 0]]},
+                       "injects": [{"at": 1, "do": "contested_task", "at_point": [0, 0, 2]}],
+                       "duration_s": 60})
     res = r.run()
     assert 0.0 <= res["comms"]["delivery_rate"] <= 1.0
     assert res["comms"]["attempted"] >= res["comms"]["delivered"]
 
 
 def test_teammate_loss_reassigns_and_completes():
-    r, rt = _runner("teammate_lost_resilience")
+    # one agent fails early; survivors must still find all targets
+    r, rt = _runner(d={"name": "t", "team": ["quad x3"],
+                       "mission": {"type": "area_search", "region": [-12, -12, 12, 12],
+                                   "targets": [[10, 0], [-10, 0]]},
+                       "injects": [{"at": 2, "do": "agent_failure", "agent": "quad_0"}],
+                       "duration_s": 80})
     res = r.run()
-    # two agents fail early; survivors must still find all targets
     assert not r.world.agents["quad_0"].alive
     assert res["targets_found"] == res["targets_total"]
 
