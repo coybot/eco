@@ -122,7 +122,7 @@ class Directive:
                 dist_xy = math.sqrt(dx*dx + dy*dy) + 1e-6
                 desired_yaw = math.atan2(dy, dx)
                 yaw_err = (desired_yaw - yaw + math.pi) % (2*math.pi) - math.pi
-                max_yr = float(getattr(agent.vclass, 'max_yaw_rate_rads', 2.0))
+                max_yr = float(getattr(agent.vclass, 'max_yaw_rate_radps', 2.0))
                 a[1] = max_yr * yaw_err / (abs(yaw_err) + 0.3)
                 a[0] = spd * max(0.0, math.cos(yaw_err))
         return a

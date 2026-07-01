@@ -19,8 +19,11 @@ obstacles:
   - [ 5,  6, 2.0, 0.8, 1.5, 4.0]
   - [ 5, -6, 2.0, 0.8, 1.5, 4.0]
   - [ 6,  0, 2.0, 0.8, 0.9, 4.0]
-  - [ 8,  4, 2.0, 0.8, 0.8, 4.0]
-  - [ 8, -4, 2.0, 0.8, 0.8, 4.0]
+  # Moved out 0.6m (y ±4→±4.6, faces ±3.2→±3.8): quad lanes are y=±3, leaving only
+  # 0.2m nominal gap to the old ±3.2 faces — an intruder-avoidance nudge under
+  # realistic sensing drifted quad_0 into this corner (0.15m graze = radius).
+  - [ 8,  4.6, 2.0, 0.8, 0.8, 4.0]
+  - [ 8, -4.6, 2.0, 0.8, 0.8, 4.0]
   - [-6,  1.0, 2.0, 0.8, 0.3, 4.0]
   - [-6, -1.0, 2.0, 0.8, 0.3, 4.0]
   - [ 0,  0, 2.0, 1.0, 1.0, 4.0]
