@@ -8,12 +8,15 @@ team:
   - {id: rover_1, type: rover, pos: [-14, -2, 0],   goal: [14, -2, 0]}
 duration_s: 50
 obstacles:
-  # First chokepoint at x=-4: gap at y=0, faces at y=±3.1 (1.1m clear of rover paths y=±2)
-  - [-4,  6, 1.5, 0.5, 2.9, 3.0]
-  - [-4, -6, 1.5, 0.5, 2.9, 3.0]
-  # Second chokepoint at x=4: same
-  - [4,   6, 1.5, 0.5, 2.9, 3.0]
-  - [4,  -6, 1.5, 0.5, 2.9, 3.0]
+  # Faces at y=±3.7. The reactive controller pushes the rovers ~0.6m off their
+  # nominal y=±2 lanes, and realistic sensing adds ~0.18m of trajectory drift; the
+  # original y=±3.1 faces left only 0.44m corner clearance (< rover radius 0.5m).
+  # Moved out 0.6m (center_y ±6→±6.6) to budget radius + controller drift + sensing
+  # drift. Quads fly over the top (z=5.5 > obstacle top 4.5), unaffected.
+  - [-4,  6.6, 1.5, 0.5, 2.9, 3.0]
+  - [-4, -6.6, 1.5, 0.5, 2.9, 3.0]
+  - [4,   6.6, 1.5, 0.5, 2.9, 3.0]
+  - [4,  -6.6, 1.5, 0.5, 2.9, 3.0]
 injects:
   # Comms dead inside both chokepoints
   - {at: 0, do: jamming_zone, center: [-4, 0, 0], radius: 4.5}
