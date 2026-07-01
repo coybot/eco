@@ -31,24 +31,41 @@ def test_clean_scenario_zero_interventions():
 
 
 def test_score_has_all_fields():
-    s = score_run(ScenarioRunner(Scenario.from_yaml(f"{SCN}/gps_spoof_recon.yaml")))
+    s = score_run(ScenarioRunner(Scenario.from_yaml(f"{SCN}/hostile_recon.yaml")))
     d = s.as_dict()
     for k in ("interventions", "intervention_breakdown", "min_separation",
-              "comms_delivery_rate", "mean_loc_error", "mean_confidence"):
+              "comms_delivery_rate", "mean_loc_error", "mean_confidence", "failures"):
         assert k in d
 
 
 def test_spoof_raises_localization_error():
     # gps spoof -> belief diverges from truth -> mean_loc_error grows
-    s = score_run(ScenarioRunner(Scenario.from_yaml(f"{SCN}/gps_spoof_recon.yaml")))
+    s = score_run(ScenarioRunner(Scenario.from_dict({
+        "name": "spoof", "team": [{"id": "quad_0", "type": "quad",
+                                    "pos": [-10, 0, 5], "goal": [10, 0, 5]}],
+        "mission": {"type": "goto"},
+        "injects": [{"at": 1, "do": "gps_spoof", "agent": "quad_0"}],
+        "duration_s": 30})))
     assert s.mean_loc_error > 0.0
 
 
 def test_chokepoint_records_collisions():
-    s = score_run(ScenarioRunner(Scenario.from_yaml(f"{SCN}/chokepoint_deconfliction.yaml")))
-    # tight 5-agent funnel is the hard case -> collisions expected for the baseline
+    # A blind agent (sensor_dropout) driving toward a goal behind an obstacle has no
+    # clearance info and drives into it — a deterministic collision that exercises the
+    # scorecard's collision-recording + attribution path. (The shipped L5 suite is
+    # collision-free by design, so we force the failure explicitly here.)
+    r = ScenarioRunner(Scenario.from_dict({
+        "name": "forced_collision",
+        "team": [{"id": "quad_0", "type": "quad", "pos": [-6, 0, 2], "goal": [6, 0, 2]}],
+        "obstacles": [[0, 0, 2, 1.0, 1.0, 3.0]],
+        "injects": [{"at": 0, "do": "sensor_dropout", "agent": "quad_0"}],
+        "mission": {"type": "goto"}, "duration_s": 30}))
+    s = score_run(r, use_runtime=True)
     assert s.collisions >= 1
     assert s.interventions >= 1
+    # attribution records the culprit agent + obstacle cause
+    assert any(cause == "collision" and aid == "quad_0"
+               for _t, cause, aid, _vc, _detail in s.failures)
 
 
 def test_rubric_l5_requires_perfection():
