@@ -300,6 +300,13 @@ class TeamWorld:
         #                 scan (ray/beam), i.e. no true-surface oracle. Stages 1–3
         #                 close the gap between this and "ideal".
         self.sensing = sensing
+        # Optional sensor-noise model for realistic/reconstructed modes (Stage 4):
+        #   {"range_std": m, "dropout": p}. When set, each scan return gets Gaussian
+        #   range noise and each ray independently drops out (→ max range) with prob p,
+        #   before clearance is computed. Seeded via set_sensor_noise for reproducible
+        #   Monte-Carlo. None = perfect returns (deterministic).
+        self.sensor_noise: dict | None = None
+        self._noise_rng = None
         # hooks injected by later phases (identity defaults keep Phase 0 standalone):
         self.comms = None          # Phase 1: CommsFabric (delivers inboxes)
         self.localization = None   # Phase 2: localization fabric (perturbs sensed pose)
@@ -352,6 +359,25 @@ class TeamWorld:
             out.append((other.id, rel_body, other.vel.copy(), other.vclass))
         return out
 
+    def set_sensor_noise(self, range_std: float = 0.0, dropout: float = 0.0,
+                         seed: int = 0) -> None:
+        """Enable a seeded sensor-noise model for realistic/reconstructed sensing."""
+        self.sensor_noise = {"range_std": float(range_std), "dropout": float(dropout)}
+        self._noise_rng = np.random.default_rng(seed)
+
+    def _apply_sensor_noise(self, scan: np.ndarray, max_d: float) -> np.ndarray:
+        if not self.sensor_noise or self._noise_rng is None:
+            return scan
+        rng = self._noise_rng
+        std = self.sensor_noise.get("range_std", 0.0)
+        drop = self.sensor_noise.get("dropout", 0.0)
+        out = scan.astype(np.float32).copy()
+        if std > 0:
+            out = out + rng.normal(0.0, std, size=out.shape).astype(np.float32)
+        if drop > 0:
+            out[rng.random(out.shape) < drop] = max_d   # missed return → reports clear
+        return np.clip(out, 0.0, max_d)
+
     def _scan(self, me: Agent, boxes: list[Box]) -> tuple[np.ndarray, float]:
         """Sensing-modality output + min clearance. Modality from VehicleClass.sensor."""
         max_d = KinematicWorld.SENSE_MAX
@@ -381,6 +407,8 @@ class TeamWorld:
                 for b in boxes:
                     d = min(d, _ray_aabb_3d(px, py, pz, wx, wy, du, b, max_d))
                 scan[i] = d
+        if self.sensing in ("realistic", "reconstructed"):
+            scan = self._apply_sensor_noise(scan, max_d)   # Stage 4: seeded noise/dropout
         if self.sensing == "realistic":
             # Realizable clearance: the nearest scan return only — no true-surface
             # oracle. This is what the flight code (onboard_l5) naively has.
