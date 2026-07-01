@@ -224,6 +224,61 @@ def lidar_ray_angles() -> tuple[float, ...]:
     return _LIDAR_ANGLES
 
 
+def _seg_dist_from_origin(ax, ay, az, bx, by, bz):
+    """Distance from the origin (sensor) to the segment [(ax,ay,az),(bx,by,bz)]."""
+    dx, dy, dz = bx - ax, by - ay, bz - az
+    L2 = dx * dx + dy * dy + dz * dz
+    if L2 < 1e-9:
+        return math.sqrt(ax * ax + ay * ay + az * az)
+    t = -(ax * dx + ay * dy + az * dz) / L2
+    t = max(0.0, min(1.0, t))
+    cx, cy, cz = ax + t * dx, ay + t * dy, az + t * dz
+    return math.sqrt(cx * cx + cy * cy + cz * cz)
+
+
+def reconstruct_surface_clearance(scan: np.ndarray, sensor: Sensor,
+                                  max_d: float = 10.0) -> float:
+    """Estimate the nearest *surface* distance from discrete beam returns.
+
+    Naive ray-min (``scan.min()``) overreads clearance when a surface — a corner or
+    an obstacle edge — falls *between* beams: the perpendicular distance to the
+    surface is shorter than any single beam's range. This reconstructs the local
+    surface by joining adjacent hits into segments and taking the perpendicular
+    distance from the sensor to the nearest segment. Standard lidar/depth practice;
+    recovers true-surface-like clearance a real robot can actually compute.
+
+    Only joins *adjacent hits* (both below max range) so no-return rays don't
+    fabricate a spurious near surface.
+    """
+    if not scan.size:
+        return max_d
+    best = float(scan.min())
+    if sensor is Sensor.LIDAR_360:
+        ang = _LIDAR_ANGLES
+        n = len(scan)
+        pts = [(scan[i] * math.cos(ang[i]), scan[i] * math.sin(ang[i]), 0.0)
+               for i in range(n)]
+        for i in range(n):
+            j = (i + 1) % n
+            if scan[i] >= max_d or scan[j] >= max_d:
+                continue
+            best = min(best, _seg_dist_from_origin(*pts[i], *pts[j]))
+    else:  # FORWARD_DEPTH 5×9 grid — join horizontal + vertical neighbours
+        pts = [(scan[k] * _DEPTH_BODY_DIRS[k][0],
+                scan[k] * _DEPTH_BODY_DIRS[k][1],
+                scan[k] * _DEPTH_BODY_DIRS[k][2]) for k in range(len(scan))]
+        for r in range(_DEPTH_ROWS):
+            for c in range(_DEPTH_COLS):
+                k = r * _DEPTH_COLS + c
+                if scan[k] >= max_d:
+                    continue
+                for dk in (1 if c + 1 < _DEPTH_COLS else 0,
+                           _DEPTH_COLS if r + 1 < _DEPTH_ROWS else 0):
+                    if dk and scan[k + dk] < max_d:
+                        best = min(best, _seg_dist_from_origin(*pts[k], *pts[k + dk]))
+    return best
+
+
 # --------------------------------------------------------------------------- world
 class TeamWorld:
     """Owns the team + backend; runs the per-tick perceive→decide→integrate loop."""
@@ -328,8 +383,12 @@ class TeamWorld:
                 scan[i] = d
         if self.sensing == "realistic":
             # Realizable clearance: the nearest scan return only — no true-surface
-            # oracle. This is what the flight code (onboard_l5) actually has.
+            # oracle. This is what the flight code (onboard_l5) naively has.
             min_clear = float(scan.min()) if scan.size else max_d
+        elif self.sensing == "reconstructed":
+            # Stage 1: realizable sensing + local surface reconstruction — the
+            # nearest-surface estimate a real robot computes from discrete beams.
+            min_clear = reconstruct_surface_clearance(scan, me.vclass.sensor, max_d)
         else:
             min_clear = self._min_surface_dist(me, boxes)
         return scan, min_clear
