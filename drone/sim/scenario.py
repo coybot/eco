@@ -423,13 +423,14 @@ def _path_controller(path, speed):
 class ScenarioRunner:
     """Builds the world+fabrics from a Scenario, runs the loop, records events."""
 
-    def __init__(self, scenario: Scenario, controller=None, dt: float = 0.1):
+    def __init__(self, scenario: Scenario, controller=None, dt: float = 0.1,
+                 sensing: str = "ideal"):
         self.scenario = scenario
         backend = KinematicWorld(static_obstacles=[
             Box(np.asarray(o[:3], np.float32), np.asarray(o[3:], np.float32))
             for o in scenario.obstacles
         ])
-        self.world = TeamWorld(backend, dt=dt)
+        self.world = TeamWorld(backend, dt=dt, sensing=sensing)
         self.world.add_roster(scenario.team)
         self.comms = CommsFabric(seed=scenario.seed)
         self.loc = LocalizationFabric(seed=scenario.seed)

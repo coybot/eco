@@ -57,6 +57,7 @@ class ScenarioScore:
     comms_delivery_rate: float
     mean_loc_error: float
     mean_confidence: float
+    failures: list = field(default_factory=list)  # [(t, cause, agent_id, vclass, detail), ...]
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -82,6 +83,8 @@ class _Detector:
         self._loc_err_sum = 0.0
         self._conf_sum = 0.0
         self._samples = 0
+        # per-agent, per-cause attribution: [(t, cause, agent_id, vclass, detail), ...]
+        self.failures: list = []
 
     def update(self):
         w = self.r.world
@@ -91,12 +94,15 @@ class _Detector:
         # --- pairwise separation (team only) ---
         tick_collision = False
         tick_near_miss = False
+        collision_detail = None   # (agent_id, vclass, cause) of the first culprit this tick
         for a, b in itertools.combinations(team, 2):
             d = float(np.linalg.norm(a.pos - b.pos))
             surf = d - a.vclass.radius_m - b.vclass.radius_m
             self.min_sep = min(self.min_sep, surf)
             if surf < 0:
                 tick_collision = True
+                if collision_detail is None:
+                    collision_detail = (a.id, a.vclass.name, f"teammate:{b.id}")
             elif surf < NEAR_MISS_PAD:
                 tick_near_miss = True
         # agent-vs-obstacle collision
@@ -104,7 +110,9 @@ class _Detector:
             boxes = w.backend.obstacles() + w._moving_obstacles(a)
             if w._min_surface_dist(a, boxes) < a.vclass.radius_m:
                 tick_collision = True
-        self._edge("collision", tick_collision, "_in_collision")
+                if collision_detail is None:
+                    collision_detail = (a.id, a.vclass.name, "obstacle")
+        self._edge("collision", tick_collision, "_in_collision", collision_detail)
         self._edge("near_miss", tick_near_miss, "_in_near_miss")
 
         # --- stall: no *mission* progress for a window while mission incomplete ---
@@ -150,14 +158,23 @@ class _Detector:
         self._conf_sum += sum(self.r.loc.confidence(a) for a in team) / len(team)
         self._samples += 1
 
-    def _edge(self, name, active, latch_attr):
+    def _edge(self, name, active, latch_attr, detail=None):
         if active and not getattr(self, latch_attr):
             self.counts[name] += 1
+            if detail is not None:
+                aid, vclass, cause = detail
+                self.failures.append((round(self.r.world.t, 1), name, aid, vclass, cause))
         setattr(self, latch_attr, active)
 
     def finalize(self, mission_complete: bool):
         if not mission_complete:
             self.counts["mission_timeout"] += 1
+            # attribute the timeout to the agent(s) still short of goal
+            w = self.r.world
+            for a in w.team_agents():
+                if a.goal is not None and float(np.linalg.norm(a.goal - a.pos)) > 1.5:
+                    self.failures.append((round(w.t, 1), "mission_timeout", a.id,
+                                          a.vclass.name, "short_of_goal"))
 
     @property
     def total(self) -> int:
@@ -217,6 +234,7 @@ def score_run(runner: ScenarioRunner, use_runtime: bool = True,
         comms_delivery_rate=runner.comms.stats.delivery_rate,
         mean_loc_error=round(det._loc_err_sum / n, 2),
         mean_confidence=round(det._conf_sum / n, 2),
+        failures=list(det.failures),
     )
 
 
@@ -243,9 +261,9 @@ def autonomy_level(scores: list[ScenarioScore]) -> tuple[int, str]:
 
 
 def score_suite(scenarios_dir: str = "scenarios", use_runtime: bool = True,
-                smart=None) -> dict:
+                smart=None, sensing: str = "ideal") -> dict:
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
-    scores = [score_run(ScenarioRunner(Scenario.from_yaml(str(f))),
+    scores = [score_run(ScenarioRunner(Scenario.from_yaml(str(f)), sensing=sensing),
                         use_runtime=use_runtime, smart=smart)
               for f in files]
     level, rationale = autonomy_level(scores)
@@ -564,6 +582,10 @@ if __name__ == "__main__":
     ap.add_argument("--out", default=None, help="write report JSON to this path")
     ap.add_argument("--smart-layer", default=None, choices=["rule", "llm"],
                     help="enable smart layer (rule=RuleBasedSmart, llm=LLMSmart via hoopoe)")
+    ap.add_argument("--sensing", default="ideal", choices=["ideal", "realistic"],
+                    help="clearance sensing model: ideal=true-surface oracle (legacy L5 "
+                         "baseline); realistic=nearest sensor return only (what hardware "
+                         "actually has)")
     args = ap.parse_args()
 
     _here = Path(__file__).resolve().parent
@@ -594,7 +616,7 @@ if __name__ == "__main__":
             _record_comparison_videos(scn_dir, args.rover_policy,
                                       args.quad_policy, args.record_video, renderer, smart)
     else:
-        rep = score_suite(scn_dir, use_runtime=True, smart=smart)
+        rep = score_suite(scn_dir, use_runtime=True, smart=smart, sensing=args.sensing)
         _print_suite(rep)
         out = args.out or str(_here / "scorecard_baseline.json")
         Path(out).write_text(json.dumps(rep, indent=2))

@@ -231,12 +231,20 @@ class TeamWorld:
     NEIGHBOR_RANGE = 12.0   # m: teammates within this radius are sensed
     COLLISION_PAD = 0.05    # m
 
-    def __init__(self, backend: WorldBackend | None = None, dt: float = 0.1):
+    def __init__(self, backend: WorldBackend | None = None, dt: float = 0.1,
+                 sensing: str = "ideal"):
         self.backend = backend or KinematicWorld()
         self.dt = dt
         self.agents: dict[str, Agent] = {}
         self.t = 0.0
         self.tick = 0
+        # Sensing model for the clearance the controller sees:
+        #   "ideal"     — true perpendicular obstacle-surface distance (omniscient;
+        #                 the published L5 baseline runs on this).
+        #   "realistic" — what a real sensor gives: nearest return of the modality
+        #                 scan (ray/beam), i.e. no true-surface oracle. Stages 1–3
+        #                 close the gap between this and "ideal".
+        self.sensing = sensing
         # hooks injected by later phases (identity defaults keep Phase 0 standalone):
         self.comms = None          # Phase 1: CommsFabric (delivers inboxes)
         self.localization = None   # Phase 2: localization fabric (perturbs sensed pose)
@@ -318,7 +326,12 @@ class TeamWorld:
                 for b in boxes:
                     d = min(d, _ray_aabb_3d(px, py, pz, wx, wy, du, b, max_d))
                 scan[i] = d
-        min_clear = self._min_surface_dist(me, boxes)
+        if self.sensing == "realistic":
+            # Realizable clearance: the nearest scan return only — no true-surface
+            # oracle. This is what the flight code (onboard_l5) actually has.
+            min_clear = float(scan.min()) if scan.size else max_d
+        else:
+            min_clear = self._min_surface_dist(me, boxes)
         return scan, min_clear
 
     def _min_surface_dist(self, me: Agent, boxes: list[Box]) -> float:
