@@ -35,9 +35,14 @@ import re
 
 import numpy as np
 
-from .team_world import TeamWorld, KinematicWorld, Box, reactive_goto_controller
-from .comms import CommsFabric, MsgType
-from .localization import LocalizationFabric, LocMode
+try:  # packaged (eco.drone.sim) vs flat (sim/ on path) — see conftest
+    from .team_world import TeamWorld, KinematicWorld, Box, reactive_goto_controller
+    from .comms import CommsFabric, MsgType
+    from .localization import LocalizationFabric, LocMode
+except ImportError:
+    from team_world import TeamWorld, KinematicWorld, Box, reactive_goto_controller
+    from comms import CommsFabric, MsgType
+    from localization import LocalizationFabric, LocMode
 
 
 # =========================================================================== mission
