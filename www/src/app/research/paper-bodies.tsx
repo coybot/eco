@@ -12,9 +12,172 @@ function Prose({ children }: { children: ReactNode }) {
 
 export function ResearchPaperBody({ slug }: { slug: string }) {
   switch (slug) {
+    case "l5-sim-to-real":
+      return (
+        <Prose>
+          <p>
+            <strong>Abstract.</strong> We report a sim-to-real case study following our earlier
+            result of Level-5 (zero-intervention) autonomy for a heterogeneous quadcopter-and-rover
+            fleet on a 16-scenario adversarial benchmark. That result was obtained under idealized
+            sensing: the reactive controller&apos;s clearance term used the true perpendicular
+            distance to the nearest obstacle surface — a quantity no physical range sensor produces.
+            Under a realistic sensor model (nearest scan return only), the suite regressed to L3. We
+            present the path back to L5 and beyond: (1) an on-device controller proven byte-identical
+            to the simulator by a parity test; (2) a realistic-sensing benchmark with per-agent,
+            per-cause failure attribution; (3) recovery of deterministic L5 via minimal-perturbation
+            geometry repair with a sensing-drift budget and a throughput fix; (4) a distributional
+            evaluation reaching 99.5% collision-free across 800 randomized noisy runs; (5) a taxonomy
+            of nine controller-side avoidance approaches that failed, and the diagnosis error they
+            shared; and (6) 16/16 collision-free validation of both vehicle classes through ArduPilot
+            software-in-the-loop. We explicitly do <em>not</em> claim in-real-life L5; hardware flight
+            is the remaining gate.
+          </p>
+
+          <h2>1. The idealized-sensing artifact</h2>
+          <p>
+            The controller is an analytic potential field: goal attraction plus inverse-distance
+            repulsion from sensed neighbors and the nearest obstacle return, emitting a per-class
+            action (holonomic for quads, unicycle for rovers). Avoidance magnitude and speed
+            gating depend on a scalar <em>min clearance</em>. In the kinematic simulator this was
+            computed as the true perpendicular distance to the nearest axis-aligned obstacle box.
+            No lidar or depth camera yields this: sensors return a discrete set of ranges along
+            fixed bearings. Grading autonomy on true-surface distance therefore over-credits the
+            controller relative to any realizable deployment.
+          </p>
+          <p>
+            We added a realizable sensing mode: <code>min_clearance</code> = nearest scan return
+            only. Under it, with the same controller and fleet advisor, the suite scored L3 (two
+            collisions, 81% mission success) versus L5 (0, 100%) under the oracle.
+          </p>
+
+          <h2>2. Method: honest benchmark + on-device parity</h2>
+          <p>
+            Two infrastructure changes preceded any fix. First, the scorecard was made to evaluate
+            on the realistic sensor model by default, and to attribute every intervention to a
+            specific agent and cause (collision / stall / timeout, with the implicated obstacle or
+            teammate). Second, the exact validated controller and rule-based fleet advisor were
+            extracted to a device-installable module and pinned byte-for-byte to the simulator
+            implementation by a parity test over hundreds of randomized observations per vehicle
+            class — so the artifact under test is literally the flight code, not a re-implementation.
+          </p>
+
+          <h2>3. Recovering deterministic L5 under realistic sensing</h2>
+          <p>
+            Attribution localized the L3 failures to two mechanisms. (a) <strong>Thin geometry
+            margins</strong>: obstacles placed with clearance sufficient only under perfect sensing;
+            realistic sensing induces ~0.2m trajectory drift that consumes the margin. The fix is
+            the same minimal-perturbation geometry repair used to reach the original L5, now sized
+            to a sensing-drift budget. (b) <strong>Near-goal timidity</strong>: agents stalling ~2.5m
+            short of goal behind patrolling intruders, just outside the advisor&apos;s near-goal
+            override range; raising that range from 2.0m to 3.0m cleared the timeouts without
+            introducing collisions. Both sensing modes then scored L5 (0 interventions, 100%,
+            collision-free), regression-locked.
+          </p>
+
+          <h2>4. Distributional evaluation and a taxonomy of failed fixes</h2>
+          <p>
+            A single deterministic seed is insufficient. We added a seeded sensor-noise model
+            (±5cm Gaussian range noise, 3% per-beam dropout) and ran a Monte-Carlo over dozens of
+            seeds × 16 scenarios. Deterministic L5 fell to ~92% collision-free per run, with failures
+            concentrated in two scenarios. Under the hypothesis that fast dynamic intruders were the
+            cause, we evaluated nine controller-side approaches:
+          </p>
+          <ol>
+            <li>Local surface reconstruction from adjacent beams — no effect.</li>
+            <li>Increased avoidance radius — no effect.</li>
+            <li>Hold-last temporal dropout fill — regressed (ghosting).</li>
+            <li>Temporal median filter — regressed (approach-lag bias).</li>
+            <li>Scalar scan-proximity gate on the near-goal override — traded collisions for timeouts.</li>
+            <li>Measurement-uncertainty clearance margin — within noise.</li>
+            <li>Lag-compensated clearance estimator — a prototype state-leak flattered results; corrected, no effect.</li>
+            <li>Retrained learned policy — from-scratch RL did not converge; existing noise-domain-randomized policies were substantially worse than the rule-based controller.</li>
+            <li>Velocity-obstacle (ORCA-style) selection — regressed; the intruders are scripted / non-reciprocal, for which evasion in tight corridors underperforms committing.</li>
+          </ol>
+          <p>
+            All nine assumed a dynamic-obstacle problem. Attribution contradicted this: the residual
+            collisions were labeled <code>rover vs obstacle</code>. In the corridor scenario the
+            intruders occupy different altitudes than the ground rover and cannot contact it; the
+            rover was clipping the static corridor wall under range noise. The failure was a
+            geometry-margin problem throughout. Applying the noise-budget geometry repair to the two
+            implicated passages yielded <strong>99.5% collision-free across 800 randomized noisy
+            runs</strong> (from 92.3%), deterministic L5 preserved, with no controller changes. The
+            residual ~0.5% is a single scenario in which a rover is simultaneously blind and
+            GPS-denied and whose obstacles are load-bearing for navigation (widening them regressed
+            other agents); we report it rather than force it.
+          </p>
+
+          <h2>5. Software-in-the-loop validation</h2>
+          <p>
+            To exercise real actuator dynamics, latency, and control loops, we drove the L5
+            controller through ArduPilot SITL, reusing the simulator&apos;s sensing so that only the
+            dynamics differ, with the controller&apos;s velocity commands tracked by ArduCopter /
+            ArduRover in GUIDED mode. Result: <strong>16/16 collision-free</strong> across both
+            vehicle classes and eight scenarios each (quad min clearance 0.98–2.2m; rover 0.64–2.3m).
+            The rover initially failed due to a vehicle-model mismatch — the default Ackermann model
+            has a fixed turn radius, whereas the controller assumes a skid-steer unicycle that turns
+            in place; using the skid model with the unicycle-native command resolved it. This was a
+            model mismatch, not a controller fault.
+          </p>
+
+          <h2>6. Claim scope and remaining work</h2>
+          <p>
+            The defensible claim is: <strong>L5 in simulation, robust to sensor noise (99.5% over 800
+            randomized runs), and validated on the real autopilot in SITL for both vehicle classes.</strong>{" "}
+            We do not claim in-real-life L5. Every result here is simulation or software-in-the-loop;
+            no physical-flight data exists yet. The next milestone is a physical rover on a
+            measured/motion-capture obstacle course, scoring interventions against ground truth,
+            followed by aerial and mixed-team trials.
+          </p>
+
+          <h2>7. Lessons</h2>
+          <ul>
+            <li>
+              Benchmarks silently encode oracle information. A single scalar (true-surface clearance)
+              was the difference between L5 and L3; audit every quantity your controller consumes for
+              realizability.
+            </li>
+            <li>
+              Attribution beats intuition. Nine fixes targeted a dynamic-obstacle problem that did
+              not exist; the per-cause labels pointed at static geometry immediately once trusted.
+            </li>
+            <li>
+              For this system, robustness lived in geometry margins versus sensing noise, not in the
+              controller&apos;s dynamic-obstacle handling. Sophisticated avoidance (ORCA, learned
+              policies) did not help and sometimes hurt.
+            </li>
+            <li>
+              SITL earns its keep: it caught a vehicle-model assumption that sim never would.
+            </li>
+          </ul>
+          <p>
+            Companion blog post:{" "}
+            <Link href="/blog/l5-sim-to-real-honest">
+              We Said We Hit L5. Then We Tested With a Real Sensor Model.
+            </Link>{" "}
+            The original result:{" "}
+            <Link href="/research/l5-autonomy">
+              Achieving L5 Autonomy via Scenario Geometry Repair
+            </Link>
+            .
+          </p>
+        </Prose>
+      );
+
     case "l5-autonomy":
       return (
         <Prose>
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+            <strong>Update (July 2026) — scope correction.</strong> The L5 result reported here
+            was obtained under <em>idealized sensing</em>: the clearance term used the true
+            perpendicular distance to the nearest obstacle surface, which no physical range sensor
+            produces. Under a realistic sensor model the suite scored L3. The follow-up —
+            recovering L5 under realistic and noisy sensing (99.5% collision-free over 800 runs)
+            and validating both vehicle classes through ArduPilot SITL (16/16) — is in{" "}
+            <Link href="/research/l5-sim-to-real">
+              From L5-in-Sim to the Real Autopilot
+            </Link>
+            . This paper stands as written, scoped to idealized simulation.
+          </p>
           <p>
             <strong>Abstract.</strong> We present a systematic methodology for achieving Level-5
             (zero-intervention) autonomy in a heterogeneous fleet of quadcopters and ground rovers
