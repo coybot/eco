@@ -12,9 +12,199 @@ function Prose({ children }: { children: ReactNode }) {
 
 export function BlogPostBody({ slug }: { slug: string }) {
   switch (slug) {
+    case "l5-sim-to-real-honest":
+      return (
+        <Prose>
+          <p>
+            A few weeks ago we wrote that we&apos;d hit <strong>L5 autonomy</strong> — zero
+            human interventions across a 16-scenario adversarial benchmark, a heterogeneous
+            fleet of quadcopters and ground rovers. That result was real, and it&apos;s still
+            in the repo. But it had an asterisk we didn&apos;t fully appreciate at the time, and
+            chasing that asterisk turned into the most honest piece of engineering we&apos;ve
+            done this year. This is that story — including the parts that didn&apos;t work.
+          </p>
+
+          <h2>The asterisk</h2>
+          <p>
+            Our L5 controller is a reactive potential field: each agent reads its local
+            surroundings — obstacle proximity, teammate positions, goal direction — and produces
+            a velocity. To decide how hard to avoid an obstacle, it uses a number called{" "}
+            <em>min clearance</em>: the distance to the nearest obstacle surface.
+          </p>
+          <p>
+            In the simulator, that number was the <em>true</em> perpendicular distance to the
+            nearest obstacle surface — computed from ground-truth geometry. That is a quantity{" "}
+            <strong>no real sensor produces.</strong> A lidar gives you a ring of range
+            readings. A depth camera gives you a fan of them. Neither hands you &ldquo;the exact
+            distance to the nearest surface.&rdquo; We were grading our autonomy on information
+            it would never have on real hardware.
+          </p>
+          <p>
+            So we built a second sensing mode into the benchmark — <code>--sensing realistic</code>{" "}
+            — that gives the controller only what a real sensor gives: the nearest return of the
+            scan, no oracle. Then we re-ran the suite.
+          </p>
+
+          <h2>L5 became L3</h2>
+          <p>
+            Under realistic sensing, the fleet dropped from L5 to <strong>L3</strong>: two
+            collisions, 81% mission success. The &ldquo;L5&rdquo; had been partly an artifact of
+            idealized perception. That was a bad afternoon — but it&apos;s exactly the kind of
+            thing you want to find in sim, on your own terms, rather than in a field test.
+          </p>
+          <p>
+            The first thing we did was make the benchmark honest permanently: realistic sensing
+            plus per-agent, per-cause failure attribution, so every collision and every timeout
+            names the agent and the reason. No more grading against an oracle.
+          </p>
+          <p>
+            The second thing we did was ship the exact validated controller onto the device code
+            path — the same reactive controller and rule-based fleet advisor, running on the
+            Jetson&apos;s flight software, proven byte-for-byte identical to the sim by a parity
+            test. Whatever we validated is literally what flies. No &ldquo;the real code is
+            different&rdquo; gap.
+          </p>
+
+          <h2>Getting back to L5 (deterministic)</h2>
+          <p>
+            With attribution, the failures were specific. Two mechanisms:
+          </p>
+          <ul>
+            <li>
+              <strong>Thin geometry margins.</strong> Some obstacles were placed with just enough
+              clearance to work under perfect sensing. With realistic sensing the agent&apos;s
+              trajectory drifts ~0.2m, and that ate the margin. The fix was the same
+              minimal-perturbation geometry repair we&apos;d used to reach L5 originally — now with
+              a sensing-drift budget. Move two obstacle sets a little; collisions go to zero.
+            </li>
+            <li>
+              <strong>Timidity near the goal.</strong> A few agents stalled ~2.5m short of goal,
+              pinned behind patrolling intruders, just outside the range where the advisor&apos;s
+              &ldquo;near-goal lock&rdquo; punches through. Raising that engagement range from 2.0m
+              to 3.0m cleared all of them — without reintroducing a single collision.
+            </li>
+          </ul>
+          <p>
+            Result: <strong>L5 under realistic deterministic sensing</strong>, both the oracle and
+            the realistic modes, zero collisions, 100% success. Regression-locked with a test.
+          </p>
+
+          <h2>The nine things that didn&apos;t work</h2>
+          <p>
+            One deterministic run isn&apos;t &ldquo;probably.&rdquo; So we added a sensor-noise
+            model — ±5cm Gaussian range noise plus 3% beam dropout — and ran a Monte Carlo: dozens
+            of random seeds across all 16 scenarios. Deterministic L5 dropped to ~92% collision-free
+            per run. The remaining collisions concentrated in two scenarios.
+          </p>
+          <p>
+            We assumed the culprit was fast dynamic intruders, and we spent real effort on it.
+            In order, here is what we tried and what happened:
+          </p>
+          <ol>
+            <li>Surface reconstruction (fit the obstacle edge from adjacent beams) — no change.</li>
+            <li>Wider avoidance radius — no change.</li>
+            <li>Hold-last temporal filter to bridge dropouts — worse (ghosting).</li>
+            <li>Temporal median filter — much worse (lag: it trails the shrinking clearance during approach).</li>
+            <li>A scalar &ldquo;something&apos;s close&rdquo; gate on the near-goal lock — traded collisions for timeouts.</li>
+            <li>A measurement-uncertainty clearance margin — within noise, no real help.</li>
+            <li>A lag-compensated clearance estimator — <em>looked</em> like a breakthrough until a fair test showed the prototype had a state-leak bug flattering the numbers; done correctly, no help.</li>
+            <li>A retrained learned policy — a from-scratch RL run never converged; the existing noise-trained policies were dramatically <em>worse</em> than the rule-based controller.</li>
+            <li>A velocity-obstacle / ORCA solver — the correct tool for reciprocal agents, but it made things <em>worse</em>: the intruders are scripted and non-cooperative, so evading them in a tight corridor is worse than committing.</li>
+          </ol>
+          <p>
+            Nine approaches. None closed the gap. That&apos;s not a fun paragraph to write, but
+            it&apos;s the true one — and it&apos;s what pointed at the real problem.
+          </p>
+
+          <h2>The diagnosis we&apos;d gotten wrong</h2>
+          <p>
+            Every one of those approaches assumed a <em>dynamic-obstacle</em> problem. The
+            attribution said otherwise: the collisions were labeled <code>rover vs obstacle</code>,
+            not vs intruder. In the corridor scenario, the intruders fly at a different altitude
+            than the ground rover — they can&apos;t even hit it. The rover was clipping the{" "}
+            <strong>static wall</strong> under range noise. It was a geometry-margin problem the
+            whole time, wearing a dynamic-obstacle costume.
+          </p>
+          <p>
+            The fix was the method that had worked twice already: widen the tight rover passages
+            with a noise-drift budget (the quads fly over the tops, so it&apos;s rover-only and
+            safe). Two scenario edits.
+          </p>
+          <p>
+            <strong>Result: 99.5% collision-free across 800 randomized noisy runs</strong>, up
+            from 92.3% — deterministic L5 preserved, no controller changes. The remaining ~0.5%
+            is one scenario (a rover that goes blind under GPS loss and wind simultaneously) where
+            the obstacles are load-bearing for navigation and widening them backfires. We left it
+            honest rather than force it.
+          </p>
+
+          <h2>Through the real autopilot</h2>
+          <p>
+            The last thing between an algorithm and an aircraft is the autopilot: actuator lag,
+            control-loop latency, imperfect velocity tracking. So we ran the L5 controller through{" "}
+            <strong>ArduPilot SITL</strong> — the real flight-control software — feeding it the
+            realistic sensor model and letting ArduCopter and ArduRover fly the setpoints.
+          </p>
+          <p>
+            <strong>16 out of 16 collision-free</strong>, both vehicle classes, eight scenarios
+            each. The quad passed immediately. The rover clipped obstacles until we found the
+            cause — we were launching it as a car (Ackermann steering, fixed turn radius) when the
+            controller assumes a skid-steer that turns in place. A vehicle-model mismatch, not a
+            controller fault. With the right model, 8/8.
+          </p>
+
+          <h2>So do we have IRL L5?</h2>
+          <p>
+            <strong>No — and we&apos;re not going to say we do.</strong> Here is the exact ladder:
+          </p>
+          <ul>
+            <li>✅ L5 in idealized sim</li>
+            <li>✅ L5 under realistic deterministic sensing, on the device code path</li>
+            <li>✅ 99.5% collision-free under realistic noisy sensing (800 randomized runs)</li>
+            <li>✅ 16/16 collision-free through the real autopilot in SITL, quad and rover</li>
+            <li>⬜ Actual hardware flight — not started</li>
+          </ul>
+          <p>
+            Everything above the last line is sim and software-in-the-loop. &ldquo;IRL L5&rdquo;
+            means the last line: real aircraft, real sensors, real flights, and we have zero of
+            that data. What we can honestly say is: <strong>L5 in sim, robust to sensor noise,
+            and validated on the real autopilot — hardware pending.</strong> The next milestone is
+            a physical rover on a measured course.
+          </p>
+          <p>
+            The reason we&apos;re writing this the way we are — negative results and all — is that
+            the version where we quietly patched the benchmark and kept the L5 banner would have
+            been the easy one, and the wrong one. The gap between &ldquo;works in the demo&rdquo;
+            and &ldquo;works on the vehicle&rdquo; is where autonomy programs actually live or die,
+            and the only way through it is to keep finding your own asterisks before the field does.
+          </p>
+          <p>
+            The full technical write-up — the realistic-sensing benchmark, the failure taxonomy,
+            the SITL results — is in the companion paper:{" "}
+            <Link href="/research/l5-sim-to-real">
+              From L5-in-Sim to the Real Autopilot: A Sim-to-Real Case Study
+            </Link>
+            . The original L5 result is{" "}
+            <Link href="/blog/l5-autonomy-zero-interventions">here</Link>.
+          </p>
+        </Prose>
+      );
+
     case "l5-autonomy-zero-interventions":
       return (
         <Prose>
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+            <strong>Update (July 2026) — scope correction.</strong> The L5 result below was
+            achieved under <em>idealized sensing</em>: the controller used the true distance to
+            the nearest obstacle surface, a quantity no real sensor produces. When we later
+            re-ran the benchmark with a realistic sensor model, it was L3, and closing that gap
+            (plus validation through the real autopilot in SITL) is its own story. Read the
+            honest follow-up:{" "}
+            <Link href="/blog/l5-sim-to-real-honest">
+              We Said We Hit L5. Then We Tested With a Real Sensor Model.
+            </Link>{" "}
+            The result below stands as written — for idealized sim.
+          </p>
           <p>
             We&apos;ve been running our heterogeneous drone fleet — a mix of quadcopters and ground
             rovers — through a 16-scenario adversarial benchmark designed to stress every part of
