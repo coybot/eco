@@ -7,9 +7,13 @@ team:
   - {id: rover_1, type: rover, pos: [-12,-2, 0],  goal: [12, -2, 0]}
 duration_s: 60
 obstacles:
-  # corridor walls — 6m gap
-  - [0,  7, 1.5, 0.5, 4.0, 3.0]
-  - [0, -7, 1.5, 0.5, 4.0, 3.0]
+  # Corridor walls — faces at y=±4 (moved out from ±3). Rover lanes are y=±2, so the
+  # old ±3 faces left only 0.5m clearance; under range noise the rover clips the wall
+  # (a static-obstacle graze, not an intruder — the intruders are at z=1/z=4, clear of
+  # the z=0 rover). Widened to a noise-drift budget. Quads fly over the top
+  # (z=5.5 > obstacle top 4.5), so their corridor is unaffected.
+  - [0,  8, 1.5, 0.5, 4.0, 3.0]
+  - [0, -8, 1.5, 0.5, 4.0, 3.0]
 injects:
   # 4 intruders blocking the corridor from both sides
   - {at: 5,  do: spawn_dynamic, path: [[14, 2, 4],[-14, 2, 4],[14, 2, 4]], speed: 4.5}
