@@ -124,14 +124,14 @@ def send_cmd(m, action, is_rover, yaw):
     yaw_rate/2 (yaw_cmd = clip(desired*2)) — and send it in LOCAL_NED."""
     from pymavlink import mavutil
     if is_rover:
+        # Skid-steer rover (--model rover-skid) matches the UNICYCLE_2D controller: it
+        # turns in place, so the unicycle-native command — body forward speed + yaw_rate
+        # — maps directly. (The default car model can't, which arced it into obstacles.)
         speed, yaw_rate = float(action[0]), float(action[1])
-        hd = yaw + 0.5 * yaw_rate            # desired world heading
-        vx_w, vy_w = speed * math.cos(hd), speed * math.sin(hd)   # world fwd(N), left
-        # world (fwd=N, left) → NED (north, east=-left)
         m.mav.set_position_target_local_ned_send(
             0, m.target_system, m.target_component,
-            mavutil.mavlink.MAV_FRAME_LOCAL_NED, 0b0000111111000111,
-            0, 0, 0, vx_w, -vy_w, 0, 0, 0, 0, 0, 0)
+            mavutil.mavlink.MAV_FRAME_BODY_NED, 0b0000011111000111,
+            0, 0, 0, speed, 0.0, 0.0, 0, 0, 0, 0, -yaw_rate)
         return
     vx, vy, vz, yaw_rate = (float(action[0]), float(action[1]),
                             float(action[2]), float(action[3]))
@@ -203,7 +203,7 @@ def main():
     print(f"scenario={scn.name} agent={args.agent} class={agent.vclass.name} "
           f"goal={goal} obstacles={len(scn.obstacles)} rover={is_rover}", flush=True)
 
-    model = "rover" if is_rover else "+"
+    model = "rover-skid" if is_rover else "+"   # skid-steer matches UNICYCLE_2D
     proc = launch_sitl(args.sitl_bin, args.defaults, model=model) if args.sitl_bin else None
     if proc:
         time.sleep(8)
