@@ -185,7 +185,16 @@ def main():
     ap.add_argument("--sitl-bin", default=None)
     ap.add_argument("--defaults", default=None)
     ap.add_argument("--connect", default="tcp:127.0.0.1:5760")
+    ap.add_argument("--rover-fd", action="store_true",
+                    help="re-scope the rover to FORWARD_DEPTH sensing (iPhone ARKit depth) "
+                         "instead of a 360 lidar — matches the physical bench hardware")
     args = ap.parse_args()
+
+    if args.rover_fd:
+        import dataclasses
+        from eco.drone.sim import vehicle_class as _VC
+        _VC.register_class(dataclasses.replace(
+            _VC.ROVER, sensor=_VC.Sensor.FORWARD_DEPTH, state_dim=56), "rover")
 
     scn = Scenario.from_yaml(args.scenario)
     spec = next(a for a in scn.team if a["id"] == args.agent)
