@@ -1,0 +1,19 @@
+name: relay_dependency
+environment: warehouse
+# quad_0 must stay close enough to rover_1 to relay comms — otherwise rover_1 is isolated.
+# rover_1's goal is on the far side of a jamming zone it cannot avoid.
+team:
+  - {id: quad_0,  type: quad,  pos: [-8,  4, 6],  goal: [10,  4, 6]}
+  - {id: rover_0, type: rover, pos: [-8,  0, 0],  goal: [10,  0, 0]}
+  - {id: rover_1, type: rover, pos: [-8, -5, 0],  goal: [12, -5, 0]}
+duration_s: 90
+obstacles:
+  - [0, -3, 1.5, 0.5, 0.9, 3.0]   # wall: spans y=-3.9 to -2.1, 1.1m clear of rover_1(y=-5)
+  - [6, -7, 1.5, 0.5, 0.9, 3.0]   # blockage: spans y=-7.9 to -6.1, 1.1m clear of rover_1(y=-5)
+injects:
+  # Large jamming zone centred on rover_1's path
+  - {at: 2, do: jamming_zone, center: [2, -5, 0], radius: 7.0}
+  - {at: 5, do: wind_shift, wind: [0.3, -0.2, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true

@@ -1,0 +1,20 @@
+name: gauntlet_delta
+environment: warehouse
+team:
+  - {id: quad_0, type: quad, pos: [-10,  2, 5], goal: [10,  2, 5]}
+  - {id: quad_1, type: quad, pos: [-10, -2, 5], goal: [10, -2, 5]}
+  - {id: rover_0, type: rover, pos: [-10,  2, 0], goal: [10, -2, 0]}
+  - {id: rover_1, type: rover, pos: [-10, -2, 0], goal: [10,  2, 0]}
+duration_s: 40
+obstacles:
+  # chokepoint: 4m gap at y=0
+  - [0,  7, 1.5, 0.5, 3.5, 3.0]
+  - [0, -7, 1.5, 0.5, 3.5, 3.0]
+injects:
+  - {at: 2,  do: comms_blackout}
+  - {at: 3,  do: tight_deconfliction, point: [0, 0, 0], overfly_z: 5.5}
+  - {at: 20, do: move_target, target: 0, pos: [-8, 6, 0]}
+  - {at: 5,  do: wind_shift, wind: [0.4, 0.3, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true

@@ -21,15 +21,15 @@ export const DEFAULT_PLAN: MissionPlan = {
     { id: "rv-01", type: "rover",      label: "RV-01" },
   ],
   waypoints: [
-    { vehicleId: "qc-01", x: -8,  y: 8, z:  8, action: "move",    duration: 3, statusLabel: "deploying" },
-    { vehicleId: "qc-01", x: -8,  y: 8, z: -4, action: "scan",    duration: 4, statusLabel: "scanning"  },
-    { vehicleId: "qc-01", x:  2,  y: 8, z:-12, action: "hover",   duration: 3, statusLabel: "hovering"  },
-    { vehicleId: "qc-02", x:  8,  y: 8, z:  8, action: "move",    duration: 3, statusLabel: "deploying" },
-    { vehicleId: "qc-02", x:  8,  y: 8, z: -4, action: "scan",    duration: 4, statusLabel: "scanning"  },
-    { vehicleId: "qc-02", x:  2,  y: 8, z:-12, action: "hover",   duration: 3, statusLabel: "hovering"  },
-    { vehicleId: "rv-01", x:  2,  y: 0.3, z:  8, action: "move",    duration: 3, statusLabel: "advancing" },
-    { vehicleId: "rv-01", x:  2,  y: 0.3, z: -4, action: "inspect", duration: 5, statusLabel: "inspecting"},
-    { vehicleId: "rv-01", x:  2,  y: 0.3, z:-12, action: "report",  duration: 2, statusLabel: "reporting" },
+    { vehicleId: "qc-01", x: -8,  y: 8, z:  8, action: "move",    duration: 10, statusLabel: "deploying" },
+    { vehicleId: "qc-01", x: -8,  y: 8, z: -4, action: "scan",    duration: 14, statusLabel: "scanning"  },
+    { vehicleId: "qc-01", x:  2,  y: 8, z:-12, action: "hover",   duration: 10, statusLabel: "hovering"  },
+    { vehicleId: "qc-02", x:  8,  y: 8, z:  8, action: "move",    duration: 10, statusLabel: "deploying" },
+    { vehicleId: "qc-02", x:  8,  y: 8, z: -4, action: "scan",    duration: 14, statusLabel: "scanning"  },
+    { vehicleId: "qc-02", x:  2,  y: 8, z:-12, action: "hover",   duration: 10, statusLabel: "hovering"  },
+    { vehicleId: "rv-01", x:  2,  y: 0.3, z:  8, action: "move",    duration: 10, statusLabel: "advancing" },
+    { vehicleId: "rv-01", x:  2,  y: 0.3, z: -4, action: "inspect", duration: 18, statusLabel: "inspecting"},
+    { vehicleId: "rv-01", x:  2,  y: 0.3, z:-12, action: "report",  duration: 7,  statusLabel: "reporting" },
   ],
   targetType: "object",
   targetCount: 10,
@@ -126,16 +126,17 @@ interface FleetProps {
   onWaypointLabel: (vehicleId: string, label: string) => void;
   onTargetDetected: (count: number) => void;
   missionActive: boolean;
-  selectedVehicleId?: string | null;
-  pipCanvasRef?: RefObject<HTMLCanvasElement | null>;
+  selectedVehicleIds?: string[];
+  pipCanvasesRef?: RefObject<Map<string, HTMLCanvasElement>>;
 }
 
-function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selectedVehicleId, pipCanvasRef }: FleetProps) {
+function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selectedVehicleIds, pipCanvasesRef }: FleetProps) {
   const { gl, scene } = useThree();
   const cfg = ENV_CONFIG[plan.environment];
 
   const stateRef = useRef<Record<string, {
     pos: THREE.Vector3;
+    yaw: number;
     wpIdx: number;
     elapsed: number;
     done: boolean;
@@ -156,7 +157,7 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
       const startPos = firstWp
         ? new THREE.Vector3(firstWp.x, firstWp.y, firstWp.z)
         : new THREE.Vector3(0, v.type === 'quadcopter' ? cfg.quadY : cfg.roverY, 0);
-      stateRef.current[v.id] = { pos: startPos.clone(), wpIdx: 0, elapsed: 0, done: false };
+      stateRef.current[v.id] = { pos: startPos.clone(), yaw: 0, wpIdx: 0, elapsed: 0, done: false };
     });
   }
 
@@ -174,23 +175,12 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
     });
   }
 
-  // PiP rendering state
-  const pipTargetRef = useRef<THREE.WebGLRenderTarget | null>(null);
-  const pipCamRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const pipPixelsRef = useRef<Uint8Array | null>(null);
-  const pipTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Per-vehicle PiP rendering state
+  const pipTargetsRef = useRef<Map<string, THREE.WebGLRenderTarget>>(new Map());
+  const pipCamsRef = useRef<Map<string, THREE.PerspectiveCamera>>(new Map());
+  const pipPixelsRef = useRef<Map<string, Uint8Array>>(new Map());
+  const pipTempCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const pipFrameRef = useRef(0);
-
-  if (!pipTargetRef.current) {
-    pipTargetRef.current = new THREE.WebGLRenderTarget(PIP_W, PIP_H);
-    pipCamRef.current = new THREE.PerspectiveCamera(75, PIP_W / PIP_H, 0.1, 200);
-    pipPixelsRef.current = new Uint8Array(PIP_W * PIP_H * 4);
-  }
-  if (typeof document !== 'undefined' && !pipTempCanvasRef.current) {
-    pipTempCanvasRef.current = document.createElement('canvas');
-    pipTempCanvasRef.current.width = PIP_W;
-    pipTempCanvasRef.current.height = PIP_H;
-  }
 
   useFrame((_, delta) => {
     let detected = 0;
@@ -205,8 +195,23 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
 
       const wp = vWaypoints[Math.min(state.wpIdx, vWaypoints.length - 1)];
       const target = new THREE.Vector3(wp.x, wp.y, wp.z);
-      state.pos.lerp(target, Math.min(delta * 1.2, 1));
-      if (mesh) mesh.position.copy(state.pos);
+      const toTarget = target.clone().sub(state.pos);
+      const dist = toTarget.length();
+
+      // Rotate to face movement direction when actually travelling
+      if (dist > 0.5) {
+        const targetYaw = Math.atan2(-toTarget.x, -toTarget.z);
+        let diff = targetYaw - state.yaw;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        state.yaw += diff * Math.min(delta * 2.5, 1);
+      }
+
+      state.pos.lerp(target, Math.min(delta * 0.35, 1));
+      if (mesh) {
+        mesh.position.copy(state.pos);
+        mesh.rotation.y = state.yaw;
+      }
 
       state.elapsed += delta;
       if (state.elapsed >= wp.duration) {
@@ -235,21 +240,31 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
       onTargetDetected(detected);
     }
 
-    // PiP: render selected drone's POV to canvas every 3rd frame
+    // PiP: render all selected vehicles' POV to their canvases every 3rd frame
     pipFrameRef.current++;
-    if (
-      selectedVehicleId &&
-      pipCanvasRef?.current &&
-      pipTargetRef.current &&
-      pipCamRef.current &&
-      pipPixelsRef.current &&
-      pipTempCanvasRef.current &&
-      pipFrameRef.current % 3 === 0
-    ) {
-      const state = stateRef.current[selectedVehicleId];
-      const vehicle = plan.vehicles.find(v => v.id === selectedVehicleId);
-      if (state) {
-        const cam = pipCamRef.current;
+    if (selectedVehicleIds?.length && pipCanvasesRef?.current && pipFrameRef.current % 3 === 0) {
+      for (const vid of selectedVehicleIds) {
+        const state = stateRef.current[vid];
+        const vehicle = plan.vehicles.find(v => v.id === vid);
+        const outCanvas = pipCanvasesRef.current.get(vid);
+        if (!state || !outCanvas) continue;
+
+        if (!pipTargetsRef.current.has(vid)) {
+          pipTargetsRef.current.set(vid, new THREE.WebGLRenderTarget(PIP_W, PIP_H));
+          pipCamsRef.current.set(vid, new THREE.PerspectiveCamera(75, PIP_W / PIP_H, 0.1, 200));
+          pipPixelsRef.current.set(vid, new Uint8Array(PIP_W * PIP_H * 4));
+          if (typeof document !== 'undefined') {
+            const tc = document.createElement('canvas');
+            tc.width = PIP_W; tc.height = PIP_H;
+            pipTempCanvasesRef.current.set(vid, tc);
+          }
+        }
+
+        const target = pipTargetsRef.current.get(vid)!;
+        const cam = pipCamsRef.current.get(vid)!;
+        const pixels = pipPixelsRef.current.get(vid)!;
+        const tempCanvas = pipTempCanvasesRef.current.get(vid);
+
         if (vehicle?.type === 'rover') {
           cam.position.set(state.pos.x, state.pos.y + 0.4, state.pos.z + 0.5);
           cam.lookAt(state.pos.x, state.pos.y + 0.1, state.pos.z - 6);
@@ -258,23 +273,24 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
           cam.lookAt(state.pos.x, 0, state.pos.z - 2);
         }
 
-        gl.setRenderTarget(pipTargetRef.current);
+        gl.setRenderTarget(target);
         gl.render(scene, cam);
-
         const glCtx = gl.getContext() as WebGLRenderingContext;
-        glCtx.readPixels(0, 0, PIP_W, PIP_H, glCtx.RGBA, glCtx.UNSIGNED_BYTE, pipPixelsRef.current);
+        glCtx.readPixels(0, 0, PIP_W, PIP_H, glCtx.RGBA, glCtx.UNSIGNED_BYTE, pixels);
         gl.setRenderTarget(null);
 
-        const tempCtx = pipTempCanvasRef.current.getContext('2d');
-        const outCtx = pipCanvasRef.current.getContext('2d');
-        if (tempCtx && outCtx) {
-          const imgData = new ImageData(new Uint8ClampedArray(pipPixelsRef.current), PIP_W, PIP_H);
-          tempCtx.putImageData(imgData, 0, 0);
-          outCtx.save();
-          outCtx.translate(0, PIP_H);
-          outCtx.scale(1, -1);
-          outCtx.drawImage(pipTempCanvasRef.current, 0, 0);
-          outCtx.restore();
+        if (tempCanvas) {
+          const tempCtx = tempCanvas.getContext('2d');
+          const outCtx = outCanvas.getContext('2d');
+          if (tempCtx && outCtx) {
+            const imgData = new ImageData(new Uint8ClampedArray(pixels), PIP_W, PIP_H);
+            tempCtx.putImageData(imgData, 0, 0);
+            outCtx.save();
+            outCtx.translate(0, PIP_H);
+            outCtx.scale(1, -1);
+            outCtx.drawImage(tempCanvas, 0, 0);
+            outCtx.restore();
+          }
         }
       }
     }
@@ -305,12 +321,12 @@ interface SimCanvasProps {
   onTargetDetected: (count: number) => void;
   onWaypointLabel: (vehicleId: string, label: string) => void;
   missionActive: boolean;
-  selectedVehicleId?: string | null;
-  pipCanvasRef?: RefObject<HTMLCanvasElement | null>;
+  selectedVehicleIds?: string[];
+  pipCanvasesRef?: RefObject<Map<string, HTMLCanvasElement>>;
   isMobile?: boolean;
 }
 
-export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActive, selectedVehicleId, pipCanvasRef, isMobile }: SimCanvasProps) {
+export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActive, selectedVehicleIds, pipCanvasesRef, isMobile }: SimCanvasProps) {
   const cfg = ENV_CONFIG[plan.environment];
 
   return (
@@ -333,8 +349,8 @@ export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActi
         onTargetDetected={onTargetDetected}
         onWaypointLabel={onWaypointLabel}
         missionActive={missionActive}
-        selectedVehicleId={selectedVehicleId}
-        pipCanvasRef={pipCanvasRef}
+        selectedVehicleIds={selectedVehicleIds}
+        pipCanvasesRef={pipCanvasesRef}
       />
 
       <OrbitControls
