@@ -1,0 +1,371 @@
+{
+  "baseline": {
+    "autonomy_level": 2,
+    "rationale": "mean 2.69 interventions/scenario, 62% success",
+    "mean_interventions": 2.69,
+    "mission_success_rate": 0.625
+  },
+  "policy": {
+    "autonomy_level": 1,
+    "rationale": "mean 4.25 interventions/scenario, 6% success",
+    "rover_onnx": "drone/training/hetero_v1/policy_hetero_v1.onnx",
+    "quad_onnx": "drone/training/hetero_v1/policy_hetero_v1.onnx",
+    "mean_interventions": 4.25,
+    "mission_success_rate": 0.062
+  },
+  "delta_level": -1,
+  "scenarios": [
+    {
+      "name": "asymmetric_extract",
+      "baseline_interventions": 2,
+      "baseline_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 6,
+      "policy_breakdown": {
+        "collision": 4,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 4
+    },
+    {
+      "name": "cascading_doom",
+      "baseline_interventions": 2,
+      "baseline_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 5,
+      "policy_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 1,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 3
+    },
+    {
+      "name": "dense_urban",
+      "baseline_interventions": 3,
+      "baseline_breakdown": {
+        "collision": 3,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 8,
+      "policy_breakdown": {
+        "collision": 5,
+        "near_miss": 0,
+        "stall": 2,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 5
+    },
+    {
+      "name": "final_boss",
+      "baseline_interventions": 7,
+      "baseline_breakdown": {
+        "collision": 4,
+        "near_miss": 0,
+        "stall": 2,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "baseline_complete": false,
+      "policy_interventions": 6,
+      "policy_breakdown": {
+        "collision": 4,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": -1
+    },
+    {
+      "name": "formation_crush",
+      "baseline_interventions": 2,
+      "baseline_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "baseline_complete": false,
+      "policy_interventions": 3,
+      "policy_breakdown": {
+        "collision": 1,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 1
+    },
+    {
+      "name": "gauntlet_alpha",
+      "baseline_interventions": 4,
+      "baseline_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "baseline_complete": false,
+      "policy_interventions": 4,
+      "policy_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 0
+    },
+    {
+      "name": "gauntlet_beta",
+      "baseline_interventions": 4,
+      "baseline_breakdown": {
+        "collision": 4,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 3,
+      "policy_breakdown": {
+        "collision": 3,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "policy_complete": true,
+      "delta": -1
+    },
+    {
+      "name": "gauntlet_delta",
+      "baseline_interventions": 2,
+      "baseline_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "baseline_complete": false,
+      "policy_interventions": 2,
+      "policy_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 0
+    },
+    {
+      "name": "gauntlet_gamma",
+      "baseline_interventions": 1,
+      "baseline_breakdown": {
+        "collision": 1,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 4,
+      "policy_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 3
+    },
+    {
+      "name": "hostile_recon",
+      "baseline_interventions": 2,
+      "baseline_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 4,
+      "policy_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 2
+    },
+    {
+      "name": "multi_chokepoint",
+      "baseline_interventions": 2,
+      "baseline_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 4,
+      "policy_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 2
+    },
+    {
+      "name": "night_shift",
+      "baseline_interventions": 5,
+      "baseline_breakdown": {
+        "collision": 3,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "baseline_complete": false,
+      "policy_interventions": 5,
+      "policy_breakdown": {
+        "collision": 3,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 0
+    },
+    {
+      "name": "pursuit_corridor",
+      "baseline_interventions": 3,
+      "baseline_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 2,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "baseline_complete": false,
+      "policy_interventions": 3,
+      "policy_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 2,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 0
+    },
+    {
+      "name": "relay_dependency",
+      "baseline_interventions": 2,
+      "baseline_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 4,
+      "policy_breakdown": {
+        "collision": 2,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 2
+    },
+    {
+      "name": "sensor_hell",
+      "baseline_interventions": 1,
+      "baseline_breakdown": {
+        "collision": 1,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 5,
+      "policy_breakdown": {
+        "collision": 1,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 2,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 4
+    },
+    {
+      "name": "time_siege",
+      "baseline_interventions": 1,
+      "baseline_breakdown": {
+        "collision": 1,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "baseline_complete": true,
+      "policy_interventions": 2,
+      "policy_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 1,
+        "lost": 0,
+        "mission_timeout": 1
+      },
+      "policy_complete": false,
+      "delta": 1
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "version": "ma_rover_v2",
+  "recurrent": true,
+  "vehicle": "rover",
+  "multi_agent": true,
+  "n_agents": 5,
+  "state_dim": 83,
+  "action_dim": 2,
+  "hidden": 256,
+  "iters": 2400,
+  "best_reach": 7.7375,
+  "best_cov": 475.875,
+  "final": {
+    "iter": 2399,
+    "stage": 5,
+    "drs": 1.0,
+    "reach": 0.7655737704918033,
+    "cov": 106.64098360655737,
+    "coll": 2.901639344262295,
+    "tcoll": 13.065573770491802
+  },
+  "onnx": "/home/yusuf/drone-data/rover/models/policy_ma_rover_v2.onnx",
+  "onnx_bytes": 4615
+}

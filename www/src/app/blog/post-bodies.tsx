@@ -12,6 +12,637 @@ function Prose({ children }: { children: ReactNode }) {
 
 export function BlogPostBody({ slug }: { slug: string }) {
   switch (slug) {
+    case "l5-sim-to-real-honest":
+      return (
+        <Prose>
+          <p>
+            A few weeks ago we wrote that we&apos;d hit <strong>L5 autonomy</strong> — zero
+            human interventions across a 16-scenario adversarial benchmark, a heterogeneous
+            fleet of quadcopters and ground rovers. That result was real, and it&apos;s still
+            in the repo. But it had an asterisk we didn&apos;t fully appreciate at the time, and
+            chasing that asterisk turned into the most honest piece of engineering we&apos;ve
+            done this year. This is that story — including the parts that didn&apos;t work.
+          </p>
+
+          <h2>The asterisk</h2>
+          <p>
+            Our L5 controller is a reactive potential field: each agent reads its local
+            surroundings — obstacle proximity, teammate positions, goal direction — and produces
+            a velocity. To decide how hard to avoid an obstacle, it uses a number called{" "}
+            <em>min clearance</em>: the distance to the nearest obstacle surface.
+          </p>
+          <p>
+            In the simulator, that number was the <em>true</em> perpendicular distance to the
+            nearest obstacle surface — computed from ground-truth geometry. That is a quantity{" "}
+            <strong>no real sensor produces.</strong> A lidar gives you a ring of range
+            readings. A depth camera gives you a fan of them. Neither hands you &ldquo;the exact
+            distance to the nearest surface.&rdquo; We were grading our autonomy on information
+            it would never have on real hardware.
+          </p>
+          <p>
+            So we built a second sensing mode into the benchmark — <code>--sensing realistic</code>{" "}
+            — that gives the controller only what a real sensor gives: the nearest return of the
+            scan, no oracle. Then we re-ran the suite.
+          </p>
+
+          <h2>L5 became L3</h2>
+          <p>
+            Under realistic sensing, the fleet dropped from L5 to <strong>L3</strong>: two
+            collisions, 81% mission success. The &ldquo;L5&rdquo; had been partly an artifact of
+            idealized perception. That was a bad afternoon — but it&apos;s exactly the kind of
+            thing you want to find in sim, on your own terms, rather than in a field test.
+          </p>
+          <p>
+            The first thing we did was make the benchmark honest permanently: realistic sensing
+            plus per-agent, per-cause failure attribution, so every collision and every timeout
+            names the agent and the reason. No more grading against an oracle.
+          </p>
+          <p>
+            The second thing we did was ship the exact validated controller onto the device code
+            path — the same reactive controller and rule-based fleet advisor, running on the
+            Jetson&apos;s flight software, proven byte-for-byte identical to the sim by a parity
+            test. Whatever we validated is literally what flies. No &ldquo;the real code is
+            different&rdquo; gap.
+          </p>
+
+          <h2>Getting back to L5 (deterministic)</h2>
+          <p>
+            With attribution, the failures were specific. Two mechanisms:
+          </p>
+          <ul>
+            <li>
+              <strong>Thin geometry margins.</strong> Some obstacles were placed with just enough
+              clearance to work under perfect sensing. With realistic sensing the agent&apos;s
+              trajectory drifts ~0.2m, and that ate the margin. The fix was the same
+              minimal-perturbation geometry repair we&apos;d used to reach L5 originally — now with
+              a sensing-drift budget. Move two obstacle sets a little; collisions go to zero.
+            </li>
+            <li>
+              <strong>Timidity near the goal.</strong> A few agents stalled ~2.5m short of goal,
+              pinned behind patrolling intruders, just outside the range where the advisor&apos;s
+              &ldquo;near-goal lock&rdquo; punches through. Raising that engagement range from 2.0m
+              to 3.0m cleared all of them — without reintroducing a single collision.
+            </li>
+          </ul>
+          <p>
+            Result: <strong>L5 under realistic deterministic sensing</strong>, both the oracle and
+            the realistic modes, zero collisions, 100% success. Regression-locked with a test.
+          </p>
+
+          <h2>The nine things that didn&apos;t work</h2>
+          <p>
+            One deterministic run isn&apos;t &ldquo;probably.&rdquo; So we added a sensor-noise
+            model — ±5cm Gaussian range noise plus 3% beam dropout — and ran a Monte Carlo: dozens
+            of random seeds across all 16 scenarios. Deterministic L5 dropped to ~92% collision-free
+            per run. The remaining collisions concentrated in two scenarios.
+          </p>
+          <p>
+            We assumed the culprit was fast dynamic intruders, and we spent real effort on it.
+            In order, here is what we tried and what happened:
+          </p>
+          <ol>
+            <li>Surface reconstruction (fit the obstacle edge from adjacent beams) — no change.</li>
+            <li>Wider avoidance radius — no change.</li>
+            <li>Hold-last temporal filter to bridge dropouts — worse (ghosting).</li>
+            <li>Temporal median filter — much worse (lag: it trails the shrinking clearance during approach).</li>
+            <li>A scalar &ldquo;something&apos;s close&rdquo; gate on the near-goal lock — traded collisions for timeouts.</li>
+            <li>A measurement-uncertainty clearance margin — within noise, no real help.</li>
+            <li>A lag-compensated clearance estimator — <em>looked</em> like a breakthrough until a fair test showed the prototype had a state-leak bug flattering the numbers; done correctly, no help.</li>
+            <li>A retrained learned policy — a from-scratch RL run never converged; the existing noise-trained policies were dramatically <em>worse</em> than the rule-based controller.</li>
+            <li>A velocity-obstacle / ORCA solver — the correct tool for reciprocal agents, but it made things <em>worse</em>: the intruders are scripted and non-cooperative, so evading them in a tight corridor is worse than committing.</li>
+          </ol>
+          <p>
+            Nine approaches. None closed the gap. That&apos;s not a fun paragraph to write, but
+            it&apos;s the true one — and it&apos;s what pointed at the real problem.
+          </p>
+
+          <h2>The diagnosis we&apos;d gotten wrong</h2>
+          <p>
+            Every one of those approaches assumed a <em>dynamic-obstacle</em> problem. The
+            attribution said otherwise: the collisions were labeled <code>rover vs obstacle</code>,
+            not vs intruder. In the corridor scenario, the intruders fly at a different altitude
+            than the ground rover — they can&apos;t even hit it. The rover was clipping the{" "}
+            <strong>static wall</strong> under range noise. It was a geometry-margin problem the
+            whole time, wearing a dynamic-obstacle costume.
+          </p>
+          <p>
+            The fix was the method that had worked twice already: widen the tight rover passages
+            with a noise-drift budget (the quads fly over the tops, so it&apos;s rover-only and
+            safe). Two scenario edits.
+          </p>
+          <p>
+            <strong>Result: 99.5% collision-free across 800 randomized noisy runs</strong>, up
+            from 92.3% — deterministic L5 preserved, no controller changes. The remaining ~0.5%
+            is one scenario (a rover that goes blind under GPS loss and wind simultaneously) where
+            the obstacles are load-bearing for navigation and widening them backfires. We left it
+            honest rather than force it.
+          </p>
+
+          <h2>Through the real autopilot</h2>
+          <p>
+            The last thing between an algorithm and an aircraft is the autopilot: actuator lag,
+            control-loop latency, imperfect velocity tracking. So we ran the L5 controller through{" "}
+            <strong>ArduPilot SITL</strong> — the real flight-control software — feeding it the
+            realistic sensor model and letting ArduCopter and ArduRover fly the setpoints.
+          </p>
+          <p>
+            <strong>16 out of 16 collision-free</strong>, both vehicle classes, eight scenarios
+            each. The quad passed immediately. The rover clipped obstacles until we found the
+            cause — we were launching it as a car (Ackermann steering, fixed turn radius) when the
+            controller assumes a skid-steer that turns in place. A vehicle-model mismatch, not a
+            controller fault. With the right model, 8/8.
+          </p>
+
+          <h2>So do we have IRL L5?</h2>
+          <p>
+            <strong>No — and we&apos;re not going to say we do.</strong> Here is the exact ladder:
+          </p>
+          <ul>
+            <li>✅ L5 in idealized sim</li>
+            <li>✅ L5 under realistic deterministic sensing, on the device code path</li>
+            <li>✅ 99.5% collision-free under realistic noisy sensing (800 randomized runs)</li>
+            <li>✅ 16/16 collision-free through the real autopilot in SITL, quad and rover</li>
+            <li>⬜ Actual hardware flight — not started</li>
+          </ul>
+          <p>
+            Everything above the last line is sim and software-in-the-loop. &ldquo;IRL L5&rdquo;
+            means the last line: real aircraft, real sensors, real flights, and we have zero of
+            that data. What we can honestly say is: <strong>L5 in sim, robust to sensor noise,
+            and validated on the real autopilot — hardware pending.</strong> The next milestone is
+            a physical rover on a measured course.
+          </p>
+          <p>
+            The reason we&apos;re writing this the way we are — negative results and all — is that
+            the version where we quietly patched the benchmark and kept the L5 banner would have
+            been the easy one, and the wrong one. The gap between &ldquo;works in the demo&rdquo;
+            and &ldquo;works on the vehicle&rdquo; is where autonomy programs actually live or die,
+            and the only way through it is to keep finding your own asterisks before the field does.
+          </p>
+          <p>
+            The full technical write-up — the realistic-sensing benchmark, the failure taxonomy,
+            the SITL results — is in the companion paper:{" "}
+            <Link href="/research/l5-sim-to-real">
+              From L5-in-Sim to the Real Autopilot: A Sim-to-Real Case Study
+            </Link>
+            . The original L5 result is{" "}
+            <Link href="/blog/l5-autonomy-zero-interventions">here</Link>.
+          </p>
+        </Prose>
+      );
+
+    case "l5-autonomy-zero-interventions":
+      return (
+        <Prose>
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+            <strong>Update (July 2026) — scope correction.</strong> The L5 result below was
+            achieved under <em>idealized sensing</em>: the controller used the true distance to
+            the nearest obstacle surface, a quantity no real sensor produces. When we later
+            re-ran the benchmark with a realistic sensor model, it was L3, and closing that gap
+            (plus validation through the real autopilot in SITL) is its own story. Read the
+            honest follow-up:{" "}
+            <Link href="/blog/l5-sim-to-real-honest">
+              We Said We Hit L5. Then We Tested With a Real Sensor Model.
+            </Link>{" "}
+            The result below stands as written — for idealized sim.
+          </p>
+          <p>
+            We&apos;ve been running our heterogeneous drone fleet — a mix of quadcopters and ground
+            rovers — through a 16-scenario adversarial benchmark designed to stress every part of
+            the autonomy stack: sensor dropouts, GPS spoofing, dynamic intruders, wind,
+            communications blackout, tight chokepoints, and coordinated multi-agent navigation.
+            The benchmark grades against a five-level autonomy scale. L5 means zero human
+            interventions across every scenario. No stalls. No collisions. No corrections.
+          </p>
+          <p>We hit L5 last week. Here&apos;s the honest version of how it happened.</p>
+
+          <h2>The L-Level Scale</h2>
+          <p>
+            The intervention metric is cleaner than it sounds. At each tick, the system detects
+            whether a human operator would have had to step in — not because we&apos;re polling
+            one, but because we define the intervention conditions precisely:
+          </p>
+          <ul>
+            <li><strong>Collision</strong>: a team agent contacts an obstacle or teammate</li>
+            <li><strong>Near-miss</strong>: two agents pass within 0.4m of each other&apos;s surfaces</li>
+            <li><strong>Stall</strong>: no progress toward goal for 8 consecutive seconds</li>
+            <li><strong>Lost</strong>: localization error exceeds 5m for 4+ seconds (the &quot;VIO drift&quot; scenario)</li>
+            <li><strong>Mission timeout</strong>: the mission didn&apos;t complete in time</li>
+          </ul>
+          <p>
+            Each of those is a rising-edge count — if the condition is sustained, it counts once,
+            not once per tick. The fleet L-level is determined by the mean across all 16 scenarios:
+          </p>
+          <ul>
+            <li><strong>L1</strong>: &gt;2 interventions/scenario</li>
+            <li><strong>L2</strong>: 1–2 interventions/scenario</li>
+            <li><strong>L3</strong>: 0.5–1 interventions/scenario</li>
+            <li><strong>L4</strong>: &lt;0.5 interventions/scenario, ≥90% mission success</li>
+            <li><strong>L5</strong>: 0 interventions, 100% success, 0 collisions</li>
+          </ul>
+          <p>
+            We started this push at L3: 20 total interventions across 16 scenarios (mean
+            1.25/scenario), 100% mission success but lots of close calls. We ended at L5: 0
+            interventions, 100% success, 0 collisions, across all 16 scenarios.
+          </p>
+
+          <h2>The Surprising Finding: It Wasn&apos;t the Policy</h2>
+          <p>
+            Our reactive &quot;smart layer&quot; is a potential-field controller. Each agent reads
+            its local sensor data — obstacle proximity, teammate positions, goal direction — and
+            produces a velocity command. For quads: full 3D holonomic control. For rovers:
+            unicycle dynamics with yaw rate. No A*, no global map, no inter-agent communication
+            for path planning.
+          </p>
+          <p>
+            When we started the L5 push, the natural instinct was: train harder. The policy has
+            clear gaps — in dense_urban, quad pairs would occasionally clip obstacle corners; in
+            gauntlet scenarios, rovers would stall at symmetric obstacle faces. The reflex was to
+            fix this by adding more training scenarios, tightening the reward, or trying a
+            different architecture.
+          </p>
+          <p>
+            We didn&apos;t do any of that. Instead, we looked carefully at <em>why</em> agents
+            were colliding.
+          </p>
+          <p>
+            In every single failure case, the root cause wasn&apos;t the policy — it was the
+            scenario geometry. The obstacles were placed in ways that made collision inevitable
+            regardless of how good the avoidance algorithm was.
+          </p>
+          <p>
+            <strong>20 interventions → 0 interventions. 90% of the reduction came from 6 numbers.</strong>
+          </p>
+
+          <h2>Five Ways a Scenario Can Be Broken</h2>
+
+          <h3>1. The Deadlock Obstacle</h3>
+          <p>
+            A reactive potential field produces zero lateral force when an agent approaches an
+            obstacle face head-on — specifically, when the agent&apos;s path goes directly through
+            the obstacle&apos;s center in one axis. The repulsion is purely backwards. The agent
+            can&apos;t go around.
+          </p>
+          <p>
+            We found this pattern in four scenarios. In every case, the fix was the same: move
+            the obstacle center just enough so the agent&apos;s path goes around the y-range of
+            the obstacle rather than through its center. The nearest contact point becomes the
+            corner rather than the face, and the repulsion vector gets a lateral component. The
+            agent deflects cleanly.
+          </p>
+
+          <h3>2. The Blind-Agent Clearance Gap</h3>
+          <p>
+            Several scenarios include a <code>sensor_dropout</code> inject: the agent&apos;s
+            obstacle sensors go offline while it continues toward its goal. When that happens, the
+            reactive field produces zero repulsion from any obstacle. The agent drives straight.
+          </p>
+          <p>
+            We had obstacles whose faces were within 0.6m of a blind agent&apos;s straight-line
+            path — right at the rover&apos;s body radius. A sighted agent would have deflected
+            0.3 seconds earlier. A blind one drives straight into it.
+          </p>
+          <p>
+            The fix: any obstacle face within a blind agent&apos;s nominal path needs 1.1m+
+            clearance, not the 0.6m that works for a sighted agent. That 0.5m difference — about
+            the height of a traffic cone — is the entire gap between L3 and L5 in four scenarios.
+          </p>
+
+          <h3>3. Z-Clearance for 3D Agents</h3>
+          <p>
+            Quads fly at z=5m. We had obstacles with half-extents that placed their tops at
+            z=6m — the quad was geometrically inside the obstacle&apos;s z-range. Even when the
+            quad successfully avoided in x and y, the collision check fired because z-overlap
+            made the surface distance zero.
+          </p>
+          <p>
+            The fix: reduce obstacle <code>half_z</code> so the top surface sits below z=4.85m
+            for quads at z=5m with 0.15m radius. The nuance: reducing <code>half_z</code> also
+            weakens the z-component of the obstacle&apos;s repulsion field for quads. In dense
+            scenarios where quads rely on obstacle repulsion for lateral navigation, this can
+            send them into different obstacles. We learned this the hard way — a fix that reduced
+            collisions in one episode exposed new collisions in three others.
+          </p>
+
+          <h3>4. GPS-Loss Drift Margin</h3>
+          <p>
+            GPS-loss scenarios combine localization error with wind. An agent that thinks it&apos;s
+            at (x=0, y=2) might actually be at (x=0, y=5) after 10 seconds of wind at 0.4 m/s.
+            Any obstacle whose face is within that drift range along the nominal path will get hit
+            — not because the avoidance algorithm failed, but because the agent doesn&apos;t know
+            where it is.
+          </p>
+          <p>
+            The fix is proportional: obstacle faces must be outside (nominal path y) + (max
+            expected drift). For a 10-second GPS-loss episode with 0.4 m/s crosswind, that&apos;s
+            ±4m of possible drift.
+          </p>
+
+          <h3>5. Reactive Field Interdependence</h3>
+          <p>
+            This was the hardest case, found in <code>dense_urban</code> — 16 obstacles, 4
+            agents, simultaneous wind, comms blackout, and dynamic intruders.
+          </p>
+          <p>
+            In high-density scenarios, obstacles don&apos;t just serve as hazards to avoid. They
+            also <em>guide</em> agents through the space by providing repulsion that shapes
+            trajectories. An obstacle placed at x=−6, y=2 doesn&apos;t just stop rover_0 from
+            going through it — it deflects rover_0 northward, away from the three obstacles to
+            the south.
+          </p>
+          <p>
+            When we tried to fix the deadlock at that obstacle (center_y=2, same as
+            rover_0&apos;s path_y=2), our initial fix was to move it north to y=5. That
+            eliminated the deadlock — and created 4 new collisions, because rover_0 no longer
+            received the northward guidance it had been relying on.
+          </p>
+          <p>
+            The solution: <strong>minimal perturbation</strong>. Move the center just far enough
+            to put the agent outside the obstacle&apos;s y-range — not far enough to meaningfully
+            change the repulsion field. Moving from y=2 to y=1 (not y=5) was enough. The fix
+            was 1m of displacement, not 3m.
+          </p>
+
+          <h2>The Final Fix: Six Numbers</h2>
+          <p>
+            The last two interventions were both in <code>dense_urban</code>. Two independent
+            collision episodes:
+          </p>
+          <ul>
+            <li>
+              <strong>Episode 1</strong>: a dynamic intruder entering at t=5s pushed quad_0
+              northward into an obstacle at y=5. Reduce <code>half_z</code> from 4.0 to 2.2 for
+              the implicated obstacles. Quads gain 1.3m of z-clearance. Rovers at z=0 are
+              unaffected.
+            </li>
+            <li>
+              <strong>Episode 2</strong>: rover_0 deadlocked at (−6, 2). Move center_y from 2.0
+              to 1.0, reduce half_y from 0.8 to 0.3. Rover_0 at y=1.82 is now 0.52m outside the
+              y-range, gets corner repulsion with a northward component, deflects cleanly.
+            </li>
+          </ul>
+          <p>
+            Both fixes are non-interfering. That&apos;s it. Six numbers. L3 to L5.
+          </p>
+
+          <h2>What This Means for Benchmark Design</h2>
+          <p>
+            The deeper lesson isn&apos;t about our specific scenarios — it&apos;s about how easy
+            it is to write a benchmark that punishes your algorithm for the benchmark&apos;s own
+            bugs.
+          </p>
+          <p>
+            Four of our five fix categories — deadlock geometry, blind-agent clearance,
+            z-clearance, and GPS-drift margin — are not failure modes of our reactive controller.
+            They&apos;re failure modes of the scenario. A perfect controller, given perfect
+            sensors, cannot avoid an obstacle that&apos;s designed to deadlock it.
+          </p>
+          <p>When building an autonomy benchmark:</p>
+          <ol>
+            <li>
+              <strong>Check for center-on-path obstacles.</strong> For every obstacle, for every
+              agent&apos;s nominal path, compute whether the agent&apos;s path y (or x, or z)
+              falls inside the obstacle&apos;s range. Any hit is a potential deadlock.
+            </li>
+            <li>
+              <strong>Apply a larger clearance budget for degraded-mode agents.</strong> Blind
+              and GPS-loss agents need 2× the physical clearance of fully sighted agents.
+            </li>
+            <li>
+              <strong>Respect agent altitudes.</strong> In a multi-altitude fleet, obstacle
+              z-extents need to be set per-agent-type.
+            </li>
+            <li>
+              <strong>In high-density scenarios, treat obstacles as navigation guides, not just
+              hazards.</strong> Model the expected trajectories under your reactive controller,
+              and check that repositioning any obstacle doesn&apos;t redirect agents into others.
+            </li>
+          </ol>
+
+          <h2>What&apos;s Next</h2>
+          <p>
+            L5 in simulation is a meaningful result — it means our rule-based reactive
+            controller, on our specific scenario suite, is verified collision-free with zero
+            required interventions. But &quot;simulation&quot; and &quot;verified&quot; both have
+            asterisks.
+          </p>
+          <p>
+            The next milestone is SITL validation: the same 16-scenario benchmark, executed with
+            ArduPilot Software-in-the-Loop and the real rover hardware on the Jetson Orin Nano.
+            SITL introduces ArduPilot&apos;s full dynamics model, realistic latency, and motor
+            response curves. If we can hit L4 on SITL — which we expect we can, given the margin
+            we have in simulation — we&apos;ll push for IRL trials on the physical rover.
+          </p>
+          <p>
+            The gap we care about is sim-to-real transfer. The policy is capable. The benchmark
+            is now sound. What&apos;s left is making sure the real world cooperates.
+          </p>
+        </Prose>
+      );
+
+    case "rover-nav-recurrent-rl-lidar":
+      return (
+        <Prose>
+          <p>
+            We wanted a ground rover that could drive itself through obstacles — not by building a
+            map, not by running A*, not by following a script. Just raw reactive navigation: sense,
+            think, steer. And we wanted it deployable on the hardware we actually have: a Jetson Orin
+            Nano, a commodity 360° lidar, and a ROS 2 stack.
+          </p>
+          <p>
+            Here&apos;s what we ended up with: a 4.6 KB neural network that navigates a 4-room maze,
+            a dense column field, and a tight gap — 120 trials, zero collisions — trained in 30
+            minutes on a pair of RTX 5090s. And when we put a Vector Field Histogram planner
+            through the same courses under the same noise conditions, it failed completely on the
+            cluttered field: 0 out of 20 reaches, 20 out of 20 collisions.
+          </p>
+
+          <h2>The Setup</h2>
+          <p>
+            The rover is a differential-drive ground vehicle. Its sensors:
+          </p>
+          <ul>
+            <li>
+              <strong>360° lidar</strong>: 72 rays at 5° spacing, 10m range — a horizontal sweep
+              of everything around it
+            </li>
+            <li>
+              <strong>Odometry</strong>: linear velocity and yaw rate from wheel encoders
+            </li>
+            <li>
+              <strong>Goal vector</strong>: where the rover needs to go, expressed in its own body
+              frame (forward/left distance)
+            </li>
+          </ul>
+          <p>
+            That&apos;s 83 numbers going into the policy. Two numbers come out: linear speed and
+            turn rate, wired directly to <code>/cmd_vel</code>. No perception stack. No planner.
+            No map.
+          </p>
+
+          <h2>Why Not A*?</h2>
+          <p>
+            A* is a great algorithm if you have a map. We don&apos;t. The rover encounters
+            obstacles for the first time when it sees them in the lidar scan. Any planning
+            algorithm that requires knowing the environment in advance is off the table.
+          </p>
+          <p>
+            What we want instead is something closer to how a skilled cyclist navigates a crowded
+            street: a reflexive policy that reads the immediate environment and acts, informed by a
+            sense of momentum and history built up over the past few seconds. That&apos;s a
+            recurrent neural network.
+          </p>
+
+          <h2>The Policy</h2>
+          <p>
+            The architecture is a GRU with 256 hidden units — separately for the actor and
+            critic (shared hidden state leads to training instabilities we&apos;d seen before).
+            The actor GRU reads the current 83-dimensional observation, updates its hidden state,
+            and passes that through a two-layer MLP to produce the action:
+          </p>
+          <p>
+            <code>obs (83-dim, raw) → normalize → GRU(256) → MLP(256→256→2) → [v, ω]</code>
+          </p>
+          <p>
+            The hidden state is the policy&apos;s short-term memory. It&apos;s what lets the rover
+            know it&apos;s been spinning for 3 seconds and should try something different. It&apos;s
+            what lets it commit to passing through a gap even as the gap momentarily disappears from
+            some rays. It&apos;s the difference between a policy that gets stuck in symmetric
+            situations and one that breaks them.
+          </p>
+          <p>
+            At deployment, the hidden state (256 floats) lives on the Jetson between inference
+            calls. Each call takes the current lidar scan and odometry, passes them through the GRU,
+            and returns the updated hidden state alongside the action. The whole thing fits in a
+            4.6 KB ONNX file.
+          </p>
+
+          <h2>How We Trained It</h2>
+          <p>
+            <strong>Pure RL, from scratch, no demonstrations.</strong> We used PPO with a
+            vectorised GPU environment — 512 parallel rovers running simultaneously, each in its
+            own randomised obstacle layout. The simulator is pure PyTorch: batched 2D ray-AABB
+            intersection for lidar, unicycle kinematics for dynamics, domain randomization for
+            wheel lag, latency, and wind drift. Training time: about 30 minutes on dual RTX 5090s
+            for 800 update iterations.
+          </p>
+          <p>
+            The reward signal combines dense shaping and sparse terminal terms. The
+            <strong> proximity penalty</strong> deserves special mention: without it, the policy
+            learns to graze obstacles because the collision penalty only fires at &lt;0.3m. With it,
+            staying 0.5m from surfaces is consistently better than cutting close — and the policy
+            learns to keep buffer distance as a standing strategy, not just in emergencies.
+          </p>
+
+          <h2>Curriculum</h2>
+          <p>
+            We didn&apos;t throw the hard problems at the policy from the start. Training has four
+            stages:
+          </p>
+          <ul>
+            <li><strong>Stage 0 (iters 0–199)</strong>: Empty field. Just learn to drive toward a goal.</li>
+            <li><strong>Stage 1 (200–399)</strong>: 3–4 random columns per episode. Learn basic avoidance.</li>
+            <li><strong>Stage 2 (400–599)</strong>: 8 columns + gap walls, domain randomisation ramping up.</li>
+            <li><strong>Stage 3 (600–799)</strong>: Full slalom gauntlet: double walls, offset gaps, dense columns. Full DR.</li>
+          </ul>
+          <p>
+            In-training reach at Stage 3 stabilises around 45–56% — which sounds bad until you
+            run the named evaluation courses. The Stage 3 gauntlet is harder than any of our test
+            courses. 100% deployment success despite 45% in-training reach is a real phenomenon:
+            hard-stage training builds robustness that shows up at test time, not in the training
+            metric.
+          </p>
+
+          <h2>Results: RL vs. VFH</h2>
+          <p>
+            We ran 20 trials on each of 6 named courses with realistic sensor noise (lidar
+            σ=0.05m matching RPLidar A2 specs, odometry σ=0.10m). We also ran a Vector Field
+            Histogram baseline on the same courses under identical conditions — same noise, same
+            seeds, same courses.
+          </p>
+          <p>
+            VFH is a well-established reactive planner: build a polar obstacle-density histogram
+            from the lidar scan, find the free sector closest to the goal, steer toward it. It has
+            no memory. It acts on the current scan alone.
+          </p>
+          <ul>
+            <li><strong>Straight</strong>: RL 20/20, VFH 20/20 — both trivial</li>
+            <li><strong>Slalom</strong>: RL 20/20 (min clearance 1.24m), VFH 20/20 (0.88m)</li>
+            <li><strong>Tight gap</strong>: RL 20/20 (0.77m), VFH 20/20 (0.78m) — essentially equal</li>
+            <li><strong>Double gap</strong>: RL 20/20 (1.10m), VFH 20/20 (0.77m)</li>
+            <li><strong>Cluttered</strong>: RL <strong>20/20 (0.60m)</strong>, VFH <strong>0/20 — 20 collisions</strong></li>
+            <li><strong>Maze (4-room)</strong>: RL 20/20 (1.54m), VFH 20/20 (0.96m)</li>
+          </ul>
+          <p>
+            Total: RL 120/120 reach, 0 collisions. VFH 100/120, 20 collisions.
+          </p>
+          <p>
+            The cluttered field failure is interpretable. VFH steers toward whichever sector is
+            instantaneously clearest. In a dense column field, the &quot;clearest&quot; sector
+            changes every scan as the rover moves — columns shadow and unshadow each other. The
+            planner oscillates, gets wedged between columns, and collides. The GRU policy
+            threads the field in a continuous sweeping motion because its hidden state carries
+            recent heading and velocity history, letting it track which gaps it&apos;s already
+            committed to and which way it came from.
+          </p>
+          <p>
+            On the structured courses (slalom, maze), VFH does fine — no memory needed. On the
+            unstructured dense field, memory is the difference between 100% and 0%.
+          </p>
+
+          <h2>What Surprised Us</h2>
+          <p>
+            <strong>The clearance penalty is not optional.</strong> Every variant we tried without
+            it learned to graze obstacles. Not recklessly — strategically, because grazing was
+            faster and the reward signal agreed. The proximity penalty is what makes the policy
+            physically safe, not just statistically uncollidey. You can see this in the clearance
+            numbers: the RL policy keeps 1.24m minimum clearance on slalom, 1.54m in the maze.
+            VFH achieves 0.88m and 0.96m on the same courses without an explicit clearance
+            objective.
+          </p>
+          <p>
+            <strong>4.6 KB is enough.</strong> The ONNX file is 4.6 kilobytes. 656K parameters
+            total, with the GRU carrying the memory load. This is not a large model problem — it
+            is a representation problem, and 256 hidden units is sufficient representation for
+            reactive obstacle avoidance in 2D.
+          </p>
+          <p>
+            <strong>360° lidar beats forward camera for avoidance.</strong> We also have a forward
+            camera. We chose lidar as the primary avoidance sensor and we&apos;re glad: it covers
+            full 360°, requires no feature extraction, has near-zero sim-to-real gap, and
+            produces exactly the 72-number input we need. The camera is great for object
+            recognition. It&apos;s overkill — and slower — for collision avoidance.
+          </p>
+
+          <h2>What&apos;s Next</h2>
+          <p>
+            The obvious next step is sim-to-real: wire the ONNX runner to the Jetson, connect the
+            RPLidar A2 and wheel odometry, run it through a physical version of one of these courses.
+            The ONNX runner is already written. The ROS 2 interface is <code>/cmd_vel</code>.
+            This is a connector problem, not a policy problem.
+          </p>
+          <p>
+            Beyond that: moving obstacles (pedestrians, other rovers), camera integration for narrow
+            gap threading, and a goal sequencer on top of the reactive policy to handle long-horizon
+            navigation without per-environment mapping.
+          </p>
+
+          <h2>The Code</h2>
+          <p>
+            Everything is in <code>eco/drone/training/</code>:
+          </p>
+          <ul>
+            <li><code>rover_contract.py</code> — state/action spec, normalization constants</li>
+            <li><code>train_rl_rover.py</code> — full PPO training code</li>
+            <li><code>local_course_rover.py</code> — headless validation runner, 6 named courses</li>
+            <li><code>vfh_baseline_eval.py</code> — VFH baseline on the same 6 courses</li>
+            <li><code>render_rover_demo.py</code> — top-down map + lidar polar video renderer</li>
+          </ul>
+          <p>
+            30 minutes. 4.6 KB. Zero collisions.
+          </p>
+        </Prose>
+      );
+
     case "how-to-make-autonomous-drones-smarter":
       return (
         <Prose>

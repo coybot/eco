@@ -11,6 +11,36 @@ export type BlogPostMeta = {
 
 export const blogPosts: BlogPostMeta[] = [
   {
+    slug: "l5-sim-to-real-honest",
+    title: "We Said We Hit L5. Then We Tested With a Real Sensor Model.",
+    description:
+      "Our L5 result quietly depended on a quantity no real sensor produces. Under realistic sensing it was L3. Here is the honest path back to L5 — the nine fixes that failed, the one that worked, and 16/16 clean runs through the real autopilot in SITL. Not IRL L5 yet; here's exactly how far we are.",
+    date: "July 2, 2026",
+    dateIso: "2026-07-02",
+    category: "Research",
+    readTime: "15 min read",
+  },
+  {
+    slug: "l5-autonomy-zero-interventions",
+    title: "Zero Interventions: How We Hit L5 Autonomy on a 16-Scenario Fleet Benchmark",
+    description:
+      "A heterogeneous quadcopter-and-rover fleet navigates 16 adversarial scenarios — sensor dropouts, GPS spoofing, dynamic intruders, tight chokepoints — with zero human corrections. We got there not by training a better policy, but by finding the bugs in the benchmark.",
+    date: "June 30, 2026",
+    dateIso: "2026-06-30",
+    category: "Research",
+    readTime: "11 min read",
+  },
+  {
+    slug: "rover-nav-recurrent-rl-lidar",
+    title: "30 Minutes, 4.6 Kilobytes, Zero Collisions",
+    description:
+      "We trained a ground rover to navigate cluttered environments, tight gaps, and multi-room mazes using only a 360° lidar and a learned GRU reflex — no map, no planner, no demonstrations. 120 trials, zero collisions. A VFH analytic baseline fails completely on dense fields.",
+    date: "June 24, 2026",
+    dateIso: "2026-06-24",
+    category: "Research",
+    readTime: "12 min read",
+  },
+  {
     slug: "four-models-drone-autonomy",
     title: "Four Models, One Stack: Training the Full Perception–Reasoning–Action Pipeline for Autonomous Drones",
     description:
