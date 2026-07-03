@@ -13,6 +13,11 @@ This is the drone-side software for the Astral platform. It runs on NVIDIA Jetso
 - **Autonomous navigation**: SLAM + obstacle avoidance via Nav2
 - **Cloud support**: Receives missions from the cloud; can ask for help when stuck
 
+> **Looking for the L5 fleet controller?** The zero-intervention multi-agent navigation
+> result (quad + rover, 16-scenario benchmark, validated through ArduPilot SITL) is a
+> separate, **classical** stack — no AI, no models, nothing to download. See
+> [`common/L5.md`](common/L5.md) to reproduce it and run it on your own vehicle.
+
 ## Cloud vs local SSH control
 
 Two supported paths share the same install tree (`~/drone-api/` on the Jetson by default):
