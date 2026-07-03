@@ -29,6 +29,54 @@ export type ResearchPaperMeta = {
 
 export const researchPapers: ResearchPaperMeta[] = [
   {
+    slug: "l5-sim-to-real",
+    title:
+      "From L5-in-Sim to the Real Autopilot: A Sim-to-Real Case Study for a Reactive Fleet",
+    venue: "Technical report",
+    dateIso: "2026-07-02",
+    schemaType: "Report",
+    summary:
+      "A follow-up to our L5 result. The L5 controller's clearance term used a true-surface distance no real sensor produces; under a realistic sensor model the suite was L3. We report the honest path back: an on-device controller proven byte-identical to sim, geometry repair with a sensing-noise budget (99.5% collision-free over 800 randomized noisy runs), a taxonomy of nine avoidance approaches that failed and why, and 16/16 collision-free validation of both vehicle classes through ArduPilot SITL. We do not claim IRL L5 — hardware is the remaining gate.",
+    tldr: [
+      "The published L5 depended on true-surface clearance (an oracle); under realistic sensing it was L3.",
+      "Geometry repair with a noise-drift budget reaches 99.5% collision-free over 800 randomized noisy runs, no controller changes.",
+      "Nine controller-side avoidance approaches (incl. ORCA and a retrained policy) failed; the residual failures were static wall-clips misdiagnosed as dynamic intruders.",
+      "16/16 collision-free through ArduPilot SITL (ArduCopter + ArduRover); hardware flight is the remaining gate.",
+    ],
+    keyStats: [
+      { label: "Idealized sensing", value: "L5" },
+      { label: "Realistic noisy sensing", value: "99.5% clean / 800 runs" },
+      { label: "SITL (quad + rover)", value: "16/16" },
+      { label: "IRL", value: "pending" },
+    ],
+    companionPostSlug: "l5-sim-to-real-honest",
+    externalLinks: [],
+  },
+  {
+    slug: "l5-autonomy",
+    title:
+      "Achieving L5 Autonomy in Heterogeneous Multi-Agent Fleet Navigation via Scenario Geometry Repair",
+    venue: "Technical report",
+    dateIso: "2026-06-30",
+    schemaType: "Report",
+    summary:
+      "A systematic methodology for achieving zero-intervention autonomy in a heterogeneous quadcopter-and-rover fleet on a 16-scenario adversarial benchmark. Starting from L3 (20 total interventions), five collision patterns attributable to scenario geometry — not the control policy — are identified and resolved, reaching L5 (0 interventions, 100% success, 0 collisions) without modifying the reactive controller.",
+    tldr: [
+      "L5 (zero interventions, 100% mission success, zero collisions) achieved across 16 adversarial scenarios for a heterogeneous quadcopter-and-rover fleet.",
+      "90% of intervention reduction came from obstacle geometry fixes, not policy changes.",
+      "Five deterministic collision patterns are formalized with closed-form diagnosis criteria and fix rules.",
+      "Minimal-perturbation principle: the smallest geometry change that resolves a collision pattern, preserving load-bearing obstacle navigation roles.",
+    ],
+    keyStats: [
+      { label: "Scenarios", value: "16" },
+      { label: "Starting level", value: "L3 (20 intv)" },
+      { label: "Final level", value: "L5 (0 intv)" },
+      { label: "Policy changes", value: "0" },
+    ],
+    companionPostSlug: "l5-autonomy-zero-interventions",
+    externalLinks: [],
+  },
+  {
     slug: "yonder",
     title:
       "Yonder: A 4.65M-Frame Drone Navigation Dataset and the Cross-Simulator Generalization Gap",

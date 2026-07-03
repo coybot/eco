@@ -63,7 +63,7 @@ class DynamicsDR:
         self.yaw_a_max[idx] = 40.0 + s * (self._rand(n, lo=5.0, hi=15.0) - 40.0)
         lat_full = self._rand(n, lo=0.0, hi=self.LMAX + 0.999)
         self.latency[idx] = (s * lat_full).floor().long().clamp(0, self.LMAX)
-        wmag = s * self._rand(n, lo=0.0, hi=1.2)               # wind speed (m/s)
+        wmag = s * self._rand(n, lo=0.0, hi=3.0)               # wind speed (m/s)
         wdir = self._rand(n, lo=-math.pi, hi=math.pi)
         self.wind[idx, 0] = wmag * t.cos(wdir)
         self.wind[idx, 1] = wmag * t.sin(wdir)

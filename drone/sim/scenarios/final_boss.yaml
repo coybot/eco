@@ -1,0 +1,35 @@
+name: final_boss
+environment: city
+# Everything at once: 3 quads + 3 rovers, 5 targets, all stressors simultaneously.
+# The hardest scenario in the suite.
+team:
+  - {id: quad_0,  type: quad,  pos: [-10,  4, 5], goal: [10,  4, 5]}
+  - {id: quad_1,  type: quad,  pos: [-10,  0, 5], goal: [10,  0, 5]}
+  - {id: quad_2,  type: quad,  pos: [-10, -4, 5], goal: [10, -4, 5]}
+  - {id: rover_0, type: rover, pos: [-10,  3, 0], goal: [10,  3, 0]}
+  - {id: rover_1, type: rover, pos: [-10,  0, 0], goal: [10,  0, 0]}
+  - {id: rover_2, type: rover, pos: [-10, -3, 0], goal: [10, -3, 0]}
+duration_s: 60
+obstacles:
+  - [-5,  7, 2.0, 0.6, 2.0, 2.2]
+  - [-5, -7, 2.0, 0.6, 2.0, 2.2]
+  - [ 0,  5, 2.0, 0.8, 0.8, 2.2]
+  - [ 0, -5, 2.0, 0.8, 0.8, 2.2]
+  - [ 4,1.5, 2.0, 1.0, 0.4, 2.2]
+  - [-3,1.5, 2.0, 0.8, 0.4, 2.2]
+  - [ 7,  5, 2.0, 0.6, 0.8, 2.2]
+  - [ 7, -5, 2.0, 0.6, 0.8, 2.2]
+injects:
+  - {at: 2,  do: wind_shift,    wind: [0.6, 0.4, 0.0]}
+  - {at: 2,  do: comms_blackout}
+  - {at: 3,  do: gps_loss,      agent: quad_0}
+  - {at: 3,  do: gps_loss,      agent: rover_2}
+  - {at: 4,  do: sensor_dropout, agent: rover_1}
+  - {at: 5,  do: spawn_dynamic, path: [[15, 6, 4],[-15,-6, 4]], speed: 5.5}
+  - {at: 5,  do: spawn_dynamic, path: [[15,-6, 4],[-15, 6, 4]], speed: 5.5}
+  - {at: 5,  do: spawn_dynamic, path: [[-15, 0, 3],[15, 0, 3]], speed: 4.5}
+  - {at: 10, do: agent_failure, agent: quad_2}
+  - {on: target_found, do: gps_spoof, agent: any, vel: [0.3, 0.2, 0.0]}
+success:
+  mission_complete: true
+  no_collisions: true

@@ -1,0 +1,90 @@
+{
+  "baseline": {
+    "autonomy_level": 2,
+    "rationale": "mean 1.33 interventions/scenario, 67% success",
+    "mean_interventions": 1.33,
+    "mission_success_rate": 0.667
+  },
+  "policy": {
+    "autonomy_level": 2,
+    "rationale": "mean 1.42 interventions/scenario, 67% success",
+    "onnx_path": "/Users/jsaib/code/ys/a/eco/drone/models/policy_ma_rover_v1.onnx",
+    "mean_interventions": 1.42,
+    "mission_success_rate": 0.667
+  },
+  "delta_level": 0,
+  "scenarios": [
+    {
+      "name": "battery_rtl",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "chokepoint_deconfliction",
+      "baseline_interventions": 5,
+      "policy_interventions": 7,
+      "delta": 2
+    },
+    {
+      "name": "combined_stress",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "comms_blackout_search",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "contested_task",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "gps_spoof_recon",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "intruder_avoidance",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "jamming_corridor",
+      "baseline_interventions": 4,
+      "policy_interventions": 3,
+      "delta": -1
+    },
+    {
+      "name": "sensor_dropout_blind",
+      "baseline_interventions": 5,
+      "policy_interventions": 3,
+      "delta": -2
+    },
+    {
+      "name": "target_relocated",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "teammate_lost_resilience",
+      "baseline_interventions": 0,
+      "policy_interventions": 0,
+      "delta": 0
+    },
+    {
+      "name": "wind_gust",
+      "baseline_interventions": 2,
+      "policy_interventions": 4,
+      "delta": 2
+    }
+  ]
+}
