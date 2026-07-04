@@ -408,7 +408,7 @@
 				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = C8JM33MCJS;
 				INFOPLIST_FILE = DroneOperator/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -583,7 +583,7 @@
 				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = C8JM33MCJS;
 				INFOPLIST_FILE = DroneOperator/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
