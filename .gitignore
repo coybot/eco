@@ -78,3 +78,7 @@ www/public/sim_video_test.html
 drone/sim/godot/assets/*
 # Kenney CC0 city kit (~500KB, CC0) is tracked directly
 !drone/sim/godot/assets/kenney_city
+
+# research media (large; demo reel is on YouTube)
+papers/videos/
+papers/*.mp4
