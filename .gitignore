@@ -82,3 +82,9 @@ drone/sim/godot/assets/*
 # research media (large; demo reel is on YouTube)
 papers/videos/
 papers/*.mp4
+www/public/media/L5_demo_reel.mp4
+www/public/media/L5_demo_reel_poster.jpg
+drone/training/policy_ma_rover_v2.onnx.data
+drone/training/policy_ma_rover_v2_state_norm.npy
+drone/training/hetero_v1/
+drone/training/videos_hetero_v2/
