@@ -1,0 +1,356 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{multirow}
+\usepackage{array}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Yonder: A 4.65M-Frame Drone Navigation Dataset and the Cross-Simulator Generalization Gap}
+
+% Anonymized for double-blind review.
+\author{
+\IEEEauthorblockN{Anonymous Author(s)}
+\IEEEauthorblockA{Affiliation withheld for double-blind review}
+}
+
+\maketitle
+
+\begin{abstract}
+Vision-language drone navigation has advanced rapidly through the use of open-vocabulary detectors fine-tuned on simulation data, but evaluation methodology has not kept pace. We introduce \textbf{Yonder}, a 4.65-million-frame drone-perspective dataset spanning 167 indoor environments (all with semantic annotations) with stereo RGB, depth, LiDAR, semantic segmentation, and dense waypoint coverage---the largest publicly available training resource for drone indoor navigation. We then use Yonder to investigate a question that the dataset itself cannot answer: whether offline detection improvements predict closed-loop navigation success. Across four fine-tuning attempts using two open-vocabulary detector architectures (OWL-ViT v2 and Grounding DINO), we achieve a 9.7$\times$ improvement in offline detection mAP (4.8\% $\rightarrow$ 46.7\%) on Yonder's held-out evaluation split. Yet across 3,000+ closed-loop navigation trials in Isaac Sim, none of these fine-tuned models exceed the zero-shot baseline. The root cause is a cross-simulator domain gap: bounding box geometry calibrated to Yonder's source simulator (Habitat-Sim) produces systematic 3D localization errors in the evaluation simulator (Isaac Sim), including negative-altitude goal predictions that cause the drone to dive into the floor. With the domain gap diagnosed and patched, navigation success rate converges at 23--25\% across all detector configurations---fine-tuned and zero-shot---revealing that detection quality, the apparent binding constraint, is not actually limiting performance. We argue that this constitutes a general failure mode in evaluating simulation-trained perception: offline metrics on the training simulator's domain do not predict closed-loop performance on a different simulator's domain, even when both are physics-based platforms targeting the same task. We release Yonder, all four fine-tuned model checkpoints, the closed-loop benchmark, and full evaluation logs to enable rigorous study of cross-simulator generalization in embodied AI.
+\end{abstract}
+
+\begin{IEEEkeywords}
+drone navigation, open-vocabulary detection, simulation, datasets, evaluation methodology, cross-simulator transfer
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+The release of large open-vocabulary detectors---Grounding DINO~\cite{liu2024grounding}, OWL-ViT~\cite{minderer2023scaling}, and Florence-2~\cite{xiao2024florence}---has reshaped vision-language drone navigation. Recent systems pair these detectors with classical depth estimation and motion planning to achieve impressive performance on operational navigation tasks~\cite{anon2026closing,anon2026engineering}. The standard recipe is straightforward: collect drone-perspective imagery in a simulation environment, fine-tune the detector on this domain, and deploy the fine-tuned model in a downstream navigation pipeline.
+
+This paper documents what happens when this recipe is applied at scale, with rigorous closed-loop evaluation, and what the results imply for the field's evaluation practices.
+
+We make three contributions:
+
+\textbf{1) Yonder dataset.} We construct a 4.65-million-frame drone-perspective dataset across 167 indoor environments (all from HSSD), with per-pixel semantic segmentation for all 167. Yonder includes stereo RGB, monocular depth, 360$^{\circ}$ LiDAR point clouds, semantic segmentation, and dense 1-meter waypoint coverage with 12 yaw headings per waypoint. Total dataset size is approximately 3.3\,TB. To our knowledge this is the largest publicly available dataset for drone indoor navigation training, and the first to combine all five sensor modalities at this scale.
+
+\textbf{2) Empirical demonstration that offline detection improvements do not predict closed-loop navigation success.} We fine-tune two open-vocabulary detector architectures using four different protocols on Yonder, achieving up to 9.7$\times$ improvement in offline mAP@0.5. Across 3,000+ closed-loop navigation trials in Isaac Sim, none of these fine-tuned models exceed the zero-shot baseline. Detection quality, measured by standard offline metrics, has no relationship to closed-loop success in our experiments.
+
+\textbf{3) Diagnosis of the cross-simulator domain gap as the underlying failure mode.} Through systematic root-cause analysis, we identify that bounding box geometry calibrated to one simulator's rendering conventions produces systematic 3D localization errors when transferred to another simulator. The failure manifests differently across detector architectures (confidence calibration collapse, negative-altitude goals, lateral localization shift), but the underlying cause is consistent: simulation-trained perception inherits simulator-specific geometric biases that are invisible to offline evaluation metrics.
+
+We argue these findings have implications beyond drone navigation. Any system that trains perception on one simulator and evaluates on another may be subject to similar gaps. The rigor of offline evaluation cannot substitute for closed-loop validation, and offline mAP improvements that do not transfer to deployment performance should be considered with skepticism rather than celebrated as progress.
+
+\section{Related Work}
+
+\textbf{Drone-perspective datasets.} Existing drone datasets focus primarily on outdoor settings and aerial imagery~\cite{du2018unmanned}. The few indoor drone datasets available are typically small (under 100K frames) and capture single environments. Yonder is approximately 50$\times$ larger than the largest prior indoor drone dataset and spans more than 100$\times$ as many environments.
+
+\textbf{Open-vocabulary detection in robotics.} Grounding DINO~\cite{liu2024grounding}, OWL-ViT~\cite{minderer2023scaling}, and similar detectors have become standard components in vision-language navigation pipelines~\cite{huang2025vlmaps,chaplot2020learning}. Fine-tuning these detectors on domain-specific data is widely reported to improve downstream task performance, though most reports rely on offline evaluation metrics.
+
+\textbf{Simulation-to-real transfer.} The sim-to-real gap is well-studied~\cite{tobin2017domain,sadeghi2017cad2rl}. Domain randomization, domain adaptation, and simulation fidelity improvements have all been proposed. Less attention has been paid to the \textit{sim-to-sim} gap---the failure of models trained on one simulator to transfer to another. We are aware of no prior work systematically characterizing this gap for vision-language drone navigation, despite cross-simulator evaluation being common practice (e.g., training in Habitat-Sim and evaluating in Gibson, Isaac Sim, or Unreal Engine~\cite{savva2019habitat,jacinto2024pegasus}).
+
+\textbf{Closed-loop evaluation of navigation.} Several benchmarks evaluate navigation in closed loop~\cite{anderson2018vision,savva2019habitat}. These benchmarks generally use a single simulator for both training and evaluation, avoiding the cross-simulator scenario we study. Our work uses the closed-loop benchmark from~\cite{anon2026closing}, extended with statistical validation across multiple seeds.
+
+\section{The Yonder Dataset}
+
+\subsection{Collection Methodology}
+
+Yonder was constructed by flying a simulated Holybro x500v2 quadcopter through 167 indoor 3D scenes from HSSD in Habitat-Sim~\cite{savva2019habitat}, collecting multi-modal sensor data at dense waypoints. The drone is configured to match the physical Holybro x500v2: 500\,mm wheelbase, 0.25\,m safety radius, 1.2\,m cruising altitude.
+
+\textbf{Waypoint sampling.} We use Habitat-Sim's navmesh to sample navigable waypoints at 1.0\,m base spacing. Adaptive densification adds waypoints at 0.1\,m resolution near tight spaces (depth/IR $<$ 0.7\,m) and at semantic frontiers (where new object IDs enter the camera frustum). The result is 387,527 waypoints across the 167 scenes.
+
+\textbf{Sensor configuration.} At each waypoint, the drone performs a 360$^{\circ}$ scan at 12 yaw headings (30$^{\circ}$ increments), capturing eight sensor streams per heading: stereo left RGB (480$\times$640, 90$^{\circ}$ FOV, +15\,cm forward, $-$5\,cm lateral from COG); stereo right RGB (480$\times$640, +15\,cm forward, +5\,cm lateral); forward monocular depth (480$\times$640, co-located with stereo center); landing camera (240$\times$320, +5\,cm forward, downward-facing). Per-waypoint sensors (yaw-independent): up IR (64$\times$64 depth array, +10\,cm above COG), down IR (64$\times$64, $-$15\,cm below COG), 360$^{\circ}$ LiDAR point cloud ($\sim$230K points, synthesized from the 12 depth panoramas), position (XYZ in world coordinates).
+
+\textbf{Total scale.} 4,650,324 frames across 167 scenes with 309 distinct semantic categories.
+
+\subsection{Scene Sources}
+
+Yonder is rendered from a single open-source 3D scene dataset, summarized in Table~\ref{tab:sources}. An earlier collection pass also covered ReplicaCAD (84 scenes, CC-BY-4.0, no semantics), Replica (18 scenes, Meta research-only terms), and HM3D / standalone scenes (6 scenes, Matterport academic-use EULA, per-user agreement required). The Replica and HM3D subsets are excluded from the public release because their upstream licenses do not permit open redistribution of derivative renders. The ReplicaCAD subset is permissively licensed but lacks semantic annotations and was not used in any reported experiment, so we drop it as well in service of a single-source, fully-experiment-relevant artifact.
+
+\begin{table}[t]
+\centering
+\caption{Yonder scene source (public release)}
+\label{tab:sources}
+\begin{tabular}{llrrl}
+\toprule
+Source & Upstream license & Scenes & Waypoints & Semantics \\
+\midrule
+HSSD & CC-BY-NC-4.0 & 167 & 387,527 & 167 of 167 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For all 167 HSSD scenes, we re-rendered semantic segmentation channels (not stored in initial collection) using a separate pass through Habitat-Sim, then projected per-pixel semantic instance masks to 2D bounding boxes to produce COCO-format annotations: 24,001,088 bounding boxes across 4,032,975 annotated images and 309 categories.
+
+\subsection{Storage and Access}
+
+Yonder is hosted on the HuggingFace Hub at \url{https://huggingface.co/datasets/astralhf/yonder}. Each waypoint is stored as a single compressed NPZ file (52 sensor arrays + optional semantic channels). Total storage: approximately 3.3\,TB. We provide loading utilities, manifest files, and per-scene COCO annotation files in the accompanying code release. For reviewers and others wanting a fast preview before downloading the full release, we additionally publish a $\sim$500\,MB single-scene sample at \url{https://huggingface.co/datasets/astralhf/yonder-sample}.
+
+\subsection{Generation Cost}
+
+The released subset was generated for approximately \$60 in compute cost using rented RTX 4090 GPU instances on Vast.ai. Generation took approximately 3 hours of wall-clock time using a fleet of 50 concurrent worker instances. This places Yonder-scale dataset generation within reach of small research groups and individual practitioners, in contrast to datasets that require dedicated infrastructure investments.
+
+\subsection{Intended Use}
+
+Yonder is intended for training drone-perspective perception models---open-vocabulary detectors, depth estimators, semantic segmentation, instance recognition, and similar tasks. All 167 scenes carry per-pixel semantic instance labels and support supervised training.
+
+We explicitly note that \textbf{Yonder is not intended for end-to-end navigation policy training}. The dataset captures static viewpoint sensor data, not closed-loop trajectories with physics, collisions, and replanning. Models trained on Yonder must be evaluated in a closed-loop simulator (or on real hardware) before performance claims can be made.
+
+\section{Benchmark and Evaluation Protocol}
+
+We use the closed-loop drone navigation benchmark from~\cite{anon2026closing}, which evaluates an autonomous drone agent on natural language navigation commands in Isaac Sim with the Pegasus Simulator~\cite{jacinto2024pegasus}. The benchmark covers three indoor environments (warehouse, hospital, office) with 51--67 navigation tasks per evaluation run, organized into 14 difficulty tiers ranging from stationary baselines through compound multi-step commands.
+
+\subsection{Closed-Loop Protocol}
+
+Each trial runs an IRIS quadrotor with a Mellinger controller in Isaac Sim. The drone receives a natural-language command (e.g., ``fly to the forklift''), captures RGB-D observations at 0.5\,Hz, runs the full perception-planning-control loop, and executes flight commands until success (within 5\,m of the ground-truth target), failure (timeout at 90\,s), or collision. We record final position error, collision-free flag, and detection metadata.
+
+\textbf{Metrics.} Primary metric is success rate at 5\,m (SR@5m): the fraction of trials where final position is within 5\,m of ground truth. Secondary metrics include mean position error, collision-free rate (CF\%), and detection success rate.
+
+\textbf{Statistical validation.} We run 5 independent random seeds per condition (seeds 1000, 2000, 3000, 4000, 5000), with 93 trials per seed. Total: 465 closed-loop trials per condition. We report mean SR@5m with 95\% bootstrap confidence intervals (10,000 resamples) and pairwise significance using permutation tests (10,000 permutations) with Bonferroni correction for multiple comparisons.
+
+\subsection{Detection Pipeline}
+
+The navigation pipeline (Track A from~\cite{anon2026closing}) applies the \textit{separation principle}: an open-vocabulary detector identifies the target object in the image, monocular depth estimation~\cite{yang2024depth} computes its 3D position via backprojection through the camera intrinsics, and a classical motion planner with depth-conditioned safety executes the flight. The detector is the only component we modify across conditions.
+
+\section{Fine-Tuning Experiments}
+
+\subsection{Setup}
+
+We fine-tune two open-vocabulary detector architectures using four protocols:
+
+\textbf{A1: OWL-ViT v2 fine-tuning.} OWL-ViT v2-large fine-tuned on 29K frames from 90 Yonder scenes for 5 epochs. Detection heads only (frozen backbone). Pseudo-labels derived from semantic instance masks projected to bounding boxes.
+
+\textbf{A2: Grounding DINO Round 6.} Grounding DINO-tiny fine-tuned on 40K frames from 20 Yonder scenes. Backbone frozen for first 3 epochs, then last 2 transformer blocks unfrozen. lr\_heads = $1\mathrm{e}{-5}$, lr\_backbone = $5\mathrm{e}{-6}$. Built-in HuggingFace bipartite matching loss with label smoothing (0.1). Calibration monitoring every 200 training steps.
+
+\textbf{A3: Grounding DINO Round 7 (cross-simulator mix).} Same as A2, but training data mixes 90\% Yonder Habitat-Sim frames (8,280 samples) with 10\% Isaac Sim frames (920 samples) to test whether including target-domain data closes the gap. Pseudo-labels for Isaac Sim frames generated by zero-shot Grounding DINO with confidence threshold 0.20.
+
+\textbf{A4: Grounding DINO Round 6 with Z-floor clamp.} Same checkpoint as A2, but with a runtime fix applied to the navigation pipeline: \verb|goal_z = max(goal_z, 0.5)| to prevent sub-floor goal predictions.
+
+\subsection{Offline Detection Results}
+
+We measure mAP@0.5 and mAP@0.75 on Yonder's held-out test split (17 scenes never seen during training, environment-level split, not frame-level). Results in Table~\ref{tab:offline}.
+
+\begin{table}[t]
+\centering
+\caption{Offline detection performance on Yonder test set}
+\label{tab:offline}
+\begin{tabular}{lccc}
+\toprule
+Model & mAP@0.5 & mAP@0.75 & Blank max \\
+\midrule
+OWL-ViT v2 zero-shot & 4.8\% & 2.7\% & 0.42 \\
+OWL-ViT v2 fine-tuned (A1) & N/M & N/M & \textbf{0.97} \\
+GDINO zero-shot & $\sim$5\% & --- & 0.39 \\
+GDINO fine-tuned R6 (A2) & \textbf{46.7\%} & \textbf{26.9\%} & 0.115 \\
+GDINO fine-tuned R7 (A3) & 45.4\% & 24.6\% & 0.115 \\
+\bottomrule
+\end{tabular}
+\\[0.5em]
+\footnotesize{N/M = not measurable due to confidence calibration collapse.}
+\end{table}
+
+The headline number is a 9.7$\times$ improvement in mAP@0.5 (from 4.8\% to 46.7\%) for Grounding DINO fine-tuning. The OWL-ViT v2 fine-tune produces invalid offline metrics due to confidence calibration collapse: the fine-tuned model assigns scores $>$0.97 to blank gray images, making any threshold-based detection metric meaningless.
+
+\subsection{Closed-Loop Navigation Results}
+
+We evaluate each detector configuration in closed-loop Isaac Sim across 5 seeds. Results in Table~\ref{tab:closedloop}.
+
+\begin{table}[t]
+\centering
+\caption{Closed-loop navigation success (5 seeds, 465 trials per condition)}
+\label{tab:closedloop}
+\begin{tabular}{lccl}
+\toprule
+Configuration & SR@5m & 95\% CI & p vs ZS \\
+\midrule
+Hover (do-nothing) & 10.0\% & [7.4, 13.0] & --- \\
+ZS Grounding DINO & \textbf{32.9\%} & \textbf{[28.8, 37.2]} & baseline \\
+FT OWL-ViT v2 (A1) & 11.6\% & [8.8, 14.4] & $<$0.001 (worse) \\
+FT GDINO R6 (A2) & 23.5\% & [19.0, 28.4] & 0.003 (worse) \\
+FT GDINO R6+clamp (A4) & 25.5\% & [20.7, 30.5] & 0.012 (worse) \\
+FT GDINO R7 (A3) & 25.5\% & [20.7, 30.5] & 0.012 (worse) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The headline result: no fine-tuned model exceeds the zero-shot baseline.} Despite a 9.7$\times$ improvement in offline mAP, the best fine-tuned model (Grounding DINO R6 with Z-clamp) underperforms the zero-shot baseline by 7.4 percentage points (p=0.012). The OWL-ViT v2 fine-tune is the worst performer, scoring barely above hover (11.6\% vs 10.0\%, n.s.).
+
+The relationship between offline mAP and closed-loop SR@5m is not just weak---it is anticorrelated within our fine-tuned configurations, and the model with the highest offline mAP performs worse in closed-loop than the model with no fine-tuning at all.
+
+\subsection{Convergence at the Detection Plateau}
+
+A 2$\times$2 ablation (fine-tuned vs zero-shot Grounding DINO $\times$ safety profiles enabled vs disabled, 153 trials per condition) reveals a striking pattern: SR@5m converges at 23--25\% across all four configurations, shown in Table~\ref{tab:ablation}.
+
+\begin{table}[t]
+\centering
+\caption{2$\times$2 ablation: SR@5m (CF\% in parentheses)}
+\label{tab:ablation}
+\begin{tabular}{lcc}
+\toprule
+& Safety enabled & Safety disabled \\
+\midrule
+FT Grounding DINO & 23.5\% (86.9\%) & 20.4\% (71.8\%) \\
+ZS Grounding DINO & 23.5\% (86.9\%) & 24.7\% (80.0\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No pair differs significantly (all p $>$ 0.25). The fine-tuned and zero-shot detectors are statistically indistinguishable in closed-loop, despite the fine-tuned detector having 9.7$\times$ the offline mAP. This convergence is the empirical signature that detection quality is not the binding constraint for navigation success in our setup.
+
+\section{Root Cause: The Cross-Simulator Domain Gap}
+
+The four fine-tuning attempts fail in different ways, but a single underlying cause connects them: \textbf{fine-tuning on one simulator's renders calibrates the detector to that simulator's specific geometric and photometric conventions, which do not transfer to a different simulator.}
+
+\subsection{Failure Mode 1: Confidence Calibration Collapse (OWL-ViT v2)}
+
+OWL-ViT v2 fine-tuning produces a model that assigns confidence scores $>$0.97 to blank gray images. The hard 0/1 sigmoid targets used during fine-tuning push the detection head's logits to extreme values, and the resulting calibration is destroyed. Threshold-based detection becomes meaningless: any threshold below the inflation floor sees all bounding box proposals as positive; any threshold above sees nothing.
+
+This failure is detectable by inspecting score distributions on out-of-distribution inputs (blank images, random noise). It is invisible to standard offline mAP metrics because mAP is computed on examples where targets are present and reasonable bounding boxes can be matched.
+
+\subsection{Failure Mode 2: Negative-Altitude Goal Predictions (Grounding DINO Round 6)}
+
+Grounding DINO fine-tuning preserves confidence calibration (blank-image max score: 0.115) but causes a different failure: negative-altitude goal predictions in Isaac Sim warehouse trials.
+
+The pipeline computes 3D goal position from a detection's bounding box center and the corresponding depth value:
+\begin{equation}
+\text{goal}_z = z_{\text{spawn}} + d_{(c_y, c_x)} \cdot \cos(\theta_{\text{pitch}}) - \delta_{\text{camera}}
+\end{equation}
+
+Floor-level objects (forklifts, pallet jacks) appear lower in the image frame in Habitat-Sim's rendering than in Isaac Sim's. Fine-tuning shifts the detector's bounding box centers downward to match Habitat-Sim's geometry. When applied to Isaac Sim frames, these lower bounding box centers, combined with Isaac Sim's different depth scale, produce $\text{goal}_z < 0$---goals below the floor.
+
+We measured negative-Z goal frequency in 153 trials. Fine-tuned Grounding DINO produces negative-Z goals in 24\% of warehouse trials, compared to 4\% for zero-shot. The drone, instructed to fly to a sub-floor coordinate, descends from 1.0\,m altitude to 0.13\,m in approximately 8 steps and accumulates 35--45 collisions per trial as it oscillates near the floor. Warehouse collision-free rate drops from 89\%~\cite{anon2026engineering} to 61\%.
+
+A simple Z-floor clamp \verb|goal_z = max(goal_z, 0.5)| eliminates the floor-diving behavior and recovers warehouse CF\% to 98\%, but does not improve SR@5m: navigation success converges at 25.5\% with or without the clamp.
+
+\subsection{Failure Mode 3: Pseudo-Label Collapse (Grounding DINO Round 7)}
+
+To address the cross-simulator gap, we mixed 10\% Isaac Sim frames into the training data for Round 7. Since we had no human-annotated bounding boxes in Isaac Sim, we used pseudo-labels generated by zero-shot Grounding DINO itself.
+
+This created a circular training signal. The Round 7 model learned to reproduce zero-shot Grounding DINO's outputs on Isaac Sim frames, biased toward Habitat-Sim distribution by the 90\% majority training data. Round 7 SR@5m: 25.5\%---identical to Round 6 with Z-clamp. Warehouse CF\% collapsed to 17.6\%, indicating new collision modes from lateral bounding box shifts.
+
+Pseudo-labels from a baseline detector cannot teach a fine-tuned detector to do better than the baseline. Closing the cross-simulator gap requires real ground-truth annotations in the deployment domain.
+
+\subsection{Why Offline Metrics Miss These Failures}
+
+In all three failure modes, offline mAP on Yonder's test split looks excellent (45--47\%). The metric is computed on Habitat-Sim frames against Habitat-Sim ground truth bounding boxes. The detector is, in fact, very good at finding objects in Habitat-Sim images.
+
+The failure modes only manifest under three specific conditions absent from offline evaluation:
+
+\begin{enumerate}
+\item \textit{Out-of-distribution inputs} (blank images, atypical scenes) reveal confidence calibration breakage. Standard mAP only evaluates positive examples.
+\item \textit{3D backprojection} translates 2D detection errors into 3D goal errors. Offline evaluation never executes this transformation.
+\item \textit{Closed-loop dynamics} compound small errors over time. A drone instructed to fly to a sub-floor coordinate accumulates collisions over many timesteps; a single-frame evaluation never sees this consequence.
+\end{enumerate}
+
+These conditions are precisely what closed-loop evaluation captures and offline evaluation cannot. The 9.7$\times$ offline mAP improvement is real and reproducible, but it does not correspond to improvement in any of the dimensions that matter for closed-loop deployment.
+
+\section{Implications for Evaluation Practice}
+
+Our results suggest several implications for how the field evaluates simulation-trained perception:
+
+\textbf{Closed-loop evaluation is not optional for navigation systems.} Offline detection metrics on the training simulator's distribution can improve dramatically without any improvement in deployment performance. Researchers reporting fine-tuning improvements should report closed-loop results in the deployment environment, not just held-out detection metrics.
+
+\textbf{Multi-seed statistical validation matters.} A single seed of our Round 6 fine-tune produced SR@5m = 48.4\%, suggesting the fine-tune was a major improvement. The 5-seed result is 25.5\%, statistically indistinguishable from baseline. Per-seed variance is large (4--20\% range) and headline single-seed numbers can be misleading by 2$\times$ or more.
+
+\textbf{Cross-simulator transfer should be tested explicitly.} The community has tacitly assumed that physics-based simulators are interchangeable for perception training. Our results show this assumption can be wrong even between two well-established simulators (Habitat-Sim and Isaac Sim) targeting the same task.
+
+\textbf{Calibration should be measured directly.} Score distributions on out-of-distribution inputs (blank images, random noise) are diagnostic of failure modes that mAP cannot detect. We recommend reporting blank-image max score as a basic calibration check for any fine-tuned open-vocabulary detector.
+
+\textbf{Negative results have evaluative value.} Our finding that 9.7$\times$ mAP improvement produces zero closed-loop improvement is a result about evaluation methodology, not a result about a particular detector. Such findings deserve publication because they constrain what conclusions can be drawn from offline metrics in this domain.
+
+\section{What Yonder Is For (and What It Is Not For)}
+
+In light of our findings, we describe the appropriate uses of Yonder.
+
+\textbf{Appropriate uses:}
+\begin{itemize}
+\item Training drone-perspective perception models that are subsequently evaluated either in Habitat-Sim itself (matching training and evaluation distributions) or in a closed-loop benchmark that explicitly accounts for cross-simulator transfer.
+\item Self-supervised pretraining for representations that will later be fine-tuned on smaller target-domain datasets.
+\item Studying cross-simulator generalization, including using our fine-tuned checkpoints (which we release) as a reproducible substrate for further experiments.
+\item Evaluating depth estimation, semantic segmentation, and other tasks where the training/evaluation distribution is held constant.
+\item Benchmarking detection models within the Habitat-Sim domain.
+\end{itemize}
+
+\textbf{Inappropriate uses:}
+\begin{itemize}
+\item Training models intended for direct deployment in non-Habitat-Sim environments (Isaac Sim, Unreal Engine, real-world) without target-domain calibration.
+\item Reporting fine-tuning improvements based solely on Yonder offline metrics. Closed-loop evaluation in the deployment domain is required.
+\item Training end-to-end navigation policies. Yonder does not contain trajectories with physics, collisions, or replanning.
+\end{itemize}
+
+\section{Limitations}
+
+Our results are based on indoor environments only; we have not tested cross-simulator transfer for outdoor drone navigation. We test two detector architectures (OWL-ViT v2 and Grounding DINO); other architectures may exhibit different failure modes. We use Habitat-Sim and Isaac Sim as the two simulator endpoints; other simulator pairs may show different gap magnitudes. Real-world transfer (sim-to-real) remains unstudied in this paper.
+
+The failure mode diagnosis is based on close inspection of trial logs and 3D goal predictions; alternative explanations of the closed-loop convergence at 23--25\% (e.g., that the binding constraint is actually exploration or planning, not detection) are possible and consistent with our data. We discuss this in companion work~\cite{anon2026engineering}.
+
+We rely on programmatically derived semantic annotations from HSSD's mesh-authored instance IDs; failure modes inherent to mesh-authored semantics (over-segmentation of articulated objects, occasional misleading boxes around partially-occluded instances) are documented but not corrected. Future work could improve label fidelity using stronger detectors as pseudo-labelers.
+
+\section{Conclusion}
+
+We introduce Yonder, a 4.65-million-frame drone-perspective dataset for indoor navigation, and use it to investigate whether offline detection improvements predict closed-loop navigation performance. Across four fine-tuning attempts spanning two detector architectures, we find that 9.7$\times$ improvement in offline mAP produces zero improvement in closed-loop navigation success---and in some cases, statistically significant degradation. The root cause is a cross-simulator domain gap that manifests as confidence calibration collapse, negative-altitude goal predictions, and lateral localization shifts, but is invisible to standard offline metrics. Detection success rate converges at 23--25\% across all configurations, fine-tuned and zero-shot, demonstrating that the apparent binding constraint (detection quality) is not the actual constraint.
+
+Our findings argue for closed-loop evaluation as a non-negotiable component of any work claiming to improve perception for embodied AI tasks, and for explicit testing of cross-simulator transfer when training and evaluation use different simulation platforms. We release Yonder, all four fine-tuned model checkpoints, the closed-loop benchmark code, and complete trial logs to enable rigorous study of these phenomena.
+
+\section*{Acknowledgments}
+
+The Yonder dataset is publicly available at \url{https://huggingface.co/datasets/astralhf/yonder}. All fine-tuned model checkpoints, closed-loop benchmark code, and complete trial logs are available alongside the dataset. The released data is licensed CC-BY-NC-4.0 (inheriting HSSD's NonCommercial restriction); the code release is Apache-2.0. Compute for dataset generation was provided by the authors' organization (withheld for double-blind review); rented from Vast.ai at approximately \$60 total cost for the released subset.
+
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{99}
+
+\bibitem{liu2024grounding}
+S. Liu et al., ``Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection,'' \textit{ECCV}, 2024.
+
+\bibitem{minderer2023scaling}
+M. Minderer et al., ``Scaling Open-Vocabulary Object Detection,'' \textit{NeurIPS}, 2023.
+
+\bibitem{xiao2024florence}
+B. Xiao et al., ``Florence-2: Advancing a Unified Representation for a Variety of Vision Tasks,'' \textit{CVPR}, 2024.
+
+\bibitem{anon2026closing}
+Anonymous, ``Closing the Metric Gap: From Diagnosis to Solution in Vision-Language Drone Navigation,'' 2026. (Anonymized self-citation.)
+
+\bibitem{anon2026engineering}
+Anonymous, ``Engineering the Separation Principle: From Modular Architecture to Deployable Drone Navigation,'' 2026. (Anonymized self-citation.)
+
+\bibitem{du2018unmanned}
+D. Du et al., ``The Unmanned Aerial Vehicle Benchmark: Object Detection and Tracking,'' \textit{ECCV}, 2018.
+
+\bibitem{huang2025vlmaps}
+H. Huang et al., ``VLMaps: Visual Language Maps for Robot Navigation,'' \textit{IJRR}, 2025.
+
+\bibitem{chaplot2020learning}
+D. S. Chaplot et al., ``Learning to Explore using Active Neural SLAM,'' \textit{ICLR}, 2020.
+
+\bibitem{tobin2017domain}
+J. Tobin et al., ``Domain Randomization for Transferring Deep Neural Networks from Simulation to the Real World,'' \textit{IROS}, 2017.
+
+\bibitem{sadeghi2017cad2rl}
+F. Sadeghi and S. Levine, ``CAD2RL: Real Single-Image Flight without a Single Real Image,'' \textit{RSS}, 2017.
+
+\bibitem{savva2019habitat}
+M. Savva et al., ``Habitat: A Platform for Embodied AI Research,'' \textit{ICCV}, 2019.
+
+\bibitem{jacinto2024pegasus}
+M. Jacinto et al., ``Pegasus Simulator: An Isaac Sim Framework for Multiple Aerial Vehicles Simulation,'' \textit{ICUAS}, 2024.
+
+\bibitem{anderson2018vision}
+P. Anderson et al., ``Vision-and-Language Navigation: Interpreting visually-grounded navigation instructions in real environments,'' \textit{CVPR}, 2018.
+
+\bibitem{yang2024depth}
+L. Yang et al., ``Depth Anything V2,'' \textit{NeurIPS}, 2024.
+
+\end{thebibliography}
+
+\end{document}

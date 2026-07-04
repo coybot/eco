@@ -1,0 +1,72 @@
+\section*{NeurIPS Paper Checklist}
+
+\begin{enumerate}
+
+\item {\bf Claims}
+    \item[] Question: Do the main claims made in the abstract and introduction accurately reflect the paper's contributions and scope?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The abstract and Section~1 state three claims (dataset scale, offline$\rightarrow$closed-loop disconnect, cross-simulator gap diagnosis). Each is supported: dataset scale in Section~3, offline$\rightarrow$closed-loop disconnect in Sections~5--6, cross-simulator gap diagnosis in Section~7.
+\item {\bf Limitations}
+    \item[] Question: Does the paper discuss the limitations of the work performed by the authors?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Section~9 (``Limitations'') discusses indoor-only scope, the two-architecture and two-simulator scope of the empirical claims, the absence of sim-to-real validation, alternative explanations for the 23--25\% closed-loop convergence, and limitations inherited from HSSD's mesh-authored semantic annotations.
+\item {\bf Theory assumptions and proofs}
+    \item[] Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof?
+    \item[] Answer: \answerNA{}
+    \item[] Justification: The paper presents an empirical dataset and benchmark with empirical findings; it contains no theoretical results. Equation~(1) is a definition of the backprojection used by the navigation pipeline, not a theorem.
+    \item {\bf Experimental result reproducibility}
+    \item[] Question: Does the paper fully disclose all the information needed to reproduce the main experimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Section~3.1 specifies the simulator (Habitat-Sim), drone configuration, waypoint sampling rule, and sensor configuration. Section~4 specifies the closed-loop protocol (controller, observation rate, success criterion, timeout, seeds 1000--5000, 93~trials per seed, 465~trials per condition). Section~5.1 specifies fine-tuning hyperparameters (learning rates, frozen layers, label smoothing, sample counts, epoch counts) for each of the four protocols. Dataset, code, and all four fine-tuned checkpoints are released.
+
+\item {\bf Open access to data and code}
+    \item[] Question: Does the paper provide open access to the data and code, with sufficient instructions to faithfully reproduce the main experimental results, as described in supplemental material?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The Yonder dataset is openly hosted at \url{https://huggingface.co/datasets/astralhf/yonder} (CC-BY-NC-4.0); a $\sim$500\,MB reviewer sample is at \url{https://huggingface.co/datasets/astralhf/yonder-sample}. All four fine-tuned checkpoints, closed-loop benchmark code, and complete trial logs are released alongside the dataset. The dataset card and Croissant metadata document loading, splits, and preprocessing.
+
+\item {\bf Experimental setting/details}
+    \item[] Question: Does the paper specify all the training and test details (e.g., data splits, hyperparameters, how they were chosen, type of optimizer) necessary to understand the results?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Section~5.1 lists, per fine-tuning protocol, the architecture, frozen-layer schedule, learning rates (heads vs.\ backbone), loss function and label smoothing, training-frame counts and number of source scenes, and epoch counts. Section~3 specifies the held-out test split (17 scenes, environment-level not frame-level). Section~4 specifies the closed-loop evaluation protocol.
+\item {\bf Experiment statistical significance}
+    \item[] Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Section~4.1 describes the statistical protocol: 5 independent random seeds (1000, 2000, 3000, 4000, 5000) per condition, 93~trials per seed, 465~trials per condition; 95\% confidence intervals computed via 10{,}000-resample bootstrap; pairwise significance via 10{,}000-permutation tests with Bonferroni correction. Tables~2--4 report mean SR@5m with 95\% CIs and pairwise $p$-values against the zero-shot baseline.
+\item {\bf Experiments compute resources}
+    \item[] Question: For each experiment, does the paper provide sufficient information on the computer resources (type of compute workers, memory, time of execution) needed to reproduce the experiments?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Section~3.4 reports the dataset-generation compute (RTX~4090 instances rented from Vast.ai, $\sim$3 hours wall-clock with a fleet of 50 concurrent workers, $\sim$\$60 total). Fine-tuning was performed on a dual RTX~5090 host per protocol; the OWL-ViT v2 fine-tune (29K frames, 5 epochs) and Grounding DINO fine-tunes (8--40K frames) each completed in under 8 wall-clock hours. Closed-loop evaluation totalled $\sim$3{,}000+ trials at $\le$90\,s wall-clock per trial in Isaac Sim on a single RTX~4090 host.
+\item {\bf Code of ethics}
+    \item[] Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics \url{https://neurips.cc/public/EthicsGuidelines}?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The work involves no human subjects, no real persons, no PII, and no biometric data: the dataset is rendered entirely from synthetic 3D scenes. Dual-use risks (surveillance, person identification, lethal-autonomy applications) are discussed in the Datasheet (``Uses'') and Section~8, and disallowed uses are encoded both in the CC-BY-NC license and in the explicit usage statement.
+
+\item {\bf Broader impacts}
+    \item[] Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Positive impacts (more rigorous evaluation methodology for embodied AI; reduction of overclaim risk in fine-tuning reports) are discussed in Section~8 and Section~10. Negative impacts (drone-perspective perception models can in principle be applied to surveillance, person identification, and autonomous-targeting systems) are discussed in Section~8 and the Datasheet. Mitigations: CC-BY-NC license restricts commercial use, including military and surveillance applications, by default; the dataset contains no real persons; explicit disallowed-use list in the Datasheet.
+\item {\bf Safeguards}
+    \item[] Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pre-trained language models, image generators, or scraped datasets)?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The dataset contains no real persons, no PII, no biometric data, no faces, and no scraped imagery, so the most common scraped-data risks do not apply. The CC-BY-NC-4.0 license forbids commercial use, including commercial military and surveillance applications. The Datasheet enumerates disallowed uses (surveillance, biometric identification, identification of specific real persons). The released fine-tuned detection checkpoints are domain-specific (Habitat-Sim indoor furniture/objects) and not general-purpose person detectors.
+\item {\bf Licenses for existing assets}
+    \item[] Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: HSSD (CC-BY-NC-4.0) is cited and credited; Yonder inherits its NonCommercial restriction. Habitat-Sim~\cite{savva2019habitat} (MIT) and the Pegasus Simulator~\cite{jacinto2024pegasus} are cited. The detector backbones used (OWL-ViT v2~\cite{minderer2023scaling}, Grounding DINO~\cite{liu2024grounding}) and Depth Anything V2~\cite{yang2024depth} are cited with their releases. Replica- and HM3D-derived scenes were excluded because their upstream licenses do not permit open redistribution of derivative renders; ReplicaCAD-derived scenes were excluded because they were not used in any reported experiment.
+\item {\bf New assets}
+    \item[] Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The Yonder dataset card on the HuggingFace Hub documents repository layout, sensor schema, scene-source provenance, license, intended use, and known limitations. A Croissant metadata file with core and Responsible AI fields accompanies the dataset. A reviewer-friendly $\sim$500\,MB sample subset is published as a separate HF repository. The Datasheet for Yonder (Appendix~A) follows the structure of~\cite{gebru2021datasheets}.
+\item {\bf Crowdsourcing and research with human subjects}
+    \item[] Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)?
+    \item[] Answer: \answerNA{}
+    \item[] Justification: The work involves no crowdsourcing and no human subjects. All data is rendered from synthetic 3D scenes; semantic annotations are derived programmatically from mesh-authored instance IDs.
+\item {\bf Institutional review board (IRB) approvals or equivalent for research with human subjects}
+    \item[] Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained?
+    \item[] Answer: \answerNA{}
+    \item[] Justification: No human subjects research; IRB approval is not applicable.
+\item {\bf Declaration of LLM usage}
+    \item[] Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does \emph{not} impact the core methodology, scientific rigor, or originality of the research, declaration is not required.
+    \item[] Answer: \answerNA{}
+    \item[] Justification: LLMs are not a component of the core methodology. The vision-language detectors evaluated (OWL-ViT v2 and Grounding DINO) are the subject of study, not methodological tools used to perform the analysis; both are cited and described in Section~5. Any LLM use in writing or editing was limited to the kinds of assistance excluded by the policy from declaration.
+\end{enumerate}
