@@ -107,7 +107,7 @@ export default function ResearchPage() {
               Papers, technical reports, and write-ups from the Astral autonomy
               team — ordered by date.
             </p>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 mb-16">
               <Button asChild>
                 <Link href="/datasets/yonder">Yonder dataset</Link>
               </Button>
@@ -117,6 +117,76 @@ export default function ResearchPage() {
               <Button variant="outline" asChild>
                 <a href={SITE.droneModels} target="_blank" rel="noopener noreferrer">Models on HF</a>
               </Button>
+            </div>
+
+            {/* L5 callout */}
+            <div className="mb-10">
+              <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5 mb-6">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-sm font-medium text-amber-500">L5 achieved — June 2026</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4">
+                What &ldquo;autonomy&rdquo; actually means
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                Most drone platforms advertise &ldquo;autonomous flight.&rdquo; What they mean is: follow a GPS waypoint list, and if the link drops, return-to-home or land in place. That&rsquo;s not autonomy — that&rsquo;s a fancy RC plane with a panic button.
+              </p>
+              <p className="text-muted-foreground mb-8">
+                Real autonomy means the aircraft handles sensor failures, unexpected obstacles, GPS spoofing, dynamic adversaries, and comms blackout — without a human in the loop. We measure this on a five-level scale. As of June 2026, our heterogeneous fleet (quadcopters + ground rovers) achieves L5 across a 16-scenario adversarial benchmark: zero interventions, 100% mission success, zero collisions.
+              </p>
+
+              <div className="overflow-x-auto mb-8">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 pr-6 font-semibold text-foreground w-16">Level</th>
+                      <th className="text-left py-2 pr-6 font-semibold text-foreground">Intervention rate</th>
+                      <th className="text-left py-2 font-semibold text-foreground">What it looks like in practice</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-muted-foreground">
+                    <tr className="border-b border-border/50">
+                      <td className="py-2 pr-6 font-mono">L1</td>
+                      <td className="py-2 pr-6">&gt;2 per scenario</td>
+                      <td className="py-2">Operator corrects the aircraft constantly. &ldquo;Autonomous&rdquo; in name only.</td>
+                    </tr>
+                    <tr className="border-b border-border/50">
+                      <td className="py-2 pr-6 font-mono">L2</td>
+                      <td className="py-2 pr-6">1–2 per scenario</td>
+                      <td className="py-2">GPS waypoint following. Fails on sensor dropout or unexpected obstacles.</td>
+                    </tr>
+                    <tr className="border-b border-border/50">
+                      <td className="py-2 pr-6 font-mono">L3</td>
+                      <td className="py-2 pr-6">0.5–1 per scenario</td>
+                      <td className="py-2">Handles most cases. Stalls or collides on edge cases.</td>
+                    </tr>
+                    <tr className="border-b border-border/50">
+                      <td className="py-2 pr-6 font-mono">L4</td>
+                      <td className="py-2 pr-6">&lt;0.5, ≥90% success</td>
+                      <td className="py-2">Rarely needs a human. Still fails under combined sensor + comms degradation.</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-6 font-mono text-amber-500 font-semibold">L5</td>
+                      <td className="py-2 pr-6 text-amber-500 font-semibold">0 — 100% success</td>
+                      <td className="py-2 text-foreground font-medium">Zero interventions. No collisions. Handles every adversarial inject across all 16 scenarios.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="text-sm text-muted-foreground mb-6">
+                The 16-scenario benchmark covers: sensor dropout, GPS spoofing, RF jamming, dynamic intruders, communications blackout, tight chokepoints, time-critical extraction, cascading failures, and simultaneous multi-inject stress tests. The video below shows all 16 — in 2D simulation, 3D visualization, and photorealistic render.
+              </p>
+
+              <div className="relative w-full rounded-lg border border-border overflow-hidden" style={{ aspectRatio: "16/9" }}>
+                <iframe
+                  className="absolute inset-0 w-full h-full"
+                  src="https://www.youtube.com/embed/hePElM49LFE?autoplay=1&rel=0"
+                  title="Astral L5 Autonomy Demo Reel"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
             </div>
           </div>
         </section>
