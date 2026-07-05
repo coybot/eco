@@ -26,10 +26,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$APP" in
-  DroneOperator|RoverOperator) ;;
-  *) echo "--app must be DroneOperator or RoverOperator (got: $APP)" >&2; exit 2;;
+  DroneOperator|PhroverOperator) ;;
+  *) echo "--app must be DroneOperator or PhroverOperator (got: $APP)" >&2; exit 2;;
 esac
-PROJ="$(cd "$SCRIPT_DIR/../../client/ios/$APP" && pwd)"
+# PhroverOperator lives in the public astral-sdk repo (sibling of eco), not eco/client/ios —
+# see eco/e2e/README.md. Assumes both repos are checked out side by side.
+if [[ "$APP" == "PhroverOperator" ]]; then
+  PROJ="$(cd "$SCRIPT_DIR/../../../sdk/examples/PhroverOperator" && pwd)"
+else
+  PROJ="$(cd "$SCRIPT_DIR/../../client/ios/$APP" && pwd)"
+fi
 SCHEME="$APP"
 UITEST_TARGET="${APP}UITests"
 

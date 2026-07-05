@@ -9,6 +9,7 @@ on:
   pull_request:
 
 jobs:
+  # Daemon-drone types (quad/rover/fixed-wing) — pure Python, no Swift/Xcode needed.
   python-fast:
     runs-on: ubuntu-latest
     steps:
@@ -19,17 +20,31 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml numpy pytest
-      - run: python3 -m eco.e2e.run_e2e --type all --tier fast
+      - run: python3 -m eco.e2e.run_e2e --type quadcopter --tier fast
+      - run: python3 -m eco.e2e.run_e2e --type rover --tier fast
+      - run: python3 -m eco.e2e.run_e2e --type fixedwing --tier fast
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: scorecard
           path: eco/e2e/scorecard.json
 
-  # RoverNav is pure Swift/offline; needs a Swift toolchain (macOS runner has one built in).
-  rovernav-swift:
+  # phrover's on-device nav check (RoverNavTests) lives in the public astral-sdk repo and
+  # shares a SwiftPM package with ARKit-dependent code that only builds against an iOS
+  # destination — needs Xcode + an iOS Simulator, not just a bare Swift toolchain, and
+  # needs the sdk repo checked out as a sibling of eco (see eco/e2e/harness/phrover.py).
+  phrover-fast:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: swift test
-        working-directory: rover/nav/RoverNav
+        with:
+          path: eco
+      - uses: actions/checkout@v4
+        with:
+          repository: astral-us/astral-sdk
+          path: sdk
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - run: python3 -m eco.e2e.run_e2e --type phrover --tier fast

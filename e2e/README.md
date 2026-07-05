@@ -1,8 +1,10 @@
 # e2e tests — all 4 drone types
 
 One place to test **quadcopter**, **rover**, **fixed-wing** (all three via the
-`DroneOperator` app) and **phrover** (the iPhone-brained WAVE ROVER, via `RoverOperator`) —
-runnable headlessly for CI, or from a real phone/simulator by a human.
+`DroneOperator` app) and **phrover** (the iPhone-brained WAVE ROVER, via the public
+`PhroverOperator` app + `RoverNav`/`PhroverKit`/`PhroverCloud` in the sibling `astral-sdk`
+repo — see `../../sdk`) — runnable headlessly for CI, or from a real phone/simulator by
+a human.
 
 See `scenarios.yaml` for the exact mission text and success criteria per type — the
 headless regression and the phone UI tests assert the same thing.
@@ -20,7 +22,9 @@ This runs:
 - a **mocked app-contract check** per type (`harness/mock_cloud.py`,
   `harness/mock_rover_converse.py`) — proves the harness sends the right mission and
   interprets the response correctly, without touching AWS.
-- for phrover, `swift test` in `eco/rover/nav/RoverNav` (on-device navigation, offline).
+- for phrover, `RoverNavTests` in the sibling `astral-sdk` repo (on-device navigation,
+  offline) — run via `xcodebuild test` against an iOS Simulator, since RoverNav now
+  shares a package with ARKit-dependent code that can't build on plain macOS.
 
 Writes `scorecard.json` next to this file (gitignored — CI uploads it as an artifact).
 
@@ -43,7 +47,7 @@ python3 -m eco.e2e.run_e2e --type all --tier live
 
 phrover has no cloud "brain" step to bring up — its live-tier dialog check just needs
 `ISHMAEL_API_BASE`/`ISHMAEL_API_TOKEN` pointed at the deployed stack; its navigation check
-is the same offline `swift test` as the fast tier.
+is the same offline `RoverNavTests` run as the fast tier.
 
 ## From a phone or simulator (a human, or CI on a Mac/emulator runner)
 
@@ -61,8 +65,9 @@ screenshots each milestone, and asserts the mission's response arrives — see
 ### Fully manual (a real device, no automation)
 
 1. Bring a sim vehicle Online (see the live-tier steps above), or use real hardware.
-2. Build/install the right app — DroneOperator for quad/rover/fixed-wing, RoverOperator
-   for phrover — and sign in as the user that owns the drone.
+2. Build/install the right app — DroneOperator for quad/rover/fixed-wing, PhroverOperator
+   (in the sibling `astral-sdk` repo, `sdk/examples/PhroverOperator`) for phrover — and
+   sign in as the user that owns the drone.
 3. Open the drone, send the mission from `scenarios.yaml`, confirm the photo/response
    arrives.
 4. For phrover with no physical WAVE ROVER chassis: run

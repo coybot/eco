@@ -1,5 +1,12 @@
 # Rover — iOS-brained WAVE ROVER
 
+> **The Swift code (RoverNav / PhroverKit / PhroverCloud / PhroverOperator) has moved to
+> the public [`astral-sdk`](https://github.com/astral-us/astral-sdk) repo** — a sibling of
+> `eco`, checked out at `../sdk` in this workspace — as part of open-sourcing Phrover's
+> on-device brain. Only the cloud-side pieces (`eco/aws/src/rover.py`, `template.yaml`)
+> stay here. The "Layout"/"Building the app" sections below describe the new locations;
+> the "Status" section is left as the historical dev log for the work that produced them.
+
 An indoor autonomous ground robot where the **brain is an iPhone Pro or iPad Pro**, not a
 Jetson Orin. The phone's camera, LiDAR, IMU, mic, speaker, and Neural Engine do the
 perception, navigation, and voice; a **Waveshare WAVE ROVER** 4WD chassis does the driving.
@@ -38,39 +45,46 @@ infra-free demos/testing.
 eco/rover/
   README.md
   docs/architecture.md          full design, phases, risks
-  nav/RoverNav/                 ← platform-independent nav core (Swift package, TESTED)
-    Sources/RoverNav/           Geometry · Costmap · AStarPlanner · PursuitController · DifferentialDrive
-    Tests/RoverNavTests/        12 tests incl. end-to-end drive-around-a-corner sim
-  models/                       CoreML/MLX model conversion (YOLO etc.) — TODO
+  models/                       CoreML/MLX model conversion scripts (YOLO etc.)
 
-eco/client/ios/RoverOperator/   ← the iOS app (sibling to DroneOperator/)
-  RoverOperator/
-    Config/RoverConfig.swift
-    RoverSDK/                   RoverControl · RoverTelemetry   (Phase 0 control loop)
-    Perception/                 ARSessionManager (pose + mesh + LiDAR depth) · Detector
-    Nav/                        CostmapBuilder · ObstacleGuard · NavigationController · WorldMapStore
-    Voice/                      SpeechIn · SpeechOut · RoverIntent · DialogAgent   (Phase 2)
-    Cloud/                      ClaudeDialogClient (escalation only — route not yet deployed)
-    Views/                      DriveView (teleop) · NavigateView (autonomy) · ConversationView (voice)
-    App/RoverOperatorApp.swift
+sdk/                             ← public astral-sdk repo, sibling of eco
+  Package.swift                 three library products from one root manifest:
+    RoverNav                    platform-independent nav core (Sources/RoverNav, TESTED)
+                                 Geometry · Costmap · AStarPlanner · PursuitController · DifferentialDrive
+    PhroverKit                  the brain: Config/RoverConfig, RoverSDK (RoverControl ·
+                                 RoverTelemetry), Perception (ARSessionManager · Detector),
+                                 Nav (CostmapBuilder · ObstacleGuard · NavigationController ·
+                                 WorldMapStore), Voice (SpeechIn · SpeechOut · RoverIntent ·
+                                 DialogAgent · DialogEscalating)
+    PhroverCloud                mobile cloud client: AuthService, MQTTService, APIClient,
+                                 ClaudeDialogClient (conforms to DialogEscalating),
+                                 RoverTelemetryPublisher — depends on aws-sdk-ios-spm
+  examples/PhroverOperator/     the iOS app — thin SwiftUI wrapper over the three products
+    PhroverOperator/App, Views, Config/PhroverCloud.example.plist
+    PhroverOperatorUITests/
 ```
 
 ## Verifying the nav core (works today, no hardware)
 
 ```bash
-cd eco/rover/nav/RoverNav
-swift test          # 12 tests; includes the Phase-1 collision-free corner-navigation sim
+cd sdk
+swift build --target RoverNav   # pure Foundation, builds/tests on plain macOS
+```
+
+Running the full `RoverNavTests` suite (12 tests, incl. the collision-free
+corner-navigation sim) needs an iOS destination, since RoverNav now shares a package with
+ARKit-dependent PhroverKit/PhroverCloud, which don't build on plain macOS:
+
+```bash
+xcodebuild test -scheme astral-sdk-Package -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -only-testing:RoverNavTests
 ```
 
 ## Building the app
 
-`RoverOperator.xcodeproj` exists (generated via `xcodegen` from `project.yml`) and builds
-clean for the Simulator today:
-
 ```bash
-cd eco/client/ios/RoverOperator
-xcodegen generate   # after adding/removing any source files
-xcodebuild -project RoverOperator.xcodeproj -scheme RoverOperator -sdk iphonesimulator \
+cd sdk/examples/PhroverOperator
+xcodebuild -project PhroverOperator.xcodeproj -scheme PhroverOperator -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' build
 ```
 

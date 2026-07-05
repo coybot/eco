@@ -35,7 +35,7 @@ fixedwing:
 # small-talk fallback (see aws/src/rover.py docstring) — navigation intents are parsed
 # and dispatched entirely on-device by RoverNav and never reach the cloud at all.
 phrover:
-  app: RoverOperator
+  app: PhroverOperator  # sdk/examples/PhroverOperator in the sibling astral-sdk repo
   dialog:
     transport: rover_converse_http     # POST /rover/converse -> {"reply": "..."}
     utterance: "what's your name?"

@@ -1,7 +1,7 @@
 """Fake WAVE ROVER ESP32 base for hardware-free phrover testing.
 
-Speaks just enough of the Waveshare JSON command protocol that
-`RoverOperator/RoverSDK/RoverControl.swift` gets a real 2xx round trip:
+Speaks just enough of the Waveshare JSON command protocol that PhroverKit's
+`RoverSDK/RoverControl.swift` (in the sibling astral-sdk repo) gets a real 2xx round trip:
 
     GET /js?json={"T":1,"L":<m/s>,"R":<m/s>}   -- speed control
     GET /js?json={"T":0}                        -- emergency stop
@@ -15,7 +15,7 @@ harness / CI to assert against.
 
 Usable as a library (``MockESP32`` context manager, for the Python-side test) or as a
 standalone process (``python3 mock_esp32.py --port 8080``) for a human or CI driving the
-real RoverOperator app/UI test against a laptop instead of a physical chassis.
+real PhroverOperator app/UI test against a laptop instead of a physical chassis.
 """
 from __future__ import annotations
 
