@@ -8,7 +8,9 @@ enum RoverConfig {
     /// Default host of the WAVE ROVER ESP32 web server.
     /// - AP mode (rover as its own hotspot): 192.168.4.1
     /// - STA mode (rover joined building WiFi): set to the DHCP address / Bonjour name.
-    static let defaultHost = "192.168.4.1"
+    /// - e2e testing (no chassis): set E2E_ROVER_HOST to eco/e2e/harness/mock_esp32.py's
+    ///   host:port — see RoverOperatorUITests.
+    static let defaultHost = ProcessInfo.processInfo.environment["E2E_ROVER_HOST"] ?? "192.168.4.1"
 
     /// The ESP32 firmware exposes JSON control at `GET /js?json=<url-encoded JSON>`.
     static let jsonCommandPath = "/js"

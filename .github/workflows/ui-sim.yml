@@ -1,0 +1,46 @@
+name: ui-sim
+
+# Build-and-boot smoke check for the phone apps, on every PR that touches a client app.
+# Deliberately does NOT run the gated onboarding/mission tests (testOnboard_*,
+# testDrive_forwardCommand_*) — those need a live drone/Astral-Sim fleet and real Cognito
+# creds, which hosted runners don't have. That full check runs nightly in e2e-live.yml on
+# a self-hosted macOS runner. This job only proves each app still builds and launches.
+on:
+  pull_request:
+    paths:
+      - "client/ios/**"
+      - "client/android/**"
+
+jobs:
+  ios-launch-smoke:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        app: [DroneOperator, RoverOperator]
+        include:
+          - app: DroneOperator
+            test: DroneOperatorUITests/DroneOperatorUITests/testLaunch_showsAuthOrFleet
+          - app: RoverOperator
+            test: RoverOperatorUITests/RoverOperatorUITests/testLaunch_showsAuthOrTabs
+    steps:
+      - uses: actions/checkout@v4
+      - name: xcodebuild version
+        run: xcodebuild -version
+      - name: Build + run launch smoke test
+        working-directory: client/ios/${{ matrix.app }}
+        run: |
+          xcodebuild test -project ${{ matrix.app }}.xcodeproj -scheme ${{ matrix.app }} \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -only-testing:${{ matrix.test }}
+
+  android-build-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Assemble debug APK
+        working-directory: client/android
+        run: ./gradlew assembleDebug

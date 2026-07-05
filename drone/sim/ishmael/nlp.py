@@ -38,6 +38,9 @@ _VEHICLE_ALIASES = {
     "rover": "rover", "rovers": "rover", "carter": "rover", "carters": "rover",
     "ground": "rover", "car": "rover", "cars": "rover", "robot": "rover",
     "robots": "rover",
+    "fixedwing": "fixedwing", "fixed-wing": "fixedwing", "fixed": "fixedwing",
+    "fw": "fixedwing", "plane": "fixedwing", "planes": "fixedwing",
+    "airplane": "fixedwing", "airplanes": "fixedwing",
 }
 
 # Scenes the resolver understands today (branch 2 extends this list). Kept here so
@@ -64,7 +67,7 @@ class VehicleReq:
 
     def normalized(self) -> "VehicleReq":
         vt = _VEHICLE_ALIASES.get(self.type.strip().lower(), self.type.strip().lower())
-        if vt not in ("quadcopter", "rover"):
+        if vt not in ("quadcopter", "rover", "fixedwing"):
             vt = "quadcopter"
         return VehicleReq(type=vt, count=max(1, int(self.count)))
 
@@ -82,11 +85,9 @@ class TestSpec:
 
     # -- helpers used by the director ------------------------------------------
     def fleet_arg(self) -> str:
-        """Compose the ``--fleet`` spec fleet.parse_roster expects: 'quad:2,rover:3'."""
-        parts = []
-        for v in self.vehicles:
-            kind = "quad" if v.type == "quadcopter" else "rover"
-            parts.append(f"{kind}:{v.count}")
+        """Compose the ``--fleet`` spec fleet.parse_roster expects: 'quad:2,rover:3,fw:1'."""
+        kinds = {"quadcopter": "quad", "rover": "rover", "fixedwing": "fw"}
+        parts = [f"{kinds[v.type]}:{v.count}" for v in self.vehicles]
         return ",".join(parts) or "quad:1"
 
     def total_vehicles(self) -> int:
@@ -198,14 +199,14 @@ _LLM_SYSTEM = (
     "You convert a natural-language drone simulation test description into JSON. "
     "Output ONLY a JSON object, no prose, no markdown fences. Schema:\n"
     "{\n"
-    '  "vehicles": [{"type": "quadcopter"|"rover", "count": <int>}],\n'
+    '  "vehicles": [{"type": "quadcopter"|"rover"|"fixedwing", "count": <int>}],\n'
     '  "scene": "<one or two words, e.g. office, forest, stadium, castle, village, cafe>",\n'
     '  "objective": "<short verb phrase, e.g. search for a chair>",\n'
     '  "target": "<object to find, or null>",\n'
     '  "mobile_action": "send_picture"|"send_video"|"none"\n'
     "}\n"
-    "Map 'drone' to 'quadcopter' and 'ground robot'/'carter' to 'rover'. "
-    "If a count is missing, use 1."
+    "Map 'drone' to 'quadcopter', 'ground robot'/'carter' to 'rover', and "
+    "'plane'/'airplane'/'fixed-wing' to 'fixedwing'. If a count is missing, use 1."
 )
 
 _LLM_EXAMPLES = [
