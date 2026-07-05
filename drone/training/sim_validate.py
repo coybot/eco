@@ -33,10 +33,17 @@ sys.path.insert(0, str(_here))
 
 from reactive_planner import ReactivePlanner, make_planner  # noqa: E402
 from contract import VEHICLE_QUAD, VEHICLE_ROVER            # noqa: E402
+from fw_contract import VEHICLE_FIXEDWING                   # noqa: E402
+from vehicle_class import get_class                         # noqa: E402
 
 DT = 0.1          # 10 Hz, matching training
 MAX_TICKS = 3000  # 300 s — well above worst-case jerk-limited settling time
 CLEARANCE = 8.0   # obstacle-free scenario (no walls)
+
+FW = get_class("fixedwing")   # cruise/stall speed for the fixed-wing goal suite
+
+_VEHICLE_LABELS = {VEHICLE_QUAD: "quad", VEHICLE_ROVER: "rover", VEHICLE_FIXEDWING: "fixedwing"}
+_VEHICLE_START_Z = {VEHICLE_QUAD: 2.0, VEHICLE_ROVER: 0.0, VEHICLE_FIXEDWING: 60.0}
 
 # Goal suite: (fwd_m, left_m, up_m, vehicle)
 GOALS = [
@@ -49,12 +56,20 @@ GOALS = [
     (8.0,  -4.0,  0.0, VEHICLE_ROVER),  # rover reverse diagonal
 ]
 
+# Fixed-wing goal suite, run separately with FW-scale planners (see main()) — much longer
+# range/altitude offsets than quad/rover, matching cruise speed and long-range depth.
+FW_GOALS = [
+    (200.0,   0.0,   0.0, VEHICLE_FIXEDWING),   # straight ahead
+    (200.0,  60.0,  20.0, VEHICLE_FIXEDWING),   # wide turn + climb
+    (300.0, -40.0, -20.0, VEHICLE_FIXEDWING),   # long descent turn
+]
+
 
 def _run_goal(planner, gx: float, gy: float, gz: float, vehicle: float) -> dict:
     """Simulate one goal and return metrics."""
     # world-frame position and velocity
     x = y = 0.0
-    z = 2.0 if vehicle == VEHICLE_QUAD else 0.0
+    z = _VEHICLE_START_Z[vehicle]
     yaw = 0.0
     vx_w = vy_w = vz_w = 0.0
 
@@ -112,14 +127,14 @@ def _run_goal(planner, gx: float, gy: float, gz: float, vehicle: float) -> dict:
     }
 
 
-def _run_planner(planner, label: str) -> list[dict]:
+def _run_planner(planner, label: str, goals=GOALS) -> list[dict]:
     results = []
-    for gx, gy, gz, vehicle in GOALS:
+    for gx, gy, gz, vehicle in goals:
         # LearnedPlanner embeds the vehicle flag in state; rule planner ignores it
         if hasattr(planner, "vehicle"):
             planner.vehicle = float(vehicle)
         r = _run_goal(planner, gx, gy, gz, vehicle)
-        r["goal"] = f"({gx},{gy},{gz}) {'quad' if vehicle == VEHICLE_QUAD else 'rover'}"
+        r["goal"] = f"({gx},{gy},{gz}) {_VEHICLE_LABELS[vehicle]}"
         r["planner"] = label
         results.append(r)
     return results
@@ -140,6 +155,20 @@ def main() -> int:
 
     rule_results = _run_planner(rule_planner, "rule")
     learned_results = _run_planner(learned_planner, "learned")
+
+    # Fixed-wing runs with its own planners (cruise/stall speed, longer reach bubble — a plane
+    # can't hover-capture a 1 m target) and policy_fw.onnx (falls back to a proportional command
+    # if that policy hasn't been trained/exported yet).
+    fw_range_gate = (0.3, 500.0)   # wide enough for the fixed-wing goal suite's long-range targets
+    rule_planner_fw = make_planner(use_learned=False, reach_threshold=10.0,
+                                   max_speed=FW.max_speed_mps, min_speed=FW.min_speed_mps,
+                                   range_gate=fw_range_gate)
+    learned_planner_fw = make_planner(use_learned=True, models_dir=args.models_dir,
+                                      reach_threshold=10.0, max_speed=FW.max_speed_mps,
+                                      vehicle=VEHICLE_FIXEDWING, onnx_name="policy_fw.onnx",
+                                      range_gate=fw_range_gate)
+    rule_results += _run_planner(rule_planner_fw, "rule", goals=FW_GOALS)
+    learned_results += _run_planner(learned_planner_fw, "learned", goals=FW_GOALS)
 
     # --- print comparison table ---
     header = f"{'Goal':<30} {'Planner':<10} {'Reached':<8} {'Ticks':<7} {'Dist(m)':<9} {'JerkRMS':<10} {'AccMax':<8}"

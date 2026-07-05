@@ -124,6 +124,54 @@ train-ma-all version="ma_rover_v1" iters="1200":
     just -f eco/drone/training/justfile pull-ma version={{version}}
     just -f eco/drone/training/justfile scorecard-compare version={{version}}
 
+# Deploy fixed-wing (Dubins-airplane) training files to hoopoe
+deploy-fw:
+    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+        "mkdir -p {{remote_dir}}/eco/drone/training/tests {{remote_dir}}/eco/drone/common ~/drone-data/fixedwing/models"
+    sshpass -p 'sayplease' scp {{ssh_opts}} \
+        eco/__init__.py eco/drone/__init__.py \
+        {{hoopoe}}:{{remote_dir}}/eco/
+    sshpass -p 'sayplease' scp {{ssh_opts}} \
+        eco/drone/__init__.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/
+    sshpass -p 'sayplease' scp {{ssh_opts}} \
+        eco/drone/training/__init__.py \
+        eco/drone/training/contract.py \
+        eco/drone/training/fw_contract.py \
+        eco/drone/training/dynamics.py \
+        eco/drone/training/train_rl.py \
+        eco/drone/training/train_rl_fixedwing.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/training/
+    sshpass -p 'sayplease' scp {{ssh_opts}} \
+        eco/drone/common/vehicle_class.py \
+        {{hoopoe}}:{{remote_dir}}/eco/drone/common/
+    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+        "uv pip install --python {{python}} --quiet torch onnx onnxruntime pytest 2>&1 | tail -3"
+
+# Train fixed-wing PPO on hoopoe (from scratch, no BC warm-start — see train_rl_fixedwing.py docstring)
+train-fw iters="800" envs="512" version="fw_v1":
+    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+        "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.train_rl_fixedwing \
+            --out ~/drone-data/fixedwing/models \
+            --version {{version}} \
+            --iters {{iters}} \
+            --envs {{envs}}"
+
+# Pull trained fixed-wing model back to local eco/drone/models/
+# (looped single-file scp — sshpass + a multi-source scp in one call drops files partway through)
+pull-fw version="fw_v1":
+    mkdir -p {{local_models}}
+    for f in policy_{{version}}.onnx policy_{{version}}_ac.pt policy_{{version}}_rl_summary.json; do \
+        sshpass -p 'sayplease' scp {{ssh_opts}} \
+            "{{hoopoe}}:~/drone-data/fixedwing/models/$f" {{local_models}}/; \
+    done
+
+# Full fixed-wing pipeline: deploy -> train -> pull
+train-fw-all version="fw_v1" iters="800":
+    just -f eco/drone/training/justfile deploy-fw
+    just -f eco/drone/training/justfile train-fw version={{version}} iters={{iters}}
+    just -f eco/drone/training/justfile pull-fw version={{version}}
+
 # Full pipeline: deploy -> dataset -> train -> pull
 all episodes="4000" epochs="30":
     just -f eco/drone/training/justfile deploy

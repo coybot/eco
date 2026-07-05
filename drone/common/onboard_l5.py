@@ -138,14 +138,15 @@ def build_observation(agent: Agent, pose: Pose, scan: np.ndarray,
         surf = float(np.linalg.norm(d)) - agent.vclass.radius_m - ovc.radius_m
         teammate_surf = min(teammate_surf, max(0.0, surf))
 
+    sense_max = agent.vclass.sense_range_m
     scan = np.asarray(scan, dtype=np.float32)
     if not pose.sensor_ok:  # sensor dropout: report all-clear (matches sim blind path)
         n_rays = _LIDAR_RAYS if agent.vclass.sensor is Sensor.LIDAR_360 \
             else _DEPTH_COLS * _DEPTH_ROWS
-        scan = np.full(n_rays, SENSE_MAX, dtype=np.float32)
-        min_clear = SENSE_MAX
+        scan = np.full(n_rays, sense_max, dtype=np.float32)
+        min_clear = sense_max
     else:
-        min_clear = float(scan.min()) if scan.size else SENSE_MAX
+        min_clear = float(scan.min()) if scan.size else sense_max
         min_clear = min(min_clear, teammate_surf)
 
     return Observation(
@@ -169,7 +170,8 @@ def _peer_snapshot(p: Peer) -> AgentSnapshot:
     return AgentSnapshot(
         id=p.id, pos=[float(x) for x in p.pos_enu], vel=[float(x) for x in p.vel_enu],
         goal=None, alive=p.alive, sensor_ok=True, confidence=p.confidence,
-        vclass=get_class(p.vclass_name).name, min_scan_dist=SENSE_MAX,
+        vclass=get_class(p.vclass_name).name,
+        min_scan_dist=get_class(p.vclass_name).sense_range_m,
     )
 
 

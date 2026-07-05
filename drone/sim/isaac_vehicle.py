@@ -22,6 +22,7 @@ import logging
 import math
 import os
 import threading
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -60,6 +61,9 @@ _ROVER_USD_RELS = [
     "/Isaac/Robots/NVIDIA/Carter/carter_v1.usd",
     "/Isaac/Robots/NVIDIA/Jetbot/jetbot.usd",
 ]
+_FW_ALIASES = ("fixedwing", "fw", "plane")
+# Not a Nucleus-hosted asset: shipped locally alongside this module.
+_FW_USD_LOCAL = Path(__file__).parent / "assets" / "delta_wing.usda"
 
 
 class _Vehicle:
@@ -67,19 +71,24 @@ class _Vehicle:
 
     def __init__(self, drone_id: str, vtype: str, spawn: np.ndarray, prim_path: str):
         self.id = drone_id
-        self.vtype = vtype                       # "quadcopter" | "rover"
+        self.vtype = vtype                       # "quadcopter" | "rover" | "fixedwing"
         self.prim_path = prim_path
         self.lock = threading.Lock()
         self.position = np.asarray(spawn, dtype=float)
         self.yaw = 0.0
+        self.roll = 0.0                          # bank angle (rad), fixed-wing visual only
         self.goal: Optional[np.ndarray] = None
         self.goal_yaw: Optional[float] = None
         self.velocity_cmd: Optional[np.ndarray] = None
         self.armed = False
         self.prim = None
         self.camera = None                       # created lazily (Isaac thread)
-        self.max_lin = 3.0 if vtype == "quadcopter" else 1.5
-        self.max_yaw = math.radians(90.0)
+        if vtype in _FW_ALIASES:
+            self.max_lin = 25.0
+            self.max_yaw = 0.6   # matches FIXEDWING.max_yaw_rate_radps (bank-limited)
+        else:
+            self.max_lin = 3.0 if vtype == "quadcopter" else 1.5
+            self.max_yaw = math.radians(90.0)
 
 
 class IsaacVehicleBridge:
@@ -121,6 +130,8 @@ class IsaacVehicleBridge:
                 return vehicle_usd(vtype, photoreal=True, assets_root=root)
             except Exception:
                 pass  # fall through to standard assets
+        if vtype in _FW_ALIASES:
+            return str(_FW_USD_LOCAL)
         if vtype == "rover":
             from omni.isaac.core.utils.nucleus import is_file
             for rel in _ROVER_USD_RELS:
@@ -221,28 +232,46 @@ class IsaacVehicleBridge:
         print(f"[isaac] camera ready for {drone_id}", flush=True)
 
     # -- vantage cameras (fixed world viewpoints, Isaac thread only) ------------
+    @staticmethod
+    def _look_at_quat(pos: np.ndarray, target: np.ndarray) -> np.ndarray:
+        """wxyz orientation mapping the camera's default +X optical axis onto (target-pos),
+        keeping world +Z "up" as the secondary reference. Shared by add_vantage_camera and
+        update_vantage_camera so a moving (chase-style) vantage camera re-aims identically to
+        how it was first framed.
+
+        Degenerate for a near-vertical look direction (fwd ~= +-world Z): aligning both fwd
+        and the up-reference to the same axis is ill-posed and scipy silently returns an
+        arbitrary roll (warns "Optimal rotation is not uniquely...defined"), which showed up
+        as a broken top-down/bird's-eye vantage camera. Falls back to world +Y as the up
+        reference in that case (any axis not parallel to fwd would do).
+        """
+        from scipy.spatial.transform import Rotation
+        fwd = target - pos
+        n = float(np.linalg.norm(fwd))
+        fwd = fwd / n if n > 1e-6 else np.array([1.0, 0.0, 0.0])
+        up_ref = np.array([0.0, 0.0, 1.0])
+        if abs(float(np.dot(fwd, up_ref))) > 0.99:   # fwd ~parallel to +-Z: pick another ref
+            up_ref = np.array([0.0, 1.0, 0.0])
+        rot, _ = Rotation.align_vectors([fwd, up_ref], [[1, 0, 0], [0, 0, 1]])
+        q_xyzw = rot.as_quat()
+        return np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]])
+
     def add_vantage_camera(self, name: str, position, look_at,
                            resolution=(1280, 720), hfov_deg: float = 60.0) -> None:
         """Create a fixed camera at ``position`` aimed at ``look_at`` (world coords).
 
         Unlike per-vehicle cameras, vantage cameras are not parented to anything —
         they observe the whole scene (e.g. an overhead or corner shot of the drones).
-        Idempotent: re-adding a name is a no-op.
+        Idempotent: re-adding a name is a no-op. Call `update_vantage_camera` afterward
+        per-tick to turn this into a chase/trailing camera for a moving vehicle.
         """
         if name in self.vantages:
             return
         import math as m
         from omni.isaac.sensor import Camera
-        from scipy.spatial.transform import Rotation
         pos = np.asarray(position, dtype=float)
         target = np.asarray(look_at, dtype=float)
-        fwd = target - pos
-        n = float(np.linalg.norm(fwd))
-        fwd = fwd / n if n > 1e-6 else np.array([1.0, 0.0, 0.0])
-        # Map the camera's default optical axis (+X) onto fwd, keeping world +Z up.
-        rot, _ = Rotation.align_vectors([fwd, [0, 0, 1]], [[1, 0, 0], [0, 0, 1]])
-        q_xyzw = rot.as_quat()
-        q_wxyz = np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]])
+        q_wxyz = self._look_at_quat(pos, target)
         cam = Camera(prim_path=f"/World/vantage_{name}", position=pos,
                      resolution=resolution, orientation=q_wxyz)
         cam.initialize()
@@ -256,6 +285,20 @@ class IsaacVehicleBridge:
         self.vantages[name] = cam
         print(f"[isaac] vantage camera '{name}' at {pos.tolist()} -> {target.tolist()}",
               flush=True)
+
+    def update_vantage_camera(self, name: str, position, look_at) -> None:
+        """Reposition + re-aim an existing vantage camera (Isaac thread only).
+
+        Call once per tick with the desired trailing offset from a moving vehicle to
+        turn a vantage camera into a chase camera — cheaper than re-parenting, and
+        keeps the same aperture/FOV set at creation time.
+        """
+        cam = self.vantages.get(name)
+        if cam is None:
+            return
+        pos = np.asarray(position, dtype=float)
+        target = np.asarray(look_at, dtype=float)
+        cam.set_world_pose(position=pos, orientation=self._look_at_quat(pos, target))
 
     def grab_vantage_frame(self, name: str):
         """Return latest RGB (H,W,3) for a vantage camera. Isaac thread only."""
@@ -346,14 +389,26 @@ class IsaacVehicleBridge:
         out = {}
         for vid, v in self.vehicles.items():
             with v.lock:
-                radius = 0.15 if v.vtype == "quadcopter" else 0.5
+                if v.vtype == "quadcopter":
+                    radius = 0.15
+                elif v.vtype in _FW_ALIASES:
+                    radius = 1.0
+                else:
+                    radius = 0.5
                 out[vid] = (v.position.copy(), v.vtype, radius)
         return out
 
     # -- kinematics (Isaac thread) ----------------------------------------------
     def _apply_pose(self, v: _Vehicle) -> None:
         from scipy.spatial.transform import Rotation
-        q_xyzw = Rotation.from_euler("Z", v.yaw).as_quat()
+        # Extrinsic 'ZX' = Rz(yaw) @ Rx(roll) applied to a vector: yaw to heading first, then
+        # roll about the (fixed-world) X axis -- gives a banked look for fixed-wing turns that
+        # holds regardless of heading. roll stays 0 for quad/rover. NOTE: scipy's lowercase
+        # ("intrinsic") sequence composes in the OPPOSITE matrix order from what the name
+        # suggests here -- 'zx' intrinsic gives Rx(roll) @ Rz(yaw), i.e. roll gets applied in
+        # world frame *before* yaw and washes out for any non-zero heading. Verified numerically
+        # against a hand-built Rz @ Rx matrix product before fixing.
+        q_xyzw = Rotation.from_euler("ZX", [v.yaw, v.roll]).as_quat()
         q_wxyz = np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]])
         v.prim.set_world_pose(position=v.position, orientation=q_wxyz)
 
@@ -499,7 +554,16 @@ class IsaacVehicleBridge:
         with v.lock:
             v.goal_yaw = float(yaw_rad)
 
-    def set_drone_pose(self, drone_id: str, position, yaw_rad: float = 0.0) -> None:
+    def set_drone_roll(self, drone_id: str, roll_rad: float) -> None:
+        """Set the visual bank angle (rad, +right wing down). Applied immediately (not
+        rate-limited like goal_yaw) -- callers should already derive a physically bounded
+        bank from speed/yaw-rate (e.g. atan2(v * yaw_rate, g)) before calling this."""
+        v = self.vehicles[drone_id]
+        with v.lock:
+            v.roll = float(roll_rad)
+
+    def set_drone_pose(self, drone_id: str, position, yaw_rad: float = 0.0,
+                       roll_rad: float = 0.0) -> None:
         """Teleport a vehicle to an exact pose and clear its motion (Isaac thread).
 
         Used to reset a drone to the course start between evaluation passes.
@@ -511,6 +575,7 @@ class IsaacVehicleBridge:
                 p[2] = 0.0
             v.position = p
             v.yaw = float(yaw_rad)
+            v.roll = float(roll_rad)
             v.goal = None
             v.goal_yaw = None
             v.velocity_cmd = None

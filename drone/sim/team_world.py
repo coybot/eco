@@ -175,6 +175,25 @@ class KinematicWorld:
             agent.pos[1] += (s * v + self.wind[1]) * dt
             agent.pos[2] = 0.0
             agent.vel = np.array([c * v, s * v, 0.0], dtype=np.float32)
+        elif vc.kinematics is Kinematics.COORDINATED_TURN_3D:
+            # Dubins-airplane (fixed-wing): action [vx, vy(ignored), vz, yaw_rate] body
+            # frame. Forward speed is clamped to [min_speed_mps, max_speed_mps] — never
+            # zero or reverse (can't hover). Turn rate is bank-limited: for a fixed max
+            # bank angle, achievable yaw rate falls off as ~1/v, so max_yaw_rate_radps is
+            # taken to apply at min_speed_mps and is scaled down at higher speeds. Climb
+            # is bounded by a fixed flight-path angle, so vz scales with forward speed.
+            v = float(np.clip(action[0], vc.min_speed_mps, vc.max_speed_mps))
+            v_ref = max(vc.min_speed_mps, 1e-3)
+            yaw_limit = vc.max_yaw_rate_radps * (v_ref / max(v, v_ref))
+            w = float(np.clip(action[3], -yaw_limit, yaw_limit))
+            agent.yaw = _wrap_pi(agent.yaw + w * dt)
+            c, s = math.cos(agent.yaw), math.sin(agent.yaw)
+            climb_cap = v * math.tan(vc.max_climb_angle_rad)
+            vz = float(np.clip(action[2], -climb_cap, climb_cap))
+            agent.pos[0] += (c * v + self.wind[0]) * dt
+            agent.pos[1] += (s * v + self.wind[1]) * dt
+            agent.pos[2] = max(0.0, agent.pos[2] + vz * dt)
+            agent.vel = np.array([c * v, s * v, vz], dtype=np.float32)
         else:  # HOLONOMIC_3D: action [vx,vy,vz,yaw_rate] in body frame
             spd = vc.max_speed_mps
             vx = float(np.clip(action[0], -spd, spd))
@@ -383,7 +402,7 @@ class TeamWorld:
 
     def _scan(self, me: Agent, boxes: list[Box]) -> tuple[np.ndarray, float]:
         """Sensing-modality output + min clearance. Modality from VehicleClass.sensor."""
-        max_d = KinematicWorld.SENSE_MAX
+        max_d = me.vclass.sense_range_m
         n_rays = _LIDAR_RAYS if me.vclass.sensor is Sensor.LIDAR_360 else _DEPTH_COLS * _DEPTH_ROWS
         if not me.sensor_ok:   # sensor_dropout inject: blind (reports all-clear)
             return np.full(n_rays, max_d, dtype=np.float32), max_d
@@ -431,7 +450,7 @@ class TeamWorld:
             dy = max(0.0, abs(me.pos[1] - b.center[1]) - b.half[1])
             dz = max(0.0, abs(me.pos[2] - b.center[2]) - b.half[2])
             best = min(best, math.sqrt(dx * dx + dy * dy + dz * dz))
-        return best if best != math.inf else KinematicWorld.SENSE_MAX
+        return best if best != math.inf else me.vclass.sense_range_m
 
     def observe(self, me: Agent) -> Observation:
         boxes = self.backend.obstacles() + self._moving_obstacles(me)
@@ -499,23 +518,35 @@ def reactive_goto_controller(slow_radius: float = 2.0,
     multi-way conflicts are the job of the learned policy + Phase-4 deconfliction; this
     baseline keeps separation in moderate density.
     """
+    def _avoid_radius_for(vc: VehicleClass) -> float:
+        """Effective repulsion radius: the shared default for quad/rover, turn-radius-scaled
+        for fixed-wing. A banked turn at cruise speed has physical turn radius v/max_yaw_rate
+        (~42 m at 25 m/s / 0.6 rad/s); reacting only at 30 m (a naive speed*time heuristic)
+        leaves less room than the turn itself needs, so the plane can't clear an obstacle in
+        time — it must start turning at least one turn-radius (plus margin) out."""
+        if vc.kinematics is Kinematics.COORDINATED_TURN_3D:
+            turn_radius = vc.max_speed_mps / max(vc.max_yaw_rate_radps, 1e-3)
+            return max(avoid_radius, turn_radius * 1.5)
+        return avoid_radius
+
     def _repulsion_body(obs: Observation, vc: VehicleClass) -> np.ndarray:
         """Net repulsion vector in body frame (fwd,left,up)."""
+        ar = _avoid_radius_for(vc)
         rep = np.zeros(3, dtype=np.float32)
         # neighbors: push directly away from each, stronger when closer
         for _id, rel_body, _vel, ovc in obs.neighbors:
             d = float(np.linalg.norm(rel_body[:2]))
             safe = vc.radius_m + ovc.radius_m + 0.8
-            if d < avoid_radius and d > 1e-3:
-                mag = (avoid_radius - d) / avoid_radius * (1.0 + safe)
+            if d < ar and d > 1e-3:
+                mag = (ar - d) / ar * (1.0 + safe)
                 rep[:2] -= (rel_body[:2] / d) * mag
         # static obstacle: push away from the closest scan ray's direction
-        if obs.scan.size and obs.min_clearance < avoid_radius:
+        if obs.scan.size and obs.min_clearance < ar:
             ang = (lidar_ray_angles() if vc.sensor is Sensor.LIDAR_360
                    else _DEPTH_YAW_ANGLES)
             k = int(np.argmin(obs.scan))
             a = ang[k]
-            mag = (avoid_radius - obs.min_clearance) / avoid_radius
+            mag = (ar - obs.min_clearance) / ar
             rep[0] -= math.cos(a) * mag
             rep[1] -= math.sin(a) * mag
             if vc.sensor is Sensor.FORWARD_DEPTH:
@@ -541,6 +572,20 @@ def reactive_goto_controller(slow_radius: float = 2.0,
             if obs.min_clearance < vc.radius_m + 1.0:
                 speed *= 0.3
             return np.array([max(0.0, speed), yaw_cmd], dtype=np.float32)
+        elif vc.kinematics is Kinematics.COORDINATED_TURN_3D:
+            # Fixed-wing: hold speed near cruise, steer by banking (yaw_rate), never
+            # sideslip (vy always 0 — the Dubins-airplane integrator ignores it anyway).
+            ar = _avoid_radius_for(vc)
+            desired = math.atan2(cmd[1], cmd[0])     # body-frame desired heading
+            yaw_cmd = float(np.clip(desired * 1.5, -vc.max_yaw_rate_radps,
+                                    vc.max_yaw_rate_radps))
+            # never crawl toward stall; only ease off cruise near the goal
+            speed = max(vc.min_speed_mps, vc.max_speed_mps * max(gscale, 0.7))
+            vz = cmd[2] * vc.max_speed_mps * gscale
+            # blocked ahead with little vertical cue -> climb over
+            if obs.min_clearance < ar and abs(tu) < 0.5:
+                vz += 0.6 * vc.max_speed_mps
+            return np.array([speed, 0.0, vz, yaw_cmd], dtype=np.float32)
         else:
             v = cmd * vc.max_speed_mps
             v[:2] *= max(gscale, 0.5 if np.linalg.norm(rep) > 0 else gscale)

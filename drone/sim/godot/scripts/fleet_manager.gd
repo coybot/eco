@@ -19,8 +19,11 @@ const JPEG_QUALITY := 85
 const REACHED := 0.2          # metres — same as FleetWorker.REACHED
 const MAX_LIN_QUAD := 3.0     # m/s
 const MAX_LIN_ROVER := 1.5    # m/s
-const MAX_YAW_RAD := 1.5708   # rad/s  (~90 deg/s)
+const MAX_LIN_FW := 25.0      # m/s — fixed-wing cruise (vehicle_class.py FIXEDWING)
+const MAX_YAW_RAD := 1.5708   # rad/s  (~90 deg/s), quad/rover
+const MAX_YAW_RAD_FW := 0.6   # rad/s — bank-limited turn (FIXEDWING.max_yaw_rate_radps)
 const PHYSICS_DT := 1.0 / 60.0
+const FW_TYPES := ["fixedwing", "fw", "plane"]
 
 # Per-vehicle runtime state (Dictionary, keyed by drone_id).
 var _vehicles: Dictionary = {}   # id → VehicleState
@@ -52,6 +55,7 @@ class VehicleState:
 	var velocity_cmd: Vector3    # ENU; zero = not active
 	var velocity_active: bool
 	var max_lin: float
+	var max_yaw: float
 	var viewport: SubViewport
 	var camera: Camera3D
 
@@ -66,7 +70,12 @@ class VehicleState:
 		goal_yaw = NAN
 		velocity_cmd = Vector3.ZERO
 		velocity_active = false
-		max_lin = MAX_LIN_QUAD if vt == "quadcopter" else MAX_LIN_ROVER
+		if vt in FW_TYPES:
+			max_lin = MAX_LIN_FW
+			max_yaw = MAX_YAW_RAD_FW
+		else:
+			max_lin = MAX_LIN_QUAD if vt == "quadcopter" else MAX_LIN_ROVER
+			max_yaw = MAX_YAW_RAD
 		viewport = vp
 		camera = cam
 
@@ -200,6 +209,8 @@ func _spawn_vehicle(drone_id: String, vtype: String,
 	var model_path: String
 	if vtype == "rover":
 		model_path = "res://scenes/vehicles/rover.tscn"
+	elif vtype in FW_TYPES:
+		model_path = "res://scenes/vehicles/fixedwing.tscn"
 	else:
 		model_path = "res://scenes/vehicles/quadcopter.tscn"
 
@@ -257,12 +268,16 @@ func _make_placeholder(vtype: String) -> Node3D:
 	var n := Node3D.new()
 	var mi := MeshInstance3D.new()
 	mi.mesh = BoxMesh.new()
+	var mat := StandardMaterial3D.new()
 	if vtype == "rover":
 		(mi.mesh as BoxMesh).size = Vector3(0.5, 0.3, 0.3)
+		mat.albedo_color = Color(0.9, 0.4, 0.1)
+	elif vtype in FW_TYPES:
+		(mi.mesh as BoxMesh).size = Vector3(0.6, 0.1, 3.0)   # elongated, wingspan-ish along Z (forward)
+		mat.albedo_color = Color(0.6, 0.6, 0.65)
 	else:
 		(mi.mesh as BoxMesh).size = Vector3(0.35, 0.1, 0.35)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.9, 0.4, 0.1) if vtype == "rover" else Color(0.2, 0.6, 1.0)
+		mat.albedo_color = Color(0.2, 0.6, 1.0)
 	mi.material_override = mat
 	n.add_child(mi)
 	return n
@@ -298,7 +313,7 @@ func _integrate(st: VehicleState, dt: float) -> void:
 	# Yaw integration.
 	if not is_nan(st.goal_yaw):
 		var dy := wrapf(st.goal_yaw - st.yaw, -PI, PI)
-		var step: float = sign(dy) * min(MAX_YAW_RAD * dt, abs(dy))
+		var step: float = sign(dy) * min(st.max_yaw * dt, abs(dy))
 		st.yaw += step
 		if abs(dy) < deg_to_rad(1.0):
 			st.yaw = st.goal_yaw
@@ -317,15 +332,16 @@ func _integrate(st: VehicleState, dt: float) -> void:
 # Returns [offset: Vector3 (Godot), tilt_degrees: float] for a vehicle's POV camera.
 # 0.5m forward (Godot +Z) clears all vehicle body geometry (quad arms 0.3m, rover visor 0.21m).
 func _cam_params(vtype: String) -> Array:
+	var aerial := vtype == "quadcopter" or vtype in FW_TYPES
 	if _env_name == "plaza":
-		if vtype == "quadcopter":
+		if aerial:
 			# 8m altitude, chairs ~15m ahead and below — look down to frame them.
 			return [Vector3(0.0, 0.0, 0.5), -20.0]
 		else:
 			# Ground rover, chairs ahead at near-eye level — slight down tilt.
 			return [Vector3(0.0, 1.0, 0.5), -3.0]
 	elif _env_name in ["city", "outdoor", "neighbourhood"]:
-		if vtype == "quadcopter":
+		if aerial:
 			# 10m altitude — slight nose-down to frame the street below.
 			return [Vector3(0.0, 0.0, 0.5), -15.0]
 		else:
@@ -333,7 +349,7 @@ func _cam_params(vtype: String) -> Array:
 			return [Vector3(0.0, 1.0, 0.5), 0.0]
 	else:
 		# Office
-		if vtype == "quadcopter":
+		if aerial:
 			return [Vector3(0.0, 0.0, 0.5), 0.0]
 		else:
 			return [Vector3(0.0, 1.5, 0.5), 5.0]
@@ -562,6 +578,8 @@ static func _parse_roster(fleet_str: String) -> Array[Dictionary]:
 				vtype = "rover"
 			elif t in ["quad", "quadcopter", "quadcopters"]:
 				vtype = "quadcopter"
+			elif t in ["fixedwing", "fixedwings", "fw", "plane", "planes"]:
+				vtype = "fixedwing"
 		if kv.size() >= 2:
 			count = kv[1].strip_edges().to_int()
 		if not vtype in type_counts:
