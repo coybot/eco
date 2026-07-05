@@ -38,7 +38,7 @@ case "$PLATFORM" in
   *) echo "usage: $0 --type <type> --platform ios|android" >&2; exit 2;;
 esac
 if [[ "$TYPE" == "phrover" && "$PLATFORM" == "android" ]]; then
-  echo "phrover is RoverOperator, an iOS-only app — use --platform ios" >&2
+  echo "phrover is PhroverOperator, an iOS-only app — use --platform ios" >&2
   exit 2
 fi
 
@@ -59,7 +59,7 @@ fi
 
 if [[ "$PLATFORM" == "ios" ]]; then
   APP="DroneOperator"
-  [[ "$TYPE" == "phrover" ]] && APP="RoverOperator"
+  [[ "$TYPE" == "phrover" ]] && APP="PhroverOperator"
   ARGS=(--vehicle-type "$TYPE" --app "$APP")
   [[ -n "$E2E_DRONE_ID" ]] && ARGS+=(--drone-id "$E2E_DRONE_ID")
   [[ -n "$DEVICE" ]] && ARGS+=(--device "$DEVICE")

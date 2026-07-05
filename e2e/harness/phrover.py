@@ -1,4 +1,4 @@
-"""phrover (RoverOperator / WAVE ROVER) e2e check.
+"""phrover (PhroverOperator / WAVE ROVER) e2e check.
 
 Two independent, unrelated checks — see scenarios.yaml's comment for why:
 
@@ -6,12 +6,18 @@ Two independent, unrelated checks — see scenarios.yaml's comment for why:
              fast tier hits harness/mock_rover_converse.py; live tier hits the real
              deployed endpoint.
   navigate -- on-device RoverNav planning/driving. Identical in both tiers: it's pure
-             Swift, offline, deterministic — `swift test` in eco/rover/nav/RoverNav.
-             NavIntegrationTests.testDriveAroundCornerToGoalCollisionFree already asserts
-             "plan reaches the goal without violating the costmap" for a doorway-shaped
-             gap, matching the scenario's mission text.
+             Swift, offline, deterministic — RoverNavTests in the public astral-sdk repo
+             (sibling of this repo; see ../../../sdk). NavIntegrationTests
+             .testDriveAroundCornerToGoalCollisionFree already asserts "plan reaches the
+             goal without violating the costmap" for a doorway-shaped gap, matching the
+             scenario's mission text.
 
-App-level phrover coverage (actually driving RoverOperator's UI against a mocked WAVE
+RoverNav now lives in the same SwiftPM package as PhroverKit/PhroverCloud, which import
+ARKit (unavailable on macOS) — so plain `swift test` there tries to build everything and
+fails. We run RoverNavTests through `xcodebuild test` against an iOS Simulator instead,
+which is still hardware-free (no phone, no chassis, no AWS creds).
+
+App-level phrover coverage (actually driving PhroverOperator's UI against a mocked WAVE
 ROVER base) is Layer B — see harness/mock_esp32.py + run_phone.sh, not this module.
 """
 from __future__ import annotations
@@ -26,14 +32,34 @@ from typing import Any
 from .fixtures import load_scenarios
 from .mock_rover_converse import MockRoverConverse
 
-_ROVERNAV_DIR = Path(__file__).resolve().parents[2] / "rover" / "nav" / "RoverNav"
+_SDK_DIR = Path(__file__).resolve().parents[3] / "sdk"
+
+
+def _first_available_simulator() -> str | None:
+    proc = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
+                          capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0:
+        return None
+    devices = json.loads(proc.stdout).get("devices", {})
+    for runtime, entries in devices.items():
+        if "iOS" not in runtime:
+            continue
+        for entry in entries:
+            if entry.get("isAvailable") and "iPhone" in entry.get("name", ""):
+                return entry["udid"]
+    return None
 
 
 def _run_swift_tests() -> tuple[bool, str]:
-    if not _ROVERNAV_DIR.exists():
-        return False, f"RoverNav package not found at {_ROVERNAV_DIR}"
-    proc = subprocess.run(["swift", "test"], cwd=_ROVERNAV_DIR,
-                          capture_output=True, text=True, timeout=300)
+    if not _SDK_DIR.exists():
+        return False, f"astral-sdk package not found at {_SDK_DIR} (expected as a sibling of this repo)"
+    udid = _first_available_simulator()
+    if not udid:
+        return False, "no available iOS Simulator found (xcrun simctl list devices available)"
+    proc = subprocess.run(
+        ["xcodebuild", "test", "-scheme", "astral-sdk-Package",
+         "-destination", f"id={udid}", "-only-testing:RoverNavTests"],
+        cwd=_SDK_DIR, capture_output=True, text=True, timeout=300)
     ok = proc.returncode == 0
     tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-15:])
     return ok, tail

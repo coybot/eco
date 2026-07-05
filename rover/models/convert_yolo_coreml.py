@@ -1,4 +1,4 @@
-"""Convert a pretrained YOLOv8n to CoreML for RoverOperator's on-device Detector.
+"""Convert a pretrained YOLOv8n to CoreML for PhroverKit's on-device Detector.
 
 Usage:
     python3 -m venv .venv && source .venv/bin/activate
