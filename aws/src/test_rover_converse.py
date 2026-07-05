@@ -50,10 +50,10 @@ def test_returns_claude_reply_on_success(mock_bedrock):
     resp = rover.converse_handler(_event({"utterance": "where's the lobby"}), None)
     assert resp["statusCode"] == 200
     assert json.loads(resp["body"]) == {"reply": "The lobby is to your left."}
-    # Sanity: the bellboy system prompt (not a code-gen prompt) was actually used.
+    # Sanity: the ramp-agent system prompt (not a code-gen prompt) was actually used.
     call_kwargs = mock_bedrock.invoke_model.call_args.kwargs
     sent_body = json.loads(call_kwargs["body"])
-    assert "bellboy" in sent_body["system"].lower()
+    assert "ramp" in sent_body["system"].lower()
     assert sent_body["messages"][0]["content"][0]["text"] == "where's the lobby"
 
 
