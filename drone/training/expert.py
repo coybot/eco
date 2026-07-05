@@ -51,6 +51,21 @@ class _SmoothExpertBase:
         self._prev_vel = np.zeros(3, dtype=np.float64)
         self._prev_dv = np.zeros(3, dtype=np.float64)
         self._prev_yaw_rate = 0.0
+        self._reached = False
+
+    def _is_reached(self, dist: float) -> bool:
+        """Hysteresis around reach_threshold so a tiny post-capture overshoot (physically
+        unavoidable: stopping distance at cruise speed exceeds reach_threshold under the
+        jerk/accel limits) doesn't re-trigger full-speed pursuit and start a hunting
+        oscillation that never damps. Once captured, stay in station-keep/decel mode until
+        actually drifting well away, rather than flip-flopping on every micro-overshoot.
+        """
+        if self._reached:
+            if dist > self.lim.reach_threshold * 2.5:
+                self._reached = False
+        elif dist <= self.lim.reach_threshold:
+            self._reached = True
+        return self._reached
 
     def _cruise_speed(self, min_clearance: float) -> float:
         lim = self.lim
@@ -86,9 +101,12 @@ class _SmoothExpertBase:
         d = np.asarray(depth, dtype=np.float64).reshape(-1)
         rays = _RAYS
         align = rays @ g                                    # cos angle of each ray to the goal
-        ahead = align > math.cos(math.radians(28.0))
-        ahead_min = float(np.min(d[ahead])) if np.any(ahead) else float(d.min())
-        blocked = float(np.clip((lim.influence_m - ahead_min) /
+        # Hazard uses the GLOBAL nearest reading, not just the goal-aligned cone: a corner can
+        # be dangerously close while sitting outside that cone (e.g. abeam while cutting past
+        # it), and a cone-only check would miss it and never blend toward the escape direction
+        # in time — the vehicle keeps closing on a surface it isn't "looking at".
+        nearest = float(d.min())
+        blocked = float(np.clip((lim.influence_m - nearest) /
                                 max(lim.influence_m - lim.safe_m, 1e-6), 0.0, 1.0))
         if blocked <= 0.0:
             return g
@@ -109,8 +127,20 @@ class _SmoothExpertBase:
         if float(np.where(usable, d, 0.0).max()) > lim.safe_m + 0.3:
             # a ray sees clearly past the wall (hole / over / under / side gap) -> GAP-FOLLOW on
             # the BLURRED clearance (argmax, not average -> symmetric openings don't cancel).
-            score = blur / DEPTH_MAX + lim.k_align * align
-            score[d < lim.safe_m] = -1e9
+            # Veto on the BLURRED value too, not just the ray's own raw depth: a ray can be
+            # clear along its own exact line while grazing a corner just outside it (its
+            # neighbors read close) — blur is what actually captures "has margin", so it must
+            # gate which rays are even eligible, not just break the score tie.
+            #
+            # Fade the goal-alignment bonus out as `blocked` rises toward full commitment:
+            # without this, k_align keeps rewarding "closest-to-goal-heading ray that's still
+            # nominally clear," which is a minimum-viable-diversion strategy — it picks a ray
+            # that clears an obstacle's silhouette by the thinnest margin the fan can resolve
+            # instead of decisively diverting. At full commitment the choice should be driven
+            # by clearance alone; goal-seeking resumes once no longer blocked.
+            k_eff = lim.k_align * (1.0 - blocked)
+            score = blur / DEPTH_MAX + k_eff * align
+            score[blur < lim.safe_m] = -1e9
             score[~usable] = -1e9
             score[align < -0.1] = -1e9                      # don't steer backwards
             cand = rays[int(np.argmax(score))].astype(np.float64)
@@ -233,7 +263,7 @@ class QuadExpert(_SmoothExpertBase):
     def step(self, state: State, dt: float = 0.1) -> np.ndarray:
         lim = self.lim
         action = np.zeros(ACTION_DIM, dtype=np.float64)
-        if state.dist <= lim.reach_threshold:
+        if self._is_reached(state.dist):
             vel = self._limit_translation(np.zeros(3), dt)
             action[:3] = vel
             action[3] = self._limit_yaw(0.0, dt)
@@ -268,7 +298,7 @@ class RoverExpert(_SmoothExpertBase):
     def step(self, state: State, dt: float = 0.1) -> np.ndarray:
         lim = self.lim
         action = np.zeros(ACTION_DIM, dtype=np.float64)
-        if state.dist <= lim.reach_threshold:
+        if self._is_reached(state.dist):
             vel = self._limit_translation(np.zeros(3), dt)
             action[0] = vel[0]
             action[3] = self._limit_yaw(0.0, dt)
