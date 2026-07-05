@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { products, formatPrice } from "@/lib/products";
 import { socialMeta } from "@/lib/social-metadata";
 
-const DESC = "Astral autonomous platforms: M1-A quadcopter and M1-G ground rover. NDAA-compliant, GPS-denied capable, Jetson Orin Nano on-device AI.";
+const DESC = "Astral autonomous platforms: Quadcopter, Rover, Fixed-Wing, and Phrover. NDAA-compliant, GPS-denied capable, Jetson on-device AI or bring your own phone.";
 
 export const metadata: Metadata = {
   title: "Products",
@@ -27,6 +27,9 @@ export default function ProductsPage() {
           <div className="container mx-auto px-4">
             <div className="max-w-3xl mx-auto text-center">
               <h1 className="text-4xl sm:text-5xl font-bold mb-6">Our Drones</h1>
+              <p className="text-lg text-muted-foreground">
+                NDAA compliant versions available.
+              </p>
               <p className="text-lg text-muted-foreground">
                 Agentic-enabled autonomous drones with modular, customizable
                 hardware. Bring your own AI or use ours.

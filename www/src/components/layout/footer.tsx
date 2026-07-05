@@ -4,8 +4,10 @@ import { SITE } from "@/lib/site";
 
 const footerLinks: Record<string, { name: string; href: string; external?: boolean }[]> = {
   Products: [
-    { name: "M1-A Quadcopter", href: "/products/m1a" },
-    { name: "M1-G Ground Rover", href: "/products/m1g" },
+    { name: "Quadcopter", href: "/products/quadcopter" },
+    { name: "Rover", href: "/products/rover" },
+    { name: "Fixed-Wing", href: "/products/fixed-wing" },
+    { name: "Phrover", href: "/products/phrover" },
     { name: "Compare", href: "/compare" },
     { name: "Pricing", href: "/pricing" },
   ],
