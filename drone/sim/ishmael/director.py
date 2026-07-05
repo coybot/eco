@@ -38,9 +38,13 @@ from .nlp import TestSpec, parse_test_spec  # noqa: E402
 
 @dataclass
 class DirectorConfig:
+    # "astral_sim" = the project's own Godot engine (eco/drone/sim/godot_launch_fleet.py;
+    #   AstralEcoSim project). Godot itself is cross-platform (Linux/macOS/Windows) — this
+    #   is the default since it needs no GPU host and no Isaac Omniverse install.
+    # "isaac" = the optional photoreal engine on hoopoe (eco/drone/sim/launch_fleet.py).
+    engine: str = os.environ.get("ISHMAEL_SIM_ENGINE", "astral_sim")
     certs_base: str = os.path.expanduser("~/eco-certs-fleet")
-    python: str = os.environ.get("ISHMAEL_SIM_PYTHON",
-                                 "/home/yusuf/isaac-sim-env/bin/python3")
+    python: Optional[str] = os.environ.get("ISHMAEL_SIM_PYTHON")
     user_sub: Optional[str] = os.environ.get("ISHMAEL_USER_SUB")
     region: str = os.environ.get("AWS_REGION", "us-west-2")
     isaac_host: str = "hoopoe"
@@ -49,6 +53,13 @@ class DirectorConfig:
     mission_timeout_s: float = 240.0
     out_dir: str = os.path.expanduser("~/videos/ishmael")
     dry_run: bool = False
+
+    def resolved_python(self) -> str:
+        if self.python:
+            return self.python
+        if self.engine == "isaac":
+            return "/home/yusuf/isaac-sim-env/bin/python3"
+        return sys.executable  # astral_sim: any regular Python env (see godot_launch_fleet.py)
 
 
 @dataclass
@@ -160,20 +171,29 @@ def run(spec: TestSpec, cfg: Optional[DirectorConfig] = None) -> TestResult:
 
 
 def _launch_fleet(spec: TestSpec, cfg: DirectorConfig, result: TestResult):
-    """Spawn launch_fleet.py as a child process. Returns the Popen or None."""
+    """Spawn the chosen engine's fleet launcher as a child process. Returns the Popen or
+    None. godot_launch_fleet.py is a documented drop-in replacement for launch_fleet.py
+    with an identical CLI, so only the script + a couple of engine-only flags differ."""
     import subprocess
-    launcher = _SIM_DIR / "launch_fleet.py"
+    if cfg.engine == "isaac":
+        launcher = _SIM_DIR / "launch_fleet.py"
+    else:
+        launcher = _SIM_DIR / "godot_launch_fleet.py"
     env_value = result.scene_ref.launch_value() if result.scene_ref else spec.scene
-    cmd = [cfg.python, str(launcher),
+    cmd = [cfg.resolved_python(), str(launcher),
            "--fleet", spec.fleet_arg(),
            "--env", env_value,
            "--certs-base", cfg.certs_base]
     if spec.photoreal:
-        cmd.append("--photoreal")
+        if cfg.engine == "isaac":
+            cmd.append("--photoreal")
+        else:
+            result.log("photoreal requested but ignored: astral_sim (Godot) has no "
+                       "photoreal mode — use --engine isaac for that")
     env = dict(os.environ)
     env.setdefault("ISHMAEL_HARNESS",
                    os.path.expanduser("~/code/ishmael/swarm_eval/harness"))
-    result.log("launch: " + " ".join(cmd))
+    result.log(f"launch [{cfg.engine}]: " + " ".join(cmd))
     log_path = os.path.join("/tmp", "ishmael_launch.log")
     proc = subprocess.Popen(cmd, stdout=open(log_path, "w"),
                             stderr=subprocess.STDOUT, env=env)

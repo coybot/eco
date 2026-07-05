@@ -14,6 +14,7 @@
 		2A5A40BF93F5A256374803F0 /* RoverConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0419EBAE5187AE1D0A0B23 /* RoverConfig.swift */; };
 		2E879EB3BFB576D6FBE2C68E /* Detector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F21DB437FF181C1224FDD08 /* Detector.swift */; };
 		2F9E7CC8F65F6D91DD5FD040 /* CostmapBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4490AB44A0F64B905ED60BD /* CostmapBuilder.swift */; };
+		39A0DFF05D0933F0B4DA9363 /* RoverOperatorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E94AB360492C5CC40028B4B /* RoverOperatorUITests.swift */; };
 		4527B614D755DC343565180B /* ClaudeDialogClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7514600198C9E547004CF26E /* ClaudeDialogClient.swift */; };
 		4A729940466463CDBC13CCD1 /* DriveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CF746A03275C88FCB6080C /* DriveView.swift */; };
 		4BB7E6E937B2FCB1BBE39554 /* SpeechIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C6978BE476D35CC338DC446 /* SpeechIn.swift */; };
@@ -46,6 +47,16 @@
 		FF9E98D38FCD83BFE180EA98 /* MQTTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73EE7260EC3AC71645950CB5 /* MQTTService.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		6CB134AA1503D6CFB7048B37 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0611AA14D2C534052419E832 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6FC606013363BECF6CB38084;
+			remoteInfo = RoverOperator;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		055759DC82756351FE9F1841 /* RoverNav */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RoverNav; path = ../../../rover/nav/RoverNav; sourceTree = SOURCE_ROOT; };
 		09F6DF1E751CEFAFA62D04D5 /* RoverOperator.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RoverOperator.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -59,12 +70,14 @@
 		2F31CD6C59A8BF9495929C69 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		3605B994FECBE62A65C56528 /* RoverYOLO.mlpackage */ = {isa = PBXFileReference; path = RoverYOLO.mlpackage; sourceTree = "<group>"; };
 		36C001C1965E61887811E178 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		37CD5C47E63A512037192E19 /* RoverOperatorUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = RoverOperatorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A42BBA8F68E15F3E9475EBC /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
 		4F21DB437FF181C1224FDD08 /* Detector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Detector.swift; sourceTree = "<group>"; };
 		50CF746A03275C88FCB6080C /* DriveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveView.swift; sourceTree = "<group>"; };
 		5D0419EBAE5187AE1D0A0B23 /* RoverConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverConfig.swift; sourceTree = "<group>"; };
 		63DA1381F11B8A49A979C40A /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		6A56F86954263CFFC1C3328E /* AWSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AWSConfig.swift; sourceTree = "<group>"; };
+		6E94AB360492C5CC40028B4B /* RoverOperatorUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverOperatorUITests.swift; sourceTree = "<group>"; };
 		73EE7260EC3AC71645950CB5 /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
 		7514600198C9E547004CF26E /* ClaudeDialogClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDialogClient.swift; sourceTree = "<group>"; };
 		7D50607C0845665BB23F42CE /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
@@ -200,6 +213,7 @@
 				240F0AB264CD60FAB3C7078B /* Nav */,
 				27385013F7CEFD91973B82DA /* Packages */,
 				3DBE47F3504FAE340B66281F /* Perception */,
+				F493EB52597DDC81AC444727 /* RoverOperatorUITests */,
 				58B79934B42AEC3965928090 /* RoverSDK */,
 				EDA7ADFDCB2265C079859552 /* Services */,
 				DD2DB714E8FFDC9BCE069C2E /* Views */,
@@ -237,6 +251,7 @@
 			isa = PBXGroup;
 			children = (
 				09F6DF1E751CEFAFA62D04D5 /* RoverOperator.app */,
+				37CD5C47E63A512037192E19 /* RoverOperatorUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -260,6 +275,14 @@
 			);
 			name = Services;
 			path = RoverOperator/Services;
+			sourceTree = "<group>";
+		};
+		F493EB52597DDC81AC444727 /* RoverOperatorUITests */ = {
+			isa = PBXGroup;
+			children = (
+				6E94AB360492C5CC40028B4B /* RoverOperatorUITests.swift */,
+			);
+			path = RoverOperatorUITests;
 			sourceTree = "<group>";
 		};
 		F81ECC7F552F729FF305815D /* App */ = {
@@ -295,6 +318,24 @@
 			productReference = 09F6DF1E751CEFAFA62D04D5 /* RoverOperator.app */;
 			productType = "com.apple.product-type.application";
 		};
+		DD1E8F1DD1E8F826C26366B4 /* RoverOperatorUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E82A92F33771174CF1A8BAEE /* Build configuration list for PBXNativeTarget "RoverOperatorUITests" */;
+			buildPhases = (
+				3AFC1938187E5CA86C0908A8 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				31155C23CC4D70D74BA5A468 /* PBXTargetDependency */,
+			);
+			name = RoverOperatorUITests;
+			packageProductDependencies = (
+			);
+			productName = RoverOperatorUITests;
+			productReference = 37CD5C47E63A512037192E19 /* RoverOperatorUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -304,6 +345,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					DD1E8F1DD1E8F826C26366B4 = {
+						TestTargetID = 6FC606013363BECF6CB38084;
+					};
 				};
 			};
 			buildConfigurationList = 4CDCAE774C51405412C68016 /* Build configuration list for PBXProject "RoverOperator" */;
@@ -325,11 +369,20 @@
 			projectRoot = "";
 			targets = (
 				6FC606013363BECF6CB38084 /* RoverOperator */,
+				DD1E8F1DD1E8F826C26366B4 /* RoverOperatorUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		3AFC1938187E5CA86C0908A8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				39A0DFF05D0933F0B4DA9363 /* RoverOperatorUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F35BCDAC81155BDA0012BBA9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -366,7 +419,35 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		31155C23CC4D70D74BA5A468 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6FC606013363BECF6CB38084 /* RoverOperator */;
+			targetProxy = 6CB134AA1503D6CFB7048B37 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		0F0C51F5C9127A6F16E568D4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.rover.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RoverOperator;
+			};
+			name = Release;
+		};
 		522DF9A451AA3A00490866AD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -528,6 +609,26 @@
 			};
 			name = Release;
 		};
+		FD904C63E3A5E817628C3EDF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.rover.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RoverOperator;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -545,6 +646,15 @@
 			buildConfigurations = (
 				80C1BA05F0B53A230AA83631 /* Debug */,
 				F643D2489C2697B554C9015E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E82A92F33771174CF1A8BAEE /* Build configuration list for PBXNativeTarget "RoverOperatorUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FD904C63E3A5E817628C3EDF /* Debug */,
+				0F0C51F5C9127A6F16E568D4 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

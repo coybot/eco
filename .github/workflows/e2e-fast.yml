@@ -1,0 +1,35 @@
+name: e2e-fast
+
+# The always-on regression gate: no AWS creds, no phone/sim/emulator, no drone. See
+# eco/e2e/README.md. Checks out the repo under a directory literally named "eco" because
+# eco/e2e/run_e2e.py (and the existing eco/drone/common/tests/test_l5_parity.py) import
+# `eco.*` as a package — that only resolves with an "eco/" folder one level below cwd.
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: eco
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml numpy pytest
+      - run: python3 -m eco.e2e.run_e2e --type all --tier fast
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scorecard
+          path: eco/e2e/scorecard.json
+
+  # RoverNav is pure Swift/offline; needs a Swift toolchain (macOS runner has one built in).
+  rovernav-swift:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+        working-directory: rover/nav/RoverNav

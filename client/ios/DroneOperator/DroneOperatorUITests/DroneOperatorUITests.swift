@@ -57,13 +57,31 @@ final class DroneOperatorUITests: XCTestCase {
         )
     }
 
+    /// The natural-language mission per vehicle type — kept in sync with the
+    /// `mission:` field for each type in eco/e2e/scenarios.yaml, since that file is
+    /// the single source of truth for what "the scenario" is; Swift can't read YAML
+    /// here without a new dependency, so this mirrors it in the one place this test
+    /// needs it. All three mention a photo, so the existing "photo" reply assertion
+    /// below works unchanged across quad/rover/fixed-wing.
+    private func missionFor(vehicleType: String) -> String {
+        switch vehicleType {
+        case "rover":
+            return "drive forward 2 meters, look around, and send a picture"
+        case "fixedwing":
+            return "climb to 40 meters, orbit once, and photograph the field"
+        default: // "quadcopter"
+            return "go up 2 meters, take a photo and tell me what you see, then land"
+        }
+    }
+
     /// End-to-end onboarding: sign in, add a simulated drone via the SAME
     /// "Already configured" manual-entry flow a real drone uses after WiFi setup,
     /// confirm it comes Online, then send a chat command and await a response.
     /// Drives the real app UI — this is the "manual step" automated.
     ///
     /// Env (passed via TEST_RUNNER_*):
-    ///   RUN_HEZARFEN_E2E=1, E2E_DRONE_ID, E2E_EMAIL, E2E_PASSWORD
+    ///   RUN_HEZARFEN_E2E=1, E2E_DRONE_ID, E2E_EMAIL, E2E_PASSWORD, E2E_VEHICLE_TYPE
+    ///   (quadcopter|rover|fixedwing, default quadcopter)
     func testOnboard_addSimDrone_thenCommand() throws {
         guard ProcessInfo.processInfo.environment["RUN_HEZARFEN_E2E"] == "1" else {
             throw XCTSkip("Set RUN_HEZARFEN_E2E=1 to enable integration tests.")
@@ -72,6 +90,7 @@ final class DroneOperatorUITests: XCTestCase {
         guard let droneId = env["E2E_DRONE_ID"], !droneId.isEmpty else {
             throw XCTSkip("Set E2E_DRONE_ID to the running sim drone id.")
         }
+        let vehicleType = env["E2E_VEHICLE_TYPE"] ?? "quadcopter"
 
         let app = XCUIApplication()
         app.launch()
@@ -134,7 +153,7 @@ final class DroneOperatorUITests: XCTestCase {
         let composer = app.descendants(matching: .any)
             .matching(identifier: "e2e_chat_input").element
         XCTAssertTrue(composer.waitForExistence(timeout: 15), "Chat composer not found.")
-        let phrase = "Take a photo and tell me what you see"
+        let phrase = missionFor(vehicleType: vehicleType)
         composer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         composer.typeText(phrase)
 
