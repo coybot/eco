@@ -129,7 +129,7 @@ export default function ProductsPage() {
                 <div>
                   <div className="text-3xl font-bold text-amber-500 mb-2">NDAA</div>
                   <p className="text-sm text-muted-foreground">
-                    Compliant compute & sensors for government and defense
+                    Compliant versions available
                   </p>
                 </div>
                 <div>

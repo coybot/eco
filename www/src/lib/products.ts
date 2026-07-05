@@ -44,7 +44,6 @@ export const products: Product[] = [
       { label: "Ingress Protection", value: "IP55", category: "Physical" },
     ],
     features: [
-      "NDAA-compliant compute & sensors",
       "GPS-denied navigation",
       "Comm-denied autonomous operation",
       "Indoor and outdoor capable",
@@ -89,7 +88,6 @@ export const products: Product[] = [
       { label: "Ingress Protection", value: "IP65", category: "Physical" },
     ],
     features: [
-      "NDAA-compliant compute & sensors",
       "GPS-denied navigation",
       "Comm-denied autonomous operation",
       "Long-endurance ground missions",
@@ -138,7 +136,6 @@ export const products: Product[] = [
       { label: "Ingress Protection", value: "IP54", category: "Physical" },
     ],
     features: [
-      "NDAA-compliant compute & sensors",
       "Long-range fixed-wing endurance",
       "GPS-denied navigation",
       "Comm-denied autonomous operation",
