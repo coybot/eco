@@ -51,3 +51,31 @@ targets:
       - sdk: AVFoundation.framework
       - sdk: AuthenticationServices.framework
       - sdk: FoundationModels.framework
+
+  RoverOperatorUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: RoverOperatorUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: us.astral.rover.uitests
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+    dependencies:
+      - target: RoverOperator
+
+schemes:
+  RoverOperator:
+    build:
+      targets:
+        RoverOperator: all
+        RoverOperatorUITests: [test]
+    test:
+      targets:
+        - RoverOperatorUITests
+    run:
+      config: Debug

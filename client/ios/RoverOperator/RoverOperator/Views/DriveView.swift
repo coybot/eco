@@ -17,10 +17,14 @@ struct DriveView: View {
             // D-pad: press-and-hold to drive, release to stop.
             VStack(spacing: 12) {
                 driveButton("arrow.up", WheelCommand(left: speed, right: speed))
+                    .accessibilityIdentifier("e2e_drive_forward")
                 HStack(spacing: 12) {
                     driveButton("arrow.turn.up.left", WheelCommand(left: -speed, right: speed))
+                        .accessibilityIdentifier("e2e_drive_left")
                     driveButton("arrow.down", WheelCommand(left: -speed, right: -speed))
+                        .accessibilityIdentifier("e2e_drive_back")
                     driveButton("arrow.turn.up.right", WheelCommand(left: speed, right: -speed))
+                        .accessibilityIdentifier("e2e_drive_right")
                 }
             }
 
@@ -31,6 +35,7 @@ struct DriveView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
+            .accessibilityIdentifier("e2e_drive_estop")
 
             Spacer()
         }

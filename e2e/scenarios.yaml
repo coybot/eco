@@ -1,0 +1,47 @@
+# Shared per-type e2e scenarios. Both the headless regression (run_e2e.py) and the
+# phone/phone-sim UI tests (Layer B) are meant to exercise these same missions, so a
+# regression caught by one is described the same way to a human reading the other.
+#
+# app          — which phone app owns this vehicle type
+# transport    — how the mission reaches the vehicle
+# sim          — sim engine used for the live tier (astral_sim = Godot, see
+#                eco/drone/sim/godot/project.godot "AstralEcoSim"; isaac = optional
+#                photoreal alternative on hoopoe, not required for e2e)
+# mission      — natural-language command sent exactly as a phone user would type it
+# expect       — success assertion the harness checks
+
+quadcopter:
+  app: DroneOperator
+  transport: cloud_iot
+  sim: astral_sim
+  mission: "go up 2 meters, take a photo and tell me what you see, then land"
+  expect: {response_ok: true, has_image: true}
+
+rover:
+  app: DroneOperator
+  transport: cloud_iot
+  sim: astral_sim
+  mission: "drive forward 2 meters, look around, and send a picture"
+  expect: {response_ok: true, has_image: true}
+
+fixedwing:
+  app: DroneOperator
+  transport: cloud_iot
+  sim: astral_sim
+  mission: "climb to 40 meters, orbit once, and photograph the field"
+  expect: {response_ok: true, has_image: true}
+
+# phrover has two independent checks, because /rover/converse is ONLY the open-ended
+# small-talk fallback (see aws/src/rover.py docstring) — navigation intents are parsed
+# and dispatched entirely on-device by RoverNav and never reach the cloud at all.
+phrover:
+  app: RoverOperator
+  dialog:
+    transport: rover_converse_http     # POST /rover/converse -> {"reply": "..."}
+    utterance: "what's your name?"
+    expect: {dialog_ok: true}
+  navigate:
+    transport: on_device_ros_nav       # RoverNav (Swift) planning against a costmap;
+    sim: mock_esp32                    # driven over WiFi HTTP against a fake WAVE ROVER base
+    mission: "navigate to the doorway and avoid obstacles"
+    expect: {plan_reaches_goal: true}

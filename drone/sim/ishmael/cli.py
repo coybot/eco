@@ -31,6 +31,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the vLLM, use the rule-based parser only")
     ap.add_argument("--no-register", action="store_true",
                     help="do not write DynamoDB registry rows")
+    ap.add_argument("--engine", choices=["astral_sim", "isaac"], default=None,
+                    help="sim engine: astral_sim = the project's Godot engine (default, "
+                         "cross-platform); isaac = the optional photoreal engine on hoopoe")
     ap.add_argument("--certs-base", default=None)
     ap.add_argument("--out-dir", default=None)
     args = ap.parse_args(argv)
@@ -41,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     cfg = DirectorConfig(register=not args.no_register, dry_run=args.dry_run)
+    if args.engine:
+        cfg.engine = args.engine
     if args.certs_base:
         cfg.certs_base = args.certs_base
     if args.out_dir:

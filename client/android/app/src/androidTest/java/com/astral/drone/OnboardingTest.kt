@@ -34,6 +34,16 @@ class OnboardingTest {
     private val args = InstrumentationRegistry.getArguments()
     private fun arg(k: String): String? = args.getString(k)
 
+    // Mirrors the `mission:` field per type in eco/e2e/scenarios.yaml (that file is the
+    // single source of truth; kept in sync here since this test can't parse YAML at
+    // runtime). All three mention a photo, so the "photo" reply assertion below is
+    // unchanged across quad/rover/fixed-wing.
+    private fun missionFor(vehicleType: String): String = when (vehicleType) {
+        "rover" -> "drive forward 2 meters, look around, and send a picture"
+        "fixedwing" -> "climb to 40 meters, orbit once, and photograph the field"
+        else -> "go up 2 meters, take a photo and tell me what you see, then land"
+    }
+
     private val SHORT = 15_000L
     private val MEDIUM = 30_000L
     private val LONG = 60_000L
@@ -58,6 +68,7 @@ class OnboardingTest {
         assumeTrue("Set E2E_DRONE_ID", droneId.isNotEmpty())
         val email = arg("E2E_EMAIL").orEmpty()
         val password = arg("E2E_PASSWORD").orEmpty()
+        val mission = missionFor(arg("E2E_VEHICLE_TYPE") ?: "quadcopter")
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val pkg = context.packageName
@@ -139,7 +150,7 @@ class OnboardingTest {
         )
         checkNotNull(composer) { "Chat composer not found" }
         composer.click()
-        composer.text = "Take a photo and tell me what you see"
+        composer.text = mission
         screenshot("06_chat_composed")
 
         device.findObject(By.desc("Send").pkg(pkg))?.click()
