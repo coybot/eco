@@ -14,6 +14,8 @@ The two shipped classes mirror the existing on-device contracts:
                 policy_v26rnn_dr.onnx, radius 0.15 m, 3.0 m/s.
   - rover:      unicycle 2D, 360° lidar (rover_contract.py, 83-dim → 2D action),
                 policy_rover_v2.onnx, radius 0.5 m, 1.5 m/s.
+  - fixedwing:  coordinated-turn 3D, long-range forward depth (fw_contract.py, 56-dim
+                → 4D action), policy_fw.onnx, radius 1.0 m, 25.0 m/s cruise.
 """
 from __future__ import annotations
 
@@ -25,6 +27,9 @@ class Kinematics(str, Enum):
     """How the vehicle moves — picks the integrator and the action contract."""
     HOLONOMIC_3D = "holonomic_3d"   # free 3D translation + yaw (quad): action [vx,vy,vz,yaw_rate]
     UNICYCLE_2D = "unicycle_2d"     # planar, no lateral slip (rover): action [v_linear,yaw_rate]
+    COORDINATED_TURN_3D = "coordinated_turn_3d"  # Dubins-airplane (fixed-wing): action
+    # [vx,vy,vz,yaw_rate], but vy is ignored, vx is clamped to [min_speed_mps,max_speed_mps]
+    # (never zero/reverse), yaw_rate is bank-limited by speed, vz by max_climb_angle_rad.
 
 
 class Sensor(str, Enum):
@@ -83,6 +88,11 @@ class VehicleClass:
     roles: tuple[Role, ...]         # roles this class can fulfil (first = preferred)
     comms: CommsProfile = field(default_factory=CommsProfile)
     localization: LocalizationProfile = field(default_factory=LocalizationProfile)
+    min_speed_mps: float = 0.0             # stall/minimum airspeed (0 = can hover/stop)
+    max_climb_angle_rad: float = 1.5708    # bounded flight-path angle (~pi/2 = unconstrained)
+    sense_range_m: float = 10.0            # obstacle-sensing max range ("clear" sentinel value —
+    # must exceed any avoidance radius derived from this class's speed, or a genuinely clear
+    # reading looks like a phantom obstacle at max range to the reactive controller)
 
     # --- capability queries (layers call these, not isinstance / string checks) ---
     @property
@@ -139,12 +149,36 @@ ROVER = VehicleClass(
     localization=LocalizationProfile(gps_denied_drift_mps=0.05, vio_capable=True),
 )
 
+FIXEDWING = VehicleClass(
+    name="fixedwing",
+    kinematics=Kinematics.COORDINATED_TURN_3D,
+    sensor=Sensor.FORWARD_DEPTH,
+    state_dim=56,           # 11 + 45 depth rays (fw_contract.py STATE_DIM, longer range)
+    action_dim=4,           # [vx, vy(ignored), vz, yaw_rate]
+    policy_onnx="policy_fw.onnx",
+    radius_m=1.0,
+    max_speed_mps=25.0,     # cruise
+    max_accel_mps2=5.0,
+    max_yaw_rate_radps=0.6, # slow, speed-limited turning (banked)
+    ceiling_m=120.0,
+    payload_kg=2.0,
+    roles=(Role.AERIAL_SCOUT,),
+    comms=CommsProfile(range_m=500.0, los_required=False, bandwidth_msgs_per_s=20.0),
+    localization=LocalizationProfile(gps_denied_drift_mps=0.30, vio_capable=False),
+    min_speed_mps=12.0,          # stall margin — never below this
+    max_climb_angle_rad=0.35,    # ~20 deg bounded flight-path angle
+    sense_range_m=80.0,          # matches fw_contract.DEPTH_MAX_FW — needed lookahead at cruise
+)
+
 # Canonical registry. Accepts the on-device "type" strings used in rosters
-# (isaac_vehicle setup: 'quadcopter' | 'rover') plus the short aliases.
+# (isaac_vehicle setup: 'quadcopter' | 'rover' | 'fixedwing') plus the short aliases.
 _REGISTRY: dict[str, VehicleClass] = {
     "quadcopter": QUADCOPTER,
     "quad": QUADCOPTER,
     "rover": ROVER,
+    "fixedwing": FIXEDWING,
+    "fw": FIXEDWING,
+    "plane": FIXEDWING,
 }
 
 

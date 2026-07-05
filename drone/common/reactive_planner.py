@@ -541,7 +541,10 @@ def make_planner(
     models_dir: Optional[str] = None,
     reach_threshold: float = 1.0,
     max_speed: float = 3.0,
+    min_speed: float = 1.0,
     vehicle: float = 0.0,
+    onnx_name: str = "policy_v26rnn_dr.onnx",
+    range_gate: tuple = (0.3, 15.0),
 ) -> "ReactivePlanner | LearnedPlanner":
     """Factory: returns a LearnedPlanner or ReactivePlanner with matching params."""
     if use_learned:
@@ -550,5 +553,8 @@ def make_planner(
             reach_threshold=reach_threshold,
             max_speed=max_speed,
             vehicle=vehicle,
+            onnx_name=onnx_name,
+            range_gate=range_gate,
         )
-    return ReactivePlanner(reach_threshold=reach_threshold, max_speed=max_speed)
+    return ReactivePlanner(reach_threshold=reach_threshold, max_speed=max_speed,
+                           min_speed=min_speed, range_gate=range_gate)

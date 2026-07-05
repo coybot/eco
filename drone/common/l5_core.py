@@ -128,23 +128,35 @@ def reactive_goto_controller(slow_radius: float = 2.0,
     This is the controller validated to L5 in the 16-scenario suite; it is kept
     byte-identical to the sim copy by the parity test.
     """
+    def _avoid_radius_for(vc: VehicleClass) -> float:
+        """Effective repulsion radius: the shared default for quad/rover, turn-radius-scaled
+        for fixed-wing. A banked turn at cruise speed has physical turn radius v/max_yaw_rate
+        (~42 m at 25 m/s / 0.6 rad/s); reacting only at 30 m (a naive speed*time heuristic)
+        leaves less room than the turn itself needs, so the plane can't clear an obstacle in
+        time — it must start turning at least one turn-radius (plus margin) out."""
+        if vc.kinematics is Kinematics.COORDINATED_TURN_3D:
+            turn_radius = vc.max_speed_mps / max(vc.max_yaw_rate_radps, 1e-3)
+            return max(avoid_radius, turn_radius * 1.5)
+        return avoid_radius
+
     def _repulsion_body(obs: Observation, vc: VehicleClass) -> np.ndarray:
         """Net repulsion vector in body frame (fwd,left,up)."""
+        ar = _avoid_radius_for(vc)
         rep = np.zeros(3, dtype=np.float32)
         # neighbors: push directly away from each, stronger when closer
         for _id, rel_body, _vel, ovc in obs.neighbors:
             d = float(np.linalg.norm(rel_body[:2]))
             safe = vc.radius_m + ovc.radius_m + 0.8
-            if d < avoid_radius and d > 1e-3:
-                mag = (avoid_radius - d) / avoid_radius * (1.0 + safe)
+            if d < ar and d > 1e-3:
+                mag = (ar - d) / ar * (1.0 + safe)
                 rep[:2] -= (rel_body[:2] / d) * mag
         # static obstacle: push away from the closest scan ray's direction
-        if obs.scan.size and obs.min_clearance < avoid_radius:
+        if obs.scan.size and obs.min_clearance < ar:
             ang = (lidar_ray_angles() if vc.sensor is Sensor.LIDAR_360
                    else _DEPTH_YAW_ANGLES)
             k = int(np.argmin(obs.scan))
             a = ang[k]
-            mag = (avoid_radius - obs.min_clearance) / avoid_radius
+            mag = (ar - obs.min_clearance) / ar
             rep[0] -= math.cos(a) * mag
             rep[1] -= math.sin(a) * mag
             if vc.sensor is Sensor.FORWARD_DEPTH:
@@ -170,6 +182,20 @@ def reactive_goto_controller(slow_radius: float = 2.0,
             if obs.min_clearance < vc.radius_m + 1.0:
                 speed *= 0.3
             return np.array([max(0.0, speed), yaw_cmd], dtype=np.float32)
+        elif vc.kinematics is Kinematics.COORDINATED_TURN_3D:
+            # Fixed-wing: hold speed near cruise, steer by banking (yaw_rate), never
+            # sideslip (vy always 0 — the Dubins-airplane integrator ignores it anyway).
+            ar = _avoid_radius_for(vc)
+            desired = math.atan2(cmd[1], cmd[0])     # body-frame desired heading
+            yaw_cmd = float(np.clip(desired * 1.5, -vc.max_yaw_rate_radps,
+                                    vc.max_yaw_rate_radps))
+            # never crawl toward stall; only ease off cruise near the goal
+            speed = max(vc.min_speed_mps, vc.max_speed_mps * max(gscale, 0.7))
+            vz = cmd[2] * vc.max_speed_mps * gscale
+            # blocked ahead with little vertical cue -> climb over
+            if obs.min_clearance < ar and abs(tu) < 0.5:
+                vz += 0.6 * vc.max_speed_mps
+            return np.array([speed, 0.0, vz, yaw_cmd], dtype=np.float32)
         else:
             v = cmd * vc.max_speed_mps
             v[:2] *= max(gscale, 0.5 if np.linalg.norm(rep) > 0 else gscale)

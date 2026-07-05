@@ -37,7 +37,7 @@ def _make_obs(cls, agent_id, body_target, goal_dist, neighbors, scan, min_clear)
     )
 
 
-@pytest.mark.parametrize("vclass_name", ["quad", "rover"])
+@pytest.mark.parametrize("vclass_name", ["quad", "rover", "fixedwing"])
 def test_controller_parity(vclass_name):
     rng = np.random.default_rng(1382)
     sim_ctl = sim_controller()
