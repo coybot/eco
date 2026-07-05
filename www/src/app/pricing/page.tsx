@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { JsonLd } from "@/components/json-ld";
 import { socialMeta } from "@/lib/social-metadata";
 
-const DESC = "Transparent pricing for Astral hardware and software. M1-A quadcopter from $9,000, M1-G rover from $4,000. Free SDK tier, Pro at $49/mo, Enterprise custom.";
+const DESC = "Transparent pricing for Astral hardware and software. Quadcopter $9,000, Rover $4,000, Fixed-Wing $14,000, Phrover $1,000. Free SDK tier, Pro at $49/mo, Enterprise custom.";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 
 const hardwareProducts = [
   {
-    name: "M1-A",
+    name: "Quadcopter",
     price: "$9,000",
     description: "Autonomous quadcopter for aerial missions in any environment.",
     features: [
@@ -32,14 +32,14 @@ const hardwareProducts = [
       "Open source software",
     ],
     cta: "Learn More",
-    href: "/products/m1a",
+    href: "/products/quadcopter",
     badge: "Quadcopter",
     highlighted: true,
   },
   {
-    name: "M1-G",
+    name: "Rover",
     price: "$4,000",
-    description: "Autonomous ground rover for persistent missions and patrol.",
+    description: "Autonomous 4WD ground rover for persistent missions and patrol.",
     features: [
       "Jetson Orin Nano (67 TOPS)",
       "4 hour runtime",
@@ -51,8 +51,44 @@ const hardwareProducts = [
       "Open source software",
     ],
     cta: "Learn More",
-    href: "/products/m1g",
+    href: "/products/rover",
     badge: "Rover",
+  },
+  {
+    name: "Fixed-Wing",
+    price: "$14,000",
+    description: "Long-range autonomous fixed-wing for wide-area mapping and ISR.",
+    features: [
+      "Jetson Orin NX 16GB (157 TOPS)",
+      "90 min endurance, ~60 km range",
+      "Holybro Pixhawk Jetson Baseboard",
+      "Skywalker X8 airframe",
+      "Intel RealSense D435",
+      "IP54 weather rating",
+      "NDAA compliant compute",
+      "Open source software",
+    ],
+    cta: "Learn More",
+    href: "/products/fixed-wing",
+    badge: "Fixed-Wing",
+  },
+  {
+    name: "Phrover",
+    price: "$1,000",
+    description: "Lowest-cost autonomy — a 4WD rover powered by your own phone.",
+    features: [
+      "Bring your own iPhone or Android",
+      "Phone NPU + optional cloud AI",
+      "ESP32 motor-driver bridge",
+      "4 hour runtime",
+      "All-terrain 4WD",
+      "IP54 weather rating",
+      "Open source software",
+      "Phone not included (BYO)",
+    ],
+    cta: "Learn More",
+    href: "/products/phrover",
+    badge: "Phrover",
   },
 ];
 

@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Metadata } from "next";
 import Link from "next/link";
 import { Check, ArrowRight } from "lucide-react";
@@ -7,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { products, formatPrice } from "@/lib/products";
 import { socialMeta } from "@/lib/social-metadata";
 
-const DESC = "Compare the M1-A autonomous quadcopter and M1-G ground rover side-by-side — compute, sensors, runtime, payload, and use cases.";
+const DESC = "Compare the Astral autonomous platforms side-by-side — Quadcopter, Rover, Fixed-Wing, and Phrover. Compute, sensors, runtime, payload, and use cases.";
 
 export const metadata: Metadata = {
   title: "Compare Platforms",
@@ -15,55 +16,209 @@ export const metadata: Metadata = {
   ...socialMeta("/compare", "Compare Platforms | Astral", DESC),
 };
 
-// Comparison data structure
-const comparisonCategories = [
+// Short platform-type label shown under each product name in the table header.
+const platformType: Record<string, string> = {
+  quadcopter: "Aerial Platform",
+  rover: "Ground Platform",
+  "fixed-wing": "Fixed-Wing Platform",
+  phrover: "Phone-Powered Platform",
+};
+
+// Comparison rows. Each spec's `values` maps a product id → cell value
+// (string, or boolean for a check / dash).
+type CellValue = string | boolean;
+interface ComparisonSpec {
+  label: string;
+  values: Record<string, CellValue>;
+}
+interface ComparisonCategory {
+  name: string;
+  specs: ComparisonSpec[];
+}
+
+const comparisonCategories: ComparisonCategory[] = [
   {
     name: "Compute & AI",
     specs: [
-      { label: "Processor", m1a: "Jetson Orin Nano 8GB", m1g: "Jetson Orin Nano 8GB" },
-      { label: "AI Performance", m1a: "Up to 67 TOPS", m1g: "Up to 67 TOPS" },
-      { label: "On-Device AI", m1a: true, m1g: true },
-      { label: "Cloud LLM Support", m1a: true, m1g: true },
+      {
+        label: "Processor",
+        values: {
+          quadcopter: "Jetson Orin Nano 8GB",
+          rover: "Jetson Orin Nano 8GB",
+          "fixed-wing": "Jetson Orin NX 16GB",
+          phrover: "Your smartphone (BYO)",
+        },
+      },
+      {
+        label: "AI Performance",
+        values: {
+          quadcopter: "Up to 67 TOPS",
+          rover: "Up to 67 TOPS",
+          "fixed-wing": "Up to 157 TOPS",
+          phrover: "Phone NPU",
+        },
+      },
+      {
+        label: "On-Device AI",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: true },
+      },
+      {
+        label: "Cloud LLM Support",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: true },
+      },
     ],
   },
   {
     name: "Navigation & Autonomy",
     specs: [
-      { label: "GPS-Denied Operation", m1a: true, m1g: true },
-      { label: "Comm-Denied Operation", m1a: true, m1g: true },
-      { label: "Visual-Inertial Navigation", m1a: true, m1g: true },
-      { label: "Autonomous Missions", m1a: true, m1g: true },
+      {
+        label: "GPS-Denied Operation",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: false },
+      },
+      {
+        label: "Comm-Denied Operation",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: false },
+      },
+      {
+        label: "Visual-Inertial Navigation",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: false },
+      },
+      {
+        label: "Autonomous Missions",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: true },
+      },
     ],
   },
   {
     name: "Sensors & Perception",
     specs: [
-      { label: "Front Camera", m1a: "Intel RealSense D435", m1g: "Intel RealSense D435" },
-      { label: "Resolution", m1a: "1920x1080 @ 30fps", m1g: "1920x1080 @ 30fps" },
-      { label: "Depth Sensing", m1a: "1280x720 @ 90fps", m1g: "1280x720 @ 90fps" },
-      { label: "Obstacle Avoidance", m1a: true, m1g: true },
+      {
+        label: "Front Camera",
+        values: {
+          quadcopter: "Intel RealSense D435",
+          rover: "Intel RealSense D435",
+          "fixed-wing": "Intel RealSense D435",
+          phrover: "Smartphone camera (BYO)",
+        },
+      },
+      {
+        label: "Depth Sensing",
+        values: {
+          quadcopter: "1280x720 @ 90fps",
+          rover: "1280x720 @ 90fps",
+          "fixed-wing": "1280x720 @ 90fps",
+          phrover: "Monocular (phone)",
+        },
+      },
+      {
+        label: "Obstacle Avoidance",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: true },
+      },
     ],
   },
   {
     name: "Operation",
     specs: [
-      { label: "Environment", m1a: "Indoor & Outdoor", m1g: "Indoor & Outdoor" },
-      { label: "Mobility", m1a: "Aerial (Quadcopter)", m1g: "Ground (4WD Rover)" },
-      { label: "Max Speed", m1a: "45 MPH", m1g: "15 MPH" },
-      { label: "Runtime", m1a: "30 Minutes", m1g: "4 Hours" },
-      { label: "Payload", m1a: "500g", m1g: "5kg" },
+      {
+        label: "Environment",
+        values: {
+          quadcopter: "Indoor & Outdoor",
+          rover: "Indoor & Outdoor",
+          "fixed-wing": "Outdoor",
+          phrover: "Indoor & Outdoor",
+        },
+      },
+      {
+        label: "Mobility",
+        values: {
+          quadcopter: "Aerial (Quadcopter)",
+          rover: "Ground (4WD Rover)",
+          "fixed-wing": "Aerial (Fixed-Wing)",
+          phrover: "Ground (4WD Rover)",
+        },
+      },
+      {
+        label: "Max Speed",
+        values: {
+          quadcopter: "45 MPH",
+          rover: "15 MPH",
+          "fixed-wing": "60 MPH",
+          phrover: "12 MPH",
+        },
+      },
+      {
+        label: "Runtime / Endurance",
+        values: {
+          quadcopter: "30 Minutes",
+          rover: "4 Hours",
+          "fixed-wing": "90 Minutes",
+          phrover: "4 Hours",
+        },
+      },
+      {
+        label: "Payload",
+        values: {
+          quadcopter: "500g",
+          rover: "5kg",
+          "fixed-wing": "1kg",
+          phrover: "3kg",
+        },
+      },
     ],
   },
   {
     name: "Physical",
     specs: [
-      { label: "Weather Rating", m1a: "IP55", m1g: "IP65" },
-      { label: "NDAA Compliant Compute", m1a: true, m1g: true },
+      {
+        label: "Weather Rating",
+        values: {
+          quadcopter: "IP55",
+          rover: "IP65",
+          "fixed-wing": "IP54",
+          phrover: "IP54",
+        },
+      },
+      {
+        label: "NDAA Compliant Compute",
+        values: { quadcopter: true, rover: true, "fixed-wing": true, phrover: false },
+      },
     ],
   },
 ];
 
-function SpecValue({ value }: { value: string | boolean | null }) {
+// Per-product "choose this if" reasons for the recommendation cards.
+const recommendations: Record<string, string[]> = {
+  quadcopter: [
+    "You need aerial surveillance or inspection",
+    "Rapid deployment and repositioning is critical",
+    "Operating over obstacles or rough terrain",
+    "You need a bird's eye view perspective",
+    "Short mission duration is acceptable",
+  ],
+  rover: [
+    "You need persistent, long-duration missions",
+    "Carrying heavier payloads is required",
+    "Operating in noise-sensitive environments",
+    "Ground-level perimeter security",
+    "Indoor warehouse or facility patrol",
+  ],
+  "fixed-wing": [
+    "You need to cover wide areas in one sortie",
+    "Long-range mapping, survey, or ISR",
+    "Maximum endurance and cruise efficiency matter",
+    "You have room to hand- or bungee-launch",
+    "The highest on-board compute (Orin NX 16GB) is needed",
+  ],
+  phrover: [
+    "You want the lowest-cost way into autonomy",
+    "You already have a capable iPhone or Android",
+    "Education, research, or prototyping",
+    "Indoor or light outdoor ground missions",
+    "NDAA compute is not a requirement",
+  ],
+};
+
+function SpecValue({ value }: { value: CellValue | null }) {
   if (value === true) {
     return <Check className="h-5 w-5 text-success mx-auto" />;
   }
@@ -74,9 +229,6 @@ function SpecValue({ value }: { value: string | boolean | null }) {
 }
 
 export default function ComparePage() {
-  const m1a = products.find((p) => p.id === "m1a")!;
-  const m1g = products.find((p) => p.id === "m1g")!;
-
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -89,8 +241,8 @@ export default function ComparePage() {
                 Compare Platforms
               </h1>
               <p className="text-lg text-muted-foreground">
-                Both platforms share the same NDAA-compliant compute and sensors.
-                Choose based on your mission requirements.
+                Our platforms share the same autonomy stack and SDK. Choose
+                based on your mission requirements.
               </p>
             </div>
           </div>
@@ -99,52 +251,41 @@ export default function ComparePage() {
         {/* Comparison Table */}
         <section className="py-12 bg-card">
           <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto overflow-x-auto">
-              <table className="w-full">
+            <div className="max-w-6xl mx-auto overflow-x-auto">
+              <table className="w-full min-w-[720px]">
                 {/* Product Headers */}
                 <thead>
                   <tr>
-                    <th className="text-left p-4 w-1/3"></th>
-                    <th className="p-4 w-1/3">
-                      <div className="space-y-3">
-                        <Badge className="bg-amber-500/10 text-amber-500">
-                          {m1a.badge}
-                        </Badge>
-                        <h3 className="text-xl font-bold">{m1a.name}</h3>
-                        <p className="text-sm text-muted-foreground">Aerial Platform</p>
-                        <div className="text-2xl font-bold">
-                          {formatPrice(m1a.price)}
+                    <th className="text-left p-4"></th>
+                    {products.map((product) => (
+                      <th key={product.id} className="p-4">
+                        <div className="space-y-3">
+                          <Badge className="bg-amber-500/10 text-amber-500">
+                            {product.badge}
+                          </Badge>
+                          <h3 className="text-xl font-bold">{product.name}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {platformType[product.id] ?? "Platform"}
+                          </p>
+                          <div className="text-2xl font-bold">
+                            {formatPrice(product.price)}
+                          </div>
+                          <Link href={`/products/${product.id}`}>
+                            <Button variant="outline" size="sm">Learn More</Button>
+                          </Link>
                         </div>
-                        <Link href={`/products/${m1a.id}`}>
-                          <Button variant="outline">Learn More</Button>
-                        </Link>
-                      </div>
-                    </th>
-                    <th className="p-4 w-1/3">
-                      <div className="space-y-3">
-                        <Badge className="bg-amber-500/10 text-amber-500">
-                          {m1g.badge}
-                        </Badge>
-                        <h3 className="text-xl font-bold">{m1g.name}</h3>
-                        <p className="text-sm text-muted-foreground">Ground Platform</p>
-                        <div className="text-2xl font-bold">
-                          {formatPrice(m1g.price)}
-                        </div>
-                        <Link href={`/products/${m1g.id}`}>
-                          <Button variant="outline">Learn More</Button>
-                        </Link>
-                      </div>
-                    </th>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
 
                 <tbody>
                   {comparisonCategories.map((category) => (
-                    <>
+                    <Fragment key={category.name}>
                       {/* Category Header */}
-                      <tr key={category.name}>
+                      <tr>
                         <td
-                          colSpan={3}
+                          colSpan={products.length + 1}
                           className="bg-background px-4 py-3 font-semibold text-lg border-t border-border"
                         >
                           {category.name}
@@ -159,15 +300,14 @@ export default function ComparePage() {
                           <td className="p-4 text-muted-foreground">
                             {spec.label}
                           </td>
-                          <td className="p-4 text-center">
-                            <SpecValue value={spec.m1a} />
-                          </td>
-                          <td className="p-4 text-center">
-                            <SpecValue value={spec.m1g} />
-                          </td>
+                          {products.map((product) => (
+                            <td key={product.id} className="p-4 text-center">
+                              <SpecValue value={spec.values[product.id] ?? null} />
+                            </td>
+                          ))}
                         </tr>
                       ))}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -183,71 +323,33 @@ export default function ComparePage() {
                 Which Platform is Right for You?
               </h2>
               <div className="grid md:grid-cols-2 gap-8">
-                {/* M1-A */}
-                <div className="p-6 bg-card rounded-lg border border-border">
-                  <h3 className="text-xl font-bold mb-2">Choose M1-A if:</h3>
-                  <ul className="space-y-2">
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>You need aerial surveillance or inspection</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>Rapid deployment and repositioning is critical</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>Operating over obstacles or rough terrain</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>You need a bird&apos;s eye view perspective</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>Short mission duration is acceptable</span>
-                    </li>
-                  </ul>
-                  <Link href="/products/m1a" className="block mt-6">
-                    <Button variant="outline" className="w-full">
-                      Learn More
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </Link>
-                </div>
-
-                {/* M1-G */}
-                <div className="p-6 bg-card rounded-lg border border-border">
-                  <h3 className="text-xl font-bold mb-2">Choose M1-G if:</h3>
-                  <ul className="space-y-2">
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>You need persistent, long-duration missions</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>Carrying heavier payloads is required</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>Operating in noise-sensitive environments</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>Ground-level perimeter security</span>
-                    </li>
-                    <li className="flex items-start space-x-2 text-muted-foreground">
-                      <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
-                      <span>Indoor warehouse or facility patrol</span>
-                    </li>
-                  </ul>
-                  <Link href="/products/m1g" className="block mt-6">
-                    <Button variant="outline" className="w-full">
-                      Learn More
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </Link>
-                </div>
+                {products.map((product) => (
+                  <div
+                    key={product.id}
+                    className="p-6 bg-card rounded-lg border border-border"
+                  >
+                    <h3 className="text-xl font-bold mb-2">
+                      Choose {product.name} if:
+                    </h3>
+                    <ul className="space-y-2">
+                      {(recommendations[product.id] ?? []).map((reason) => (
+                        <li
+                          key={reason}
+                          className="flex items-start space-x-2 text-muted-foreground"
+                        >
+                          <Check className="h-4 w-4 text-amber-500 mt-1 shrink-0" />
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Link href={`/products/${product.id}`} className="block mt-6">
+                      <Button variant="outline" className="w-full">
+                        Learn More
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

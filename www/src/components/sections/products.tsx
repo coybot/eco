@@ -10,32 +10,56 @@ import { Badge } from "@/components/ui/badge";
 import { products as catalogProducts, formatPrice } from "@/lib/products";
 
 const displaySpecs: Record<string, Array<{ icon: typeof Cpu; label: string; detail: string }>> = {
-  m1a: [
+  quadcopter: [
     { icon: Cpu, label: "Jetson Orin Nano 8GB", detail: "67 TOPS AI" },
     { icon: Battery, label: "30 min flight", detail: "Aerial platform" },
     { icon: Gauge, label: "GPS & Comm Denied", detail: "Full autonomy" },
     { icon: Shield, label: "IP55", detail: "Indoor & outdoor" },
   ],
-  m1g: [
+  rover: [
     { icon: Cpu, label: "Jetson Orin Nano 8GB", detail: "67 TOPS AI" },
     { icon: Battery, label: "4 hr runtime", detail: "Ground platform" },
     { icon: Gauge, label: "GPS & Comm Denied", detail: "Full autonomy" },
     { icon: Shield, label: "IP65", detail: "All-weather" },
   ],
+  "fixed-wing": [
+    { icon: Cpu, label: "Jetson Orin NX 16GB", detail: "157 TOPS AI" },
+    { icon: Battery, label: "90 min endurance", detail: "Long-range wing" },
+    { icon: Gauge, label: "GPS & Comm Denied", detail: "Full autonomy" },
+    { icon: Shield, label: "IP54", detail: "Skywalker X8" },
+  ],
+  phrover: [
+    { icon: Cpu, label: "Your smartphone", detail: "Phone NPU + cloud" },
+    { icon: Battery, label: "4 hr runtime", detail: "Ground platform" },
+    { icon: Gauge, label: "Bring-your-own AI", detail: "iOS / Android" },
+    { icon: Shield, label: "IP54", detail: "Indoor & outdoor" },
+  ],
 };
 
 const displayFeatures: Record<string, string[]> = {
-  m1a: [
+  quadcopter: [
     "Intel RealSense D435 camera",
     "Visual-inertial navigation",
     "On-device AI reasoning",
     "NDAA compliant compute",
   ],
-  m1g: [
+  rover: [
     "Intel RealSense D435 camera",
     "Visual-inertial navigation",
     "On-device AI reasoning",
     "NDAA compliant compute",
+  ],
+  "fixed-wing": [
+    "Intel RealSense D435 camera",
+    "Holybro Pixhawk Jetson Baseboard",
+    "On-device AI reasoning",
+    "NDAA compliant compute",
+  ],
+  phrover: [
+    "Uses your iPhone or Android",
+    "ESP32 motor-driver bridge",
+    "Phone-powered AI & vision",
+    "Lowest-cost autonomous platform",
   ],
 };
 
