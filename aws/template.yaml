@@ -351,6 +351,33 @@ Resources:
             Path: /command
             Method: POST
 
+  # Rover conversational escalation (see eco/rover/docs/architecture.md).
+  # Only reached when the on-device Apple Foundation Model on RoverOperator flags a
+  # utterance as open-ended (small talk / general knowledge) — navigation intents
+  # are parsed and dispatched on-device and never call this.
+  RoverConverseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub rover-converse-${Environment}
+      CodeUri: src/
+      Handler: rover.converse_handler
+      MemorySize: 256
+      Timeout: 15
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+      Events:
+        Converse:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /rover/converse
+            Method: POST
+
   # Register Drone Function
   RegisterDroneFunction:
     Type: AWS::Serverless::Function

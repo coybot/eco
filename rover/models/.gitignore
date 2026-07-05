@@ -1,0 +1,9 @@
+# Model files (generated/downloaded - too large for git) — matches eco/drone/models/ convention
+*.pt
+*.mlpackage
+*.mlmodelc
+.venv/
+
+!convert_yolo_coreml.py
+!README.md
+!.gitignore

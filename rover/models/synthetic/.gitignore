@@ -1,0 +1,12 @@
+# Downloaded/generated — too large for git, regenerate with the scripts (see README.md)
+hhr_source/
+objects_source/
+cutouts/
+dataset/
+runs/
+preview_*.jpg
+
+!extract_cutouts.py
+!generate_dataset.py
+!README.md
+!.gitignore
