@@ -34,7 +34,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "What is an autonomous drone SDK?",
-    a: "An autonomous drone SDK is the software layer that lets developers build, test, and deploy autonomy — perception, planning, and control — on a drone. Astral's SDK is open source and pairs with high-fidelity simulation (ArduPilot SITL for fast iteration, Isaac-class sim for full perception loops), so autonomy code is evaluated in closed loop before it reaches hardware. It runs on your own platform or on Astral's NDAA-compliant M1-A and M1-G.",
+    a: "An autonomous drone SDK is the software layer that lets developers build, test, and deploy autonomy — perception, planning, and control — on a drone. Astral's SDK is open source and pairs with high-fidelity simulation (ArduPilot SITL for fast iteration, Isaac-class sim for full perception loops), so autonomy code is evaluated in closed loop before it reaches hardware. It runs on your own platform or on Astral's NDAA-compliant Quadcopter, Rover, and Fixed-Wing.",
   },
   {
     q: "What sensing do large drone swarms need?",

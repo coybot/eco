@@ -9,7 +9,7 @@ import { SITE } from "@/lib/site";
 
 // Flat, crawlable nav. Every entry is a real <a href> to an index page that
 // exists and is rendered in the server HTML — no JS-only dropdowns. Sub-pages
-// (M1-A/M1-G/Compare, SDK/API/Simulation, etc.) are reachable from these index
+// (Quadcopter/Rover/Fixed-Wing/Phrover/Compare, SDK/API/Simulation, etc.) are reachable from these index
 // pages, the footer, and the sitemap.
 const navLinks = [
   { title: "Products", href: "/products" },
