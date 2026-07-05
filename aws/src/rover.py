@@ -42,12 +42,12 @@ def get_user_id(event):
 
 
 def converse_handler(event, context):
-    """POST /rover/converse — open-ended conversational fallback for RoverOperator's
-    DialogAgent. Only reached when the on-device Apple Foundation Model flags an
-    utterance as needing escalation (small talk, general knowledge); navigation intents
+    """POST /rover/converse — open-ended conversational fallback for PhroverOperator's
+    DialogAgent (PhroverKit). Only reached when the on-device Apple Foundation Model flags
+    an utterance as needing escalation (small talk, general knowledge); navigation intents
     are parsed and dispatched entirely on-device and never hit this endpoint. See
-    eco/client/ios/RoverOperator/RoverOperator/Cloud/ClaudeDialogClient.swift and
-    eco/rover/docs/architecture.md.
+    ClaudeDialogClient.swift in the sibling astral-sdk repo (swift/Sources/PhroverCloud)
+    and eco/rover/docs/architecture.md.
     """
     if not get_user_id(event):
         return json_response(401, {"error": "Unauthorized"})

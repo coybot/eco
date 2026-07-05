@@ -352,7 +352,7 @@ Resources:
             Method: POST
 
   # Rover conversational escalation (see eco/rover/docs/architecture.md).
-  # Only reached when the on-device Apple Foundation Model on RoverOperator flags a
+  # Only reached when the on-device Apple Foundation Model on PhroverOperator flags a
   # utterance as open-ended (small talk / general knowledge) — navigation intents
   # are parsed and dispatched on-device and never call this.
   RoverConverseFunction:

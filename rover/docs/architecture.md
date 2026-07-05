@@ -111,8 +111,11 @@ embeddable in the app as a local Swift package.
 
 ## Verification
 
-- **Nav core (off-device, today):** `cd eco/rover/nav/RoverNav && swift test` — 12 tests,
-  including a kinematic sim that plans around a corner and drives to the goal collision-free
+- **Nav core (off-device, today):** `cd ../sdk && swift build --target RoverNav` (pure
+  Foundation, plain macOS); the full 12-test `RoverNavTests` suite — including a kinematic
+  sim that plans around a corner and drives to the goal collision-free — now needs an iOS
+  destination since RoverNav shares a package with ARKit-dependent PhroverKit/PhroverCloud:
+  `xcodebuild test -scheme astral-sdk-Package -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:RoverNavTests`
   with < 0.3 m final error.
 - **Phase 0 (device):** connect over WiFi; tap-drive forward/turn/stop; confirm motion +
   IMU/chassis telemetry; trigger e-stop and comms-loss watchdog (kill AP → rover stops).

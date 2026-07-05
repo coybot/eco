@@ -1,6 +1,6 @@
 # On-device models
 
-CoreML model artifacts and conversion scripts for `RoverOperator`'s on-device `Detector`.
+CoreML model artifacts and conversion scripts for PhroverKit's on-device `Detector`.
 Like `eco/drone/models/`, model binaries are **not committed to git** (see `.gitignore`)
 — generate them locally with the script below.
 
@@ -46,8 +46,9 @@ Two other options remain open, roughly in order of effort beyond compositing:
    pseudo-label real ramp stock photos for ramp-specific classes — best realism, needs a
    source of real images and a licensing check.
 
-Add `RoverYOLO.mlpackage` to the `RoverOperator` Xcode target (Xcode auto-compiles it to
-`RoverYOLO.mlmodelc` at build time) — `Detector.swift` already loads it by that name.
+Copy `RoverYOLO.mlpackage` to `sdk/swift/Sources/PhroverKit/Resources/` in the sibling
+astral-sdk repo (a PhroverKit package resource) — `Detector.swift` compiles it at load
+time via `Bundle.module` and loads it by that name.
 
 ## Other candidates (not yet built)
 
