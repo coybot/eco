@@ -1,0 +1,590 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0924FB3DF1FF6AE2008948B5 /* RoverTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A84B4B51F0F6402694AC89F5 /* RoverTelemetry.swift */; };
+		0D8C0ADD6C9E8C9EC277747B /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7D6EBDD5018B92B705863014 /* AuthenticationServices.framework */; };
+		20710779B5584A61CF007A61 /* RoverNav in Frameworks */ = {isa = PBXBuildFile; productRef = 728D2B0DE6EAEF7451662210 /* RoverNav */; };
+		2220B9289F1A92B8B1107FA0 /* RoverTelemetryPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C4F2479B7327611044C5A46 /* RoverTelemetryPublisher.swift */; };
+		2A5A40BF93F5A256374803F0 /* RoverConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0419EBAE5187AE1D0A0B23 /* RoverConfig.swift */; };
+		2E879EB3BFB576D6FBE2C68E /* Detector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F21DB437FF181C1224FDD08 /* Detector.swift */; };
+		2F9E7CC8F65F6D91DD5FD040 /* CostmapBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4490AB44A0F64B905ED60BD /* CostmapBuilder.swift */; };
+		4527B614D755DC343565180B /* ClaudeDialogClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7514600198C9E547004CF26E /* ClaudeDialogClient.swift */; };
+		4A729940466463CDBC13CCD1 /* DriveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CF746A03275C88FCB6080C /* DriveView.swift */; };
+		4BB7E6E937B2FCB1BBE39554 /* SpeechIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C6978BE476D35CC338DC446 /* SpeechIn.swift */; };
+		4F80F1DDC24B1D5F53B5398E /* NavigateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C33EA95CA0373022ACA787 /* NavigateView.swift */; };
+		517C6398A4328658D4110482 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5BA0E7C332BE2BF9068A116 /* ARKit.framework */; };
+		5308CD25CFD4FEB2F0909B54 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91EC351825C79E84A8D2D0B3 /* AuthView.swift */; };
+		555D2FF8AF3EA3FDFDA4B197 /* RoverControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189CE647FA48426218F5DB82 /* RoverControl.swift */; };
+		5A3D18E59C23AC3370CCCC7D /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB46A98F852F5FCA9E0B237F /* FoundationModels.framework */; };
+		6A665887783A110932507F0C /* AWSConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A56F86954263CFFC1C3328E /* AWSConfig.swift */; };
+		77CA3BA1683C88C811926EFF /* CoreML.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F417153EBF6D988DE1E874AA /* CoreML.framework */; };
+		80916F39311A7A6558A552BB /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C001C1965E61887811E178 /* AuthService.swift */; };
+		86AD57CF8021098F8016175A /* Speech.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4FC48B5B5183A1672F6F43B /* Speech.framework */; };
+		9C29608D5A8B8EBE80E8AC67 /* AWSIoT in Frameworks */ = {isa = PBXBuildFile; productRef = 74724F94A4A0A1355F205031 /* AWSIoT */; };
+		9FF74130936D051BD9CA29F6 /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A42BBA8F68E15F3E9475EBC /* Vision.framework */; };
+		A7201F469D3C9DF148FD0A66 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 63DA1381F11B8A49A979C40A /* AVFoundation.framework */; };
+		AA6283606BC8CDFFAFC09955 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D50607C0845665BB23F42CE /* APIClient.swift */; };
+		AF9888F11946B1EC3E809695 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F31CD6C59A8BF9495929C69 /* User.swift */; };
+		B19540D79BD471E8F0C410C7 /* NavigationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 262503C4C43F143A355D3146 /* NavigationController.swift */; };
+		BD502CE48152967500A17FC4 /* RoverIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E2F28BCFEA22545185F40F0 /* RoverIntent.swift */; };
+		CB597693581FECB2512EFE97 /* DialogAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E536D5EBDE2B8C679F939D7C /* DialogAgent.swift */; };
+		CDFA1D1B7D9DF179D55DEB8E /* WorldMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2321748A79D841A88611D3 /* WorldMapStore.swift */; };
+		D00BF55ABF5213C4E0279EAA /* SpeechOut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 862239F9FFFA113E0CA8EA30 /* SpeechOut.swift */; };
+		D6508CED689652EB1981DBCC /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957B32C443D3F6227BC499EF /* Logger.swift */; };
+		E6E1F8F569C74A511FD3477B /* RoverYOLO.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 3605B994FECBE62A65C56528 /* RoverYOLO.mlpackage */; };
+		EFD13353E9A082DC19B93D01 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE4FB401A6A4C85DCF4FF713 /* ConversationView.swift */; };
+		F04992FB5FE722D1ADEC19CA /* ARSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF6F259F55FCA19AA82F2A2D /* ARSessionManager.swift */; };
+		F1C922B775EF42BC84EB02C3 /* RoverOperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E153B8939BD331F2FE7228 /* RoverOperatorApp.swift */; };
+		F908961DB7840F2CEB178870 /* AWSCore in Frameworks */ = {isa = PBXBuildFile; productRef = 499611581442AA0D81B6AA64 /* AWSCore */; };
+		FF54345EB6AD8D1636EE00D3 /* ObstacleGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7B0AE1EC19523D76FAAC3A3 /* ObstacleGuard.swift */; };
+		FF9E98D38FCD83BFE180EA98 /* MQTTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73EE7260EC3AC71645950CB5 /* MQTTService.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		055759DC82756351FE9F1841 /* RoverNav */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RoverNav; path = ../../../rover/nav/RoverNav; sourceTree = SOURCE_ROOT; };
+		09F6DF1E751CEFAFA62D04D5 /* RoverOperator.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RoverOperator.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		189CE647FA48426218F5DB82 /* RoverControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverControl.swift; sourceTree = "<group>"; };
+		1B2321748A79D841A88611D3 /* WorldMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldMapStore.swift; sourceTree = "<group>"; };
+		1C4F2479B7327611044C5A46 /* RoverTelemetryPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverTelemetryPublisher.swift; sourceTree = "<group>"; };
+		23E153B8939BD331F2FE7228 /* RoverOperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverOperatorApp.swift; sourceTree = "<group>"; };
+		262503C4C43F143A355D3146 /* NavigationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationController.swift; sourceTree = "<group>"; };
+		27C33EA95CA0373022ACA787 /* NavigateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigateView.swift; sourceTree = "<group>"; };
+		2C6978BE476D35CC338DC446 /* SpeechIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechIn.swift; sourceTree = "<group>"; };
+		2F31CD6C59A8BF9495929C69 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		3605B994FECBE62A65C56528 /* RoverYOLO.mlpackage */ = {isa = PBXFileReference; path = RoverYOLO.mlpackage; sourceTree = "<group>"; };
+		36C001C1965E61887811E178 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		4A42BBA8F68E15F3E9475EBC /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
+		4F21DB437FF181C1224FDD08 /* Detector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Detector.swift; sourceTree = "<group>"; };
+		50CF746A03275C88FCB6080C /* DriveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveView.swift; sourceTree = "<group>"; };
+		5D0419EBAE5187AE1D0A0B23 /* RoverConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverConfig.swift; sourceTree = "<group>"; };
+		63DA1381F11B8A49A979C40A /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		6A56F86954263CFFC1C3328E /* AWSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AWSConfig.swift; sourceTree = "<group>"; };
+		73EE7260EC3AC71645950CB5 /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
+		7514600198C9E547004CF26E /* ClaudeDialogClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDialogClient.swift; sourceTree = "<group>"; };
+		7D50607C0845665BB23F42CE /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		7D6EBDD5018B92B705863014 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
+		862239F9FFFA113E0CA8EA30 /* SpeechOut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechOut.swift; sourceTree = "<group>"; };
+		91EC351825C79E84A8D2D0B3 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		957B32C443D3F6227BC499EF /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
+		9E2F28BCFEA22545185F40F0 /* RoverIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverIntent.swift; sourceTree = "<group>"; };
+		A84B4B51F0F6402694AC89F5 /* RoverTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoverTelemetry.swift; sourceTree = "<group>"; };
+		AE4FB401A6A4C85DCF4FF713 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		B5BA0E7C332BE2BF9068A116 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
+		B7B0AE1EC19523D76FAAC3A3 /* ObstacleGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObstacleGuard.swift; sourceTree = "<group>"; };
+		C4490AB44A0F64B905ED60BD /* CostmapBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostmapBuilder.swift; sourceTree = "<group>"; };
+		C4FC48B5B5183A1672F6F43B /* Speech.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Speech.framework; path = System/Library/Frameworks/Speech.framework; sourceTree = SDKROOT; };
+		CF6F259F55FCA19AA82F2A2D /* ARSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARSessionManager.swift; sourceTree = "<group>"; };
+		E536D5EBDE2B8C679F939D7C /* DialogAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialogAgent.swift; sourceTree = "<group>"; };
+		EB46A98F852F5FCA9E0B237F /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = System/Library/Frameworks/FoundationModels.framework; sourceTree = SDKROOT; };
+		F417153EBF6D988DE1E874AA /* CoreML.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreML.framework; path = System/Library/Frameworks/CoreML.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CB057AB7DA3CB5F5E3FC7D6F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20710779B5584A61CF007A61 /* RoverNav in Frameworks */,
+				F908961DB7840F2CEB178870 /* AWSCore in Frameworks */,
+				9C29608D5A8B8EBE80E8AC67 /* AWSIoT in Frameworks */,
+				517C6398A4328658D4110482 /* ARKit.framework in Frameworks */,
+				77CA3BA1683C88C811926EFF /* CoreML.framework in Frameworks */,
+				9FF74130936D051BD9CA29F6 /* Vision.framework in Frameworks */,
+				86AD57CF8021098F8016175A /* Speech.framework in Frameworks */,
+				A7201F469D3C9DF148FD0A66 /* AVFoundation.framework in Frameworks */,
+				0D8C0ADD6C9E8C9EC277747B /* AuthenticationServices.framework in Frameworks */,
+				5A3D18E59C23AC3370CCCC7D /* FoundationModels.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		03DE1DD4430B495E3B472F81 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				36C001C1965E61887811E178 /* AuthService.swift */,
+				2F31CD6C59A8BF9495929C69 /* User.swift */,
+			);
+			name = Auth;
+			path = RoverOperator/Auth;
+			sourceTree = "<group>";
+		};
+		240F0AB264CD60FAB3C7078B /* Nav */ = {
+			isa = PBXGroup;
+			children = (
+				C4490AB44A0F64B905ED60BD /* CostmapBuilder.swift */,
+				262503C4C43F143A355D3146 /* NavigationController.swift */,
+				B7B0AE1EC19523D76FAAC3A3 /* ObstacleGuard.swift */,
+				1B2321748A79D841A88611D3 /* WorldMapStore.swift */,
+			);
+			name = Nav;
+			path = RoverOperator/Nav;
+			sourceTree = "<group>";
+		};
+		27385013F7CEFD91973B82DA /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				055759DC82756351FE9F1841 /* RoverNav */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		2E523DADFDB073AFAB7034E7 /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				E536D5EBDE2B8C679F939D7C /* DialogAgent.swift */,
+				9E2F28BCFEA22545185F40F0 /* RoverIntent.swift */,
+				2C6978BE476D35CC338DC446 /* SpeechIn.swift */,
+				862239F9FFFA113E0CA8EA30 /* SpeechOut.swift */,
+			);
+			name = Voice;
+			path = RoverOperator/Voice;
+			sourceTree = "<group>";
+		};
+		3DBE47F3504FAE340B66281F /* Perception */ = {
+			isa = PBXGroup;
+			children = (
+				CF6F259F55FCA19AA82F2A2D /* ARSessionManager.swift */,
+				4F21DB437FF181C1224FDD08 /* Detector.swift */,
+			);
+			name = Perception;
+			path = RoverOperator/Perception;
+			sourceTree = "<group>";
+		};
+		4006320AE6528E73DF5E89DE /* models */ = {
+			isa = PBXGroup;
+			children = (
+				3605B994FECBE62A65C56528 /* RoverYOLO.mlpackage */,
+			);
+			name = models;
+			path = ../../../rover/models;
+			sourceTree = "<group>";
+		};
+		402F4AD183F47C62D8782C9F /* Cloud */ = {
+			isa = PBXGroup;
+			children = (
+				7D50607C0845665BB23F42CE /* APIClient.swift */,
+				7514600198C9E547004CF26E /* ClaudeDialogClient.swift */,
+				73EE7260EC3AC71645950CB5 /* MQTTService.swift */,
+				1C4F2479B7327611044C5A46 /* RoverTelemetryPublisher.swift */,
+			);
+			name = Cloud;
+			path = RoverOperator/Cloud;
+			sourceTree = "<group>";
+		};
+		58B79934B42AEC3965928090 /* RoverSDK */ = {
+			isa = PBXGroup;
+			children = (
+				189CE647FA48426218F5DB82 /* RoverControl.swift */,
+				A84B4B51F0F6402694AC89F5 /* RoverTelemetry.swift */,
+			);
+			name = RoverSDK;
+			path = RoverOperator/RoverSDK;
+			sourceTree = "<group>";
+		};
+		7E37D7A567BF4D626288D231 = {
+			isa = PBXGroup;
+			children = (
+				F81ECC7F552F729FF305815D /* App */,
+				03DE1DD4430B495E3B472F81 /* Auth */,
+				402F4AD183F47C62D8782C9F /* Cloud */,
+				B0DBEC7F770D17063CF65AE0 /* Config */,
+				4006320AE6528E73DF5E89DE /* models */,
+				240F0AB264CD60FAB3C7078B /* Nav */,
+				27385013F7CEFD91973B82DA /* Packages */,
+				3DBE47F3504FAE340B66281F /* Perception */,
+				58B79934B42AEC3965928090 /* RoverSDK */,
+				EDA7ADFDCB2265C079859552 /* Services */,
+				DD2DB714E8FFDC9BCE069C2E /* Views */,
+				2E523DADFDB073AFAB7034E7 /* Voice */,
+				BAF9DB328DBEFACD74C574BC /* Frameworks */,
+				BCA00F515E0A62229513431A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B0DBEC7F770D17063CF65AE0 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				6A56F86954263CFFC1C3328E /* AWSConfig.swift */,
+				5D0419EBAE5187AE1D0A0B23 /* RoverConfig.swift */,
+			);
+			name = Config;
+			path = RoverOperator/Config;
+			sourceTree = "<group>";
+		};
+		BAF9DB328DBEFACD74C574BC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B5BA0E7C332BE2BF9068A116 /* ARKit.framework */,
+				7D6EBDD5018B92B705863014 /* AuthenticationServices.framework */,
+				63DA1381F11B8A49A979C40A /* AVFoundation.framework */,
+				F417153EBF6D988DE1E874AA /* CoreML.framework */,
+				EB46A98F852F5FCA9E0B237F /* FoundationModels.framework */,
+				C4FC48B5B5183A1672F6F43B /* Speech.framework */,
+				4A42BBA8F68E15F3E9475EBC /* Vision.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BCA00F515E0A62229513431A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				09F6DF1E751CEFAFA62D04D5 /* RoverOperator.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DD2DB714E8FFDC9BCE069C2E /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				91EC351825C79E84A8D2D0B3 /* AuthView.swift */,
+				AE4FB401A6A4C85DCF4FF713 /* ConversationView.swift */,
+				50CF746A03275C88FCB6080C /* DriveView.swift */,
+				27C33EA95CA0373022ACA787 /* NavigateView.swift */,
+			);
+			name = Views;
+			path = RoverOperator/Views;
+			sourceTree = "<group>";
+		};
+		EDA7ADFDCB2265C079859552 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				957B32C443D3F6227BC499EF /* Logger.swift */,
+			);
+			name = Services;
+			path = RoverOperator/Services;
+			sourceTree = "<group>";
+		};
+		F81ECC7F552F729FF305815D /* App */ = {
+			isa = PBXGroup;
+			children = (
+				23E153B8939BD331F2FE7228 /* RoverOperatorApp.swift */,
+			);
+			name = App;
+			path = RoverOperator/App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6FC606013363BECF6CB38084 /* RoverOperator */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B82F1488F346BF806FCDBF1 /* Build configuration list for PBXNativeTarget "RoverOperator" */;
+			buildPhases = (
+				F35BCDAC81155BDA0012BBA9 /* Sources */,
+				CB057AB7DA3CB5F5E3FC7D6F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RoverOperator;
+			packageProductDependencies = (
+				728D2B0DE6EAEF7451662210 /* RoverNav */,
+				499611581442AA0D81B6AA64 /* AWSCore */,
+				74724F94A4A0A1355F205031 /* AWSIoT */,
+			);
+			productName = RoverOperator;
+			productReference = 09F6DF1E751CEFAFA62D04D5 /* RoverOperator.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0611AA14D2C534052419E832 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 4CDCAE774C51405412C68016 /* Build configuration list for PBXProject "RoverOperator" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7E37D7A567BF4D626288D231;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				8641FDC0B036E2211446869B /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */,
+				4C639B15DD8E5A33DCDD8D0D /* XCLocalSwiftPackageReference "../../../rover/nav/RoverNav" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = BCA00F515E0A62229513431A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6FC606013363BECF6CB38084 /* RoverOperator */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F35BCDAC81155BDA0012BBA9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA6283606BC8CDFFAFC09955 /* APIClient.swift in Sources */,
+				F04992FB5FE722D1ADEC19CA /* ARSessionManager.swift in Sources */,
+				6A665887783A110932507F0C /* AWSConfig.swift in Sources */,
+				80916F39311A7A6558A552BB /* AuthService.swift in Sources */,
+				5308CD25CFD4FEB2F0909B54 /* AuthView.swift in Sources */,
+				4527B614D755DC343565180B /* ClaudeDialogClient.swift in Sources */,
+				EFD13353E9A082DC19B93D01 /* ConversationView.swift in Sources */,
+				2F9E7CC8F65F6D91DD5FD040 /* CostmapBuilder.swift in Sources */,
+				2E879EB3BFB576D6FBE2C68E /* Detector.swift in Sources */,
+				CB597693581FECB2512EFE97 /* DialogAgent.swift in Sources */,
+				4A729940466463CDBC13CCD1 /* DriveView.swift in Sources */,
+				D6508CED689652EB1981DBCC /* Logger.swift in Sources */,
+				FF9E98D38FCD83BFE180EA98 /* MQTTService.swift in Sources */,
+				4F80F1DDC24B1D5F53B5398E /* NavigateView.swift in Sources */,
+				B19540D79BD471E8F0C410C7 /* NavigationController.swift in Sources */,
+				FF54345EB6AD8D1636EE00D3 /* ObstacleGuard.swift in Sources */,
+				2A5A40BF93F5A256374803F0 /* RoverConfig.swift in Sources */,
+				555D2FF8AF3EA3FDFDA4B197 /* RoverControl.swift in Sources */,
+				BD502CE48152967500A17FC4 /* RoverIntent.swift in Sources */,
+				F1C922B775EF42BC84EB02C3 /* RoverOperatorApp.swift in Sources */,
+				0924FB3DF1FF6AE2008948B5 /* RoverTelemetry.swift in Sources */,
+				2220B9289F1A92B8B1107FA0 /* RoverTelemetryPublisher.swift in Sources */,
+				E6E1F8F569C74A511FD3477B /* RoverYOLO.mlpackage in Sources */,
+				4BB7E6E937B2FCB1BBE39554 /* SpeechIn.swift in Sources */,
+				D00BF55ABF5213C4E0279EAA /* SpeechOut.swift in Sources */,
+				AF9888F11946B1EC3E809695 /* User.swift in Sources */,
+				CDFA1D1B7D9DF179D55DEB8E /* WorldMapStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		522DF9A451AA3A00490866AD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		80C1BA05F0B53A230AA83631 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RoverOperator/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.rover;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F05B3A723A14E2949518ABA1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F643D2489C2697B554C9015E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RoverOperator/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = us.astral.rover;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4CDCAE774C51405412C68016 /* Build configuration list for PBXProject "RoverOperator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				522DF9A451AA3A00490866AD /* Debug */,
+				F05B3A723A14E2949518ABA1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7B82F1488F346BF806FCDBF1 /* Build configuration list for PBXNativeTarget "RoverOperator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				80C1BA05F0B53A230AA83631 /* Debug */,
+				F643D2489C2697B554C9015E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4C639B15DD8E5A33DCDD8D0D /* XCLocalSwiftPackageReference "../../../rover/nav/RoverNav" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../rover/nav/RoverNav;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8641FDC0B036E2211446869B /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aws-amplify/aws-sdk-ios-spm";
+			requirement = {
+				kind = exactVersion;
+				version = 2.41.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		499611581442AA0D81B6AA64 /* AWSCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8641FDC0B036E2211446869B /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */;
+			productName = AWSCore;
+		};
+		728D2B0DE6EAEF7451662210 /* RoverNav */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RoverNav;
+		};
+		74724F94A4A0A1355F205031 /* AWSIoT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8641FDC0B036E2211446869B /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */;
+			productName = AWSIoT;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0611AA14D2C534052419E832 /* Project object */;
+}
