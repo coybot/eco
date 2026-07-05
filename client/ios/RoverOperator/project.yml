@@ -1,0 +1,53 @@
+name: RoverOperator
+options:
+  bundleIdPrefix: us.astral
+  deploymentTarget:
+    iOS: "26.0"
+
+packages:
+  RoverNav:
+    path: ../../../rover/nav/RoverNav
+  aws-sdk-ios-spm:
+    url: https://github.com/aws-amplify/aws-sdk-ios-spm
+    exactVersion: 2.41.0
+
+targets:
+  RoverOperator:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: RoverOperator/App
+      - path: RoverOperator/Auth
+      - path: RoverOperator/Cloud
+      - path: RoverOperator/Config
+      - path: RoverOperator/Nav
+      - path: RoverOperator/Perception
+      - path: RoverOperator/RoverSDK
+      - path: RoverOperator/Services
+      - path: RoverOperator/Views
+      - path: RoverOperator/Voice
+      - path: ../../../rover/models/RoverYOLO.mlpackage
+        optional: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: us.astral.rover
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: RoverOperator/Info.plist
+    dependencies:
+      - package: RoverNav
+      - package: aws-sdk-ios-spm
+        product: AWSCore
+      - package: aws-sdk-ios-spm
+        product: AWSIoT
+      - sdk: ARKit.framework
+      - sdk: CoreML.framework
+      - sdk: Vision.framework
+      - sdk: Speech.framework
+      - sdk: AVFoundation.framework
+      - sdk: AuthenticationServices.framework
+      - sdk: FoundationModels.framework
