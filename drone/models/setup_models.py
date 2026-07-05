@@ -222,6 +222,44 @@ def reactive_policy(models_dir: Path) -> None:
     print("Reactive policy v1 ready.")
 
 
+NAV_POLICIES_HF_REPO = "astralhf/eco-drone-policies"
+NAV_POLICY_FILES = {
+    "quadcopter": ["policy_v26rnn_dr.onnx"],
+    "rover": ["policy_rover_v2.onnx", "policy_rover_v2.onnx.data"],
+    "fixedwing": ["policy_fw.onnx"],
+}
+
+
+def nav_policies(models_dir: Path, vehicles: list[str] | None = None) -> None:
+    """L5 learned-planner ONNX policies (quadcopter / rover / fixed-wing), hosted on the
+    Hugging Face Hub at astralhf/eco-drone-policies. Filenames match each vehicle class's
+    default `policy_onnx` in vehicle_class.py, so no renaming is needed after download.
+
+    These are optional -- the platform's benchmarked L5 fleet controller
+    (drone/common/L5.md) is classical control with no model weights at all. This is only
+    needed for the separate LearnedPlanner path (e.g. render_fixedwing_demo.py).
+    """
+    vehicles = vehicles or list(NAV_POLICY_FILES)
+    fnames = [f for v in vehicles for f in NAV_POLICY_FILES[v]]
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        print("Install huggingface_hub: pip install huggingface_hub")
+        sys.exit(1)
+    for fname in fnames:
+        dest = models_dir / fname
+        if dest.exists():
+            print(f"{fname} already exists, skipping.")
+            continue
+        print(f"Downloading {fname} from {NAV_POLICIES_HF_REPO} ...")
+        path = Path(hf_hub_download(repo_id=NAV_POLICIES_HF_REPO, filename=fname,
+                                     local_dir=str(models_dir)))
+        if path.resolve() != dest.resolve():
+            shutil.copy2(path, dest)
+        print(f"  Saved {dest}")
+    print("Nav policies ready.")
+
+
 def depth_model(models_dir: Path) -> None:
     """Depth Anything V2 Small fine-tuned on aerial domain (~1.6 MB ONNX).
 
@@ -304,6 +342,10 @@ def main() -> None:
     parser.add_argument("--domain-detector", action="store_true", help="Download astral domain detector v1 (drone/vehicle/person ONNX)")
     parser.add_argument("--vlm-drone", action="store_true", help="Download drone-action VLM v1 (Qwen2.5-VL-3B LoRA Q4_K_M GGUF, ~1.8+1.2 GB)")
     parser.add_argument("--reactive-policy", action="store_true", help="Download reactive policy MLP v1 (12-dim state → velocity cmd ONNX)")
+    parser.add_argument("--nav-policies", type=str, nargs="*", metavar="VEHICLE",
+                        help="Download L5 learned-planner ONNX policies from Hugging Face "
+                             "(astralhf/eco-drone-policies). No args = all vehicles, or "
+                             "specify: quadcopter rover fixedwing")
     parser.add_argument("--depth-model", action="store_true", help="Download depth model v1 (Depth Anything V2 Small, aerial fine-tuned ONNX)")
     parser.add_argument("--qwen3-vl-2b", action="store_true", help="Small VLM for Nano (7B Q4_K_M)")
     parser.add_argument("--qwen3-vl-8b", action="store_true", help="7B VLM for NX / AGX 32GB")
@@ -325,6 +367,8 @@ def main() -> None:
         vlm_drone(models_dir)
     if args.reactive_policy:
         reactive_policy(models_dir)
+    if args.nav_policies is not None:
+        nav_policies(models_dir, args.nav_policies or None)
     if args.depth_model:
         depth_model(models_dir)
     if args.qwen3_vl_2b:
@@ -344,6 +388,7 @@ def main() -> None:
             args.domain_detector,
             args.vlm_drone,
             args.reactive_policy,
+            args.nav_policies is not None,
             args.depth_model,
             args.qwen3_vl_2b,
             args.qwen3_vl_8b,
