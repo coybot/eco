@@ -43,7 +43,7 @@ from .mock_rover_act import MockRoverAct
 from .mock_rover_converse import MockRoverConverse
 
 _SDK_DIR = Path(__file__).resolve().parents[3] / "sdk"
-_VALID_ACTIONS = {"navigate", "lookAround", "ask", "say", "stop", "done"}
+_VALID_ACTIONS = {"navigate", "explore", "lookAround", "ask", "say", "stop", "done"}
 
 
 def _first_available_simulator() -> str | None:

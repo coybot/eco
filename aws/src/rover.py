@@ -98,24 +98,32 @@ You must always call the `decide` tool with exactly one next action:
   in the photo, including open-vocabulary references the on-device detector can't name \
   (colors, "my backpack", "the plant by the window") — you do the visual grounding; the \
   rover's phone converts your point into a real-world location using its own depth sensor. \
-  Use target_kind="worldPoint" with (x, y) taken directly from a remembered pose in memory \
-  when the operator refers to somewhere already visited (e.g. "go home", "back to where we \
-  started", "the kitchen we saw earlier") — do not guess a worldPoint you have not actually \
-  seen in memory.
-- lookAround: the operator named something not currently visible in the photo (or no photo \
-  was provided this tick). Rotate to search — use a smaller angle (around 1.57 radians / 90 \
-  degrees) for a partial scan and up to 6.28 radians / 360 degrees for a full look-around. \
-  Prefer this over guessing a location for something you cannot see.
+  Use target_kind="worldPoint" with (x, y) taken directly from a remembered pose or a \
+  remembered object in memory when the operator refers to somewhere already visited or \
+  something already seen (e.g. "go home", "back to where we started", "the chair we \
+  passed") — do not guess a worldPoint you have not actually seen in memory.
+- explore: the target is probably in a part of the space you haven't seen. Pick an opening \
+  id from the unexplored-openings list to drive there and look. Prefer unexplored openings; \
+  if one you checked turned out to be a dead end (e.g. just a hallway), try the next.
+- lookAround: rotate in place to search from where you are — use a smaller angle (around \
+  1.57 radians / 90 degrees) for a partial scan and up to 6.28 radians / 360 degrees for a \
+  full look-around.
 - ask: ask a short clarifying question ONLY when you genuinely cannot proceed (multiple \
-  plausible matches, or nothing matches and looking around already failed). Do not ask \
+  plausible matches, or nothing matches and exploring/looking already failed). Do not ask \
   again immediately after an unanswered question — proceed best-effort instead.
 - say: speak a short acknowledgement or progress update with no expectation of a reply.
 - stop: the operator wants the rover to stop moving right now.
-- done: the operator's request has been fully satisfied.
+- done: the operator's request has been fully satisfied — including any later steps of \
+  your plan, like returning after fetching something.
+
+Keep a short running mission plan for multi-step requests ("go to X, then come back"): \
+whenever the plan changes, write the whole updated plan into updated_plan and mark \
+finished steps done; omit updated_plan to keep the current plan. The plan you wrote is \
+echoed back to you every step — trust it over re-deriving intent from scratch.
 
 Never invent an object you cannot actually see in the photo. If no photo is attached, you \
-cannot ground new visual references — rely on the on-device detector's list, memory, or \
-ask/lookAround instead. Never generate code."""
+cannot ground new visual references — rely on the on-device detector's list, memory, \
+explore, or ask/lookAround instead. Never generate code."""
 
 DECIDE_TOOL = {
     "name": "decide",
@@ -125,7 +133,15 @@ DECIDE_TOOL = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["navigate", "lookAround", "ask", "say", "stop", "done"],
+                "enum": ["navigate", "explore", "lookAround", "ask", "say", "stop", "done"],
+            },
+            "candidate_id": {
+                "type": "string",
+                "description": "Required when action is explore: the id of the opening to check, from the unexplored-openings list.",
+            },
+            "updated_plan": {
+                "type": "string",
+                "description": "Your full rewritten mission plan whenever it changes (mark finished steps done). Omit to keep the current plan.",
             },
             "target_kind": {
                 "type": "string",
@@ -167,6 +183,10 @@ def _describe_mission(body):
     if utterance:
         lines.append(f'Operator just said: "{utterance}"')
 
+    plan = body.get("plan")
+    if plan:
+        lines.append(f"Current plan (as you last wrote it): {plan}")
+
     visible = body.get("visibleObjects") or []
     if visible:
         objs = ", ".join(
@@ -191,6 +211,23 @@ def _describe_mission(body):
             for t in turns[-5:]
         )
         lines.append(f"Recent memory: {recent}")
+
+    remembered = memory.get("rememberedObjects") or []
+    if remembered:
+        objs = ", ".join(
+            f"{o.get('label')} at world ({o.get('x', 0):.2f}, {o.get('y', 0):.2f})"
+            for o in remembered
+        )
+        lines.append(f"Objects remembered from earlier (may not be visible now; usable as worldPoint): {objs}")
+
+    candidates = body.get("explorationCandidates") or []
+    if candidates:
+        openings = "; ".join(
+            f"{c.get('id')} at ({c.get('x', 0):.2f}, {c.get('y', 0):.2f}), "
+            f"{c.get('widthMeters', 0):.1f}m wide [{c.get('status', 'unexplored')}]"
+            for c in candidates
+        )
+        lines.append(f"Openings to unexplored space: {openings}")
 
     start_pose = memory.get("missionStartPose")
     if start_pose:
@@ -257,4 +294,6 @@ def act_handler(event, context):
         "y": decision.get("y"),
         "angle": decision.get("angle"),
         "text": decision.get("text"),
+        "candidateId": decision.get("candidate_id"),
+        "updatedPlan": decision.get("updated_plan"),
     })
