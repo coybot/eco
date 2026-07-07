@@ -378,6 +378,34 @@ Resources:
             Path: /rover/converse
             Method: POST
 
+  # Rover mission brain (see eco/rover/docs/architecture.md and CloudBrain.swift /
+  # HybridBrain.swift in the sibling astral-sdk repo). Cloud-primary half of the hybrid
+  # brain behind MissionAgent — vision + tool-use, drives actions (navigate/lookAround/
+  # ask/say/stop/done), not just conversation. Bigger memory/timeout than RoverConverse
+  # since requests carry a downscaled JPEG frame.
+  RoverActFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub rover-act-${Environment}
+      CodeUri: src/
+      Handler: rover.act_handler
+      MemorySize: 512
+      Timeout: 20
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+      Events:
+        Act:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /rover/act
+            Method: POST
+
   # Register Drone Function
   RegisterDroneFunction:
     Type: AWS::Serverless::Function
