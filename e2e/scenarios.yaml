@@ -31,9 +31,17 @@ fixedwing:
   mission: "climb to 40 meters, orbit once, and photograph the field"
   expect: {response_ok: true, has_image: true}
 
-# phrover has two independent checks, because /rover/converse is ONLY the open-ended
-# small-talk fallback (see aws/src/rover.py docstring) — navigation intents are parsed
-# and dispatched entirely on-device by RoverNav and never reach the cloud at all.
+# phrover has three independent checks:
+#   dialog        -- /rover/converse is ONLY the open-ended small-talk fallback (see
+#                    aws/src/rover.py docstring) — navigation intents are parsed and
+#                    dispatched entirely on-device by RoverNav and never reach the cloud.
+#   navigate      -- on-device RoverNav planning/driving (PhroverKit's MissionAgent
+#                    executes decisions through this; unaffected by which brain chose them).
+#   mission_agent -- /rover/act, the vision + tool-use mission brain behind MissionAgent's
+#                    CloudBrain (aws/src/rover.py's act_handler) — a sibling cloud route to
+#                    /rover/converse, but for actions (navigate/lookAround/ask/say/stop/
+#                    done), not talk. See CloudBrain.swift / HybridBrain.swift in the
+#                    sibling astral-sdk repo.
 phrover:
   app: PhroverOperator  # sdk/examples/PhroverOperator in the sibling astral-sdk repo
   dialog:
@@ -45,3 +53,7 @@ phrover:
     sim: mock_esp32                    # driven over WiFi HTTP against a fake WAVE ROVER base
     mission: "navigate to the doorway and avoid obstacles"
     expect: {plan_reaches_goal: true}
+  mission_agent:
+    transport: rover_act_http          # POST /rover/act -> {"action": "...", ...}
+    utterance: "go to the chair"
+    expect: {action_ok: true}
