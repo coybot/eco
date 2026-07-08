@@ -959,10 +959,10 @@ export function BlogPostBody({ slug }: { slug: string }) {
             closed-loop runs, your numbers are not real.
           </p>
 
-          <h2>The ZeroClaw Dataset</h2>
+          <h2>The Yonder Dataset</h2>
           <p>
-            We built ZeroClaw: 6.7 million frames from drone-perspective viewpoints across 275 indoor environments
-            with 32 million COCO-format bounding box annotations. Fine-tuning on ZeroClaw produced a 9.7×
+            We built Yonder: 6.7 million frames from drone-perspective viewpoints across 275 indoor environments
+            with 32 million COCO-format bounding box annotations. Fine-tuning on Yonder produced a 9.7×
             detection mAP improvement: 4.8% → 46.7%. By any offline measure, this solved detection.
           </p>
           <p>
@@ -976,7 +976,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
             improvement produced exactly zero improvement in closed-loop navigation.
           </p>
           <p>
-            Root cause: cross-simulator domain gap. ZeroClaw was generated in Habitat-Sim. Evaluation runs in Isaac
+            Root cause: cross-simulator domain gap. Yonder was generated in Habitat-Sim. Evaluation runs in Isaac
             Sim. These simulators render the same scenes differently, and detectors learned the Habitat-Sim
             distribution, not the underlying world. The diagnostic failure mode: the drone produced negative-Z goal
             predictions — interpreting its target as below the floor — and immediately pitched into the ground.
@@ -1017,7 +1017,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           </ul>
           <p>
             Full technical detail: <Link href="/research#engineering-separation">research documentation</Link>.
-            ZeroClaw dataset: <Link href="/datasets/yonder">astral.us/datasets/yonder</Link>.
+            Yonder dataset: <Link href="/datasets/yonder">astral.us/datasets/yonder</Link>.
           </p>
         </Prose>
       );

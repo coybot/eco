@@ -10,7 +10,7 @@ contact@astral.us
 
 ***Abstract***
 
-*Our prior work established the separation principle for vision-language drone navigation: VLMs should handle semantics while dedicated modules handle geometry and safety. The resulting modular pipeline achieved 1.04 m error on operational commands with 100% collision-free flight, but tied hover in aggregate (9.98 m vs. 9.50 m). This paper reports the systematic engineering effort to close that gap---and the deeper investigation that followed. Through eighteen iterative refinements and 3,000+ closed-loop Isaac Sim trials, we first improve the modular pipeline from 9.98 m to 8.15 m aggregate error, beating hover for the first time with ≥90% collision-free flight. We then construct ZeroClaw, a 6.7-million-frame drone-perspective dataset across 275 indoor environments, and use it to fine-tune open-vocabulary detectors---achieving 9.7× improvement in detection mAP (4.8% → 46.7%). However, four separate fine-tuning attempts across two detector architectures fail to improve closed-loop navigation success over zero-shot baselines. The root cause is a cross-simulator domain gap: bounding box geometry calibrated to the training simulator (Habitat-Sim) produces systematic localization errors in the evaluation simulator (Isaac Sim), including negative-altitude goal predictions that cause the drone to dive into the floor. With the domain gap identified and patched, success rate converges at 23--25% across all detector variants---fine-tuned and zero-shot---revealing that detection is no longer the binding constraint. Exploration is: 75% of benchmark targets are not visible from the drone's spawn position, and neither learned exploration policies nor depth-based heuristics significantly improve performance over random waypoints (+5.2 pp, p=0.168). We characterize the remaining gap as requiring spatial reasoning and multi-step planning capabilities that no component in the current modular architecture addresses. All code, data, the ZeroClaw dataset, and the complete eighteen-iteration history are publicly available.*
+*Our prior work established the separation principle for vision-language drone navigation: VLMs should handle semantics while dedicated modules handle geometry and safety. The resulting modular pipeline achieved 1.04 m error on operational commands with 100% collision-free flight, but tied hover in aggregate (9.98 m vs. 9.50 m). This paper reports the systematic engineering effort to close that gap---and the deeper investigation that followed. Through eighteen iterative refinements and 3,000+ closed-loop Isaac Sim trials, we first improve the modular pipeline from 9.98 m to 8.15 m aggregate error, beating hover for the first time with ≥90% collision-free flight. We then construct Yonder, a 6.7-million-frame drone-perspective dataset across 275 indoor environments, and use it to fine-tune open-vocabulary detectors---achieving 9.7× improvement in detection mAP (4.8% → 46.7%). However, four separate fine-tuning attempts across two detector architectures fail to improve closed-loop navigation success over zero-shot baselines. The root cause is a cross-simulator domain gap: bounding box geometry calibrated to the training simulator (Habitat-Sim) produces systematic localization errors in the evaluation simulator (Isaac Sim), including negative-altitude goal predictions that cause the drone to dive into the floor. With the domain gap identified and patched, success rate converges at 23--25% across all detector variants---fine-tuned and zero-shot---revealing that detection is no longer the binding constraint. Exploration is: 75% of benchmark targets are not visible from the drone's spawn position, and neither learned exploration policies nor depth-based heuristics significantly improve performance over random waypoints (+5.2 pp, p=0.168). We characterize the remaining gap as requiring spatial reasoning and multi-step planning capabilities that no component in the current modular architecture addresses. All code, data, the Yonder dataset, and the complete eighteen-iteration history are publicly available.*
 
 **I. INTRODUCTION**
 
@@ -22,7 +22,7 @@ The work proceeded in three phases, each driven by a hypothesis about the bindin
 
 **Phase I (R3--R11): Pipeline engineering.** We hypothesized that detection inconsistency, lack of temporal memory, and absence of compound command support explained the aggregate gap. Six targeted improvements---instruction decomposition, domain-specific detection fine-tuning, vocabulary-constrained grounding, spatial semantic memory, active yaw-based perception, and environment-specific safety profiles---reduced aggregate error to 8.15 m, beating hover for the first time with ≥90% collision-free flight.
 
-**Phase II (R12--R17): Large-scale detection training.** We hypothesized that more training data would further close the gap. We constructed ZeroClaw, a 6.7-million-frame dataset across 275 indoor environments, and fine-tuned two detector architectures (OWL-ViT v2 and Grounding DINO). Detection mAP improved 9.7× (4.8% → 46.7%). But across four separate fine-tuning attempts, closed-loop navigation success never exceeded the zero-shot baseline. The root cause was a cross-simulator domain gap: bounding box geometry calibrated to Habitat-Sim produced systematic localization errors in Isaac Sim.
+**Phase II (R12--R17): Large-scale detection training.** We hypothesized that more training data would further close the gap. We constructed Yonder, a 6.7-million-frame dataset across 275 indoor environments, and fine-tuned two detector architectures (OWL-ViT v2 and Grounding DINO). Detection mAP improved 9.7× (4.8% → 46.7%). But across four separate fine-tuning attempts, closed-loop navigation success never exceeded the zero-shot baseline. The root cause was a cross-simulator domain gap: bounding box geometry calibrated to Habitat-Sim produced systematic localization errors in Isaac Sim.
 
 **Phase III (R18): Exploration.** With detection ruled out as the bottleneck, we hypothesized that active exploration would help---75% of targets are not visible from spawn. Both a learned exploration policy and a depth-based heuristic produced marginal improvement (+5.2 pp, p=0.168). The tiers that score 0% (spatial reasoning, negation, occluded targets, multi-step commands) require capabilities that no component in the current architecture addresses.
 
@@ -30,7 +30,7 @@ Our contributions are:
 
 **1) Pipeline engineering** that reduces aggregate error from 9.98 m to 8.15 m through six targeted improvements, validated across eleven iterations and 2,000+ closed-loop trials.
 
-**2) ZeroClaw**, a 6.7-million-frame drone-perspective dataset across 275 indoor environments with semantic segmentation, depth, stereo, and LiDAR---the largest public dataset for drone indoor navigation training.
+**2) Yonder**, a 6.7-million-frame drone-perspective dataset across 275 indoor environments with semantic segmentation, depth, stereo, and LiDAR---the largest public dataset for drone indoor navigation training.
 
 **3) A negative result with broad implications**: 9.7× improvement in offline detection mAP produces zero improvement in closed-loop navigation, due to a cross-simulator domain gap that systematically corrupts 3D localization. This finding generalizes to any system that trains on one simulator and evaluates on another.
 
@@ -129,11 +129,11 @@ Error decomposition revealed: when detection succeeds, the pipeline achieves 0.2
 
 The Phase I error decomposition identified detection failure as the binding constraint (30.8% hover rate). We hypothesized that training a detector on a larger, more diverse dataset would close this gap.
 
-***A. ZeroClaw Dataset***
+***A. Yonder Dataset***
 
-We constructed ZeroClaw by flying a simulated Holybro x500v2 drone through 275 indoor 3D scenes in Habitat-Sim, collecting multi-modal sensor data at dense waypoints.
+We constructed Yonder by flying a simulated Holybro x500v2 drone through 275 indoor 3D scenes in Habitat-Sim, collecting multi-modal sensor data at dense waypoints. The statistics below reflect this internal working snapshot, prior to the license-driven scene reduction described in the Yonder dataset paper: the public release retains only the 167 HSSD scenes and excludes the ReplicaCAD, Replica, and HM3D scenes shown here, whose upstream licenses do not permit open redistribution of derivative renders.
 
-**TABLE III:** ZeroClaw dataset statistics.
+**TABLE III:** Yonder dataset statistics (internal snapshot used for these experiments; see the Yonder dataset paper for the public release's post-license-reduction figures).
 
 | Metric | Value |
 |---|---|
@@ -151,7 +151,7 @@ Semantic segmentation was not stored during initial generation (used only for ad
 
 ***B. Detection Benchmarking***
 
-Zero-shot detection on ZeroClaw test frames:
+Zero-shot detection on Yonder test frames:
 
 | Model | mAP@0.5 | mAP@0.75 | Inference |
 |---|---|---|---|
@@ -169,7 +169,7 @@ Both models perform poorly on drone-perspective imagery---consistent with \[1\]'
 | R12 OWL-ViT | OWL-ViT v2 | 29K frames, 90 scenes | --- | 11.6% (5 seeds) | Confidence calibration collapse (blank images score 0.97) |
 | R14 GDINO R6 | GDINO-tiny | 40K frames, 20 scenes | **46.7%** | 23.5% | Negative-Z goals from bbox height shift |
 | R16 GDINO R6 | Same | Same | Same | 25.5% (post Z-clamp) | Tied with zero-shot after clamp |
-| R17 GDINO R7 | GDINO-tiny | 40K ZeroClaw + 1.5K Isaac Sim | 45.4% | 25.5% | Circular pseudo-GT; warehouse CF collapse |
+| R17 GDINO R7 | GDINO-tiny | 40K Yonder + 1.5K Isaac Sim | 45.4% | 25.5% | Circular pseudo-GT; warehouse CF collapse |
 
 **Zero-shot baselines:**
 
@@ -309,7 +309,7 @@ The sim-to-sim transfer failure is our most surprising finding. Both Habitat-Sim
 
 ***Implications for the "just scale the data" hypothesis.***
 
-ZeroClaw's 6.7M frames across 275 environments represents substantial training scale. The complete failure to improve closed-loop navigation despite a 9.7× offline improvement challenges the assumption that more simulation data straightforwardly produces better robot performance. The binding constraint shifted from data quantity to domain alignment---and domain alignment cannot be resolved by adding more data from the wrong domain.
+Yonder's 6.7M frames across 275 environments represents substantial training scale. The complete failure to improve closed-loop navigation despite a 9.7× offline improvement challenges the assumption that more simulation data straightforwardly produces better robot performance. The binding constraint shifted from data quantity to domain alignment---and domain alignment cannot be resolved by adding more data from the wrong domain.
 
 ***What would actually help.***
 
@@ -329,13 +329,13 @@ The pipeline reliably handles concrete, visible targets in structured environmen
 
 **IX. LIMITATIONS**
 
-(1) All results are simulation-only; real-world transfer is unvalidated. (2) Indoor environments only. (3) The cross-simulator domain gap (Habitat-Sim → Isaac Sim) may be specific to these two platforms and not generalize. (4) ZeroClaw annotations use category-level labels, not instance-level; instance discrimination relies on spatial position, not visual identity. (5) The exploration policy evaluation used only 3 seeds (153 trials); the p=0.168 non-significance may be a power issue rather than a true null effect. (6) Phase I results (8.15 m, 94% CF) were obtained with fine-tuned GDINO; the zero-shot GDINO + safety profile + Z-clamp configuration achieves 23.5% SR@5m on a harder 51-task benchmark not directly comparable to the Phase I 66-task benchmark. (7) Swarm collision-free rates (12%) are low because safety profiles do not account for inter-drone collisions. (8) The stall-based collision detector counts conservative stops as collisions, potentially underreporting true safety.
+(1) All results are simulation-only; real-world transfer is unvalidated. (2) Indoor environments only. (3) The cross-simulator domain gap (Habitat-Sim → Isaac Sim) may be specific to these two platforms and not generalize. (4) Yonder annotations use category-level labels, not instance-level; instance discrimination relies on spatial position, not visual identity. (5) The exploration policy evaluation used only 3 seeds (153 trials); the p=0.168 non-significance may be a power issue rather than a true null effect. (6) Phase I results (8.15 m, 94% CF) were obtained with fine-tuned GDINO; the zero-shot GDINO + safety profile + Z-clamp configuration achieves 23.5% SR@5m on a harder 51-task benchmark not directly comparable to the Phase I 66-task benchmark. (7) Swarm collision-free rates (12%) are low because safety profiles do not account for inter-drone collisions. (8) The stall-based collision detector counts conservative stops as collisions, potentially underreporting true safety.
 
 **X. CONCLUSION**
 
 Through eighteen iterative refinements and 3,000+ closed-loop Isaac Sim trials, we systematically investigated three hypothesized bottlenecks for autonomous drone navigation:
 
-*Detection* was the first bottleneck. Pipeline engineering (Phase I) reduced aggregate error from 9.98 m to 8.15 m, beating hover for the first time. A 6.7-million-frame dataset (ZeroClaw) and four fine-tuning attempts achieved 9.7× offline mAP improvement but zero closed-loop improvement due to cross-simulator domain gap.
+*Detection* was the first bottleneck. Pipeline engineering (Phase I) reduced aggregate error from 9.98 m to 8.15 m, beating hover for the first time. A 6.7-million-frame dataset (Yonder) and four fine-tuning attempts achieved 9.7× offline mAP improvement but zero closed-loop improvement due to cross-simulator domain gap.
 
 *Exploration* was the second hypothesis. Neither a learned policy nor a depth heuristic significantly improved success rate (+5.2 pp, p=0.168) over random waypoints.
 
@@ -343,7 +343,7 @@ Through eighteen iterative refinements and 3,000+ closed-loop Isaac Sim trials, 
 
 The iteration history is itself a contribution. Mock evaluation overestimated performance by 6.5×. Component-level mAP improvement did not predict system-level improvement. Four fine-tuning attempts across two architectures produced the same negative result. A sophisticated routing system performed worse than the simple nearest-in-map default. Each finding required closed-loop testing to discover.
 
-The separation principle remains sound: VLMs for semantics, dedicated modules for geometry and safety. But the principle has a ceiling. Crossing it requires not better perception but better reasoning---understanding spatial relations, planning multi-step strategies, and navigating to places the drone has never been. We release all code, all eighteen iterations of experimental data, the ZeroClaw dataset, and the complete pipeline to enable others to start from where we stopped.
+The separation principle remains sound: VLMs for semantics, dedicated modules for geometry and safety. But the principle has a ceiling. Crossing it requires not better perception but better reasoning---understanding spatial relations, planning multi-step strategies, and navigating to places the drone has never been. We release all code, all eighteen iterations of experimental data, the Yonder dataset, and the complete pipeline to enable others to start from where we stopped.
 
 **REFERENCES**
 

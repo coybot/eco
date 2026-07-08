@@ -37,7 +37,7 @@ gap---and the deeper investigation that followed. Through eighteen
 iterative refinements and 3,000+ closed-loop Isaac Sim trials, we first
 improve the modular pipeline from 9.98 m to 8.15 m aggregate error,
 beating hover for the first time with $\\geq$90\% collision-free flight. We
-then construct ZeroClaw, a 6.7-million-frame drone-perspective dataset
+then construct Yonder, a 6.7-million-frame drone-perspective dataset
 across 275 indoor environments, and use it to fine-tune open-vocabulary
 detectors---achieving 9.7$\\times$ improvement in detection mAP (4.8\% $\\rightarrow$
 46.7\%). However, four separate fine-tuning attempts across two detector
@@ -55,7 +55,7 @@ exploration policies nor depth-based heuristics significantly improve
 performance over random waypoints (+5.2 pp, p=0.168). We characterize
 the remaining gap as requiring spatial reasoning and multi-step planning
 capabilities that no component in the current modular architecture
-addresses. All code, data, the ZeroClaw dataset, and the complete
+addresses. All code, data, the Yonder dataset, and the complete
 eighteen-iteration history are publicly available.
 \end{abstract}
 
@@ -93,7 +93,7 @@ first time with $\\geq$90\% collision-free flight.
 
 \textbf{Phase II (R12--R17): Large-scale detection training.} We
 hypothesized that more training data would further close the gap. We
-constructed ZeroClaw, a 6.7-million-frame dataset across 275 indoor
+constructed Yonder, a 6.7-million-frame dataset across 275 indoor
 environments, and fine-tuned two detector architectures (OWL-ViT v2 and
 Grounding DINO). Detection mAP improved 9.7$\\times$ (4.8\% $\\rightarrow$ 46.7\%). But
 across four separate fine-tuning attempts, closed-loop navigation
@@ -115,7 +115,7 @@ Our contributions are:
 m to 8.15 m through six targeted improvements, validated across eleven
 iterations and 2,000+ closed-loop trials.
 
-\textbf{2) ZeroClaw}, a 6.7-million-frame drone-perspective dataset
+\textbf{2) Yonder}, a 6.7-million-frame drone-perspective dataset
 across 275 indoor environments with semantic segmentation, depth,
 stereo, and LiDAR---the largest public dataset for drone indoor
 navigation training.
@@ -353,13 +353,20 @@ The Phase I error decomposition identified detection failure as the
 binding constraint (30.8\% hover rate). We hypothesized that training a
 detector on a larger, more diverse dataset would close this gap.
 
-\\subsection{ZeroClaw Dataset}\label{a.-zeroclaw-dataset}
+\\subsection{Yonder Dataset}\label{a.-zeroclaw-dataset}
 
-We constructed ZeroClaw by flying a simulated Holybro x500v2 drone
+We constructed Yonder by flying a simulated Holybro x500v2 drone
 through 275 indoor 3D scenes in Habitat-Sim, collecting multi-modal
-sensor data at dense waypoints.
+sensor data at dense waypoints. The statistics below reflect this
+internal working snapshot, prior to the license-driven scene reduction
+described in the Yonder dataset paper: the public release retains only
+the 167 HSSD scenes and excludes the ReplicaCAD, Replica, and HM3D
+scenes shown here, whose upstream licenses do not permit open
+redistribution of derivative renders.
 
-\textbf{TABLE III:} ZeroClaw dataset statistics.
+\textbf{TABLE III:} Yonder dataset statistics (internal snapshot used
+for these experiments; see the Yonder dataset paper for the public
+release's post-license-reduction figures).
 
 {\def\LTcaptype{none} % do not increment counter
 \begin{longtable}[]{@{}
@@ -395,7 +402,7 @@ box annotations by projecting instance masks to 2D.
 
 \\subsection{Detection Benchmarking}\label{b.-detection-benchmarking}
 
-Zero-shot detection on ZeroClaw test frames:
+Zero-shot detection on Yonder test frames:
 
 {\def\LTcaptype{none} % do not increment counter
 \begin{longtable}[]{@{}llll@{}}
@@ -451,7 +458,7 @@ R14 GDINO R6 & GDINO-tiny & 40K frames, 20 scenes & \textbf{46.7\%} &
 23.5\% & Negative-Z goals from bbox height shift \\
 R16 GDINO R6 & Same & Same & Same & 25.5\% (post Z-clamp) & Tied with
 zero-shot after clamp \\
-R17 GDINO R7 & GDINO-tiny & 40K ZeroClaw + 1.5K Isaac Sim & 45.4\% &
+R17 GDINO R7 & GDINO-tiny & 40K Yonder + 1.5K Isaac Sim & 45.4\% &
 25.5\% & Circular pseudo-GT; warehouse CF collapse \\
 \end{longtable}
 }
@@ -754,7 +761,7 @@ training may be more fragile than the field recognizes.
 
 Implications for the ``just scale the data'' hypothesis.
 
-ZeroClaw's 6.7M frames across 275 environments represents substantial
+Yonder's 6.7M frames across 275 environments represents substantial
 training scale. The complete failure to improve closed-loop navigation
 despite a 9.7$\\times$ offline improvement challenges the assumption that more
 simulation data straightforwardly produces better robot performance. The
@@ -808,7 +815,7 @@ communications denial.
   All results are simulation-only; real-world transfer is unvalidated.
   (2) Indoor environments only. (3) The cross-simulator domain gap
   (Habitat-Sim $\\rightarrow$ Isaac Sim) may be specific to these two platforms and
-  not generalize. (4) ZeroClaw annotations use category-level labels,
+  not generalize. (4) Yonder annotations use category-level labels,
   not instance-level; instance discrimination relies on spatial
   position, not visual identity. (5) The exploration policy evaluation
   used only 3 seeds (153 trials); the p=0.168 non-significance may be a
@@ -830,7 +837,7 @@ for autonomous drone navigation:
 
 \emph{Detection} was the first bottleneck. Pipeline engineering (Phase
 I) reduced aggregate error from 9.98 m to 8.15 m, beating hover for the
-first time. A 6.7-million-frame dataset (ZeroClaw) and four fine-tuning
+first time. A 6.7-million-frame dataset (Yonder) and four fine-tuning
 attempts achieved 9.7$\\times$ offline mAP improvement but zero closed-loop
 improvement due to cross-simulator domain gap.
 
@@ -857,7 +864,7 @@ Crossing it requires not better perception but better
 reasoning---understanding spatial relations, planning multi-step
 strategies, and navigating to places the drone has never been. We
 release all code, all eighteen iterations of experimental data, the
-ZeroClaw dataset, and the complete pipeline to enable others to start
+Yonder dataset, and the complete pipeline to enable others to start
 from where we stopped.
 
 \begin{thebibliography}{99}
