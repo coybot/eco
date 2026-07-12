@@ -3,7 +3,7 @@ import os
 import boto3
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
-BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-5")
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
 bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
@@ -115,6 +115,13 @@ You must always call the `decide` tool with exactly one next action:
 - stop: the operator wants the rover to stop moving right now.
 - done: the operator's request has been fully satisfied — including any later steps of \
   your plan, like returning after fetching something.
+- claimRoom: ONLY when a team_context section is present below (a multi-rover mission). \
+  Announce to your teammates that you're taking a specific room/area, using candidate_id \
+  for the room's id. Claim rooms no one else has claimed yet; prefer ones closest to you. \
+  If a teammate is marked no longer responding, their unclaimed rooms are up for grabs — \
+  claim one instead of waiting. This is real shared-intent coordination: reason about it \
+  yourself each tick from the team_context you're given, there is no separate allocation \
+  system doing this for you.
 
 Keep a short running mission plan for multi-step requests ("go to X, then come back"): \
 whenever the plan changes, write the whole updated plan into updated_plan and mark \
@@ -123,7 +130,19 @@ echoed back to you every step — trust it over re-deriving intent from scratch.
 
 Never invent an object you cannot actually see in the photo. If no photo is attached, you \
 cannot ground new visual references — rely on the on-device detector's list, memory, \
-explore, or ask/lookAround instead. Never generate code."""
+explore, or ask/lookAround instead. Never generate code.
+
+Avoid repeating actions that aren't working: never repeat a full-circle lookAround from a \
+pose where you already looked around and your pose hasn't changed since — a repeat scan \
+from the same spot yields nothing new; explore an unexplored opening or navigate somewhere \
+new instead. If you narrated an intention (e.g. "moving to opening_12 next"), issue that \
+action on your very next call — check your recent-actions list to make sure you actually \
+did what you said, instead of re-deciding from scratch. Report each anomaly exactly once: \
+before flagging something you've spotted, check your plan and recent actions for an \
+existing report of it. Watch your battery: when it's low relative to the distance back to \
+the mission start pose, return and report before stranding yourself. When there are no \
+unexplored openings left and nothing new is appearing, give a final report and choose done \
+— do not keep rescanning."""
 
 DECIDE_TOOL = {
     "name": "decide",
@@ -133,11 +152,11 @@ DECIDE_TOOL = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["navigate", "explore", "lookAround", "ask", "say", "stop", "done"],
+                "enum": ["navigate", "explore", "lookAround", "ask", "say", "stop", "done", "claimRoom"],
             },
             "candidate_id": {
                 "type": "string",
-                "description": "Required when action is explore: the id of the opening to check, from the unexplored-openings list.",
+                "description": "Required when action is explore (the id of the opening to check, from the unexplored-openings list) or claimRoom (the id of the room/area to claim, from team_context.rooms).",
             },
             "updated_plan": {
                 "type": "string",
@@ -201,7 +220,17 @@ def _describe_mission(body):
     if pose:
         lines.append(f"Current pose: x={pose.get('x', 0):.2f}, y={pose.get('y', 0):.2f}, yaw={pose.get('yaw', 0):.2f}")
 
+    battery = body.get("batteryPercent")
+    if battery is not None:
+        lines.append(f"Battery: {battery:.0f}%")
+
     lines.append(f"Navigation state: {body.get('navState', 'idle')}")
+
+    recent_actions = body.get("recentActions") or []
+    if recent_actions:
+        lines.append(
+            "Your recent actions, oldest→newest: " + " | ".join(recent_actions)
+        )
 
     memory = body.get("memory") or {}
     turns = memory.get("turns") or []
@@ -235,6 +264,26 @@ def _describe_mission(body):
 
     if body.get("lastAnswerWasInconclusive"):
         lines.append("Your last question went unanswered — proceed with your best guess instead of asking again.")
+
+    team = body.get("teamContext")
+    if team:
+        rooms = team.get("rooms") or []
+        rooms_str = "; ".join(
+            f"{r.get('id')} at ({r.get('x', 0):.2f}, {r.get('y', 0):.2f})" for r in rooms
+        )
+        teammates = team.get("teammates") or []
+        mates_str = "; ".join(
+            f"{t.get('id')} ({'alive' if t.get('alive') else 'NOT RESPONDING'}, "
+            f"claimed: {', '.join(t.get('claimedRoomIds') or []) or 'none yet'})"
+            for t in teammates
+        )
+        lines.append(
+            f"TEAM MISSION — you are rover '{team.get('myId')}'. "
+            f"Claimable rooms/areas: {rooms_str or 'none'}. "
+            f"Teammates: {mates_str or 'none known yet'}. "
+            "Claim unclaimed rooms yourself (see claimRoom above); if a teammate stops "
+            "responding, their unclaimed rooms are yours to pick up."
+        )
 
     return "\n".join(lines)
 
@@ -272,7 +321,7 @@ def act_handler(event, context):
                 "messages": [{"role": "user", "content": content}],
                 "tools": [DECIDE_TOOL],
                 "tool_choice": {"type": "tool", "name": "decide"},
-                "max_tokens": 500,
+                "max_tokens": 700,
             }),
         )
         result = json.loads(response["body"].read())

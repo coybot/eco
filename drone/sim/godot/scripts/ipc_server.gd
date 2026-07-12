@@ -71,6 +71,7 @@ func _dispatch(line: String) -> String:
 	var op: String = req.get("op", "")
 	var did: String = req.get("id", "")
 	var fm := FleetManager
+	var pm := PhroverManager
 
 	match op:
 		"get_state":
@@ -138,6 +139,65 @@ func _dispatch(line: String) -> String:
 			var env_name: String = req.get("env", "office")
 			fm.load_env(env_name)
 			return JSON.stringify({"ok": true, "env": env_name})
+
+		# -- Phrover ops (2D ENU ground frame: x=east m, y=north m, yaw rad CCW from +x) --
+		"phrover_spawn":
+			var p: Array = req.get("p", [0.0, 0.0])
+			var yaw: float = float(req.get("yaw", 0.0))
+			pm.spawn(did, Vector2(p[0], p[1]), yaw)
+			return JSON.stringify({"ok": true})
+
+		"phrover_despawn":
+			pm.despawn(did)
+			return JSON.stringify({"ok": true})
+
+		"phrover_state":
+			var st = pm.get_state(did)
+			if st == null:
+				return JSON.stringify({"ok": false, "error": "unknown phrover " + did})
+			return JSON.stringify({"ok": true, "pose": st["pose"], "battery": st["battery"],
+									"guard_stopped": st["guard_stopped"]})
+
+		"phrover_detect":
+			return JSON.stringify({"ok": true, "objects": pm.detect(did)})
+
+		"phrover_unproject":
+			var world = pm.unproject(did, float(req.get("nx", 0.5)), float(req.get("ny", 0.5)))
+			if world == null:
+				return JSON.stringify({"ok": true, "world": null})
+			return JSON.stringify({"ok": true, "world": world})
+
+		"phrover_grid":
+			var grid = pm.get_grid(did)
+			if grid == null:
+				return JSON.stringify({"ok": false, "error": "unknown phrover " + did})
+			return JSON.stringify({"ok": true, "res": grid["res"], "origin": grid["origin"],
+									"w": grid["w"], "h": grid["h"], "occ": grid["occ"], "obs": grid["obs"]})
+
+		"phrover_drive":
+			pm.drive(did, float(req.get("v", 0.0)), float(req.get("w", 0.0)))
+			return JSON.stringify({"ok": true})
+
+		"phrover_stop":
+			pm.stop(did)
+			return JSON.stringify({"ok": true})
+
+		"inject":
+			var name: String = req.get("name", "")
+			var params: Dictionary = req.get("params", {})
+			pm.inject(name, params)
+			return JSON.stringify({"ok": true})
+
+		"get_events":
+			var since: float = float(req.get("since", 0.0))
+			return JSON.stringify({"ok": true, "events": pm.get_events(since)})
+
+		"reset":
+			pm.reset(int(req.get("seed", 0)))
+			return JSON.stringify({"ok": true})
+
+		"prop_truth":
+			return JSON.stringify({"ok": true, "props": pm.prop_truth()})
 
 		_:
 			return JSON.stringify({"ok": false, "error": "unknown op " + op})
