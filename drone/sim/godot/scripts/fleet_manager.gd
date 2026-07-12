@@ -145,6 +145,7 @@ func _add_main_vantage() -> void:
 	var main_cam := Camera3D.new()
 	main_cam.name = "MainVantageCamera"
 	main_cam.fov = 65.0
+	_scene_root.add_child(main_cam)  # look_at() below requires the node be in the tree
 	if _env_name == "plaza":
 		# Overlook chair cluster from the north-east, elevated.
 		var mc_pos := Vector3(20.0, 14.0, -40.0)   # ENU(20,40,14)
@@ -162,7 +163,6 @@ func _add_main_vantage() -> void:
 		main_cam.position = mc_pos
 		main_cam.look_at(mc_look, Vector3.UP)
 	main_cam.current = true
-	_scene_root.add_child(main_cam)
 	_main_cam = main_cam
 
 
@@ -178,6 +178,7 @@ func _load_environment(env_name: String) -> void:
 		"neighbourhood": "res://scenes/environments/city.tscn",
 		"warehouse":     "res://scenes/environments/city.tscn",
 		"hospital":      "res://scenes/environments/office.tscn",
+		"depot":         "res://scenes/environments/depot.tscn",
 	}
 	var path: String = env_map.get(env_name, "res://scenes/environments/office.tscn")
 	if not ResourceLoader.exists(path):
@@ -501,15 +502,16 @@ func add_vantage(name: String, pos_enu: Vector3, look_enu: Vector3) -> void:
 
 	var cam := Camera3D.new()
 	cam.fov = 60.0
-	cam.position = godot_pos
-	cam.look_at(godot_look, Vector3.UP)
 	vp.add_child(cam)
 
 	# SubViewport goes in a Node3D holder so the scene tree is tidy.
 	var holder := Node3D.new()
 	holder.name = "vantage_" + name
 	holder.add_child(vp)
-	_scene_root.add_child(holder)
+	_scene_root.add_child(holder)  # must be in the tree before look_at() below
+
+	cam.position = godot_pos
+	cam.look_at(godot_look, Vector3.UP)
 
 	_vantages[name] = {"node": holder, "viewport": vp, "camera": cam}
 	print("[FleetManager] vantage '%s' at ENU %v -> %v" % [name, pos_enu, look_enu])
