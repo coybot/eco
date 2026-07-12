@@ -42,28 +42,71 @@ task brief:
 - **Prompt hardening** in `rover.py`: don't repeat a lookAround from an unchanged pose, follow
   through on narrated intentions, report each anomaly once, watch the battery, and call
   `done` once nothing new is appearing.
-- **Person-safety governor** (`phrover_manager.gd`) — this took several iterations to get
-  right, each confirmed with a free (no-Bedrock) repro before spending on a live retake:
+- **Person-safety governor** (`phrover_manager.gd`) — by far the hardest part of this round,
+  and the one place an early "pass" claim in this doc was wrong. A user caught it by actually
+  watching `cap1_person_crossing.mp4`: the rover visibly retreated out the depot's south
+  exterior door instead of crossing past the person, while this doc had claimed a clean pass
+  based on a sparse video-frame sample and an aggregate collision count that didn't
+  distinguish wall/prop hits from person hits. That was a real process failure, not just a
+  code bug — see "Verification methodology" below for what changed as a result.
+  Once actually measured correctly (exact `get_events` position traces and `with: person`
+  collision attribution, not frame sampling), several more real bugs surfaced. In order:
   1. A first version just zeroed velocity inside 0.5m — collided anyway; 0.5m is exactly the
      rover+person summed capsule radii, zero reaction margin.
   2. Retreating straight *away from the person's position* still collided when the rover sat
      on the person's line of travel — colinear with their approach, a straight tail-chase a
      slower retreat can never win.
   3. Dodging *perpendicular* to the person's velocity instead (vacates a 1D line regardless
-     of speed) fixed a single-pass encounter, but a live multi-attempt mission (rover's own
-     goal on the far side of the person's corridor) still got 7 collisions — releasing the
-     override the instant distance cleared the trigger threshold caused rapid re-triggering
-     right at that boundary.
-  4. Hysteresis (stay engaged until a safely larger distance clears) fixed the chatter but
-     could deadlock: a rover boxed into a tight corridor with no clear dodge direction sat at
-     v=0 indefinitely (confirmed live: frozen near spawn for an entire ~100s mission).
-  5. Wall-aware direction selection (try perpendicular, its mirror, then straight-away;
-     first one clear of walls wins) plus a bounded override timeout and a short post-timeout
-     cooldown (prevents instant re-trigger at a pinch point) plus a faster "creep through
-     when boxed in" speed closed the deadlock without reintroducing collisions.
-  Final state, confirmed **zero person collisions** across every free diagnostic and every
-  live recording in this round (a `person_dodge` Godot event now marks each engagement, and
-  collision events are tagged `with: person` vs. wall/prop for honest attribution).
+     of speed) fixed a single-pass encounter, but a live multi-attempt mission still got 7
+     collisions, and a wall-aware, direction-preference-scored version of that same dodge —
+     meant to stop it from retreating into the exterior door — introduced a *worse* bug: it
+     scored a candidate direction that pointed toward the person as viable, because nothing
+     excluded it, costing 2 collisions in the very repro meant to confirm the fix.
+  4. Concluded dodging/retreating is fundamentally the wrong shape for this corridor: the
+     rover's forward progress and the "safe" retreat direction are often the *same axis* (the
+     person crosses the hallway perpendicular to the rover's own north-south path), so every
+     retreat canceled prior progress — confirmed live and free: capped dead at y≈2.5-3.8 for
+     a full 60s run, never crossing. Replaced with a plain stop (v=0, no movement at all) —
+     provably safer for this geometry since the person patrols a fixed line, so once
+     triggered with enough Y-margin, their X position can't bring them into contact with a
+     *stationary* rover.
+  5. A stop-only design still needs to eventually resume: naive designs alternated between
+     "stop forever" (permanent freeze, confirmed live: dead at y=2.50 for a full 60s run) and
+     "release too eagerly" (instant re-trigger every tick, confirmed live: dead at y≈3.0-3.3
+     for the same reason) depending on which threshold got tuned. The working combination:
+     trigger on either straight-line distance *or* pure Y-separation (Y-separation catches
+     the case where the person's X masks a shrinking Y — confirmed live: rover reaching
+     y=3.94, 0.06m of margin, before a straight-line-only trigger ever fired); release only
+     via straight-line distance clearing a wider threshold (Y-separation can't be used for
+     release — it's static while the rover holds still, so it can never naturally clear);
+     and a genuinely long "committed crossing" grace window once released (a short one just
+     nibbles forward and re-triggers before completing the crossing) — protected throughout
+     by a separate, *unconditional* emergency-stop check (same margin as the main trigger,
+     straight-line distance only) that can never be suppressed by grace or timeout state, so
+     a person closing in during the grace window still stops the rover immediately.
+  Final state, confirmed **zero person collisions** across 10+ consecutive free diagnostic
+  runs through every stage of this redesign and in the final live recording (collision
+  events are tagged `with: person` vs. wall/prop for honest attribution; a `person_stop`
+  event marks each engagement; `pose_trace` events give an exact position history for any
+  future verification).
+
+### Verification methodology (why this took so long, and what changed)
+
+The person-crossing debugging above went through roughly a dozen live-Bedrock iterations
+because early verification was genuinely inadequate: sparse video-frame sampling (every
+6-20s) and an aggregate collision count that conflated wall/prop hits with person hits both
+looked fine on takes that were actually broken. Two changes fixed this going forward:
+1. **`pose_trace` events** — an always-on, ~1Hz position log per rover in `phrover_manager.gd`
+   — let any run (live or free-diagnostic) be checked against an exact Y-position history,
+   catching things like "retreated toward the exterior door" or "never left spawn" without
+   needing to eyeball video at all. `testPersonCrossingLive` now asserts on this directly.
+2. **Collision attribution** (`with: person` vs. wall/prop) replaced a single conflated count,
+   so a rising "collision count" while iterating could be correctly diagnosed as unrelated
+   wall noise instead of assumed to be the person-safety fix regressing (which it wasn't, in
+   several cases where it looked like it was).
+Free (no-Bedrock) Godot-IPC-only diagnostics — reproducing the exact encounter geometry
+without spending on live Bedrock calls — did most of the actual debugging load once these
+were in place; live retakes were reserved for confirming the final design.
 - **Hard-stop test fix**: `GodotMotion.cancel()` and production `NavigationController.cancel()`
   now set `state = .idle`, so `waitForMotionToSettle()` no longer hangs after an external
   cancel. `testHardStopBypassesBrainLive` now polls until the rover is genuinely mid-drive

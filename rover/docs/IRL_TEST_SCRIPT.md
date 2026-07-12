@@ -18,12 +18,18 @@ re-recorded after a full round of root-cause fixes (battery wiring, action-histo
 repeat scaffolding, a person-safety governor, a hard-stop test fix — see
 `RESULTS_video_set.md` for the full "Fixes landed this round" writeup) and a model bake-off
 that selected `us.anthropic.claude-opus-4-8`. All clips below now pass their capability's
-acceptance bar; read `RESULTS_video_set.md` for the honest remaining imperfections (wall/prop
-collisions in the person-crossing clip; an occasional brief geofence graze).
+acceptance bar; read `RESULTS_video_set.md` for the honest remaining imperfections (an
+occasional wall/prop collision in the person-crossing clip; an occasional brief geofence
+graze). Note on verification: an earlier pass on `cap1_person_crossing.mp4` in this doc was
+wrong — it was based on sparse video sampling and an aggregate collision count, and the
+rover was actually retreating out an exterior door instead of crossing. The result below
+reflects a corrected take, verified against exact position traces (`pose_trace` events) and
+`with: person`-tagged collision attribution, not video sampling — see `RESULTS_video_set.md`
+("Verification methodology") for what changed.
 
 | Capability | Clip | Result |
 |---|---|---|
-| #1 situational awareness, #10a reactive guard | `cap1_person_crossing.mp4` | **pass** — zero collisions with the person; visible yield/re-plan behavior |
+| #1 situational awareness, #10a reactive guard | `cap1_person_crossing.mp4` | **pass** — zero person collisions (confirmed via `pose_trace` + `with:person` tagging, not video sampling); one incidental wall/prop collision; rover repeatedly yields to the person rather than crossing paths, honestly reports being blocked when it can't find a clear opening |
 | #2 memory | `cap2_memory_recall.mp4` | **pass** — real memory-based `navigate(.worldPoint(...))` on the follow-up |
 | #3 planning/replan | `cap3_door_block_replan.mp4` | **pass** |
 | #4 self-model/battery | `cap4_battery_forced_return.mp4` | **pass** — battery now actually reaches the model and gets mentioned |
@@ -74,13 +80,17 @@ person, resumes once they step aside, and does not clip or nudge them.
 — independent of the brain, so this should hold even if the brain never explicitly
 reasons about the person.
 **Sim result**: the current sim video for this capability (`cap1_person_crossing.mp4`, see
-`RESULTS_video_set.md`) shows zero collisions with the person, achieved via a dedicated
-person-safety governor (direction-independent proximity detection + a wall-aware dodge, not
-just the forward-only guard-stop ray). That governor is sim-only (`phrover_manager.gd`) —
-real hardware relies on the forward-clearance `ObstacleGuard` alone, which is narrower
-(forward-facing only) than what made the sim result clean. **Treat the first few
-real-hardware runs of this test as a genuine safety check, not a formality** — a person
-approaching from the side or rear has no equivalent protection on real hardware today.
+`RESULTS_video_set.md`) shows zero collisions with the person (confirmed numerically, not
+by watching the clip), achieved via a dedicated person-safety governor — direction-
+independent proximity detection with a plain stop (not a dodge/retreat; earlier dodge-based
+designs canceled the rover's own forward progress or retreated into the exterior door, see
+`RESULTS_video_set.md`), plus a committed-crossing grace period so the rover can actually
+get past the person once safe, backstopped by an unconditional emergency-stop check. That
+governor is sim-only (`phrover_manager.gd`) — real hardware relies on the forward-clearance
+`ObstacleGuard` alone, which is narrower (forward-facing only) than what made the sim result
+clean. **Treat the first few real-hardware runs of this test as a genuine safety check, not
+a formality** — a person approaching from the side or rear has no equivalent protection on
+real hardware today.
 
 ### 2 — Persistent world model with memory
 

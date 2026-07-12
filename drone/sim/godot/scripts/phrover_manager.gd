@@ -30,45 +30,91 @@ const NEAR_MISS_DIST := 0.8
 const PERSON_SLOW_DIST := 2.2   # m: direction-independent proximity cap kicks in below this
 const PERSON_SLOW_SPEED := 0.15 # m/s: max linear speed once inside PERSON_SLOW_DIST
 # Rover capsule radius 0.28m + person capsule radius 0.22m (env_depot.gd's _build_person) =
-# 0.5m summed-radii contact distance. PERSON_STOP_DIST needs enough lead time for the
-# perpendicular dodge below to actually clear that 0.5m before the person's approach closes
-# it: at PERSON_RETREAT_SPEED, clearing 0.5m of lateral separation takes ~0.5/0.4=1.25s, and
-# the person (0.8 m/s) needs to still be that far out when the dodge starts — 0.9m (a first
-# attempt) gave ~0 lead and still collided live (confirmed with a free repro); 1.8m gives
-# roughly 1.6s of the person's approach to build separation before their pass-through window.
-const PERSON_STOP_DIST := 1.8   # m: dodge (perpendicular to the person's motion) below this
-const PERSON_RETREAT_SPEED := 0.4 # m/s: speed while actively dodging clear of the person
-# Hysteresis release distance: a rover whose OWN goal lies across the person's route (e.g.
-# reaching a spot on the far side of their patrol corridor) has its own driver pressing
-# toward that goal every tick, with zero awareness of the safety override. Releasing the
-# override the instant distance ticks back above PERSON_STOP_DIST caused rapid re-triggering
-# right at that boundary — confirmed live (7 collisions) and with a free repro: the rover
-# oscillated at dist≈1.79-1.80 for tens of seconds, occasionally losing the race as the
-# person's own back-and-forth patrol brushed the boundary. Requiring a distinctly larger
-# distance before handing control back gives the person's pass-through window time to
-# actually clear before the rover tries to cross again.
+# 0.5m summed-radii contact distance.
+#
+# History: three earlier designs were tried and rejected here, each confirmed live or with
+# a free (no-Bedrock) repro before being abandoned:
+#   1. Just zero v inside 0.5m — 0.5m is exactly the contact distance, zero reaction margin.
+#      12 collisions live.
+#   2. Retreat straight away from the person's position — a losing tail-chase when the
+#      rover sits on their line of travel (retreat speed can't beat their 0.8 m/s).
+#   3. Dodge perpendicular to the person's velocity instead of straight away — fixed a
+#      single-pass encounter, but in the depot's hallway (a north-south corridor the person
+#      crosses east-west), "perpendicular to their velocity" is north-south — the SAME axis
+#      as the rover's own forward progress. Every dodge canceled prior progress; confirmed
+#      live and with a free repro that the rover got stuck oscillating at y≈1.8-2.7 for a
+#      full 60s, never reaching the person's y=4 crossing line at all (a user caught this by
+#      actually watching the recorded clip — it visibly retreated out the building's south
+#      exterior door instead of crossing). A wall-aware, direction-preference-scored version
+#      of the dodge fixed the immediate stuck/wrong-way symptom but introduced a genuine
+#      unsafe candidate (see git history) that cost 2 live collisions in the very repro
+#      meant to confirm the fix.
+#
+# Final design: don't move at all. A plain stop (v=0, no retreat, no dodge) is *provably*
+# safe for this depot's actual encounter geometry — the person patrols a fixed y=4 line, so
+# once PERSON_STOP_DIST is wide enough that the y-component of distance alone exceeds the
+# 0.5m contact distance (it needs to, and 1.8m gives ~1.3m of margin), the person's x
+# position can never bring them into contact with a *stationary* rover, regardless of where
+# along their patrol they are. And critically, stopping (not retreating) preserves whatever
+# progress the rover already made, so it resumes exactly where it paused once the person
+# clears, instead of re-fighting the same ground every cycle.
+const PERSON_STOP_DIST := 1.8   # m: full stop (v=0, no movement at all) below this
+# Hysteresis release distance: a rover whose OWN goal lies across the person's route has its
+# own driver pressing toward that goal every tick, with zero awareness of the safety
+# override. Releasing the instant distance ticks back above PERSON_STOP_DIST caused rapid
+# re-triggering right at that boundary — confirmed live (7 collisions) and with a free
+# repro: the rover oscillated at dist≈1.79-1.80 for tens of seconds. Requiring a distinctly
+# larger distance before handing control back gives the person's pass-through window time to
+# actually clear before the rover tries to move again.
+#
+# This distance is only actually *reachable* while the person is at (or near) the far end of
+# their own patrol — the rover crossing their route necessarily means standing where their
+# 2D distance is geometrically bounded by their patrol's own amplitude. Getting the release
+# check to fire reliably (not just theoretically, in a razor-thin window right at their exact
+# endpoint) needs the trigger to engage with enough Y-margin in hand — see PERSON_Y_STOP_DIST.
 const PERSON_SAFE_DIST := 2.4
-# Bounded fail-safe against the hysteresis above deadlocking: a rover boxed into a tight
-# corridor near the person's route (no clear dodge direction — see _direction_is_clear)
-# sits at v=0 while overridden, and v=0 means it can never move itself far enough away to
-# reach PERSON_SAFE_DIST — only the person's own patrol can clear it, which isn't
-# guaranteed on any given pass. Confirmed live: the rover froze at v=0 near spawn for an
-# entire ~100s mission, never releasing. Force a release after a bounded time regardless
-# of distance — a real (if imperfect) egress beats permanent paralysis.
-const PERSON_OVERRIDE_MAX_SECONDS := 3.0
-# A first version re-triggered the override immediately whenever distance dipped back
-# below PERSON_STOP_DIST right after a timeout-forced release — confirmed live: a corridor
-# pinch point re-triggered ~150 times back-to-back (~6s each), one single navigate() call
-# taking 15+ real minutes. A short cooldown after a *timeout-forced* release (not a genuine
-# distance-cleared release) gives the rover a real, if brief, uninterrupted window to
-# actually clear the pinch point before the governor can re-engage.
-const PERSON_OVERRIDE_COOLDOWN_SECONDS := 2.5
-# Speed while boxed in with no clear dodge direction (see the creep-through comment below)
-# — distinct from and faster than PERSON_SLOW_SPEED (the outer-zone caution cap): a rover
-# that's already committed to pushing through a pinch point needs to actually clear it in
-# a reasonable time, not creep through at the same speed used for merely passing near the
-# person at a comfortable distance.
-const PERSON_CREEP_SPEED := 0.3
+# A first version forced a release after a fixed timeout regardless of distance, to avoid
+# permanent deadlock. Confirmed live this was actively harmful for a stop-only design: it
+# released for one physics tick, instantly re-triggered since the rover had barely moved, and
+# repeated indefinitely — each cycle nudging the rover a hair closer via the grace window
+# below, until it was parked dangerously close to the person's route (not stalled, just
+# creeping into ever-worse territory). A MUCH longer timeout, used only as an absolute last
+# resort (see _step_rover) if the person's patrol somehow never gives a real natural-release
+# window at all, replaces it — normal operation should never need it.
+const PERSON_OVERRIDE_MAX_SECONDS := 20.0
+# Pure Y-separation trigger threshold (see _person_y_gap) — needs enough margin that natural
+# release (PERSON_SAFE_DIST above) is reliably reachable while the person is anywhere near
+# the far half of their patrol, not just in a razor-thin window at their exact endpoint:
+# sqrt(Y² + dx²) > PERSON_SAFE_DIST should hold for dx a good deal short of the person's full
+# patrol amplitude (~2.0m here). Solving with dx=1.5 (comfortably short of full amplitude):
+# Y > sqrt(2.4² - 1.5²) ≈ 1.87. 2.0 clears that with real margin. (A tighter 0.9, then 1.6,
+# were each tried and confirmed live to make release either impossible or only viable in a
+# window too brief to matter — capped progress dead at y≈2.5-3.8 rather than ever crossing.)
+const PERSON_Y_STOP_DIST := 2.0
+# Once genuinely released (the person really is far away right now), commit to crossing the
+# WHOLE remaining danger zone in one continuous push rather than nibbling forward — a short
+# grace window (tried: 1.2s) only advances a little before re-triggering, and repeating that
+# over many cycles is what parks the rover dangerously close in the first place (see
+# PERSON_OVERRIDE_MAX_SECONDS's history above). Long enough to fully cross at a normal
+# driving speed with margin to spare; the unconditional PERSON_EMERGENCY_DIST check below
+# still applies throughout regardless of this window, so a genuine close approach during the
+# crossing still stops the rover immediately.
+const PERSON_OVERRIDE_GRACE_SECONDS := 6.0
+# Unconditional emergency stop — see its use in _step_rover for why this exists as a
+# separate check from the grace-period-gated logic above.
+#
+# A first value (0.7m, 0.2m of margin over the 0.5m contact distance) assumed "instant
+# reaction" was the only thing that mattered — wrong: confirmed live via per-tick tracing,
+# the person kept CLOSING for the better part of a second after the stop correctly engaged
+# (0.8 m/s doesn't stop just because the rover did), consuming that 0.2m of margin and
+# still making contact ~0.4s later. The real requirement is margin against the person's
+# continued approach for as long as their patrol keeps carrying them toward the rover, not
+# just one tick of reaction time — which is exactly what PERSON_STOP_DIST (1.8m) was already
+# sized for. Reusing it here (rather than inventing a second, smaller number) also avoids
+# recreating the earlier permanent-dead-zone bug: unlike a Y-gap-based tier, straight-line
+# distance naturally varies as the person moves in X even while the rover holds still, so it
+# can't get permanently stuck the way a fixed Y-only threshold did.
+const PERSON_EMERGENCY_DIST := PERSON_STOP_DIST
 const BASE_DRAIN_IDLE := 0.05   # %/s
 const BASE_DRAIN_PER_M := 0.5   # %/m
 
@@ -90,10 +136,9 @@ class PhroverState:
 	var guard_stopped := false
 	var was_colliding := false
 	var was_person_colliding := false
-	var was_dodging := false
 	var person_override_active := false
 	var person_override_elapsed := 0.0
-	var person_override_cooldown := 0.0
+	var person_override_grace := 0.0
 	var in_geofence := false
 	var near_flag := false
 	var cmd_v := 0.0
@@ -177,101 +222,49 @@ func _step_rover(st: PhroverState, dt: float) -> void:
 	# sensor, not a forward-only ray) on top of — never instead of — the forward-ray guard
 	# above. The person actor has zero avoidance of its own (person_actor.gd just walks its
 	# waypoint loop), so without this a person approaching from the side or rear was never
-	# slowed for, only detected via near-miss logging after the fact.
-	#
-	# A first version just zeroed v inside PERSON_STOP_DIST — confirmed live: 12 collisions
-	# in one mission. Two bugs found and fixed here:
-	# (1) PERSON_STOP_DIST was 0.5m, exactly equal to the summed capsule radii (rover 0.28m
-	#     + person 0.22m — see spawn()/env_depot.gd's _build_person), so by the time it
-	#     fired they were already touching, no reaction margin. Widened to 0.9m.
-	# (2) Retreating straight away from the person's *position* (first fix attempt) still
-	#     collided — confirmed with a free (no-Bedrock) repro: rover parked at (0,4), on
-	#     the person's fixed (2,4)<->(-2,4) patrol line, retreated but was still walked
-	#     into at t≈2.4s. Root cause: when the rover sits ON the person's line of travel,
-	#     "away from their position" is colinear with "away from their approach direction"
-	#     — a straight tail-chase that a slower retreat (0.3 m/s) can never win against the
-	#     person's 0.8 m/s. Dodging *perpendicular* to the person's current velocity instead
-	#     actually vacates their path (a 1D line) regardless of the speed differential —
-	#     confirmed zero collisions in the same repro after this change.
+	# slowed for, only detected via near-miss logging after the fact. See the constants'
+	# comments above for the three earlier (rejected) designs and why a plain stop is both
+	# simpler and safer here than any form of dodge/retreat.
 	var person_dist := _person_distance(st)
-	if st.person_override_cooldown > 0.0:
-		st.person_override_cooldown = max(0.0, st.person_override_cooldown - dt)
-	if not st.person_override_active and st.person_override_cooldown <= 0.0 and person_dist < PERSON_STOP_DIST:
+	var y_gap := _person_y_gap(st)
+	if st.person_override_grace > 0.0:
+		st.person_override_grace = max(0.0, st.person_override_grace - dt)
+	if not st.person_override_active and st.person_override_grace <= 0.0 \
+			and (person_dist < PERSON_STOP_DIST or y_gap < PERSON_Y_STOP_DIST):
 		st.person_override_active = true
 		st.person_override_elapsed = 0.0
+		_log_event("person_stop", {"id": st.id, "dist": person_dist})
 	elif st.person_override_active:
 		st.person_override_elapsed += dt
-		if st.person_override_elapsed > PERSON_OVERRIDE_MAX_SECONDS:
+		if st.person_override_elapsed > PERSON_OVERRIDE_MAX_SECONDS or person_dist > PERSON_SAFE_DIST:
 			st.person_override_active = false
 			st.person_override_elapsed = 0.0
-			st.person_override_cooldown = PERSON_OVERRIDE_COOLDOWN_SECONDS
-		elif person_dist > PERSON_SAFE_DIST:
-			st.person_override_active = false
-			st.person_override_elapsed = 0.0
+			st.person_override_grace = PERSON_OVERRIDE_GRACE_SECONDS
 
-	# A first perpendicular-dodge version released control back to the brain's own
-	# commanded velocity the instant distance ticked back above PERSON_STOP_DIST — a live
-	# multi-attempt mission (rover's own goal on the far side of the corridor, driver
-	# pressing toward it every tick with zero safety awareness) still got 7 collisions:
-	# rapid re-triggering right at that boundary (confirmed with a free repro: dist
-	# oscillating at ~1.79-1.80 for tens of seconds). `person_override_active` above adds
-	# hysteresis — stays engaged until PERSON_SAFE_DIST clears, not just PERSON_STOP_DIST.
-	# Wall-aware direction selection: the perpendicular dodge has zero awareness of the
-	# environment on its own, and blindly driving it can ram the rover into a wall it was
-	# dodging toward — confirmed live (12 collisions with a plain always-perpendicular
-	# dodge, worse than before hysteresis, in a mission repeatedly guard-stopped near a
-	# corridor). Try perpendicular, its mirror, then straight-away; first one with clear
-	# space wins. If none are clear, fall through with retreat_dir left at ZERO — the v=0/
-	# w=0 already set below then yields a full, safe stop instead of a blind crash.
-	var retreat_dir := Vector2.ZERO
-	if st.person_override_active:
-		var person := _person_node()
-		if person != null:
-			var candidates: Array = []
-			var person_vel := Vector2(person.velocity.x, -person.velocity.z)
-			var away: Vector2 = st.pos - person.enu_position()
-			if person_vel.length() > 0.01:
-				var perp := Vector2(-person_vel.y, person_vel.x).normalized()
-				if perp.dot(away) < 0.0:
-					perp = -perp
-				candidates.append(perp)
-				candidates.append(-perp)
-			if away.length() > 0.001:
-				candidates.append(away.normalized())
-			for candidate in candidates:
-				if _direction_is_clear(st, candidate):
-					retreat_dir = candidate
-					break
-		if retreat_dir == Vector2.ZERO:
-			# Boxed in — no dodge direction is clear of walls/props (a real risk in the
-			# depot's narrow spawn corridor specifically). A hard v=0/w=0 stop here just
-			# traps the rover in the override for its full duration with nowhere to go —
-			# confirmed live: the rover froze near spawn for an entire ~80s mission,
-			# racking up wall/prop contacts as later replans tried to push through anyway.
-			# Creep along the brain's own already-planned path (both v AND w, so it can
-			# still actually track a curving path, not just crawl straight) instead of
-			# freezing solid. PERSON_CREEP_SPEED, not the outer-zone's more cautious
-			# PERSON_SLOW_SPEED — a rover committed to pushing through a pinch point needs
-			# to actually clear it soon, not creep through it for minutes (confirmed live:
-			# 0.15 m/s here left one single navigate() call stuck for 15+ real minutes).
-			v = clamp(v, -PERSON_CREEP_SPEED, PERSON_CREEP_SPEED)
-		else:
-			v = 0.0
-			w = 0.0
+	# Emergency stop: a SEPARATE check that is NEVER suppressed by the grace period above —
+	# the grace period deliberately allows movement (and therefore real risk) during its
+	# window to make forward progress possible at all; without an unconditional backstop, a
+	# person closing distance during that exact window can still reach contact. See
+	# PERSON_EMERGENCY_DIST's own comment for why it reuses PERSON_STOP_DIST's margin rather
+	# than a smaller, "instant reaction only" number — confirmed live that a smaller number
+	# left the person's own continued approach enough time to still make contact.
+	#
+	# Straight-line distance only, deliberately not Y-gap: unlike the outer trigger (which
+	# needs Y-gap specifically to catch the "large X masks small Y" approach case), this tier
+	# needs to reflect the ACTUAL, real-time 2D separation, which changes as the person moves
+	# in X even while the rover's Y (and thus Y-gap) is fixed — using Y-gap here recreated the
+	# same permanent-dead-zone bug as the outer trigger's early attempts.
+	var emergency := person_dist < PERSON_EMERGENCY_DIST
+
+	if st.person_override_active or emergency:
+		v = 0.0
+		w = 0.0
 	elif person_dist < PERSON_SLOW_DIST:
 		v = clamp(v, -PERSON_SLOW_SPEED, PERSON_SLOW_SPEED)
 
-	var dodging_now := retreat_dir != Vector2.ZERO
-	if dodging_now and not st.was_dodging:
-		_log_event("person_dodge", {"id": st.id, "dist": person_dist})
-	st.was_dodging = dodging_now
-
-	if dodging_now:
-		st.node.velocity = Vector3(retreat_dir.x, 0.0, -retreat_dir.y) * PERSON_RETREAT_SPEED
-	else:
-		st.yaw = wrapf(st.yaw + w * dt, -PI, PI)
-		var dir := Vector2(cos(st.yaw), sin(st.yaw))
-		st.node.velocity = Vector3(dir.x, 0.0, -dir.y) * v
+	st.yaw = wrapf(st.yaw + w * dt, -PI, PI)
+	var dir := Vector2(cos(st.yaw), sin(st.yaw))
+	st.node.velocity = Vector3(dir.x, 0.0, -dir.y) * v
 	st.node.move_and_slide()
 	st.pos = Vector2(st.node.position.x, -st.node.position.z)
 	_apply_pose(st)
@@ -296,6 +289,13 @@ func _step_rover(st: PhroverState, dt: float) -> void:
 	st.was_person_colliding = person_colliding
 
 	_log_person_proximity(st, person_dist)
+	# Always-on, low-rate position trace (once per ~1s per rover) — lets any run (live or
+	# diagnostic) be verified numerically afterward via get_events, instead of relying on
+	# eyeballing overhead-camera video frames or trusting an aggregate event count. Confirmed
+	# the hard way: a "zero collisions" count and a coarse frame sample both looked fine on a
+	# take that actually had the rover retreat out the building's exterior door.
+	if fmod(_sim_time, 1.0) < 0.02:
+		_log_event("pose_trace", {"id": st.id, "x": st.pos.x, "y": st.pos.y})
 	_sweep_observed(st)
 
 
@@ -314,23 +314,21 @@ func _forward_clearance(st: PhroverState) -> float:
 	return from3.distance_to(hit["position"])
 
 
-# Used by the person-safety dodge to avoid picking an escape direction that just rams a
-# wall/prop — the dodge is otherwise blind to the environment, unlike the AStarPlanner-
-# driven main navigation. Short check distance (rover radius 0.28m + a bit of margin), not
-# the full 0.7m forward-guard range: the dodge only needs "is this immediate direction
-# open", not "is it clear all the way to some driving distance".
-func _direction_is_clear(st: PhroverState, dir: Vector2, check_dist: float = 0.6) -> bool:
-	var from3 := Vector3(st.pos.x, 0.2, -st.pos.y)
-	var to3 := from3 + Vector3(dir.x, 0.0, -dir.y) * check_dist
-	var hit := _raycast(from3, to3, LAYER_STRUCTURE | LAYER_PROPS, [st.node])
-	return hit.is_empty()
-
-
 func _person_distance(st: PhroverState) -> float:
 	var person := _person_node()
 	if person == null or not person.active:
 		return INF
 	return st.pos.distance_to(person.enu_position())
+
+
+# Pure Y-separation from the person, ignoring X entirely — used ONLY as an ADDITIONAL
+# trigger condition (see _step_rover and PERSON_Y_STOP_DIST's own comment for the full
+# history), never to decide whether to release.
+func _person_y_gap(st: PhroverState) -> float:
+	var person := _person_node()
+	if person == null or not person.active:
+		return INF
+	return absf(st.pos.y - person.enu_position().y)
 
 
 func _log_person_proximity(st: PhroverState, dist: float) -> void:
@@ -661,9 +659,8 @@ func reset(seed_val: int) -> void:
 		st.guard_stopped = false
 		st.was_colliding = false
 		st.was_person_colliding = false
-		st.was_dodging = false
 		st.person_override_active = false
 		st.person_override_elapsed = 0.0
-		st.person_override_cooldown = 0.0
+		st.person_override_grace = 0.0
 		st.in_geofence = false
 		st.observed.fill(0)

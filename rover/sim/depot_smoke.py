@@ -127,13 +127,13 @@ def main() -> int:
         events = client.get_events(since=0.0)
         kinds = {e["kind"] for e in events}
         check("person_dist events logged", "person_dist" in kinds, detail=str(sorted(kinds)))
-        # The person-safety governor now dodges perpendicular to the person's path starting
-        # at 1.8m (see phrover_manager.gd), well outside the old guard_stop (0.45m forward
-        # ray) / near_miss (0.8m) thresholds — driving toward the person no longer reliably
-        # gets close enough to trip those anymore, precisely because avoidance now works.
-        # person_dodge is the direct signal that the encounter was detected and handled.
-        check("guard_stop, near_miss, or person_dodge fired near person",
-              "guard_stop" in kinds or "near_miss" in kinds or "person_dodge" in kinds,
+        # The person-safety governor now stops (v=0, no movement) starting at 1.8m (see
+        # phrover_manager.gd), well outside the old guard_stop (0.45m forward ray) /
+        # near_miss (0.8m) thresholds — driving toward the person no longer reliably gets
+        # close enough to trip those anymore, precisely because the stop engages earlier.
+        # person_stop is the direct signal that the encounter was detected and handled.
+        check("guard_stop, near_miss, or person_stop fired near person",
+              "guard_stop" in kinds or "near_miss" in kinds or "person_stop" in kinds,
               detail=str(sorted(kinds)))
 
         r = client.inject("block_door", door="A")
