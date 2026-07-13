@@ -22,6 +22,13 @@ const GOAL_TOL := 0.3     # m (unused here; real planner lives Swift-side)
 const GUARD_DIST := 0.45  # m forward clearance that triggers the safety guard
 const DETECT_RANGE := 8.0 # m
 const FOV_HALF := deg_to_rad(30.0)
+# Capability #7 (asking for help under genuine ambiguity) needs a real perceptual limit,
+# not a scripted one: below this, camera_blur genuinely denies color resolution (a real
+# camera too blurry/foggy to tell red from blue), degrading red_toolbox/blue_toolbox to a
+# generic "toolbox" label — previously detect() baked color into the label unconditionally
+# regardless of blur, confidence, or range, so "which toolbox do you mean" could never be a
+# fair question; the model always just knew.
+const COLOR_BLUR_THRESHOLD := 0.5
 const GRID_RES := 0.25
 const GRID_ORIGIN := Vector2(-8.0, -9.0)
 const GRID_W := 64
@@ -140,6 +147,7 @@ class PhroverState:
 	var person_override_elapsed := 0.0
 	var person_override_grace := 0.0
 	var in_geofence := false
+	var last_pose_trace := -1.0
 	var near_flag := false
 	var cmd_v := 0.0
 	var cmd_w := 0.0
@@ -294,7 +302,15 @@ func _step_rover(st: PhroverState, dt: float) -> void:
 	# eyeballing overhead-camera video frames or trusting an aggregate event count. Confirmed
 	# the hard way: a "zero collisions" count and a coarse frame sample both looked fine on a
 	# take that actually had the rover retreat out the building's exterior door.
-	if fmod(_sim_time, 1.0) < 0.02:
+	#
+	# Anchored to last_pose_trace (per-rover, reset alongside _sim_time in reset()), not a
+	# global fmod(_sim_time, 1.0) check: the latter re-satisfies on the very first physics
+	# tick after any reset() (since _sim_time restarts near 0, trivially < 0.02), so a
+	# reset immediately followed by get_events could race a fresh spurious event into an
+	# otherwise-empty post-reset log — confirmed via depot_smoke.py's "reset clears events"
+	# check failing intermittently.
+	if _sim_time - st.last_pose_trace >= 1.0:
+		st.last_pose_trace = _sim_time
 		_log_event("pose_trace", {"id": st.id, "x": st.pos.x, "y": st.pos.y})
 	_sweep_observed(st)
 
@@ -416,6 +432,8 @@ func detect(id: String) -> Array:
 		if not hit.is_empty():
 			continue  # occluded
 		var label: String = node.get_meta("label", "person")
+		if st.blur_sigma >= COLOR_BLUR_THRESHOLD and (label == "red_toolbox" or label == "blue_toolbox"):
+			label = "toolbox"
 		var range_penalty: float = clamp((dist - 4.0) / 4.0, 0.0, 1.0) * 0.3
 		var confidence: float = clamp(0.9 - range_penalty - st.blur_sigma * 0.15, 0.05, 0.95)
 		var nx: float = clamp(0.5 + (angle / FOV_HALF) * 0.5, 0.0, 1.0)
@@ -675,4 +693,5 @@ func reset(seed_val: int) -> void:
 		st.person_override_elapsed = 0.0
 		st.person_override_grace = 0.0
 		st.in_geofence = false
+		st.last_pose_trace = 0.0
 		st.observed.fill(0)
