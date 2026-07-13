@@ -39,6 +39,12 @@ BEATS = {
     "testGoBackToRememberedObjectLive": "cap2_memory_recall.mp4",
     "testAnomalySweepLive": "cap5_8_10b_anomaly_sweep.mp4",
     "testHardStopBypassesBrainLive": "cap10a_hard_stop.mp4",
+    # Dedicated one-clip-per-capability beats (previously #5/#8 only existed bundled into
+    # the anomaly-sweep clip above; #6/#7 had no video at all).
+    "testGoalDirectedExplorationLive": "cap5_exploration.mp4",
+    "testAsksForHelpUnderAmbiguityLive": "cap7_asking_for_help.mp4",
+    "testUnpromptedAnomalyReportLive": "cap8_unprompted_report.mp4",
+    "testLearningFromExperienceDemoLive": "cap6_learning.mp4",
 }
 
 
