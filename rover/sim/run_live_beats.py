@@ -134,6 +134,7 @@ def run_one_beat(test_name: str, clip_name: str, port: int, device: str, fps: fl
     grabber.start()
 
     returncode = 1
+    skipped = False
     try:
         cmd = [
             "xcodebuild", "test",
@@ -147,12 +148,27 @@ def run_one_beat(test_name: str, clip_name: str, port: int, device: str, fps: fl
             "TEST_RUNNER_LIVE_ROVER_ACT_URL": bridge.url,
         }
         print("running:", " ".join(cmd), "with", env_overrides)
-        result = subprocess.run(cmd, cwd=SDK_DIR, env={**os.environ, **env_overrides})
-        returncode = result.returncode
+        # Capture output (instead of inheriting stdout directly) so a skipped test can be
+        # detected programmatically — confirmed the hard way that xcodebuild still exits 0
+        # when a test skips (e.g. a transient Godot-connection race), which previously let
+        # this function fall through to make_video() and silently overwrite a perfectly
+        # good prior clip with a near-empty one from a test that never actually ran.
+        proc = subprocess.Popen(cmd, cwd=SDK_DIR, env={**os.environ, **env_overrides},
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            if f"{test_name}]' skipped" in line or f"{test_name}]' : Test skipped" in line:
+                skipped = True
+        proc.wait()
+        returncode = proc.returncode
     finally:
         grabber.stop()
         print(f"--- captured {grabber.frame_count} frames for {test_name} ---")
-        make_video(frame_dir, fps, VIDEOS_DIR / clip_name)
+        if skipped:
+            print(f"!!! {test_name} was SKIPPED (not a real run) — leaving {clip_name} untouched, not overwriting with a bogus clip")
+            returncode = returncode or 3
+        else:
+            make_video(frame_dir, fps, VIDEOS_DIR / clip_name)
         shutil.rmtree(frame_dir, ignore_errors=True)
         bridge.stop()
         godot.stop()

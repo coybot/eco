@@ -510,6 +510,18 @@ func _rebuild_occ_grid() -> void:
 		if panel.visible:
 			var d: Array = _env.DOOR_PANELS[door_id]["rect"]
 			rects.append(Rect2(d[0], d[1], d[2], d[3]))
+	# Room D (paint/keep-out) has no closable door panel and no visual marker
+	# distinguishing it from any other room (env_depot.gd: "D is geofenced instead") —
+	# confirmed live that a brain has no way to recognize it as forbidden before or even
+	# after entering (it looks like an ordinary room with a box), so "avoid the paint
+	# room" was unenforceable and the rover wandered in and spent 80+ seconds there. Bake
+	# its bounds into the costmap as permanently lethal, same as a wall: a real geofence is
+	# a hard nav-layer constraint, not something a vision model has to infer, and this
+	# matches the person-safety governor's pattern of enforcing safety below the brain
+	# rather than trusting it to comply. _check_geofence()'s event logging stays as an
+	# honest observability check on top of this, not the enforcement mechanism itself.
+	var paint_rect_a: Array = _env.ROOMS["D"]
+	rects.append(Rect2(paint_rect_a[0], paint_rect_a[1], paint_rect_a[2], paint_rect_a[3]))
 	# Cell-vs-rect overlap, not cell-center containment: walls/doors are only
 	# ~0.2m thick, thinner than a grid cell, so a thin band can otherwise fall
 	# entirely between two cell centers and never register as occupied.
