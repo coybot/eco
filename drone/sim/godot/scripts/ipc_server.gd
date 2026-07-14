@@ -122,6 +122,10 @@ func _dispatch(line: String) -> String:
 			var jpg_b64 = fm.grab_vantage_jpeg(req.get("name", "overhead"))
 			return JSON.stringify({"ok": true, "jpg": jpg_b64})
 
+		"remove_vantage":
+			fm.remove_vantage(req.get("name", "overhead"))
+			return JSON.stringify({"ok": true})
+
 		"spawn":
 			var vt: String = req.get("vtype", "quadcopter")
 			if req.has("p"):

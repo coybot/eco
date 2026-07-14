@@ -540,6 +540,23 @@ func auto_overhead(name: String = "overhead") -> void:
 	add_vantage(name, cam_pos, building_center)
 
 
+## Frees a vantage's SubViewport/camera and forgets it, so a subsequent add_vantage()
+## call (which otherwise no-ops if the name is already registered) actually builds a
+## fresh one. Recovery path for a SubViewport whose render target has silently stopped
+## updating (get_texture().get_image() keeps returning the same bytes indefinitely,
+## despite UPDATE_ALWAYS) — confirmed intermittently for long-running headless captures,
+## exact engine-level trigger not pinned down, but a fresh SubViewport reliably resumes
+## rendering, so this recovery is cheap and sufficient rather than chasing the root cause.
+func remove_vantage(name: String) -> void:
+	if name not in _vantages:
+		return
+	var v: Dictionary = _vantages[name]
+	var holder = v.get("node")
+	if is_instance_valid(holder):
+		holder.queue_free()
+	_vantages.erase(name)
+
+
 func grab_vantage_jpeg(name: String) -> Variant:
 	var v: Dictionary = _vantages.get(name, {})
 	if v.is_empty():

@@ -87,3 +87,6 @@ class DepotClient:
         r = self._call({"op": "grab_vantage", "name": name})
         jpg = r.get("jpg")
         return base64.b64decode(jpg) if jpg else None
+
+    def remove_vantage(self, name: str) -> dict:
+        return self._call({"op": "remove_vantage", "name": name})
