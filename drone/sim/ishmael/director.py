@@ -58,7 +58,7 @@ class DirectorConfig:
         if self.python:
             return self.python
         if self.engine == "isaac":
-            return "/home/yusuf/isaac-sim-env/bin/python3"
+            return "/opt/ml/isaac-sim-env/bin/python3"
         return sys.executable  # astral_sim: any regular Python env (see godot_launch_fleet.py)
 
 

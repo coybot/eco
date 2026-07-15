@@ -11,7 +11,7 @@ remote_dir := "~/astral-training"
 model_out := "~/drone-data/bc_v2/models"
 local_models := "eco/drone/models"
 ssh_opts := "-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new"
-python := "/home/yusuf/isaac-sim-env/bin/python3"
+python := "/opt/ml/isaac-sim-env/bin/python3"
 
 # Rsync the training package to hoopoe and install deps
 deploy:

@@ -10,7 +10,7 @@ boxes for the rare classes (drone/UAV, rover), and writes:
   - COCO-format `annotations.json` (+ the same JPEGs) — direct input to Ultralytics `yolo train`.
 
 Run on hoopoe inside the Isaac venv (see eco-sim-status / hoopoe-reference):
-    /home/yusuf/isaac-sim-env/bin/python3 sim_dataset_recorder.py \
+    /opt/ml/isaac-sim-env/bin/python3 sim_dataset_recorder.py \
         --env office --fleet quad:4,rover:2 --frames 300 --out ~/drone-data/sim_office
 
 GROUND-TRUTH NOTE: the pinhole projection below uses Isaac's camera convention (optical axis

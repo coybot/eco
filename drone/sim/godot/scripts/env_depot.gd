@@ -92,7 +92,19 @@ const START_YAW := PI / 2.0  # facing north (+y)
 # a few metres from spawn. The patrol leg still sweeps across the full hallway width
 # (through both doorways B and A) so capability #1 (yield to a crossing person) is still
 # exercised once active.
-const PERSON_WAYPOINTS: Array = [Vector2(2.0, 4.0), Vector2(-2.0, 4.0)]
+#
+# Amplitude widened from ±2.0 to ±3.0 (rooms A/B are 6m deep on either side of the 1.0m
+# hallway wall, so this is still just someone walking a few steps further into the room
+# they're restocking — not an unrealistic patrol): with the hallway centered at x=0 and a
+# rover crossing along that centerline, the FARTHEST the person can ever get from a rover
+# sitting at the crossing point is exactly the patrol amplitude. At ±2.0 that farthest
+# distance (2.0m) was already less than phrover_manager.gd's PERSON_SAFE_DIST (2.4m) release
+# threshold — meaning "the person is far enough away to go" could never become true exactly
+# at the crossing point, regardless of how the safety governor's release logic was tuned
+# (confirmed live across several governor redesigns, none of which could produce a real
+# crossing while this stayed impossible). Widening to ±3.0 gives real margin (3.0 > 2.4)
+# so a genuine "coast is clear" moment actually exists at the point that matters.
+const PERSON_WAYPOINTS: Array = [Vector2(3.0, 4.0), Vector2(-3.0, 4.0)]
 
 # label -> {room, slots: [Vector2, ...]} — candidate positions; reset(seed) picks one each.
 const PROP_DEFS := {

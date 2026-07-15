@@ -2,7 +2,7 @@
 """Launch a process-separated sim fleet: ONE Isaac engine + ONE daemon per drone.
 
     python3 launch_fleet.py --fleet quad:10,rover:10 --env office \
-        --certs-base ~/eco-certs-fleet --python /home/yusuf/isaac-sim-env/bin/python3
+        --certs-base ~/eco-certs-fleet --python /opt/ml/isaac-sim-env/bin/python3
 
 Engine owns Isaac; each daemon is its own process with its own MQTT connection
 (no cross-connection GIL contention). Logs: /tmp/sim_engine.log, /tmp/daemon-*.log.

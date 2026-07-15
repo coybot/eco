@@ -35,7 +35,7 @@ Both are moved **kinematically** (pose integrated toward goals; physics timeline
 
 ## Run (Isaac venv on hoopoe — NOT Docker)
 ```bash
-PY=/home/yusuf/isaac-sim-env/bin/python3
+PY=/opt/ml/isaac-sim-env/bin/python3
 # one-time deps (then ALWAYS re-pin numpy<2 — av/awsiotsdk pull numpy>=2 which breaks Isaac 5.1):
 uv pip install --python $PY aiortc av awsiotsdk && uv pip install --python $PY "numpy<2"
 

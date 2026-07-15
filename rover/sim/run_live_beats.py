@@ -64,7 +64,13 @@ class Bridge:
 
 
 def launch_bridge() -> Bridge:
-    env = {**os.environ, "AWS_PROFILE": "astral"}
+    # Default to the model bake-off winner (see RESULTS_video_set.md) unless the caller
+    # explicitly overrides it — confirmed the hard way that forgetting to set this env var
+    # silently falls back to rover.py's own default (sonnet-5, NOT the winner), so an
+    # entire round of "final" recordings got made with the wrong model without anyone
+    # noticing until a capability that sonnet-5 handles worse (person-crossing) failed.
+    env = {**os.environ, "AWS_PROFILE": "astral",
+           "BEDROCK_MODEL_ID": os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8")}
     proc = subprocess.Popen(
         [sys.executable, "-m", "e2e.harness.live_rover_act_bridge"],
         cwd=ECO_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
