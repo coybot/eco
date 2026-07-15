@@ -6,7 +6,7 @@ Run on Hoopoe (real Isaac Sim) with the Isaac venv python:
     ISHMAEL_API_BASE=https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod \
     ISHMAEL_API_TOKEN="<cognito-id-token>" \
     ISHMAEL_USER_SUB="<cognito-sub>" \
-    /home/yusuf/isaac-sim-env/bin/python3 -m pytest \
+    /opt/ml/isaac-sim-env/bin/python3 -m pytest \
         drone/sim/ishmael/tests/test_office_chair.py -v
 
 The test is **skipped automatically** when the env var ISHMAEL_RUN_E2E is not set,

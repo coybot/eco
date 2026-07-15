@@ -28,8 +28,8 @@ Then on hoopoe (or via `just -f eco/drone/training/justfile train`):
 
     # 3. pull the exported models back (see justfile `pull` target)
 
-The Isaac venv at /home/yusuf/isaac-sim-env/ has numpy/torch; if not, install with:
-    uv pip install --python /home/yusuf/isaac-sim-env/bin/python3 torch onnx onnxruntime
+The Isaac venv at /opt/ml/isaac-sim-env/ has numpy/torch; if not, install with:
+    uv pip install --python /opt/ml/isaac-sim-env/bin/python3 torch onnx onnxruntime
 """
 
 from __future__ import annotations

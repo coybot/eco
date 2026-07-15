@@ -7,7 +7,7 @@ Three cameras per course:
 
 Run on hoopoe:
   cd ~/astral-training
-  /home/yusuf/isaac-sim-env/bin/python3 -m eco.drone.training.render_session1 \
+  /opt/ml/isaac-sim-env/bin/python3 -m eco.drone.training.render_session1 \
       --out /tmp/session1_videos
 """
 from __future__ import annotations

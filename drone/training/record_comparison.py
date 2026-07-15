@@ -13,7 +13,7 @@ Outputs per course (to --out):
   - split_<course>.mp4     : onboard cameras side-by-side (RULE | LEARNED)
 
 Usage on hoopoe (Isaac Sim python env):
-    /home/yusuf/isaac-sim-env/bin/python3 /home/yusuf/record_comparison.py \
+    /opt/ml/isaac-sim-env/bin/python3 /home/yusuf/record_comparison.py \
         --models-dir /home/yusuf/models --out /tmp/astral_course
 """
 from __future__ import annotations
