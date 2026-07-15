@@ -90,15 +90,17 @@ reasons about the person.
 **Sim result**: the current sim video for this capability (`cap1_person_crossing.mp4`, see
 `RESULTS_video_set.md`) shows zero collisions with the person (confirmed numerically, not
 by watching the clip), achieved via a dedicated person-safety governor — direction-
-independent proximity detection with a plain stop (not a dodge/retreat; earlier dodge-based
-designs canceled the rover's own forward progress or retreated into the exterior door, see
-`RESULTS_video_set.md`), plus a committed-crossing grace period so the rover can actually
-get past the person once safe, backstopped by an unconditional emergency-stop check. That
-governor is sim-only (`phrover_manager.gd`) — real hardware relies on the forward-clearance
-`ObstacleGuard` alone, which is narrower (forward-facing only) than what made the sim result
-clean. **Treat the first few real-hardware runs of this test as a genuine safety check, not
-a formality** — a person approaching from the side or rear has no equivalent protection on
-real hardware today.
+independent proximity detection with a plain stop/release hysteresis (not a dodge/retreat;
+earlier dodge-based designs canceled the rover's own forward progress or retreated into the
+exterior door, see `RESULTS_video_set.md`), checked fresh every tick with no timer or grace
+period (an earlier fixed-grace design was tried and explicitly rejected — see
+`RESULTS_video_set.md`'s "stop-only governor didn't actually let the rover cross" section),
+plus an unconditional fatal-band escape (forced movement, including a lateral component) if
+the person ever closes past a hard inner floor regardless of override state. That governor is
+sim-only (`phrover_manager.gd`) — real hardware relies on the forward-clearance `ObstacleGuard`
+alone, which is narrower (forward-facing only) than what made the sim result clean. **Treat the
+first few real-hardware runs of this test as a genuine safety check, not a formality** — a
+person approaching from the side or rear has no equivalent protection on real hardware today.
 
 ### 2 — Persistent world model with memory
 

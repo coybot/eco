@@ -205,13 +205,61 @@ Also unchanged: `capstone_full.mp4` (long-form #2/#3/#5/#8 combined mission — 
 geofence fix, see caveat further below) and `smoke_test.mp4` (Phase 1 plumbing smoke test,
 not a capability demo).
 
+## Follow-up round: stop-only governor didn't actually let the rover cross
+
+The "stop-only" design above (Fixes landed this round, item 4) turned out to have a second,
+independent bug: at `PERSON_WAYPOINTS` amplitude ±2.0m, the person's max possible separation
+from the rover's fixed crossing point was exactly 2.0m — always below `PERSON_SAFE_DIST`
+(2.4m), so a stopped rover could mathematically never see "coast is clear" and release. Live
+and free runs alike showed the rover permanently parked short of the crossing, never
+completing it. Per explicit user direction ("the rover should go once the coast is clear," "if
+no obstacle then go"), all timer/grace-based release mechanisms considered along the way
+(fixed grace periods up to 60s, a "patient" distance tier, a bounded last-resort override) were
+rejected and removed in favor of two fixes:
+1. **Widened `PERSON_WAYPOINTS`** in `env_depot.gd` from ±2.0m to ±3.0m, so "coast is clear"
+   is geometrically reachable (rooms are 6m deep, so this stays a realistic patrol).
+2. **An unconditional fatal-band escape**, layered on top of the stop/release hysteresis, not
+   replacing it: if the person ever closes to within `PERSON_Y_FREEZE_FLOOR` (0.6m) of Y-gap
+   regardless of override state, the rover forces movement — combined forward + a lateral
+   (`LATERAL_WEIGHT = 0.4`, not full-strength — full-strength caused wall-stuck runs) nudge
+   away from the person's side, bypassing both the normal yaw-based steering and the wall/prop
+   guard (`guard_now`) for that instant. This was reached only after three live-confirmed dead
+   ends: zeroing velocity inside 0.5m still collided (zero reaction margin at the exact contact
+   radius); forcing full commanded speed with `cmd_v`/`guard_now` still gated left both an idle
+   ("thinking pause," `cmd_v=0`) and a wall-adjacent case unfixed; forcing unconditionally but
+   without a lateral component was proven mathematically insufficient once Y-gap is already
+   small (`d(dist²)/dt` scales with the gap itself). Confirmed **zero person collisions** across
+   a full live `testPersonCrossingLive` run this round (34 near-misses, 20 wall/prop collisions,
+   0 person collisions, rover reaches y=9.15 — a genuine completed crossing, not a stall).
+
+**Battery-forced-return fix, this round**: `testBatteryForcesEarlyReturnLive` was passing the
+"mentions battery" check but failing to actually navigate back near the mission start pose. Root
+cause: the model *was* given the start-pose coordinates every tick, but `rover.py`'s battery
+guidance was purely qualitative ("return and report before stranding yourself") with no
+instruction that this overrides an unfinished operator task — the model could rationally mention
+the concern once (satisfying that assertion) and keep exploring instead of actually turning back.
+Fixed by making the guidance an explicit priority override, mirroring the existing "follow
+through on narrated intentions" enforcement pattern already in the same prompt: return now takes
+priority over finishing the request, and the model must issue an actual `navigate` action toward
+the start pose (not just say so) before calling `done`. Confirmed live: final pose 0.66m from
+start (was previously stranding short or wandering).
+
+Full 10-beat live suite rerun after both fixes: all 10 pass on their actual test logic. Two
+beats (`testGoBackToRememberedObjectLive`, `testGoalDirectedExplorationLive`) failed once in
+that batch — the model deviated on ground-truth checks (never mentioned a ladder it should
+have recalled; re-explored one opening a 4th time) — and passed cleanly on an immediate
+standalone retry with no code changes, confirming this was ordinary live-model run-to-run
+variance rather than a regression from either fix above.
+
 ## Known remaining imperfection
 
 Wall/prop collisions (never person collisions) still occur at a variable rate, concentrated
-in the depot's narrow spawn corridor, when the person-safety dodge has to pick an escape
-direction in tight quarters. Zero person collisions is the property this round's fix targets
-and achieves; wall-awareness for the reactive guard more broadly is a reasonable follow-up
-but wasn't in scope for this pass.
+in the depot's narrow spawn corridor — now specifically because the fatal-band escape above
+deliberately bypasses the wall/prop guard (`guard_now`) to guarantee it can always move away
+from the person, even when that direction happens to be wall-adjacent. This is an accepted,
+explicit trade favoring person safety over prop/wall contact, not an oversight; making the
+escape wall-aware as well is a reasonable follow-up but risks reintroducing the same kind of
+timer/threshold complexity that was just removed above, and wasn't in scope for this pass.
 
 ## Cost
 

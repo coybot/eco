@@ -146,7 +146,7 @@ on the gauntlet2 geometry distribution.
 
 ## Training box (hoopoe = dual RTX 5090; NO A100)
 SSH: `sshpass -p 'sayplease' ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new yusuf@hoopoe`
-- Isaac/torch python: `/home/yusuf/isaac-sim-env/bin/python3` (has numpy, onnxruntime, pymavlink).
+- Isaac/torch python: `/opt/ml/isaac-sim-env/bin/python3` (has numpy, onnxruntime, pymavlink).
 - Training package synced to `~/astral-training/`; run as `cd ~/astral-training && PYTHONPATH=. <py> -m eco.drone.training.<mod>`.
 - Models staged at `/home/yusuf/models/`.
 - Isaac render + SITL run from `/home/yusuf/` using FLAT copies of `record_comparison.py`,

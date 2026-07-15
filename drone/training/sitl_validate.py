@@ -7,7 +7,7 @@ course (same representation it trained on) and score reach / collision / time-to
 
 Requires a built ArduCopter SITL binary (Tools build: build/sitl/bin/arducopter) and pymavlink.
 
-    PYTHONPATH=<repo> /home/yusuf/isaac-sim-env/bin/python3 -m eco.drone.training.sitl_validate \
+    PYTHONPATH=<repo> /opt/ml/isaac-sim-env/bin/python3 -m eco.drone.training.sitl_validate \
         --models-dir /home/yusuf/models --onnx-name policy_v3_dr.onnx \
         --sitl-bin ~/ardupilot/build/sitl/bin/arducopter \
         --defaults ~/ardupilot/Tools/autotest/default_params/copter.parm

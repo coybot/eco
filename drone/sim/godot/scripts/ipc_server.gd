@@ -160,7 +160,8 @@ func _dispatch(line: String) -> String:
 			if st == null:
 				return JSON.stringify({"ok": false, "error": "unknown phrover " + did})
 			return JSON.stringify({"ok": true, "pose": st["pose"], "battery": st["battery"],
-									"guard_stopped": st["guard_stopped"]})
+									"guard_stopped": st["guard_stopped"],
+									"person_stop_active": st["person_stop_active"]})
 
 		"phrover_detect":
 			return JSON.stringify({"ok": true, "objects": pm.detect(did)})

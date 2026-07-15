@@ -7,7 +7,7 @@ Produces three MP4 files in --out-dir:
 
 Run on hoopoe (has matplotlib + ffmpeg):
     cd ~/astral-training
-    PYTHONPATH=. /home/yusuf/isaac-sim-env/bin/python3 \
+    PYTHONPATH=. /opt/ml/isaac-sim-env/bin/python3 \
         -m eco.drone.training.make_videos \
         --models-dir eco/drone/models \
         --out-dir /tmp/astral_videos

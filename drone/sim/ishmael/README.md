@@ -28,7 +28,7 @@ python -m ishmael.cli --parse-only "1 rover and 1 quadcopter search an office fo
 ISHMAEL_API_BASE=https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod \
 ISHMAEL_API_TOKEN="<cognito-id-token>" \
 ISHMAEL_USER_SUB="<cognito-sub>" \
-/home/yusuf/isaac-sim-env/bin/python3 -m ishmael.cli \
+/opt/ml/isaac-sim-env/bin/python3 -m ishmael.cli \
   "1 rover and 1 quadcopter search an office for a chair and send a picture"
 ```
 
@@ -42,7 +42,7 @@ ISHMAEL_USER_SUB="<cognito-sub>" \
 | `ISHMAEL_USER_SUB` | Cognito sub to register the fleet under | — |
 | `ISHMAEL_IOT_ENDPOINT` | IoT ATS data endpoint | dev endpoint |
 | `ISHMAEL_MOBILE_CERTS` | certs dir for the app client's MQTT | `~/eco-certs` |
-| `ISHMAEL_SIM_PYTHON` | Isaac venv python for the fleet launch | `/home/yusuf/isaac-sim-env/bin/python3` |
+| `ISHMAEL_SIM_PYTHON` | Isaac venv python for the fleet launch | `/opt/ml/isaac-sim-env/bin/python3` |
 
 The director never talks to Isaac or Bedrock directly — it composes the existing
 sim host and the mobile contract, so a sim drone stays IRL-identical end-to-end.

@@ -8,7 +8,7 @@ vehicle, connects to AWS IoT over MQTT (cert auth), and streams video over KVS. 
 the process — stopping it loses nothing; the cert + cloud registration stay. Connect to hoopoe via
 SSH (creds in private notes / memory: user `yusuf`).
 
-Host paths: code `~/code/ishmael/eco_sim/`, Isaac venv python `/home/yusuf/isaac-sim-env/bin/python3`,
+Host paths: code `~/code/ishmael/eco_sim/`, Isaac venv python `/opt/ml/isaac-sim-env/bin/python3`,
 certs `~/eco-certs` (quad) and `~/eco-certs-rover` (rover).
 
 ---
@@ -20,7 +20,7 @@ certs `~/eco-certs` (quad) and `~/eco-certs-rover` (rover).
 cd ~/code/ishmael/eco_sim
 ISHMAEL_HARNESS=$HOME/code/ishmael/swarm_eval/harness \
 WARP_CUDA_DEVICES=0 \
-  /home/yusuf/isaac-sim-env/bin/python3 -u sim_bridge.py \
+  /opt/ml/isaac-sim-env/bin/python3 -u sim_bridge.py \
   --env office --drone-id sim-quadcopter-test --vehicle quadcopter \
   --certs-dir ~/eco-certs  > /tmp/sim_quad.log 2>&1 &
 ```
@@ -30,7 +30,7 @@ WARP_CUDA_DEVICES=0 \
 cd ~/code/ishmael/eco_sim
 ISHMAEL_HARNESS=$HOME/code/ishmael/swarm_eval/harness \
 WARP_CUDA_DEVICES=1 \
-  /home/yusuf/isaac-sim-env/bin/python3 -u sim_bridge.py \
+  /opt/ml/isaac-sim-env/bin/python3 -u sim_bridge.py \
   --env office --drone-id sim-rover-test --vehicle rover \
   --certs-dir ~/eco-certs-rover  > /tmp/sim_rover.log 2>&1 &
 ```
@@ -92,7 +92,7 @@ AWS_PROFILE=astral python3 fleet.py --fleet quad:10,rover:10 --user-sub <COGNITO
 # 2) launch the fleet on hoopoe (one process, one world):
 cd ~/code/ishmael/eco_sim
 ISHMAEL_HARNESS=$HOME/code/ishmael/swarm_eval/harness \
-  /home/yusuf/isaac-sim-env/bin/python3 -u fleet_bridge.py \
+  /opt/ml/isaac-sim-env/bin/python3 -u fleet_bridge.py \
   --fleet quad:10,rover:10 --env office \
   --certs-dir ~/eco-certs --thing-name sim-quadcopter-test > /tmp/fleet.log 2>&1 &
 ```
@@ -117,7 +117,7 @@ connection)**, talking over a Unix socket.
 # per-drone certs must exist at ~/eco-certs-fleet/{drone_id}/ (provision like §2;
 # 20 already provisioned). Then one command launches engine + all daemons:
 cd ~/code/ishmael/eco_sim
-/home/yusuf/isaac-sim-env/bin/python3 launch_fleet.py \
+/opt/ml/isaac-sim-env/bin/python3 launch_fleet.py \
   --fleet quad:10,rover:10 --env office --certs-base ~/eco-certs-fleet
 ```
 - `sim_engine.py` = Isaac world + IPC (`/tmp/sim_engine.sock`), no MQTT.
