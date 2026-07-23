@@ -179,6 +179,8 @@ func _load_environment(env_name: String) -> void:
 		"warehouse":     "res://scenes/environments/city.tscn",
 		"hospital":      "res://scenes/environments/office.tscn",
 		"depot":         "res://scenes/environments/depot.tscn",
+		"flightline":    "res://scenes/environments/flightline.tscn",
+		"countdemo":     "res://scenes/environments/countdemo.tscn",
 	}
 	var path: String = env_map.get(env_name, "res://scenes/environments/office.tscn")
 	if not ResourceLoader.exists(path):
@@ -555,6 +557,24 @@ func remove_vantage(name: String) -> void:
 	if is_instance_valid(holder):
 		holder.queue_free()
 	_vantages.erase(name)
+
+
+## Repositions an EXISTING vantage's Camera3D in place (no SubViewport
+## recreation) — for a "chase cam" that tracks a moving vehicle each tick,
+## since a static overhead vantage placed high enough to frame a whole
+## fixed-wing-scale scenario (100s of meters) makes the aircraft itself a
+## barely-visible dot. Same ENU->Godot conversion as add_vantage().
+func move_vantage(name: String, pos_enu: Vector3, look_enu: Vector3) -> void:
+	if name not in _vantages:
+		return
+	var v: Dictionary = _vantages[name]
+	var cam: Camera3D = v.get("camera")
+	if cam == null:
+		return
+	var godot_pos := Vector3(pos_enu.x, pos_enu.z, -pos_enu.y)
+	var godot_look := Vector3(look_enu.x, look_enu.z, -look_enu.y)
+	cam.position = godot_pos
+	cam.look_at(godot_look, Vector3.UP)
 
 
 func grab_vantage_jpeg(name: String) -> Variant:
