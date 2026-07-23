@@ -80,7 +80,15 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
     "fly_circle": PhaseSpec(
         description="Fly N waypoints around a circle centered on home, at a "
                      "given radius and altitude — a bounded, finite pattern "
-                     "(not an open-ended loiter).",
+                     "(not an open-ended loiter). IMPORTANT for a fixed-wing: "
+                     "radius_m must be at or above the airframe's own minimum "
+                     "turn radius (roughly max_speed_mps / max_yaw_rate_radps "
+                     "— for a typical small fixed-wing this is 40m+, not the "
+                     "10-20m that's fine for a quadcopter); a tighter radius "
+                     "is not just suboptimal, it is physically unflyable and "
+                     "the mission will fail (the on-device code clamps it up "
+                     "as a backstop, but don't rely on that — pick a real, "
+                     "flyable radius, 50m+ if unsure for a fixed-wing).",
         fields={
             "radius_m": FieldSpec("float", 10.0),
             "altitude_m": FieldSpec("float", 5.0),
