@@ -118,10 +118,6 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
 # (kept in sync there manually — vlm.py owns the enum since it's also the
 # literal parse target for the model's JSON output; this module describes
 # capabilities in cloud-planner-relevant terms, not the wire schema).
-#
-# NOTE: no "count" capability listed yet — that lands with change C
-# (counting via memory tally); this module and vlm.py's ActionType both get
-# a new entry when it's implemented, not invented ahead of the real code.
 # ---------------------------------------------------------------------------
 VLM_CAPABILITIES: Dict[str, str] = {
     "navigate_to_point": "Fly toward a point it currently sees in-frame (pixel-located).",
@@ -131,6 +127,10 @@ VLM_CAPABILITIES: Dict[str, str] = {
                            "flying out of sight of it.",
     "search_area": "Fly an expanding search pattern to look for a named "
                     "target that isn't currently in view.",
+    "count": "Report how many distinct instances of a named target it has "
+             "seen — computed from geo-tagged memory (dedups repeat "
+             "sightings of the same physical object across an orbit), not "
+             "the model's own visual arithmetic. Zero is a valid answer.",
     "capture_photo": "Capture a photo as evidence.",
     "report": "Report a grounded finding (backed by a real detection or "
               "memory match — cannot report something never actually seen).",
