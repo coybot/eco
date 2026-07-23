@@ -14,6 +14,12 @@ region: "us-west-2"
 serial_port: "/dev/ttyACM0"
 baud_rate: 115200
 
+# Vehicle type: "quadcopter" (default), "rover", or "fixedwing".
+# Set to "fixedwing" for an ArduPlane airframe (e.g. Skywalker X8) — this
+# selects plane_sdk + the ArduPlane-aware HardwareBackend + the fixedwing
+# VehicleClass instead of the default quadcopter path (daemon.py, backends.py).
+# vehicle_type: "fixedwing"
+
 # Battery Monitoring (auto-configured on PX4/ArduPilot)
 battery:
   cells: 4                      # Number of cells (3S=3, 4S=4, 6S=6)
