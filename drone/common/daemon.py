@@ -48,6 +48,12 @@ DRONE_ID = get_or_create_drone_id()
 IOT_ENDPOINT = config.get('iot_endpoint')
 LOG_LEVEL = config.get('log_level', 'INFO')
 
+# Vehicle type ('quadcopter' [default], 'rover', 'fixedwing') — drives which
+# flight SDK / backend / VehicleClass the mission loop uses below. There is no
+# cloud-registry write path for this yet (see the fixed-wing autonomy plan) —
+# set explicitly in this drone's config.yaml until one exists.
+VEHICLE_TYPE = config.get('vehicle_type', 'quadcopter')
+
 # Training data capture — off by default; set record: true in config.yaml to enable.
 _record_cfg = config.get('record', {})
 if _record_cfg is True:
@@ -1023,7 +1029,7 @@ def on_chat_command(topic, payload, **kwargs):
             def execute_mission_async():
                 try:
                     from reasoning_loop import Mission, MissionLoop
-                    
+
                     # Create Mission object
                     mission = Mission(
                         mission_id=mission_id,
@@ -1031,12 +1037,39 @@ def on_chat_command(topic, payload, **kwargs):
                         conversation_id=conversation_id,
                         original_message=original_message,
                     )
-                    
+
+                    # Without this, MissionLoop always defaulted to a quadcopter
+                    # HardwareBackend regardless of the actual airframe (see the
+                    # fixed-wing autonomy plan's M0) — build the fixed-wing
+                    # backend/capability descriptor explicitly when configured.
+                    loop_kwargs = {
+                        'mqtt_client': _mqtt_connection,
+                        'conversation_id': conversation_id,
+                    }
+                    if VEHICLE_TYPE == 'fixedwing':
+                        from vehicle_class import get_class
+                        from backends import HardwareBackend
+                        try:
+                            import plane_sdk
+                        except Exception as e:
+                            logger.error(f"plane_sdk unavailable ({e}) — "
+                                         f"fixedwing mission cannot fly")
+                            raise
+                        perception = None
+                        try:
+                            from perception import PerceptionService
+                            perception = PerceptionService()
+                        except Exception as e:
+                            logger.warning(f"PerceptionService unavailable: {e}")
+                        loop_kwargs['backend'] = HardwareBackend(
+                            perception=perception,
+                            vehicle_class='fixedwing',
+                            plane_sdk=plane_sdk,
+                        )
+                        loop_kwargs['vehicle_class'] = get_class('fixedwing')
+
                     # Create mission loop with MQTT client for communication
-                    loop = MissionLoop(
-                        mqtt_client=_mqtt_connection,
-                        conversation_id=conversation_id,
-                    )
+                    loop = MissionLoop(**loop_kwargs)
                     
                     # Execute the mission
                     result = loop.run(mission)
