@@ -8,6 +8,15 @@ Mission loop - VLM-based perception-reasoning-action for autonomous drones.
 
 Runs on Orin Nano, NX, and AGX (variant-specific VLM chosen at install).
 """
+from __future__ import annotations
+# ^ Required, not decorative: VLMService/Nav2Bridge are conditionally
+# imported (VLM_AVAILABLE/NAV2_AVAILABLE, below) since not every deployment
+# has the VLM stack (e.g. a pure fixed-wing flight-SDK test environment with
+# no llama_cpp at all) — but several method signatures reference those names
+# in return-type annotations unconditionally. Without deferred evaluation, a
+# module-level NameError on class definition itself made this file
+# unimportable anywhere the VLM import legitimately failed (caught live: a
+# plane-only SITL test box with no vlm.py present at all).
 
 import sys
 import time
