@@ -296,7 +296,7 @@ def orbit(lat, lon, radius_m=DEFAULT_LOITER_RADIUS, alt_m=None, clockwise=True):
     if alt_m is None:
         _, _, alt_m = get_position()
     alt_m = _clamp(alt_m, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
-    goto(lat, lon, alt_m)
+    goto(lat, lon, alt_m, max_alt=MAX_ALTITUDE)
     _log(f"Orbiting ({lat}, {lon}) radius={radius_m}m alt={alt_m}m "
          f"({'CW' if clockwise else 'CCW'})")
     return True
@@ -344,7 +344,8 @@ def wait_for_orbit_laps(n_laps, timeout_s=180):
 # a wind reading — this module cannot infer wind and will not guess it).
 # =============================================================================
 
-def land(approach_lat, approach_lon, heading_deg, alt_m=0.0, glide_start_alt_m=30.0):
+def land(approach_lat, approach_lon, heading_deg, alt_m=0.0, glide_start_alt_m=30.0,
+         disarm_timeout_s=400):
     """Fly an AUTO-mode landing approach and belly-land.
 
     approach_lat/lon: point on the extended runway/approach centerline (i.e.
@@ -357,6 +358,16 @@ def land(approach_lat, approach_lon, heading_deg, alt_m=0.0, glide_start_alt_m=3
     glide_start_alt_m: altitude of a DO_LAND_START point placed behind the
         approach point, giving the aircraft room to establish the final glide
         slope before touchdown (not a sharp dive to ground level).
+    disarm_timeout_s: how long to wait for touchdown/auto-disarm. 400s (up
+        from an original 90s) because entering AUTO mode doesn't put the
+        aircraft AT the DO_LAND_START point — it may first need to fly there
+        from wherever it currently is (e.g. still on its RTL loiter circle,
+        at whatever point on that circle RTL happened to leave it), then fly
+        the full glide slope down. Confirmed live (real-time ArduPlane SITL,
+        speedup=1) that both this positioning leg and the glide itself add up
+        to real run-to-run variance — one run finished within 180s, another
+        needed longer — so this is set with real margin above the observed
+        range rather than tuned to the minimum that happened to pass once.
     """
     frame = mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT
     # Back the DO_LAND_START/approach point off along the reciprocal of heading_deg
@@ -392,7 +403,7 @@ def land(approach_lat, approach_lon, heading_deg, alt_m=0.0, glide_start_alt_m=3
         return False
 
     _log("Landing approach commanded — waiting for touchdown/disarm...")
-    return _wait_for_disarm(timeout=90)
+    return _wait_for_disarm(timeout=disarm_timeout_s)
 
 
 def rtl(wait_for_loiter_s=10):
@@ -445,10 +456,25 @@ def configure_safety_envelope(fence_radius_m, fence_max_alt_m, min_alt_floor_m,
         version before relying on it — older firmware only supports max-alt).
     action: 'RTL' (default, safest) or 'REPORT' — verify FENCE_ACTION's valid
         values against the connected firmware.
+
+    Uses FENCE_AUTOENABLE (not a direct FENCE_ENABLE=1) deliberately — a real
+    bug caught live in ArduPlane SITL: hard-enabling the altitude-min fence
+    immediately meant it was already "breached" the instant the aircraft left
+    the ground during hand-launch climb-out (relative_alt well under
+    min_alt_floor_m for the first several seconds of any launch), which
+    auto-triggered RTL before hand_launch()'s own climb ever got a chance to
+    complete — every single launch aborted itself this way. ArduPilot's own
+    AUTOENABLE mechanism exists for exactly this: per its parameter
+    description, the altitude-min sub-fence specifically "is enabled when the
+    minimum altitude is reached" rather than immediately, deferring
+    enforcement until after the aircraft has actually climbed past the floor
+    once. AUTOENABLE=3 (ONLY_WHEN_ARMED) is used rather than the older
+    AUTOENABLE=1 (ON_TAKEOFF), which ArduPilot's own source flags for removal.
     """
     action_map = {'REPORT': 0, 'RTL': 1, 'RTL_OR_LAND': 4}
+    AUTOENABLE_ONLY_WHEN_ARMED = 3
     ok = True
-    ok &= _set_param('FENCE_ENABLE', 1)
+    ok &= _set_param('FENCE_AUTOENABLE', AUTOENABLE_ONLY_WHEN_ARMED)
     ok &= _set_param('FENCE_TYPE', 1 | 2 | 4)  # bitmask: altitude | circle | polygon (verify)
     ok &= _set_param('FENCE_RADIUS', fence_radius_m)
     ok &= _set_param('FENCE_ALT_MAX', fence_max_alt_m)

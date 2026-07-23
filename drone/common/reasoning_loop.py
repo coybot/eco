@@ -175,15 +175,21 @@ class MissionLoop:
     MAX_PHASE_ACTIONS = 50      # Maximum actions per phase
     MAX_REPLANS_PER_PHASE = 2   # Bounded retries before a phase failure is a true abort
     MAX_CONSECUTIVE_VLM_FAILURES = 3  # Bounded before a run of unusable VLM output becomes a phase failure
-    # Fraction of an in-progress SEARCH_AREA plan that must be flown before a
-    # COUNT of zero for that exact target is honored — confirmed live this
-    # needed to be a code-level gate, not just prompt guidance ("count once
-    # confident you've covered enough" was NOT reliably followed): a real run
-    # searched only 4 of 32 planned legs, found nothing, and reported a
-    # confident zero for a target that was genuinely ~150m away and never
-    # reached. A real nonzero count is NOT gated by this — finding something
-    # early is a legitimately strong signal on its own; it's specifically an
-    # unearned "definitely zero" that needs real coverage behind it.
+    # Fraction of an in-progress SEARCH_AREA plan that must be flown before
+    # (a) a COUNT of zero for that exact target is honored, or (b) a counting
+    # phase is allowed to CONCLUDE (report/phase_complete/mission_complete)
+    # off the back of a count at all — confirmed live this needed to be a
+    # code-level gate, not just prompt guidance ("count once confident you've
+    # covered enough" was NOT reliably followed). Two separate real failures
+    # motivated this: (a) a run searched only 4 of 32 planned legs, found
+    # nothing, and reported a confident zero for a target genuinely ~150m
+    # away and never reached; (b) a DIFFERENT run searched the same 4 of 32
+    # legs, found ONE real match, and immediately concluded the phase with
+    # that partial tally against a ground truth of 5. The COUNT action
+    # itself is never blocked by this either way — it's cheap, repeatable,
+    # and accurate for whatever's in memory right now; this only withholds
+    # trusting a count as either "definitely zero" or "the final tally"
+    # until the search has covered enough ground to back that claim.
     MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT = 0.5
 
     def __init__(
@@ -822,15 +828,42 @@ class MissionLoop:
                 # a real count action to have actually run for a phase whose
                 # own objective/success text asks for one, before honoring
                 # any conclusion about it.
-                if _phase_wants_count(phase) and not count_recorded_this_phase:
+                # A count having run at all isn't enough on its own either — a
+                # real gap found live: the model found ONE person after just
+                # 4 of 32 planned search legs, called count, then immediately
+                # concluded the phase with that partial tally (ground truth
+                # was 5). MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT's own "a real
+                # nonzero count is NOT gated" reasoning is about trusting that
+                # something was genuinely found — it says nothing about
+                # whether the TALLY is complete, which is what a counting
+                # phase's objective ("count ALL X") actually promises. COUNT
+                # itself stays unblocked either way (repeatable, cheap,
+                # accurate for whatever's in memory right now); this only
+                # withholds the CONCLUSION until the search has covered
+                # enough ground for that tally to be trustworthy.
+                search_underway = (
+                    self._search_target is not None
+                    and self._search_plan
+                    and self._search_idx < len(self._search_plan)
+                )
+                insufficient_coverage = (
+                    search_underway
+                    and self._search_idx < len(self._search_plan) * self.MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT
+                )
+                if _phase_wants_count(phase) and (not count_recorded_this_phase or insufficient_coverage):
+                    if not count_recorded_this_phase:
+                        reason = "no count action has run yet this phase"
+                    else:
+                        covered_pct = 100 * self._search_idx / len(self._search_plan)
+                        reason = f"only {covered_pct:.0f}% of the planned search area covered so far — the tally may be incomplete"
                     self._report_progress(
                         f"Rejecting {action.action_type.value} for a counting phase — "
-                        f"no count action has run yet this phase (\"{action.message}\")"
+                        f"{reason} (\"{action.message}\")"
                     )
                     action = VLMAction(
                         action_type=ActionType.SEARCH_AREA,
                         target_object=action.target_object,
-                        reasoning="Overridden: a counting phase must produce a count before concluding",
+                        reasoning="Overridden: a counting phase must cover enough of the search area before concluding",
                     )
                 elif action.action_type == ActionType.MISSION_FAILED:
                     pass  # not subject to the grounding check below (a failure
@@ -1068,7 +1101,21 @@ class MissionLoop:
                 # Normalized so slightly different phrasing tick-to-tick
                 # ("water tower" vs "the water tower") doesn't spuriously
                 # look like a new target and restart the search plan.
-                target = normalize_label(action.target_object) if action.target_object else "target"
+                if action.target_object:
+                    target = normalize_label(action.target_object)
+                elif self._search_target is not None:
+                    # The VLM sometimes omits target_object on a SEARCH_AREA
+                    # call even mid-search — confirmed live: falling back to
+                    # a bare "target" here didn't match the real target label
+                    # from prior turns, silently resetting the expanding-orbit
+                    # search plan back to leg 0 every time it happened. That
+                    # meant real search coverage never accumulated, letting
+                    # the zero-count coverage gate below pass right after
+                    # each reset (search_idx trivially small again). Stick
+                    # with whatever we were already searching for instead.
+                    target = self._search_target
+                else:
+                    target = "target"
                 need_new_plan = (
                     self._search_target != target
                     or not self._search_plan

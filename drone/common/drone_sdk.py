@@ -548,12 +548,19 @@ def land():
     _wait_for_disarm(timeout=45)
 
 
-def goto(lat, lon, alt):
+def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
     """Fly to GPS coordinates.
-    
-    SAFETY: Altitude is clamped to MIN_ALTITUDE..MAX_ALTITUDE range.
+
+    SAFETY: Altitude is clamped to MIN_ALTITUDE..max_alt range. max_alt
+    defaults to this module's own copter-oriented MAX_ALTITUDE (20m), but
+    plane_sdk.py's callers (orbit(), HardwareBackend.goto() for fixedwing)
+    pass their own, much higher ceiling — confirmed live in ArduPlane SITL
+    that leaving this at the copter default silently clamped a fixed-wing's
+    40m orbit/cruise altitude down to 20m, right at the tree-clearance floor,
+    with no error or warning surfaced beyond a "SAFETY: ... clamped" log line
+    easy to miss.
     """
-    alt = _clamp(alt, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
+    alt = _clamp(alt, MIN_ALTITUDE, max_alt, "altitude")
     print(f"Flying to ({lat}, {lon}) at {alt}m...")
     _mav_send(lambda m: m.mav.set_position_target_global_int_send(
         0, 1, 1,

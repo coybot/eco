@@ -228,7 +228,15 @@ class HardwareBackend:
     def goto(self, north_m: float, east_m: float, alt_m: float):
         if self._is_fixedwing():
             lat, lon = self._plane_offset_to_latlon(north_m, east_m)
-            return self._plane.goto(lat, lon, alt_m)
+            # max_alt MUST be passed explicitly here — self._plane.goto is
+            # drone_sdk.goto (plane_sdk re-exports it, doesn't wrap it), whose
+            # default max_alt is a copter-oriented 20m. Confirmed live in
+            # ArduPlane SITL: without this, a min_clearance_alt climb-over-
+            # obstacle leg (the actual mechanism behind "fly over the trees")
+            # got silently clamped to 20m — exactly defeating the guarantee
+            # this call exists to provide, with only an easy-to-miss log line
+            # ("SAFETY: ... clamped to maximum 20.0") as a symptom.
+            return self._plane.goto(lat, lon, alt_m, max_alt=self._plane.MAX_ALTITUDE)
         if self._nav is None:
             return None
         return self._nav.navigate_to_offset(north_m, east_m, alt_m)
@@ -367,8 +375,21 @@ class HardwareBackend:
         if min_alt_floor_m is None:
             min_alt_floor_m = getattr(self._plane, "MIN_ALTITUDE", 15.0)
         try:
-            return bool(self._plane.configure_safety_envelope(
+            envelope_ok = bool(self._plane.configure_safety_envelope(
                 fence_radius_m, fence_max_alt_m, min_alt_floor_m))
+            # ArduPlane's own TKOFF_THR_MINACC/MINSPD default to 0 (confirmed
+            # in ArduPlane/Parameters.cpp — 0 disables the acceleration-based
+            # launch-detection test entirely). Nothing in the mission-phase
+            # dispatch path called configure_launch_detection() before this
+            # fix, so any mission-driven arm_and_takeoff on a fixed-wing —
+            # real hardware included, not just this SITL test — would arm
+            # into TAKEOFF mode with launch detection effectively unconfigured
+            # and could fail to ever un-suppress throttle for a real hand
+            # throw. Called here, alongside the fence/floor envelope, so
+            # every path that arms via the mission phase system (not just
+            # sitl_plane.py's run_gate(), which calls it directly) gets this.
+            launch_detect_ok = bool(self._plane.configure_launch_detection())
+            return envelope_ok and launch_detect_ok
         except Exception:
             return False
 
