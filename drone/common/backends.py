@@ -47,6 +47,14 @@ class Backend(Protocol):
     def loiter(self, center: Optional[tuple], radius: float) -> None: ...
     def log_event(self, kind: str, data: dict) -> None: ...
     def unproject(self, nx: float, ny: float) -> Optional[Tuple[float, float, float]]: ...
+    # Added for the general free-form-command capability (typed phases now route
+    # through this seam instead of calling Nav2/drone_sdk directly — see the
+    # fixed-wing autonomy plan's "change A"). Each has a genuinely different
+    # implementation per vehicle (a plane can't hover/vertical-takeoff/LAND-mode
+    # the way a quad does), which is the whole point of routing through here.
+    def takeoff(self, alt_m: float) -> bool: ...
+    def land(self, heading_deg: Optional[float] = None) -> bool: ...
+    def rtl(self, alt_m: Optional[float] = None) -> bool: ...
 
 
 def world_from_range_bearing(
@@ -251,6 +259,81 @@ class HardwareBackend:
         # keeps its existing behavior unchanged.
         return None
 
+    def takeoff(self, alt_m: float) -> bool:
+        if self._is_fixedwing():
+            try:
+                return bool(self._plane.hand_launch(alt_m))
+            except Exception:
+                return False
+        # Quad path: identical to what _exec_arm_and_takeoff did directly before
+        # this seam existed — same two calls, same object.
+        if self._sdk is None:
+            return False
+        try:
+            self._sdk.arm()
+            return bool(self._sdk.takeoff(alt_m))
+        except Exception:
+            return False
+
+    def land(self, heading_deg: Optional[float] = None) -> bool:
+        if self._is_fixedwing():
+            # A flying wing cannot cut throttle and drop straight down (no
+            # copter LAND mode) — it needs a real approach point + an
+            # into-wind heading, and plane_sdk.land() will not guess one (see
+            # its module docstring): guessing wrong risks a cross/downwind
+            # landing on a real aircraft. Prefer a live FC wind estimate; if
+            # none is available and the caller didn't supply heading_deg
+            # either, fail safe rather than fabricate a heading.
+            if heading_deg is None:
+                wind = None
+                if hasattr(self._plane, "get_wind_estimate"):
+                    try:
+                        wind = self._plane.get_wind_estimate()
+                    except Exception:
+                        wind = None
+                if wind is None:
+                    return False
+                wind_from_deg, _speed_mps = wind
+                heading_deg = (wind_from_deg + 180.0) % 360.0  # fly INTO the wind
+            # Land near the captured launch point if we have one, else wherever
+            # we are now (still requires the caller-resolved/wind heading above).
+            if self._plane_origin_latlon is not None:
+                approach_lat, approach_lon = self._plane_origin_latlon
+            else:
+                try:
+                    approach_lat, approach_lon, _alt = self._plane.get_position()
+                except Exception:
+                    return False
+            try:
+                return bool(self._plane.land(approach_lat, approach_lon, heading_deg))
+            except Exception:
+                return False
+        if self._sdk is None:
+            return False
+        try:
+            self._sdk.land()
+            return True
+        except Exception:
+            return False
+
+    def rtl(self, alt_m: Optional[float] = None) -> bool:
+        if self._is_fixedwing():
+            try:
+                return bool(self._plane.rtl())
+            except Exception:
+                return False
+        # Quad/rover path: unchanged from what _exec_return_home did directly
+        # before this seam existed (Nav2 offset back to home/origin).
+        if self._nav is None:
+            return False
+        result = self._nav.navigate_to_offset(0.0, 0.0, alt_m if alt_m is not None else 5.0)
+        # Compare against the literal string rather than importing
+        # nav2_bridge.NavigationStatus here — NavigationStatus is a (str, Enum)
+        # so this is exactly equivalent when a real NavigationResult comes
+        # back, but doesn't add a fragile cross-module import to this file
+        # just for one enum member.
+        return getattr(result, 'status', 'failed') != 'failed'
+
 
 class SimBackend:
     """Drives the Godot fixed-wing sim (fixedwing_manager.gd) via a DepotClient
@@ -359,3 +442,37 @@ class SimBackend:
         # actually moving). This is what closes that gap.
         world = self._client.fw_unproject(self._id, nx, ny)
         return tuple(world) if world is not None else None
+
+    def takeoff(self, alt_m: float) -> bool:
+        # KNOWN GAP: fixedwing_manager.gd/depot_client.py have no launch/ground-
+        # roll physics at all — fw_spawn() places the aircraft already airborne
+        # (grep confirms only fw_spawn/fw_despawn exist, no fw_takeoff/fw_land).
+        # Honest best-effort given that: climb/descend to alt_m from wherever it
+        # currently is, rather than claim a real launch sequence happened. A
+        # real "arm_and_takeoff" phase test in sim (Milestone S1/S2) needs actual
+        # ground/launch physics added to fixedwing_manager.gd to mean anything
+        # beyond an altitude change — tracked as a follow-up, not silently
+        # papered over here.
+        pose = self.get_pose()
+        if pose is None:
+            return False
+        x, y, _z, _yaw = pose
+        return self.goto(y, x, alt_m)
+
+    def land(self, heading_deg: Optional[float] = None) -> bool:
+        # Same gap as takeoff() above: no touchdown/ground-contact mechanic
+        # exists in the Godot fixed-wing sim. Honest best-effort: return toward
+        # the world origin and descend to a low altitude; log the request so
+        # it's inspectable via fw_events(), but this does NOT assert a real
+        # landing occurred the way plane_sdk.land()'s _wait_for_disarm() does
+        # on real hardware. Do not treat a True return here as proof of a safe
+        # landing in a sim-based capability demo — see the follow-up note above.
+        self.log_event("land_requested", {"heading_deg": heading_deg})
+        ok = self.goto(0.0, 0.0, 2.0)
+        self._client.fw_stop(self._id)
+        return ok
+
+    def rtl(self, alt_m: Optional[float] = None) -> bool:
+        pose = self.get_pose()
+        cruise_alt = alt_m if alt_m is not None else (pose[2] if pose else 20.0)
+        return self.goto(0.0, 0.0, cruise_alt)
