@@ -39,6 +39,18 @@ except ImportError:
     pass
 
 from perception import PerceptionService
+from backends import Backend, HardwareBackend
+from vehicle_class import VehicleClass, get_class
+from spatial_memory import SpatialMemory, normalize_label, labels_match
+import search_patterns
+
+# Fallback image dimensions for NAVIGATE_TO_POINT's pixel->normalized conversion
+# when the captured frame isn't a numpy array to read .shape from (SimBackend's
+# capture_frame() returns raw JPEG bytes) — matches fixedwing_manager.gd's own
+# CAM_VIEWPORT_W/H exactly, since that's the only camera actually producing
+# non-array frames today.
+CAM_VIEWPORT_W = 640
+CAM_VIEWPORT_H = 480
 
 DRONE_SDK_AVAILABLE = False
 try:
@@ -127,6 +139,8 @@ class MissionLoop:
     MAX_ACTIONS = 200           # Maximum actions before forced termination
     MAX_DURATION_SECONDS = 1800  # Maximum duration (30 minutes)
     MAX_PHASE_ACTIONS = 50      # Maximum actions per phase
+    MAX_REPLANS_PER_PHASE = 2   # Bounded retries before a phase failure is a true abort
+    MAX_CONSECUTIVE_VLM_FAILURES = 3  # Bounded before a run of unusable VLM output becomes a phase failure
     
     def __init__(
         self,
@@ -134,26 +148,45 @@ class MissionLoop:
         conversation_id: str = None,
         on_progress: Callable[[str], None] = None,
         drone_sdk=None,
+        backend: Optional[Backend] = None,
+        vehicle_class: Optional[VehicleClass] = None,
     ):
         """
         Initialize mission loop.
-        
+
         Args:
             mqtt_client: MQTT client for cloud communication
             conversation_id: Current conversation ID
             on_progress: Callback for progress updates
             drone_sdk: Drone SDK for camera/telemetry (optional)
+            backend: Actuation/sensing backend (backends.Backend). Defaults to a
+                HardwareBackend wrapping today's collaborators (perception/nav/
+                drone_sdk), preserving prior behavior — pass a SimBackend to fly a
+                sim vehicle (e.g. the Godot fixed-wing sim) through this same loop.
+            vehicle_class: Capability descriptor (vehicle_class.VehicleClass).
+                Defaults to "quadcopter" to match current on-device behavior.
         """
         self.mqtt_client = mqtt_client
         self.conversation_id = conversation_id
         self.on_progress = on_progress
         self.drone_sdk = drone_sdk
-        
+        self.backend: Optional[Backend] = backend
+        self.vehicle_class: VehicleClass = vehicle_class or get_class("quadcopter")
+
+        # World-frame landmark memory. merge_radius scales with sense_range_m: the
+        # default 1.5m (SpatialMemory's own default) was tuned for the quad's ~10m
+        # detection range; a fixed-wing spotting a target from up to 80m has much
+        # larger single-glimpse cross-range error, so widen proportionally. For the
+        # quadcopter default (sense_range_m=10.0) this reduces to exactly 1.5m —
+        # unchanged from before this seam existed.
+        merge_radius = 1.5 * max(1.0, self.vehicle_class.sense_range_m / 10.0)
+        self.memory = SpatialMemory(merge_radius=merge_radius)
+
         # VLM and Nav2 (lazy loaded)
         self._vlm: Optional[VLMService] = None
         self._nav: Optional[Nav2Bridge] = None
         self._perception: Optional[PerceptionService] = None
-        
+
         # State tracking
         self._current_mission: Optional[Mission] = None
         self._history: List[str] = []
@@ -162,7 +195,14 @@ class MissionLoop:
         self._home_lat: Optional[float] = None
         self._home_lon: Optional[float] = None
         self._home_alt: Optional[float] = None
-    
+
+        # In-progress search_patterns waypoint plan for ActionType.SEARCH_AREA —
+        # one leg is flown per VLM decision (matching every other action's "one
+        # bounded movement per decision" shape), so the plan persists across ticks.
+        self._search_plan: List[tuple] = []
+        self._search_idx: int = 0
+        self._search_target: Optional[str] = None
+
     def _get_vlm(self) -> Optional[VLMService]:
         """Lazy-load VLM service."""
         if not VLM_AVAILABLE:
@@ -184,7 +224,24 @@ class MissionLoop:
         if self._perception is None:
             self._perception = PerceptionService()
         return self._perception
-    
+
+    def _get_backend(self) -> Backend:
+        """Lazy-build the actuation/sensing backend.
+
+        Defaults to a HardwareBackend wrapping today's collaborators, so quad/rover
+        missions behave exactly as they did before the backend seam existed. Callers
+        that want to fly a sim vehicle (e.g. fixed-wing in Godot) pass an explicit
+        `backend=` to the constructor instead of relying on this default.
+        """
+        if self.backend is None:
+            sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+            self.backend = HardwareBackend(
+                drone_sdk=sdk,
+                perception=self._get_perception(),
+                nav=self._get_nav(),
+            )
+        return self.backend
+
     def run(self, mission: Mission) -> MissionResult:
         """
         Execute a mission using VLM-based perception-action loop.
@@ -223,6 +280,9 @@ class MissionLoop:
         self._home_lat = None
         self._home_lon = None
         self._home_alt = None
+        self._search_plan = []
+        self._search_idx = 0
+        self._search_target = None
         actions_taken = 0
 
         self._report_progress(f"Starting mission: {mission.original_message or 'Unknown'}", phase=0)
@@ -257,23 +317,46 @@ class MissionLoop:
                 except Exception:
                     pass
                 
-                # Execute phase
-                phase_result = self._execute_phase(phase, mission)
-                actions_taken += phase_result.get('actions', 0)
-                
-                if phase_result.get('failed'):
-                    return MissionResult(
-                        success=False,
-                        summary=f"Failed at phase {phase_num}",
-                        phases_completed=mission.current_phase,
-                        total_phases=len(mission.phases),
-                        findings=self._findings,
-                        photos=self._photos,
-                        duration_seconds=time.time() - mission.start_time,
-                        actions_taken=actions_taken,
-                        failure_reason=phase_result.get('reason', 'Unknown'),
+                # Execute phase — a fixed-wing can't just hover-and-abort on failure
+                # (that's meaningless mid-air), so a failed phase gets a bounded
+                # number of loiter-and-retry replans before it becomes a true abort.
+                # Each retry re-enters the phase with a fresh action budget and
+                # whatever memory/history the failed attempt already accumulated,
+                # so e.g. a VLM phase that ran out of actions searching blind can
+                # choose SEARCH_AREA/RETURN_TO_LANDMARK on the next attempt.
+                replans_used = 0
+                while True:
+                    phase_result = self._execute_phase(phase, mission)
+                    actions_taken += phase_result.get('actions', 0)
+
+                    if not phase_result.get('failed'):
+                        break
+
+                    reason = phase_result.get('reason', 'Unknown')
+                    elapsed = time.time() - mission.start_time
+                    battery = self._get_backend().get_battery()
+                    battery_ok = battery is None or battery.get('remaining', 100.0) > 15.0
+                    budget_ok = (
+                        replans_used < self.MAX_REPLANS_PER_PHASE
+                        and elapsed < self.MAX_DURATION_SECONDS * 0.9
+                        and battery_ok
                     )
-                
+                    if not budget_ok:
+                        return MissionResult(
+                            success=False,
+                            summary=f"Failed at phase {phase_num}",
+                            phases_completed=mission.current_phase,
+                            total_phases=len(mission.phases),
+                            findings=self._findings,
+                            photos=self._photos,
+                            duration_seconds=time.time() - mission.start_time,
+                            actions_taken=actions_taken,
+                            failure_reason=reason,
+                        )
+
+                    replans_used += 1
+                    self._replan(phase, reason, replans_used)
+
                 # Check safety limits
                 elapsed = time.time() - mission.start_time
                 if elapsed >= self.MAX_DURATION_SECONDS:
@@ -339,6 +422,12 @@ class MissionLoop:
                     _drone_sdk.stop_ceiling_guard()
                 except Exception:
                     pass
+            # self._findings is passed by reference into whichever MissionResult
+            # was already constructed above (every return path uses findings=
+            # self._findings, never a copy) — extending it here, in the one place
+            # that always runs, makes memory inspectable post-flight without
+            # duplicating this at every return statement.
+            self._findings.extend(self._memory_finding_strings())
             self._cleanup()
     
     def _execute_phase(self, phase: Dict[str, Any], mission: Mission) -> Dict[str, Any]:
@@ -364,20 +453,57 @@ class MissionLoop:
             return self._exec_vlm_phase(phase, mission)
 
     # ------------------------------------------------------------------ #
-    # Typed phase executors — all navigation goes through Nav2             #
+    # Typed phase executors — all actuation goes through the `backend`     #
+    # seam (backends.py), NOT Nav2/drone_sdk directly. This is what makes  #
+    # typed phases vehicle-agnostic: HardwareBackend routes to Nav2/       #
+    # drone_sdk for a quad/rover (identical calls to before this rewrite)  #
+    # or to plane_sdk for a fixed-wing; SimBackend routes to Godot. Before #
+    # this change every typed phase silently no-op'd/failed on a plane —  #
+    # see the fixed-wing autonomy plan's "change A".                      #
     # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _goto_ok(result) -> bool:
+        """Normalize backend.goto()'s return value across implementations:
+        Nav2 (quad/rover) returns a NavigationResult (check .status, preserving
+        the exact original failure detection); plane_sdk.goto() (fixed-wing
+        hardware) is a fire-and-forget MAVLink send with no ACK and returns
+        None (treated as accepted, matching how the existing VLM-loop action
+        handlers already call backend.goto() without checking a return value
+        at all); SimBackend.goto() returns a real bool (used directly).
+
+        Compares against the literal string "failed" rather than importing
+        NavigationStatus.FAILED — NavigationStatus is a (str, Enum) so this is
+        exactly equivalent for a real NavigationResult, without this method
+        blowing up if NAV2_AVAILABLE is False (NavigationStatus is None) but
+        some other object happens to carry an unrelated `.status` attribute.
+        """
+        if result is None:
+            return True
+        if hasattr(result, 'status'):
+            return getattr(result, 'status') != 'failed'
+        return bool(result)
+
+    def _gps_to_home_offset(self, lat: float, lon: float) -> tuple:
+        """Same flat-earth conversion Nav2Bridge.navigate_to_gps uses internally
+        (nav2_bridge.py) — duplicated here (not imported) so _exec_go_to_gps can
+        route through the vehicle-agnostic backend.goto() (offset-based) rather
+        than Nav2 directly, while producing IDENTICAL north_m/east_m for the
+        quad path (zero behavior change there)."""
+        north_m = (lat - self._home_lat) * 111320.0
+        east_m = (lon - self._home_lon) * 111320.0 * math.cos(math.radians(self._home_lat))
+        return north_m, east_m
 
     def _exec_arm_and_takeoff(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         alt = phase.get('altitude_m', 5.0)
         self._report_progress(f"Arming and taking off to {alt}m")
-        if not DRONE_SDK_AVAILABLE:
-            return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
         try:
-            _drone_sdk.arm()
-            _drone_sdk.takeoff(alt)
-            return {'success': True, 'actions': 1}
+            ok = self._get_backend().takeoff(alt)
         except Exception as e:
             return {'failed': True, 'reason': str(e), 'actions': 1}
+        if not ok:
+            return {'failed': True, 'reason': 'takeoff did not report reaching altitude', 'actions': 1}
+        return {'success': True, 'actions': 1}
 
     def _exec_nav(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         north_m = phase.get('north_m', 0.0)
@@ -385,12 +511,13 @@ class MissionLoop:
         alt_m = phase.get('alt_m', 5.0)
         desc = phase.get('description', f'N={north_m}m E={east_m}m')
         self._report_progress(f"Navigating: {desc}")
-        nav = self._get_nav()
-        if nav is None:
-            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
-        result = nav.navigate_to_offset(north_m, east_m, alt_m)
-        if result.status == NavigationStatus.FAILED:
-            return {'failed': True, 'reason': result.message, 'actions': 1}
+        try:
+            result = self._get_backend().goto(north_m, east_m, alt_m)
+        except Exception as e:
+            return {'failed': True, 'reason': str(e), 'actions': 1}
+        if not self._goto_ok(result):
+            reason = getattr(result, 'message', 'goto() did not succeed')
+            return {'failed': True, 'reason': reason, 'actions': 1}
         return {'success': True, 'actions': 1}
 
     def _exec_go_to_gps(self, phase: Dict[str, Any]) -> Dict[str, Any]:
@@ -399,16 +526,18 @@ class MissionLoop:
         alt_m = phase.get('alt_m', 15.0)
         desc = phase.get('description', f'{lat},{lon}')
         self._report_progress(f"Flying to GPS: {desc}")
-        nav = self._get_nav()
-        if nav is None:
-            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
         if lat is None or lon is None:
             return {'failed': True, 'reason': 'Missing GPS coordinates in phase', 'actions': 0}
         if self._home_lat is None:
             return {'failed': True, 'reason': 'Home position unknown — GPS fix required', 'actions': 0}
-        result = nav.navigate_to_gps(lat, lon, alt_m, self._home_lat, self._home_lon)
-        if result.status == NavigationStatus.FAILED:
-            return {'failed': True, 'reason': result.message, 'actions': 1}
+        north_m, east_m = self._gps_to_home_offset(lat, lon)
+        try:
+            result = self._get_backend().goto(north_m, east_m, alt_m)
+        except Exception as e:
+            return {'failed': True, 'reason': str(e), 'actions': 1}
+        if not self._goto_ok(result):
+            reason = getattr(result, 'message', 'goto() did not succeed')
+            return {'failed': True, 'reason': reason, 'actions': 1}
         return {'success': True, 'actions': 1}
 
     def _exec_fly_circle(self, phase: Dict[str, Any]) -> Dict[str, Any]:
@@ -416,17 +545,25 @@ class MissionLoop:
         alt_m = phase.get('altitude_m', 5.0)
         n_waypoints = phase.get('waypoints', 8)
         self._report_progress(f"Flying circle: radius={radius_m}m altitude={alt_m}m")
-        nav = self._get_nav()
-        if nav is None:
-            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
+        backend = self._get_backend()
+        # Same geometry as before this rewrite: each waypoint is an offset from
+        # home/origin (a FIXED reference — confirmed against nav2_bridge.py's
+        # navigate_to_offset docstring and backends.py's SimBackend.goto()
+        # docstring, both "offset from home/world-origin", not current
+        # position), so this traces the same circle for the quad path exactly
+        # as before (backend.goto() delegates straight to the same Nav2 call).
         for i in range(n_waypoints):
             angle = (2 * math.pi * i) / n_waypoints
             north_m = radius_m * math.cos(angle)
             east_m = radius_m * math.sin(angle)
             self._report_progress(f"Circle waypoint {i + 1}/{n_waypoints}")
-            result = nav.navigate_to_offset(north_m, east_m, alt_m)
-            if result.status == NavigationStatus.FAILED:
-                return {'failed': True, 'reason': f'Waypoint {i + 1} blocked: {result.message}', 'actions': i + 1}
+            try:
+                result = backend.goto(north_m, east_m, alt_m)
+            except Exception as e:
+                return {'failed': True, 'reason': f'Waypoint {i + 1}: {e}', 'actions': i + 1}
+            if not self._goto_ok(result):
+                reason = getattr(result, 'message', 'blocked')
+                return {'failed': True, 'reason': f'Waypoint {i + 1} blocked: {reason}', 'actions': i + 1}
         return {'success': True, 'actions': n_waypoints}
 
     def _exec_look_around(self, phase: Dict[str, Any]) -> Dict[str, Any]:
@@ -457,23 +594,30 @@ class MissionLoop:
     def _exec_return_home(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         alt_m = phase.get('alt_m', 5.0)
         self._report_progress("Returning home")
-        nav = self._get_nav()
-        if nav is None:
-            return {'failed': True, 'reason': 'Nav2 not available', 'actions': 0}
-        result = nav.navigate_to_offset(0.0, 0.0, alt_m)
-        if result.status == NavigationStatus.FAILED:
-            return {'failed': True, 'reason': result.message, 'actions': 1}
+        try:
+            ok = self._get_backend().rtl(alt_m)
+        except Exception as e:
+            return {'failed': True, 'reason': str(e), 'actions': 1}
+        if not ok:
+            return {'failed': True, 'reason': 'rtl() did not succeed', 'actions': 1}
         return {'success': True, 'actions': 1}
 
     def _exec_land(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         self._report_progress("Landing")
-        if not DRONE_SDK_AVAILABLE:
-            return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
+        heading_deg = phase.get('heading_deg')  # fixed-wing only; ignored by quad
         try:
-            _drone_sdk.land()
-            return {'success': True, 'actions': 1}
+            ok = self._get_backend().land(heading_deg)
         except Exception as e:
             return {'failed': True, 'reason': str(e), 'actions': 1}
+        if not ok:
+            # For a fixed-wing this commonly means no heading_deg was given AND
+            # no live FC wind estimate was available — see
+            # HardwareBackend.land()'s docstring on why that fails safe instead
+            # of guessing an approach heading, rather than a generic error.
+            return {'failed': True, 'reason': 'land() did not succeed (fixed-wing: '
+                                               'may need an explicit heading_deg or '
+                                               'a live wind estimate)', 'actions': 1}
+        return {'success': True, 'actions': 1}
 
     # ------------------------------------------------------------------ #
     # VLM phase executor (open-ended: perceive → decide → act loop)        #
@@ -487,17 +631,17 @@ class MissionLoop:
 
         nav = self._get_nav()
         perception = self._get_perception()
+        backend = self._get_backend()
 
         phase_actions = 0
+        consecutive_vlm_failures = 0
+        already_reported_grounded_finding = False
 
         while phase_actions < self.MAX_PHASE_ACTIONS:
-            # 1. Capture current frame
+            # 1. Capture current frame (via the backend, so this works identically
+            # whether we're flying real hardware or a sim vehicle — see backends.py)
             try:
-                frame = perception.get_current_frame()
-                if frame is None:
-                    # Try to get from drone SDK
-                    if self.drone_sdk:
-                        frame = self.drone_sdk.capture_frame()
+                frame = backend.capture_frame()
             except Exception as e:
                 print(f"Failed to capture frame: {e}")
                 frame = None
@@ -507,21 +651,104 @@ class MissionLoop:
                 time.sleep(1)
                 phase_actions += 1
                 continue
-            
-            # 2. Get drone state
+
+            # 2. Detect objects via the backend and update world-frame memory. Gate
+            # out anything beyond this vehicle's sense range as a safety net — sim
+            # backends already range-gate internally (e.g. fixedwing_manager.gd's
+            # DETECT_RANGE), so range_m is None there and this is a no-op; hardware
+            # detections carry a real range_m and get gated here.
+            try:
+                detections = backend.detect()
+            except Exception as e:
+                print(f"Failed to detect: {e}")
+                detections = []
+            sense_range = self.vehicle_class.sense_range_m
+            detections = [d for d in detections if d.range_m is None or d.range_m <= sense_range]
+            for d in detections:
+                if d.world_xyz is not None:
+                    lm = self.memory.update(d.label, d.world_xyz[0], d.world_xyz[1], d.world_xyz[2], d.score)
+                    if lm.hits == 1:
+                        # First sighting of this landmark (not a re-merge into an
+                        # existing one) — worth a telemetry event, not every update.
+                        backend.log_event("memory_landmark", {
+                            "label": lm.label, "x": lm.x, "y": lm.y, "z": lm.z, "score": lm.score,
+                        })
+
+            # 3. Get drone state
             drone_state = self._get_drone_state()
-            
-            # 3. Ask VLM what to do
+
+            # 4. Ask VLM what to do — current detections and remembered world-frame
+            # landmarks both go into the prompt, so it can reason over "what I see
+            # right now" and "what I've seen before" (e.g. to decide RETURN_TO_LANDMARK
+            # for a target that's since passed out of view/range).
             action = vlm.decide(
                 image=frame,
                 mission_phase=phase,
                 drone_state=drone_state,
                 history=self._history[-10:],  # Last 10 actions
+                detections=detections,
+                memory=self.memory.all(),
             )
-            
+
             phase_actions += 1
+
+            # Hard guard, not just a prompt instruction — confirmed live that
+            # asking nicely in the system prompt did NOT stop this: the model
+            # claimed "silo located and reported" while the only actual
+            # detection that whole tick was water_tower (a real detection,
+            # just of the WRONG object) — a coarser "were there ANY
+            # detections" guard would have missed this exact case, since
+            # there genuinely were some, just not of what the phase actually
+            # asked for. Correlates the phase's own objective/success wording
+            # against every label actually detected/remembered so far
+            # (substring match, same tolerant comparison as labels_match) —
+            # if nothing detected/remembered so far is even mentioned in what
+            # this phase is asking for, a "found it" claim isn't grounded,
+            # regardless of what else happened to be in view.
+            if action.action_type in (ActionType.REPORT, ActionType.PHASE_COMPLETE, ActionType.MISSION_COMPLETE):
+                objective_blob = normalize_label(
+                    f"{phase.get('objective', '')} {phase.get('success', '')}"
+                )
+                known_labels = {normalize_label(d.label) for d in detections}
+                known_labels |= {normalize_label(lm.label) for lm in self.memory.all()}
+                grounded = any(label and label in objective_blob for label in known_labels)
+                if not grounded:
+                    self._report_progress(
+                        f"Rejecting ungrounded {action.action_type.value} "
+                        f"(\"{action.message}\") — nothing matching this phase's objective "
+                        f"has actually been detected or remembered"
+                    )
+                    action = VLMAction(
+                        action_type=ActionType.SEARCH_AREA,
+                        target_object=None,
+                        reasoning="Overridden: claimed a finding not backed by any matching detection/memory",
+                    )
+                elif action.action_type == ActionType.REPORT:
+                    # Second hard guard, same reason as the first: the system
+                    # prompt already explicitly tells the model "if RECENT
+                    # ACTIONS shows you reporting the same finding, don't
+                    # report it again — call phase_complete instead." Confirmed
+                    # live that it does NOT reliably follow this — one real run
+                    # reported the identical already-grounded finding 26 times
+                    # in a row until the action budget ran out, never once
+                    # escalating on its own. Once a grounded finding has been
+                    # reported once this phase, force any further REPORT into
+                    # PHASE_COMPLETE instead of trusting the model to notice.
+                    if already_reported_grounded_finding:
+                        self._report_progress(
+                            f"Already reported this phase's finding once — forcing phase_complete "
+                            f"instead of repeating (\"{action.message}\")"
+                        )
+                        action = VLMAction(
+                            action_type=ActionType.PHASE_COMPLETE,
+                            message=action.message,
+                            reasoning="Overridden: repeated an already-reported grounded finding",
+                        )
+                    else:
+                        already_reported_grounded_finding = True
+
             self._history.append(f"{action.action_type.value}: {action.message or action.reasoning or ''}"[:100])
-            
+
             # 4. Handle action
             if action.action_type == ActionType.PHASE_COMPLETE:
                 self._report_progress(f"Phase complete: {action.message}")
@@ -537,33 +764,159 @@ class MissionLoop:
                 return {'failed': True, 'reason': action.message, 'actions': phase_actions}
             
             elif action.action_type == ActionType.NAVIGATE_TO_POINT:
-                if nav and action.point_x is not None and action.point_y is not None:
-                    # Get depth at point
-                    depth = self._get_depth_at_point(frame, action.point_x, action.point_y)
-                    if depth is None:
-                        depth = 3.0  # Default 3 meters if no depth
-                    
-                    self._report_progress(f"Navigating to point ({action.point_x}, {action.point_y})")
-                    result = nav.navigate_to_point(action.point_x, action.point_y, depth)
-                    
-                    if result.status == NavigationStatus.FAILED:
-                        self._history.append(f"Navigation failed: {result.message}")
+                if action.point_x is not None and action.point_y is not None:
+                    # Prefer the backend seam's unproject() (real for
+                    # SimBackend, via fixedwing_manager.gd's own raycast —
+                    # built in Slice 1 but never actually wired in here until
+                    # now). Confirmed live: the old nav.navigate_to_point()
+                    # path silently no-ops against SimBackend — same class of
+                    # bug as NAVIGATE_TO_OBJECT's legacy perception.find_nearest()
+                    # crash above, just a no-op instead of a crash, which is
+                    # arguably worse (looks like it's working; it isn't).
+                    if hasattr(frame, "shape"):
+                        img_h, img_w = frame.shape[0], frame.shape[1]
+                    else:
+                        img_w, img_h = CAM_VIEWPORT_W, CAM_VIEWPORT_H
+                    nx = max(0.0, min(1.0, action.point_x / max(img_w, 1)))
+                    ny = max(0.0, min(1.0, action.point_y / max(img_h, 1)))
+                    world = backend.unproject(nx, ny)
+                    if world is not None:
+                        self._report_progress(f"Navigating to point ({action.point_x}, {action.point_y})")
+                        # (north_m, east_m, alt_m) vs world_xyz's (east, north, up) — same swap as elsewhere.
+                        backend.goto(world[1], world[0], world[2])
+                    elif nav:
+                        depth = self._get_depth_at_point(frame, action.point_x, action.point_y)
+                        if depth is None:
+                            depth = 3.0  # Default 3 meters if no depth
+                        self._report_progress(f"Navigating to point ({action.point_x}, {action.point_y})")
+                        result = nav.navigate_to_point(action.point_x, action.point_y, depth)
+                        if result.status == NavigationStatus.FAILED:
+                            self._history.append(f"Navigation failed: {result.message}")
+                    else:
+                        self._history.append(f"Could not resolve point ({action.point_x}, {action.point_y}) to a world position")
                 else:
-                    self._report_progress("Navigation requested but Nav2 not available")
+                    self._report_progress("Navigation requested but no point coordinates given")
             
             elif action.action_type == ActionType.NAVIGATE_TO_OBJECT:
-                if nav and action.target_object:
-                    # Find object position using perception
-                    detection = perception.find_nearest(action.target_object)
-                    if detection:
+                # Resolve via THIS tick's detections (backend.detect(), already
+                # computed above) first, falling back to memory — NOT
+                # perception.find_nearest(), which reaches for a hardware-only
+                # camera module (camera.common.auto) and crashes unconditionally
+                # against SimBackend. Confirmed live: the model choosing this
+                # perfectly reasonable action brought the whole mission down
+                # with an unhandled ModuleNotFoundError — a bug in this
+                # handler, not something the VLM did wrong.
+                if action.target_object:
+                    # labels_match: the model writes target_object as prose
+                    # ("water tower", or "water tower on the right") not the
+                    # exact snake_case detection label ("water_tower") — exact
+                    # (even normalized) equality still silently misses
+                    # qualified descriptions (confirmed live: repeated "Object
+                    # not found" even with the target visible in CURRENT
+                    # DETECTIONS) — substring containment after normalizing
+                    # both sides catches these too.
+                    match = next(
+                        (d for d in detections
+                         if labels_match(action.target_object, d.label) and d.world_xyz is not None),
+                        None,
+                    )
+                    target_xyz = match.world_xyz if match is not None else None
+                    if target_xyz is None:
+                        landmark = self.memory.nearest(action.target_object)
+                        if landmark is not None:
+                            target_xyz = (landmark.x, landmark.y, landmark.z)
+                    if target_xyz is not None:
                         self._report_progress(f"Navigating to {action.target_object}")
-                        # Use detection position
-                        nav.navigate_to_position(
-                            detection.x, detection.y, detection.z
-                        )
+                        # backend.goto(north_m, east_m, alt_m) — world_xyz is
+                        # (east, north, up), same swap as RETURN_TO_LANDMARK above.
+                        backend.goto(target_xyz[1], target_xyz[0], target_xyz[2])
                     else:
                         self._history.append(f"Object not found: {action.target_object}")
-            
+                else:
+                    self._report_progress("navigate_to_object requested with no target_object")
+
+            elif action.action_type == ActionType.RETURN_TO_LANDMARK:
+                if action.target_object:
+                    landmark = self.memory.nearest(action.target_object)
+                    if landmark is not None:
+                        # Approach and STAND OFF, don't fly onto the exact landmark
+                        # coordinate — a fixed-wing can't hover/stop there, so a
+                        # goto() straight to the landmark flies the aircraft through
+                        # and past it; by the next VLM tick the target is behind/out
+                        # of the forward FOV again, and the model just calls
+                        # return_to_landmark again forever (confirmed live: an 8B
+                        # run looped this exact way for its entire action budget,
+                        # never re-detecting the target after the first sighting).
+                        # Stopping half a sense-range short keeps the landmark ahead
+                        # of and within the forward camera's detection envelope.
+                        pose = backend.get_pose()
+                        target_x, target_y = landmark.x, landmark.y
+                        if pose is not None:
+                            cx, cy = pose[0], pose[1]
+                            dx, dy = target_x - cx, target_y - cy
+                            dist = math.hypot(dx, dy)
+                            standoff = self.vehicle_class.sense_range_m * 0.5
+                            if dist > standoff:
+                                frac = (dist - standoff) / dist
+                                target_x = cx + dx * frac
+                                target_y = cy + dy * frac
+                        self._report_progress(
+                            f"Returning toward remembered {action.target_object} at "
+                            f"({landmark.x:.0f}, {landmark.y:.0f}, {landmark.z:.0f}), "
+                            f"standing off to keep it in view"
+                        )
+                        # backend.goto(north_m, east_m, alt_m) — note the argument
+                        # ORDER is (north, east), while world-frame x/y here are
+                        # (east, north) (see backends.world_from_range_bearing).
+                        # Passing x/y positionally without swapping would feed an
+                        # east-value into the north_m slot and vice versa, silently
+                        # flying toward the mirror-image point — caught because
+                        # Slice 1's fw_eval.py never actually exercised this call
+                        # (it drives SimBackend.drive() directly, not goto()).
+                        backend.goto(target_y, target_x, landmark.z)
+                    else:
+                        self._history.append(f"No memory of landmark: {action.target_object}")
+                else:
+                    self._report_progress("return_to_landmark requested with no target_object")
+
+            elif action.action_type == ActionType.SEARCH_AREA:
+                # Normalized so slightly different phrasing tick-to-tick
+                # ("water tower" vs "the water tower") doesn't spuriously
+                # look like a new target and restart the search plan.
+                target = normalize_label(action.target_object) if action.target_object else "target"
+                need_new_plan = (
+                    self._search_target != target
+                    or not self._search_plan
+                    or self._search_idx >= len(self._search_plan)
+                )
+                if need_new_plan:
+                    landmark = self.memory.nearest(target) if action.target_object else None
+                    pose = backend.get_pose()
+                    if landmark is not None:
+                        center = (landmark.x, landmark.y)
+                    elif pose is not None:
+                        center = (pose[0], pose[1])
+                    else:
+                        center = (0.0, 0.0)
+                    self._search_plan = search_patterns.expanding_orbit(center, self.vehicle_class)
+                    self._search_idx = 0
+                    self._search_target = target
+                    self._report_progress(f"Starting expanding-orbit search for {target}")
+                if self._search_idx < len(self._search_plan):
+                    wx, wy = self._search_plan[self._search_idx]
+                    self._search_idx += 1
+                    pose = backend.get_pose()
+                    alt = pose[2] if pose is not None else 50.0
+                    self._report_progress(
+                        f"Search leg {self._search_idx}/{len(self._search_plan)} for {target} "
+                        f"toward ({wx:.0f}, {wy:.0f})"
+                    )
+                    # Same (north_m, east_m) argument order as RETURN_TO_LANDMARK above —
+                    # wx/wy here are (east, north), so they swap into the call too.
+                    backend.goto(wy, wx, alt)
+                else:
+                    self._history.append(f"Search pattern exhausted for {target}")
+
             elif action.action_type == ActionType.CAPTURE_PHOTO:
                 self._report_progress("Capturing photo")
                 if self.drone_sdk:
@@ -579,9 +932,43 @@ class MissionLoop:
                     self._send_report(action.message)
             
             elif action.action_type == ActionType.ASK_CLOUD:
-                self._report_progress(f"Asking cloud for help: {action.message}")
-                # TODO: Implement cloud advice request
-            
+                if action.parse_failed:
+                    # The model produced nothing usable (confirmed live: a
+                    # genuinely empty completion, even after decide() already
+                    # retried once) — this must not be treated like a normal
+                    # decision. Take a real, safe, bounded action instead of
+                    # silently doing nothing while the aircraft continues on
+                    # whatever it was last commanded to do.
+                    consecutive_vlm_failures += 1
+                    self._report_progress(
+                        f"VLM produced no usable output ({consecutive_vlm_failures}/"
+                        f"{self.MAX_CONSECUTIVE_VLM_FAILURES}) — loitering, not guessing"
+                    )
+                    backend.log_event("vlm_parse_failed", {
+                        "consecutive": consecutive_vlm_failures, "message": action.message,
+                    })
+                    pose = backend.get_pose()
+                    center = (pose[0], pose[1], pose[2]) if pose is not None else None
+                    backend.loiter(center, self.vehicle_class.sense_range_m)
+                    if consecutive_vlm_failures >= self.MAX_CONSECUTIVE_VLM_FAILURES:
+                        return {
+                            'failed': True,
+                            'reason': f'VLM produced no usable output {consecutive_vlm_failures} times in a row',
+                            'actions': phase_actions,
+                        }
+                else:
+                    # A real cloud-advice request (not a parse failure) — the
+                    # actual round trip is deferred (see the fixed-wing AI
+                    # plan's Deferred section: no IoT TopicRule wired yet).
+                    # Loiter rather than doing nothing while unimplemented.
+                    self._report_progress(f"Asking cloud for help: {action.message}")
+                    pose = backend.get_pose()
+                    center = (pose[0], pose[1], pose[2]) if pose is not None else None
+                    backend.loiter(center, self.vehicle_class.sense_range_m)
+
+            if not (action.action_type == ActionType.ASK_CLOUD and action.parse_failed):
+                consecutive_vlm_failures = 0
+
             # Small delay between actions
             time.sleep(0.2)
         
@@ -671,6 +1058,34 @@ class MissionLoop:
             except Exception as e:
                 print(f"Failed to publish progress: {e}")
     
+    def _replan(self, phase: Dict[str, Any], reason: str, attempt: int) -> None:
+        """Loiter and clear transient per-phase state before retrying a failed
+        phase — the bounded alternative to aborting (see _run_impl). Cleared
+        state (not memory itself, which must persist) so a retry starts a fresh
+        SEARCH_AREA pattern rather than resuming a stale one from the failed
+        attempt.
+        """
+        backend = self._get_backend()
+        pose = backend.get_pose()
+        center = (pose[0], pose[1], pose[2]) if pose is not None else None
+        objective = phase.get('objective') or phase.get('type', 'unknown')
+        self._report_progress(f"Replanning (attempt {attempt}/{self.MAX_REPLANS_PER_PHASE}) after: {reason}")
+        backend.log_event("replan", {"reason": reason, "attempt": attempt, "phase": objective})
+        backend.loiter(center, self.vehicle_class.sense_range_m)
+        self._history.append(f"replan attempt {attempt}: {reason}")
+        self._search_plan = []
+        self._search_idx = 0
+        self._search_target = None
+
+    def _memory_finding_strings(self) -> List[str]:
+        """Format persistent world-frame landmarks for MissionResult.findings —
+        makes memory inspectable after a flight, not just usable mid-mission."""
+        return [
+            f"memory: {lm.label} at ({lm.x:.1f}, {lm.y:.1f}, {lm.z:.1f}) "
+            f"score={lm.score:.2f} hits={lm.hits}"
+            for lm in self.memory.all()
+        ]
+
     def _cleanup(self):
         """Clean up resources."""
         if self._perception:

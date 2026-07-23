@@ -58,17 +58,19 @@ MIN_LOITER_RADIUS = 30.0       # m — do not go tighter without dedicated stall
 PLANE_MODES = {
     0: "MANUAL", 1: "CIRCLE", 2: "STABILIZE", 3: "TRAINING", 4: "ACRO",
     5: "FBWA", 6: "FBWB", 7: "CRUISE", 8: "AUTOTUNE", 10: "AUTO",
-    11: "RTL", 12: "LOITER", 15: "GUIDED", 17: "QSTABILIZE", 18: "QHOVER",
-    19: "QLOITER", 20: "QLAND", 21: "QRTL",
+    11: "RTL", 12: "LOITER", 13: "TAKEOFF", 15: "GUIDED", 17: "QSTABILIZE",
+    18: "QHOVER", 19: "QLOITER", 20: "QLAND", 21: "QRTL",
 }
 
 MAV_MISSION_ACCEPTED = 0
 
 
 # =============================================================================
-# Mission-item upload (MISSION_ITEM_INT protocol) — needed for hand-launch and
-# for the landing approach, since ArduPlane has no standalone "takeoff"/"land"
-# flight mode the way ArduCopter does; both are AUTO-mode mission items.
+# Mission-item upload (MISSION_ITEM_INT protocol) — needed for the landing
+# approach below (land()). ArduPlane has no standalone "land" flight mode the
+# way ArduCopter does; it's an AUTO-mode NAV_LAND mission item. (Launch uses
+# ArduPlane's native TAKEOFF mode instead — no mission upload needed there,
+# see hand_launch()'s docstring for why.)
 # =============================================================================
 
 def _upload_mission(items):
@@ -161,44 +163,46 @@ def configure_launch_detection(min_accel_mss=15.0, min_airspeed_mps=8.0,
     return ok
 
 
-def hand_launch(altitude_m, pitch_deg=15.0, home_hold_radius_m=DEFAULT_LOITER_RADIUS,
+def hand_launch(altitude_m, pitch_deg=15.0, loiter_distance_m=200.0,
                  launch_timeout_s=30, climb_timeout_s=60):
-    """Arm for a hand/bungee launch and climb to altitude_m (relative).
+    """Arm for a hand/bungee launch and climb to altitude_m (relative), using
+    ArduPlane's native TAKEOFF flight mode.
 
     Real ArduPlane hand-launch flow (NOT a copter-style vertical takeoff):
-      1. Upload a 2-item mission: NAV_TAKEOFF (target pitch + altitude), then a
-         LOITER_UNLIM at the takeoff point so the aircraft holds near home once
-         it reaches altitude rather than flying off toward mission item 2.
-      2. Switch to AUTO and arm. ArduPilot will NOT apply throttle until launch
-         is detected (configure_launch_detection() thresholds) — safe to arm
-         while still holding the aircraft.
-      3. Physically throw/launch the aircraft. FC detects acceleration/airspeed,
-         begins the takeoff climb-out automatically.
-      4. Poll relative altitude until it reaches ~95% of altitude_m.
+      1. Set TAKEOFF-mode params (TKOFF_ALT/TKOFF_DIST/TKOFF_LVL_PITCH), switch
+         to TAKEOFF mode, arm.
+      2. ArduPilot will NOT apply throttle until launch is detected — this is
+         the SAME underlying gate (suppress_throttle()/auto_takeoff_check(),
+         driven by configure_launch_detection()'s TKOFF_THR_MINACC/MINSPD) as
+         the classic AUTO+NAV_TAKEOFF-mission-item approach; TAKEOFF mode does
+         NOT relax or bypass launch detection (confirmed by reading ArduPlane's
+         servos.cpp — both paths call the identical suppress_throttle() gate).
+         Its advantage here is purely operational: no MISSION_COUNT/REQUEST/
+         ITEM upload round-trip needed over a real companion-computer link —
+         one mode-set + a few params, fewer failure points. (An earlier version
+         of this function used the mission-upload approach; switched after
+         confirming in ArduPlane's own source that it bought nothing for
+         launch-detection reliability, only complexity — see the fixed-wing
+         autonomy plan's M0 notes.)
+      3. Physically throw/launch the aircraft. FC detects real acceleration/
+         airspeed via that gate, begins the takeoff climb-out automatically.
+      4. Poll relative altitude until it reaches ~95% of altitude_m. TAKEOFF
+         mode then loiters at loiter_distance_m from the launch point (using
+         WP_LOITER_RAD, same as orbit() below) once altitude is reached.
 
     Returns True if altitude was reached within climb_timeout_s, False otherwise
     (caller should treat False as an abort — do not proceed to further commands).
     """
     altitude_m = _clamp(altitude_m, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
-    _log(f"Configuring hand-launch mission (climb to {altitude_m}m, pitch {pitch_deg} deg)...")
+    _log(f"Configuring TAKEOFF mode (climb to {altitude_m}m, "
+         f"loiter {loiter_distance_m}m out, pitch {pitch_deg} deg)...")
 
-    frame = mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT
-    items = [
-        {  # seq 0: NAV_TAKEOFF — param1=min pitch (deg), z=target relative alt (m)
-            'frame': frame, 'command': mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
-            'current': 1, 'autocontinue': 1,
-            'param1': pitch_deg, 'x': 0, 'y': 0, 'z': altitude_m,
-        },
-        {  # seq 1: hold near the launch point once airborne (loiter unlimited)
-            'frame': frame, 'command': mavutil.mavlink.MAV_CMD_NAV_LOITER_UNLIM,
-            'current': 0, 'autocontinue': 1,
-            'param3': home_hold_radius_m, 'x': 0, 'y': 0, 'z': altitude_m,
-        },
-    ]
-    if not _upload_mission(items):
-        _log("ERROR: takeoff mission upload not accepted")
-        return False
-    _set_current_mission_item(0)
+    ok = True
+    ok &= _set_param('TKOFF_ALT', altitude_m)
+    ok &= _set_param('TKOFF_DIST', loiter_distance_m)
+    ok &= _set_param('TKOFF_LVL_PITCH', pitch_deg)
+    if not ok:
+        _log("WARNING: one or more TAKEOFF-mode params not ACKed")
 
     _log("Running preflight checks...")
     ok, issues = _check_preflight_status()
@@ -206,9 +210,9 @@ def hand_launch(altitude_m, pitch_deg=15.0, home_hold_radius_m=DEFAULT_LOITER_RA
         for issue in issues:
             _log(f"  WARNING: {issue}")
 
-    _log("Setting AUTO mode for launch...")
-    if not _set_mode('AUTO'):
-        _log("ERROR: failed to enter AUTO mode")
+    _log("Setting TAKEOFF mode...")
+    if not _set_mode('TAKEOFF'):
+        _log("ERROR: failed to enter TAKEOFF mode")
         return False
 
     if is_armed():
@@ -403,6 +407,23 @@ def rtl(wait_for_loiter_s=10):
         return False
     time.sleep(wait_for_loiter_s)
     return True
+
+
+def get_wind_estimate(timeout=2.0):
+    """Read ArduPlane's live wind estimate via the MAVLink WIND message, if the
+    FC is producing one (needs an airspeed sensor + EKF wind estimation).
+
+    Returns (direction_from_deg, speed_mps) — direction is where the wind is
+    blowing FROM (0=N), matching the convention callers need to compute an
+    into-wind approach heading (approach_heading = (direction_from_deg + 180)
+    % 360). Returns None if no WIND message arrives within `timeout` — callers
+    (HardwareBackend.land()) must NOT fabricate a heading in that case; a
+    genuinely unknown wind means a genuinely unknown safe landing direction.
+    """
+    msg = _mav_recv('WIND', timeout=timeout)
+    if msg is None:
+        return None
+    return (float(msg.direction), float(msg.speed))
 
 
 # =============================================================================
