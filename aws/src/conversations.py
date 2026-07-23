@@ -109,6 +109,11 @@ at import time, so keep this section in sync with it if either changes)
    avoidance, and don't set it just to be cautious with no actual known
    obstacle in mind.
    {"type": "fly_circle", "radius_m": 10, "altitude_m": 5, "waypoints": 8}
+   — for a FIXED-WING drone specifically, radius_m must be at/above the
+   airframe's own minimum turn radius (roughly max_speed_mps/max_yaw_rate_radps
+   — commonly 40m+, NOT the 10-20m that's fine for a quadcopter); a tighter
+   radius isn't just suboptimal, it's physically unflyable and the mission
+   will fail outright. If unsure for a fixed-wing, use 50m+.
    {"type": "look_around", "directions": 4}
    {"type": "capture_photo"}
    {"type": "return_home", "alt_m": 5}
@@ -777,6 +782,55 @@ def get_drone_capabilities(drone_id):
         return {'has_vlm': False, 'variant': 'unknown', 'nav2_available': False}
 
 
+_KNOWN_ACTIONS = {'mission', 'respond', 'ask', 'set_goal', 'execute', 'look'}
+
+
+def _extract_last_json_action(text: str):
+    """Scan `text` for every top-level {...} object (brace-depth counting,
+    not regex, so nested braces in a mission's phases don't confuse it) and
+    return the LAST one that both parses and has a recognized "action" key.
+    Last, not first: a self-correcting model's final blob is the one it
+    intends as the real answer (see call_mission_agent's caller for the real
+    example this was written against). Returns a dict, or None if nothing
+    recoverable — no return-type annotation since this file targets Lambda's
+    Python runtime and doesn't use PEP604 `X | None` syntax anywhere else,
+    so this avoids assuming a Python version newer than what's deployed.
+    """
+    candidates = []
+    depth = 0
+    start = None
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidates.append(text[start:i + 1])
+    for candidate in reversed(candidates):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict) and parsed.get('action') in _KNOWN_ACTIONS:
+            return parsed
+    return None
+
+
 def call_mission_agent(conversation_history, user_message, pending_images=None):
     """
     Call the AI agent for mission planning (AGX drones with VLM).
@@ -830,13 +884,27 @@ def call_mission_agent(conversation_history, user_message, pending_images=None):
         ).strip()
         
         # Parse JSON response
+        if response_text.startswith('```'):
+            lines = response_text.split('\n')
+            response_text = '\n'.join(lines[1:-1] if lines[-1] == '```' else lines[1:])
+
         try:
-            if response_text.startswith('```'):
-                lines = response_text.split('\n')
-                response_text = '\n'.join(lines[1:-1] if lines[-1] == '```' else lines[1:])
-            
             return json.loads(response_text)
         except json.JSONDecodeError:
+            # The model can self-correct mid-generation (confirmed live: one
+            # real response produced a full valid mission JSON, then "Wait,
+            # I'm missing return_home and land. Let me correct:", then a
+            # second, corrected JSON blob) — a single whole-string json.loads
+            # then fails (extra prose + two concatenated objects) and used to
+            # fall straight through to dumping the entire raw mess as a
+            # 'respond' message, which a real user would see verbatim.
+            # Recover the LAST well-formed top-level JSON object with a
+            # recognized "action" instead of giving up immediately — mirrors
+            # vlm.py's _parse_response() outermost-brace-span fallback for
+            # the same class of prose-wrapped-JSON problem.
+            recovered = _extract_last_json_action(response_text)
+            if recovered is not None:
+                return recovered
             return {'action': 'respond', 'message': response_text}
             
     except Exception as e:

@@ -151,7 +151,17 @@ class MissionLoop:
     MAX_PHASE_ACTIONS = 50      # Maximum actions per phase
     MAX_REPLANS_PER_PHASE = 2   # Bounded retries before a phase failure is a true abort
     MAX_CONSECUTIVE_VLM_FAILURES = 3  # Bounded before a run of unusable VLM output becomes a phase failure
-    
+    # Fraction of an in-progress SEARCH_AREA plan that must be flown before a
+    # COUNT of zero for that exact target is honored — confirmed live this
+    # needed to be a code-level gate, not just prompt guidance ("count once
+    # confident you've covered enough" was NOT reliably followed): a real run
+    # searched only 4 of 32 planned legs, found nothing, and reported a
+    # confident zero for a target that was genuinely ~150m away and never
+    # reached. A real nonzero count is NOT gated by this — finding something
+    # early is a legitimately strong signal on its own; it's specifically an
+    # unearned "definitely zero" that needs real coverage behind it.
+    MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT = 0.5
+
     def __init__(
         self,
         mqtt_client=None,
@@ -592,6 +602,23 @@ class MissionLoop:
         radius_m = phase.get('radius_m', 10.0)
         alt_m = phase.get('altitude_m', 5.0)
         n_waypoints = phase.get('waypoints', 8)
+        # Same clamp search_patterns.orbit() already applies for exactly this
+        # reason: a radius tighter than the vehicle's own minimum turn radius
+        # is not a "blocked" waypoint (SimBackend.goto()'s generic timeout
+        # fallback message is misleading here) — it's physically unflyable,
+        # confirmed live: a cloud-planned 20m circle for this fixed-wing
+        # (turn radius ~42m) made every waypoint time out, reported as
+        # "blocked", with the real cause invisible in that message. The cloud
+        # prompt is told about this floor too (mission_vocab.py) so it
+        # shouldn't need clamping in practice — this is the code-level
+        # backstop, not the only line of defense.
+        min_radius = search_patterns.turn_radius_m(self.vehicle_class) * 1.05
+        if radius_m < min_radius:
+            self._report_progress(
+                f"Requested circle radius {radius_m}m is tighter than this "
+                f"vehicle's minimum turn radius ({min_radius:.0f}m) — clamping"
+            )
+            radius_m = min_radius
         self._report_progress(f"Flying circle: radius={radius_m}m altitude={alt_m}m")
         backend = self._get_backend()
         # Same geometry as before this rewrite: each waypoint is an offset from
@@ -809,6 +836,31 @@ class MissionLoop:
                         action_type=ActionType.SEARCH_AREA,
                         target_object=None,
                         reasoning="Overridden: count requested with no target_object",
+                    )
+                elif (
+                    self.memory.count(action.target_object) == 0
+                    and self._search_target is not None
+                    and labels_match(action.target_object, self._search_target)
+                    and self._search_plan
+                    and self._search_idx < len(self._search_plan) * self.MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT
+                ):
+                    # A confident zero needs real coverage behind it — see
+                    # MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT's docstring for the
+                    # live failure this guards against. Only applies to a
+                    # zero for the SAME target an active search plan is
+                    # already covering; a nonzero count (something already
+                    # found) is never held back by this.
+                    covered_pct = 100 * self._search_idx / len(self._search_plan)
+                    self._report_progress(
+                        f"Rejecting a zero count for {action.target_object!r} — only "
+                        f"{covered_pct:.0f}% of the planned search area covered so far "
+                        f"({self._search_idx}/{len(self._search_plan)} legs); continuing "
+                        f"to search instead of concluding none exist"
+                    )
+                    action = VLMAction(
+                        action_type=ActionType.SEARCH_AREA,
+                        target_object=action.target_object,
+                        reasoning="Overridden: zero count claimed with insufficient search coverage",
                     )
                 elif already_reported_grounded_finding:
                     n = self.memory.count(action.target_object)
