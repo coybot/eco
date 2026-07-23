@@ -43,6 +43,7 @@ from backends import Backend, HardwareBackend
 from vehicle_class import VehicleClass, get_class
 from spatial_memory import SpatialMemory, normalize_label, labels_match
 import search_patterns
+import mission_vocab
 
 # Fallback image dimensions for NAVIGATE_TO_POINT's pixel->normalized conversion
 # when the captured frame isn't a numpy array to read .shape from (SimBackend's
@@ -430,27 +431,32 @@ class MissionLoop:
             self._findings.extend(self._memory_finding_strings())
             self._cleanup()
     
+    # Phase-type -> executor-method-name. Keys MUST match mission_vocab.
+    # PHASE_SCHEMAS exactly (see _CHECK_PHASE_VOCAB_SYNC below, evaluated once
+    # at import time) — this is what makes drift between the cloud planner's
+    # vocabulary and what this dispatcher actually accepts a hard failure
+    # instead of a silent no-op mission (the fixed-wing autonomy plan's
+    # "change B": ending the previously-hand-duplicated phase-type lists).
+    _PHASE_DISPATCH = {
+        "arm_and_takeoff": "_exec_arm_and_takeoff",
+        "nav": "_exec_nav",
+        "go_to_gps": "_exec_go_to_gps",
+        "fly_circle": "_exec_fly_circle",
+        "look_around": "_exec_look_around",
+        "capture_photo": "_exec_capture_photo",
+        "return_home": "_exec_return_home",
+        "land": "_exec_land",
+    }
+
     def _execute_phase(self, phase: Dict[str, Any], mission: Mission) -> Dict[str, Any]:
-        """Dispatch a phase to the appropriate executor based on its type field."""
+        """Dispatch a phase to the appropriate executor based on its type field.
+        No `type` (or an unrecognized one) falls through to the open-ended VLM
+        loop — matching the cloud prompt's "untyped phase" contract."""
         phase_type = phase.get('type')
-        if phase_type == 'arm_and_takeoff':
-            return self._exec_arm_and_takeoff(phase)
-        elif phase_type == 'nav':
-            return self._exec_nav(phase)
-        elif phase_type == 'go_to_gps':
-            return self._exec_go_to_gps(phase)
-        elif phase_type == 'fly_circle':
-            return self._exec_fly_circle(phase)
-        elif phase_type == 'look_around':
-            return self._exec_look_around(phase)
-        elif phase_type == 'capture_photo':
-            return self._exec_capture_photo(phase)
-        elif phase_type == 'return_home':
-            return self._exec_return_home(phase)
-        elif phase_type == 'land':
-            return self._exec_land(phase)
-        else:
-            return self._exec_vlm_phase(phase, mission)
+        method_name = self._PHASE_DISPATCH.get(phase_type)
+        if method_name is not None:
+            return getattr(self, method_name)(phase)
+        return self._exec_vlm_phase(phase, mission)
 
     # ------------------------------------------------------------------ #
     # Typed phase executors — all actuation goes through the `backend`     #
@@ -1090,6 +1096,20 @@ class MissionLoop:
         """Clean up resources."""
         if self._perception:
             self._perception.release()
+
+
+# Evaluated once at import time: a typed phase this dispatcher accepts but
+# mission_vocab doesn't describe (or vice versa) is a real drift bug — the
+# cloud planner and on-device dispatcher disagreeing about the phase-type
+# vocabulary is exactly the failure mode "change B" exists to catch, so this
+# fails loudly at import rather than silently at mission-execution time.
+_dispatch_keys = set(MissionLoop._PHASE_DISPATCH.keys())
+_vocab_keys = set(mission_vocab.PHASE_SCHEMAS.keys())
+assert _dispatch_keys == _vocab_keys, (
+    f"reasoning_loop._PHASE_DISPATCH and mission_vocab.PHASE_SCHEMAS have "
+    f"drifted — only in dispatch: {_dispatch_keys - _vocab_keys}, only in "
+    f"vocab: {_vocab_keys - _dispatch_keys}"
+)
 
 
 def run_mission(mission: Mission, mqtt_client=None, conversation_id: str = None, drone_sdk=None) -> MissionResult:
