@@ -126,6 +126,13 @@ func _dispatch(line: String) -> String:
 			fm.remove_vantage(req.get("name", "overhead"))
 			return JSON.stringify({"ok": true})
 
+		"move_vantage":
+			var mv_p: Array = req.get("p", [0.0, 0.0, 10.0])
+			var mv_look: Array = req.get("look", [0.0, 0.0, 0.0])
+			fm.move_vantage(req.get("name", "overhead"), Vector3(mv_p[0], mv_p[1], mv_p[2]),
+							Vector3(mv_look[0], mv_look[1], mv_look[2]))
+			return JSON.stringify({"ok": true})
+
 		"spawn":
 			var vt: String = req.get("vtype", "quadcopter")
 			if req.has("p"):
@@ -193,6 +200,17 @@ func _dispatch(line: String) -> String:
 			pm.inject(name, params)
 			return JSON.stringify({"ok": true})
 
+		"fw_inject":
+			# "inject" above is hard-wired to PhroverManager only — a fixed-wing
+			# scenario calling the shared inject() would silently do nothing to
+			# FixedWingManager's own state (found live: a raise_wall inject sent
+			# via "inject" never actually appeared in the scene or its occupancy
+			# grid). Separate op, same params shape, routed to FixedWingManager.
+			var fw_name: String = req.get("name", "")
+			var fw_params: Dictionary = req.get("params", {})
+			FixedWingManager.inject(fw_name, fw_params)
+			return JSON.stringify({"ok": true})
+
 		"get_events":
 			var since: float = float(req.get("since", 0.0))
 			return JSON.stringify({"ok": true, "events": pm.get_events(since)})
@@ -203,6 +221,75 @@ func _dispatch(line: String) -> String:
 
 		"prop_truth":
 			return JSON.stringify({"ok": true, "props": pm.prop_truth()})
+
+		# -- FixedWing ops (3D ENU frame: x=east m, y=north m, z=up m, yaw rad CCW from +x) --
+		"fw_spawn":
+			var p: Array = req.get("p", [0.0, 0.0, 0.0])
+			var yaw: float = float(req.get("yaw", 0.0))
+			FixedWingManager.spawn(did, Vector3(p[0], p[1], p[2]), yaw)
+			return JSON.stringify({"ok": true})
+
+		"fw_despawn":
+			FixedWingManager.despawn(did)
+			return JSON.stringify({"ok": true})
+
+		"fw_state":
+			var st = FixedWingManager.get_state(did)
+			if st == null:
+				return JSON.stringify({"ok": false, "error": "unknown fw drone " + did})
+			return JSON.stringify({
+				"ok": true,
+				"position": [st["position"][0], st["position"][1], st["position"][2]],
+				"velocity": [st["velocity"][0], st["velocity"][1], st["velocity"][2]],
+				"airspeed": st["airspeed"],
+				"climb_rate": st["climb_rate"],
+				"pitch": st["pitch"],
+				"yaw": st["yaw"],
+				"roll": st["roll"],
+				"altitude": st["altitude"],
+				"battery_level": st["battery_level"]
+			})
+
+		"fw_detect":
+			return JSON.stringify({"ok": true, "objects": FixedWingManager.detect(did)})
+
+		"fw_grab_frame":
+			var jpg_b64 = FixedWingManager.grab_frame_jpeg(did)
+			return JSON.stringify({"ok": true, "jpg": jpg_b64})
+
+		"fw_grid":
+			var grid = FixedWingManager.get_grid(did)
+			return JSON.stringify({"ok": true, "grid": grid})
+
+		"fw_unproject":
+			var world = FixedWingManager.unproject(did, float(req.get("nx", 0.5)), float(req.get("ny", 0.5)))
+			if world == null:
+				return JSON.stringify({"ok": true, "world": null})
+			return JSON.stringify({"ok": true, "world": world})
+
+		"fw_drive":
+			FixedWingManager.drive(did, float(req.get("airspeed", 0.0)), float(req.get("yaw_rate", 0.0)))
+			return JSON.stringify({"ok": true})
+
+		"fw_stop":
+			FixedWingManager.stop(did)
+			return JSON.stringify({"ok": true})
+
+		"fw_events":
+			return JSON.stringify({"ok": true, "events": FixedWingManager.get_events(did)})
+
+		"fw_reset":
+			FixedWingManager.reset(did)
+			return JSON.stringify({"ok": true})
+
+		"fw_prop_truth":
+			return JSON.stringify({"ok": true, "props": FixedWingManager.prop_truth()})
+
+		"fw_log_event":
+			var kind: String = req.get("kind", "")
+			var data: Dictionary = req.get("data", {})
+			FixedWingManager.log_event(did, kind, data)
+			return JSON.stringify({"ok": true})
 
 		_:
 			return JSON.stringify({"ok": false, "error": "unknown op " + op})

@@ -90,3 +90,71 @@ class DepotClient:
 
     def remove_vantage(self, name: str) -> dict:
         return self._call({"op": "remove_vantage", "name": name})
+
+    def move_vantage(self, name: str, pos_enu: tuple[float, float, float], look_enu: tuple[float, float, float]) -> dict:
+        """Repositions an existing vantage in place (no SubViewport recreation) —
+        for a chase cam that tracks a moving vehicle instead of a fixed high
+        overhead shot that reduces the vehicle to a barely-visible dot."""
+        return self._call({"op": "move_vantage", "name": name, "p": list(pos_enu), "look": list(look_enu)})
+
+    # -- fixedwing lifecycle --------------------------------------------------
+    def fw_spawn(self, rid: str, pos_enu: tuple[float, float, float], yaw: float = 0.0) -> dict:
+        return self._call({"op": "fw_spawn", "id": rid, "p": list(pos_enu), "yaw": yaw})
+
+    def fw_despawn(self, rid: str) -> dict:
+        return self._call({"op": "fw_despawn", "id": rid})
+
+    # -- fixedwing sense/act --------------------------------------------------
+    def fw_state(self, rid: str) -> dict:
+        return self._call({"op": "fw_state", "id": rid})
+
+    def fw_detect(self, rid: str) -> list[dict]:
+        r = self._call({"op": "fw_detect", "id": rid})
+        return r.get("objects", [])
+
+    def fw_grab_frame(self, rid: str) -> bytes | None:
+        """Forward-camera JPEG for the on-device VLM loop — see
+        backends.SimBackend.capture_frame. Requires gui=True (headless Godot's
+        dummy renderer leaves the SubViewport texture blank)."""
+        r = self._call({"op": "fw_grab_frame", "id": rid})
+        jpg = r.get("jpg")
+        return base64.b64decode(jpg) if jpg else None
+
+    def fw_grid(self, rid: str) -> dict | None:
+        r = self._call({"op": "fw_grid", "id": rid})
+        if not r.get("ok"):
+            return None
+        return r.get("grid", {})
+
+    def fw_unproject(self, rid: str, nx: float, ny: float) -> list[float] | None:
+        r = self._call({"op": "fw_unproject", "id": rid, "nx": nx, "ny": ny})
+        return r.get("world")
+
+    def fw_drive(self, rid: str, airspeed: float, yaw_rate: float) -> dict:
+        return self._call({"op": "fw_drive", "id": rid, "airspeed": airspeed, "yaw_rate": yaw_rate})
+
+    def fw_stop(self, rid: str) -> dict:
+        return self._call({"op": "fw_stop", "id": rid})
+
+    def fw_events(self, rid: str) -> list[dict]:
+        r = self._call({"op": "fw_events", "id": rid})
+        return r.get("events", [])
+
+    def fw_reset(self, rid: str) -> dict:
+        return self._call({"op": "fw_reset", "id": rid})
+
+    def fw_prop_truth(self) -> list[dict]:
+        """Ground-truth prop list (label, world pos, is_anomaly) — harness/scoring
+        only, never fed to the agent's own sensing (use fw_detect for that)."""
+        r = self._call({"op": "fw_prop_truth"})
+        return r.get("props", [])
+
+    def fw_log_event(self, rid: str, kind: str, data: dict) -> dict:
+        """Push a structured event (clarification/replan/memory_landmark) into
+        FixedWingManager's own event log — see backends.SimBackend.log_event."""
+        return self._call({"op": "fw_log_event", "id": rid, "kind": kind, "data": data})
+
+    def fw_inject(self, name: str, **params) -> dict:
+        """FixedWingManager's own inject (e.g. raise_wall) — NOT the same as
+        inject(), which is hard-wired to PhroverManager only."""
+        return self._call({"op": "fw_inject", "name": name, "params": params})

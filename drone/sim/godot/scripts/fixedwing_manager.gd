@@ -28,18 +28,29 @@ const DETECT_HFOV_HALF := deg_to_rad(30.0)  # 60° horizontal FOV
 const DETECT_VFOV_HALF := deg_to_rad(17.5)  # 35° vertical FOV
 const DETECT_LOOK_DOWN := deg_to_rad(15.0)  # 15° downward look
 const GRID_RES := 1.0
-const GRID_ORIGIN := Vector2(-50.0, -50.0)
-const GRID_W := 100
-const GRID_H := 100
+# Sized for the flightline env's prop spread (water_tower/silo/barn out to
+# x~320, y~-90..90 — see env_flightline.gd), not the old ~100m depot world this
+# was originally copied from. A 100x100 grid centered near the origin silently
+# excluded every fixed-wing prop from ever being "observed" (coverage metrics
+# would read ~0 regardless of actual flight coverage) — never noticed before
+# because, per the Slice 1 investigation, fixed-wing sim had never actually run.
+const GRID_ORIGIN := Vector2(-50.0, -150.0)
+const GRID_W := 400
+const GRID_H := 300
 const NEAR_MISS_DIST := 2.0
 const BASE_DRAIN_IDLE := 0.01   # %/s
 const BASE_DRAIN_PER_M := 0.005   # %/m
+const CAM_VIEWPORT_W := 640
+const CAM_VIEWPORT_H := 480
+const CAM_FOV := 70.0
+const CAM_JPEG_QUALITY := 85
+const NOSE_OFFSET_M := 3.0  # forward of body's own origin — see _sync_camera
 
 var _env: Node3D = null
 var _fw: Dictionary = {}   # id -> FixedWingState
 var _events: Array = []    # [{t, kind, data}]
-	var _sim_time: float = 0.0
-	var _occ: PackedByteArray = PackedByteArray()
+var _sim_time: float = 0.0
+var _occ: PackedByteArray = PackedByteArray()
 
 
 class FixedWingState:
@@ -60,6 +71,8 @@ class FixedWingState:
 	var alive := true
 	var last_pose_trace: float = 0.0
 	var drain_mult: float = 1.0
+	var viewport: SubViewport = null   # forward-facing camera readback (fw_grab_frame)
+	var camera: Camera3D = null
 
 
 func _ready() -> void:
@@ -101,7 +114,32 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	var mesh := Node3D.new()
 	mesh.set_script(load("res://scripts/fixedwing_visuals.gd"))
 	body.add_child(mesh)
-	
+
+	# Forward-facing camera for fw_grab_frame — same SubViewport+Camera3D pattern
+	# as fleet_manager.gd's per-vehicle quad/rover cameras (own_world_3d=false so
+	# it sees the real scene). SubViewport doesn't inherit Node3D transforms even
+	# as a child, so position/rotation are synced manually every tick in
+	# _sync_camera(), same reason fleet_manager.gd's _integrate() does the same.
+	var vp := SubViewport.new()
+	vp.size = Vector2i(CAM_VIEWPORT_W, CAM_VIEWPORT_H)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.own_world_3d = false
+	var cam := Camera3D.new()
+	cam.fov = CAM_FOV
+	# Camera3D.current is scoped PER-VIEWPORT, not global — it does not compete
+	# with the main window's camera or other vehicles' cameras, each of which
+	# lives in its own dedicated SubViewport. Setting this false (based on a
+	# wrong assumption it was a global flag) meant this SubViewport had no
+	# active camera at all and never rendered real scene geometry — every
+	# fw_grab_frame capture was some camera-less fallback render (a flat
+	# gradient), not actual terrain/props, confirmed by capturing the identical
+	# position/orientation via the known-working vantage-camera path instead
+	# and seeing a normal, correctly lit scene. fleet_manager.gd's own
+	# per-vehicle camera already does this correctly (cam.current = true).
+	cam.current = true
+	vp.add_child(cam)
+	body.add_child(vp)
+
 	var st := FixedWingState.new()
 	st.id = id
 	st.node = body
@@ -113,6 +151,8 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	st.roll = 0.0
 	st.altitude = pos.z
 	st.observed.resize(GRID_W * GRID_H)
+	st.viewport = vp
+	st.camera = cam
 	_fw[id] = st
 	_apply_pose(st)
 	print("[FixedWingManager] spawned %s at ENU %v" % [id, pos])
@@ -193,10 +233,63 @@ func _apply_pose(st: FixedWingState) -> void:
 	# ENU: x=east, y=north, z=up
 	# Godot: x=right(east), y=up, z=-forward(-north)
 	st.node.position = Vector3(st.position.x, st.position.z, -st.position.y)
-	
+
 	# Rotation in YXZ Euler (pitch around x, yaw around y, roll around z)
 	var rotation_degrees = Vector3(rad_to_deg(st.pitch), -rad_to_deg(st.yaw) + 90.0, rad_to_deg(st.roll))
 	st.node.rotation_degrees = rotation_degrees
+	_sync_camera(st)
+
+
+func _sync_camera(st: FixedWingState) -> void:
+	if st.camera == null:
+		return
+	# Camera position/orientation are set directly here every tick rather than
+	# relying on scene-tree parenting, same pattern as fleet_manager.gd's
+	# _integrate(). Uses look_at() — the exact mechanism add_vantage() already
+	# uses successfully — rather than assigning rotation_degrees/global_rotation
+	# directly: this file's Euler convention (-yaw+90 etc., calibrated for
+	# fixedwing_visuals.gd's own +Z-forward mesh, in _apply_pose above) does not
+	# carry over to Camera3D (whose local forward is Godot's default -Z), and
+	# getting the axis/sign conversion right by hand proved genuinely
+	# error-prone. look_at() sidesteps all of that by construction.
+	var elevation := st.pitch - DETECT_LOOK_DOWN
+	var forward_enu := Vector3(cos(st.yaw) * cos(elevation), sin(st.yaw) * cos(elevation), sin(elevation))
+	var forward_godot := Vector3(forward_enu.x, forward_enu.z, -forward_enu.y)
+	# NOSE_OFFSET_M forward of the airframe's own origin — without this the
+	# camera sits exactly at body's position, which is INSIDE
+	# fixedwing_visuals.gd's fuselage mesh (it surrounds the body's origin).
+	# This was the actual root cause of every "washed out" forward-camera
+	# capture: not a rotation/lighting/tonemap bug (all independently
+	# eliminated first — a vantage camera at the mathematically identical
+	# position/direction rendered correctly whenever no aircraft mesh was
+	# present at that point), but the camera rendering from inside solid
+	# geometry. Confirmed live: this exact change alone fixed it.
+	var cam_pos := Vector3(st.position.x, st.position.z, -st.position.y) + forward_godot * NOSE_OFFSET_M
+	st.camera.global_position = cam_pos
+	st.camera.look_at(cam_pos + forward_godot * 50.0, Vector3.UP)
+
+
+# ------------------------------------------------------------------
+# ENU/Godot conversion helpers, used by the sensing functions below.
+#
+# ENU is (x=east, y=north, z=up); Godot is (x=east, y=up, z=-north). detect(),
+# unproject(), and _sweep_observed() all used to build "3D" vectors as
+# Vector3(east, north, up) and feed them straight into Godot-space math (which
+# expects Vector3(east, up, -north)) — silently swapping the "north" and "up"
+# components. This corrupted horizontal bearing, vertical elevation, and
+# occlusion raycasts for any prop with nonzero altitude, live from day one
+# (confirmed empirically: FixedWingManager's autoload never even loaded before
+# the tab-indentation fix above, so this code had never been exercised against
+# a real environment). Centralizing the conversion here so it can't drift again.
+# ------------------------------------------------------------------
+static func _enu_dir_to_godot(east: float, north: float, up: float) -> Vector3:
+	return Vector3(east, up, -north)
+
+
+static func _godot_rel_to_enu(rel: Vector3) -> Vector3:
+	# rel is a Godot-space delta (target_godot_pos - cam_godot_pos); returns the
+	# (east, north, up) components of that same delta.
+	return Vector3(rel.x, -rel.z, rel.y)
 
 
 # ------------------------------------------------------------------
@@ -219,6 +312,26 @@ func get_state(id: String) -> Variant:
 	}
 
 
+## Forward-camera JPEG readback for the on-device VLM loop (backends.SimBackend.
+## capture_frame) — same byte-for-byte pattern as fleet_manager.gd's
+## grab_frame_jpeg/grab_vantage_jpeg (get_texture -> convert RGB8 -> JPEG ->
+## base64). Requires a real rendering driver (gui=True on this Mac) — headless
+## Godot's "dummy" driver leaves SubViewport textures blank, same limitation
+## already documented for grab_vantage in fw_eval.py.
+func grab_frame_jpeg(id: String) -> Variant:
+	var st: FixedWingState = _fw.get(id)
+	if st == null or st.viewport == null:
+		return null
+	var img := st.viewport.get_texture().get_image()
+	if img == null:
+		return null
+	img.convert(Image.FORMAT_RGB8)
+	var jpg_buf := img.save_jpg_to_buffer(float(CAM_JPEG_QUALITY) / 100.0)
+	if jpg_buf.is_empty():
+		return null
+	return Marshalls.raw_to_base64(jpg_buf)
+
+
 func detect(id: String) -> Array:
 	var st: FixedWingState = _fw.get(id)
 	if st == null or _env == null:
@@ -238,46 +351,53 @@ func detect(id: String) -> Array:
 		if dist > DETECT_RANGE or dist < 0.01:
 			continue
 		
-		# Calculate the angle with look-down orientation
-		var target_3d := Vector3(node.position.x, -node.position.z, node.position.y)
-		var rel_pos := target_3d - cam_pos
-		var rel_x := rel_pos.x
-		var rel_y := rel_pos.y
-		var rel_z := rel_pos.z
-		
+		# node.position is already Godot-space, built the same way cam_pos is (see
+		# env_flightline.gd / env_depot.gd _make_prop), so this delta is a genuine
+		# Godot-space vector — convert to (east,north,up) to compute bearing/
+		# elevation in the same ENU terms the rest of this file uses.
+		var target_pos: Vector3 = node.position
+		var rel_enu := _godot_rel_to_enu(target_pos - cam_pos)
+		var rel_east := rel_enu.x
+		var rel_north := rel_enu.y
+		var rel_up := rel_enu.z
+
 		# Project onto horizontal plane
-		var horiz_dist := Vector2(rel_x, rel_y).length()
+		var horiz_dist := Vector2(rel_east, rel_north).length()
 		if horiz_dist < 0.01:
 			continue
-			
+
 		# Angle from forward
-		var angle := forward.angle_to(Vector2(rel_x, rel_y).normalized())
-		var vert_angle := atan2(rel_z, horiz_dist) - DETECT_LOOK_DOWN
+		var angle := forward.angle_to(Vector2(rel_east, rel_north).normalized())
+		# atan2(rel_up, horiz_dist) is signed positive-up; DETECT_LOOK_DOWN pitches
+		# the boresight down, i.e. to elevation -DETECT_LOOK_DOWN, so centering
+		# vert_angle on that boresight means *adding* DETECT_LOOK_DOWN here (a
+		# target level with the aircraft, rel_up=0, should read near the edge of
+		# the downward-pitched FOV, not need to be near the aircraft's own altitude).
+		var vert_angle := atan2(rel_up, horiz_dist) + DETECT_LOOK_DOWN
 		if absf(angle) > DETECT_HFOV_HALF or absf(vert_angle) > DETECT_VFOV_HALF:
 			continue
-			
+
 		# Check if occluded
-		var hit := _raycast(cam_pos, target_3d, LAYER_STRUCTURE | LAYER_PROPS, [st.node, node])
+		var hit := _raycast(cam_pos, target_pos, LAYER_STRUCTURE | LAYER_PROPS, [st.node, node])
 		if not hit.is_empty():
 			continue
-			
+
 		var label: String = node.get_meta("label", "unknown")
-		
+
 		# Calculate confidence based on distance
 		var range_penalty: float = clamp((dist - 40.0) / 40.0, 0.0, 1.0) * 0.3
 		var confidence: float = clamp(0.9 - range_penalty, 0.2, 0.9)
-		
+
 		# Calculate normalized coordinates
-		var horiz_angle := atan2(rel_y, rel_x)
 		var nx: float = clamp(0.5 + (angle / DETECT_HFOV_HALF) * 0.5, 0.0, 1.0)
 		var ny: float = clamp(0.5 + (vert_angle / DETECT_VFOV_HALF) * 0.5, 0.0, 1.0)
-		
+
 		out.append({
 			"label": label,
 			"confidence": confidence,
 			"nx": nx,
 			"ny": ny,
-			"world": [wp.x, wp.y, st.position.z + rel_z]
+			"world": [wp.x, wp.y, target_pos.y]
 		})
 	return out
 
@@ -288,7 +408,10 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 		return null
 		
 	var bearing_h := (nx - 0.5) * 2.0 * DETECT_HFOV_HALF
-	var bearing_v := (ny - 0.5) * 2.0 * DETECT_VFOV_HALF + DETECT_LOOK_DOWN
+	# Inverse of detect()'s `vert_angle := atan2(rel_up, horiz_dist) + DETECT_LOOK_DOWN`:
+	# bearing_v here is the absolute (signed-positive-up) elevation, so DETECT_LOOK_DOWN
+	# is subtracted, not added.
+	var bearing_v := (ny - 0.5) * 2.0 * DETECT_VFOV_HALF - DETECT_LOOK_DOWN
 
 	# First, try to match a known visible object at this bearing
 	if _env != null:
@@ -306,22 +429,18 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 			if dist > DETECT_RANGE or dist < 0.01:
 				continue
 				
-			var rel_pos := Vector3(node.position.x, -node.position.z, node.position.y) - cam_pos
-			var rel_x := rel_pos.x
-			var rel_y := rel_pos.y
-			var rel_z := rel_pos.z
-			
-			var horiz_dist := Vector2(rel_x, rel_y).length()
+			var target_pos: Vector3 = node.position
+			var rel_enu := _godot_rel_to_enu(target_pos - cam_pos)
+			var horiz_dist := Vector2(rel_enu.x, rel_enu.y).length()
 			if horiz_dist < 0.01:
 				continue
-				
-			var angle := forward.angle_to(Vector2(rel_x, rel_y).normalized())
-			var vert_angle := atan2(rel_z, horiz_dist) - DETECT_LOOK_DOWN
+
+			var angle := forward.angle_to(Vector2(rel_enu.x, rel_enu.y).normalized())
+			var vert_angle := atan2(rel_enu.z, horiz_dist) + DETECT_LOOK_DOWN
 			if absf(angle) > DETECT_HFOV_HALF or absf(vert_angle) > DETECT_VFOV_HALF:
 				continue
-				
-			var target3 := Vector3(node.position.x, -node.position.z, node.position.y)
-			var hit_obj := _raycast(cam_pos, target3, LAYER_STRUCTURE | LAYER_PROPS, [st.node, node])
+
+			var hit_obj := _raycast(cam_pos, target_pos, LAYER_STRUCTURE | LAYER_PROPS, [st.node, node])
 			if not hit_obj.is_empty():
 				continue
 			var diff := absf(angle - bearing_h)
@@ -333,7 +452,7 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 
 	# Fallback: horizontal raycast
 	var dir_h := Vector2(cos(st.yaw + bearing_h), sin(st.yaw + bearing_h))
-	var dir_v := Vector3(dir_h.x, dir_h.y, tan(bearing_v)).normalized()
+	var dir_v := _enu_dir_to_godot(dir_h.x, dir_h.y, tan(bearing_v)).normalized()
 	var from3 := Vector3(st.position.x, st.position.z, -st.position.y)
 	var to3 := from3 + dir_v * DETECT_RANGE
 	var hit := _raycast(from3, to3, LAYER_STRUCTURE | LAYER_PROPS, [st.node])
@@ -398,9 +517,10 @@ func _sweep_observed(st: FixedWingState) -> void:
 	for i in range(n_rays):
 		var t: float = float(i) / float(n_rays - 1)
 		var bearing_h: float = lerp(-DETECT_HFOV_HALF, DETECT_HFOV_HALF, t)
-		var bearing_v := DETECT_LOOK_DOWN
+		# Boresight elevation, signed positive-up: pitched down by DETECT_LOOK_DOWN.
+		var bearing_v := -DETECT_LOOK_DOWN
 		var dir_h := Vector2(cos(st.yaw + bearing_h), sin(st.yaw + bearing_h))
-		var dir_v := Vector3(dir_h.x, dir_h.y, tan(bearing_v)).normalized()
+		var dir_v := _enu_dir_to_godot(dir_h.x, dir_h.y, tan(bearing_v)).normalized()
 		var to3 := cam_pos + dir_v * DETECT_RANGE
 		var hit := _raycast(cam_pos, to3, LAYER_STRUCTURE, [st.node])
 		var end_pt: Vector2 = Vector2(st.position.x, st.position.y) + dir_h * DETECT_RANGE
@@ -462,6 +582,20 @@ func inject(name: String, params: Dictionary) -> void:
 		"kill_fixedwing":
 			var rid: String = params.get("id", "")
 			despawn(rid)
+		"raise_wall":
+			# "Wall Went Up" replan scenario: a real obstacle appears mid-flight,
+			# not just a fleet-DSL no-fly zone. center/half are ENU (east,north)
+			# meters — same convention prop_truth()/detect() already use.
+			var center: Array = params.get("center", [0.0, 0.0])
+			var half: Array = params.get("half", [30.0, 30.0])
+			var height: float = float(params.get("height", 60.0))
+			if _env and _env.has_method("add_wall"):
+				var rect := Rect2(
+					float(center[0]) - float(half[0]), float(center[1]) - float(half[1]),
+					float(half[0]) * 2.0, float(half[1]) * 2.0
+				)
+				_env.add_wall(rect, height)
+				_rebuild_occ_grid()
 	_log_event("inject_fired", {"name": name, "params": params})
 
 
@@ -489,6 +623,17 @@ func prop_truth() -> Array:
 # ------------------------------------------------------------------
 func _log_event(kind: String, data: Dictionary) -> void:
 	_events.append({"t": _sim_time, "kind": kind, "data": data})
+
+
+## Structured telemetry contract (Slice 2): lets the on-device reasoning layer
+## (MissionLoop, via backends.SimBackend.log_event) push clarification/replan/
+## memory_landmark events into this same event log, alongside the internal
+## pose_trace/inject_fired events, so replan/memory behavior is inspectable via
+## the existing fw_events() call rather than needing a second telemetry channel.
+func log_event(id: String, kind: String, data: Dictionary) -> void:
+	var merged := data.duplicate()
+	merged["id"] = id
+	_log_event(kind, merged)
 
 
 func get_events(id: String) -> Array:

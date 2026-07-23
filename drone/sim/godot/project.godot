@@ -17,6 +17,7 @@ config/icon="res://icon.svg"
 IpcServer="*res://scripts/ipc_server.gd"
 FleetManager="*res://scripts/fleet_manager.gd"
 PhroverManager="*res://scripts/phrover_manager.gd"
+FixedWingManager="*res://scripts/fixedwing_manager.gd"
 
 [display]
 
