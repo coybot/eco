@@ -64,6 +64,7 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
             "east_m": FieldSpec("float", 0.0),
             "alt_m": FieldSpec("float", 5.0),
             "description": FieldSpec("str", None, description="Human-readable label for progress reporting"),
+            "min_clearance_alt": FieldSpec("float", None, description="Climb-to-clear: never fly this leg below this altitude (e.g. a known tree line/obstacle on the route). Only ever raises alt_m, never lowers it — the real guarantee is still the FC-enforced altitude floor set once at mission start, this just lets a mission express a known obstacle explicitly."),
         },
     ),
     "go_to_gps": PhaseSpec(
@@ -73,6 +74,7 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
             "lon": FieldSpec("float", required=True),
             "alt_m": FieldSpec("float", 15.0),
             "description": FieldSpec("str", None),
+            "min_clearance_alt": FieldSpec("float", None, description="Same climb-to-clear semantics as the nav phase's field."),
         },
     ),
     "fly_circle": PhaseSpec(
