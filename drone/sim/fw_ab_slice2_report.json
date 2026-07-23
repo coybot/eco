@@ -1,0 +1,91 @@
+{
+  "approaches_evaluated": {
+    "reactive_baseline": "team_world.reactive_goto_controller (scorecard.py, no --fw-policy)",
+    "learned_policy": "policy_fw.onnx via scorecard.py --fw-policy (early PPO-from-scratch export, ~47% success per project status)",
+    "vlm_reasoning": "DEFERRED \u2014 no VLM-capable hardware (Orin/NX/AGX or hoopoe) available in this dev environment; on-device Qwen3-VL loop code exists (vlm.py) but untested against these scenarios",
+    "cloud_replan": "OUT OF SCOPE \u2014 ASK_CLOUD/advice_handler round trip has no IoT TopicRule wired (see plan's Deferred section)"
+  },
+  "fleet_scorable_scenarios": {
+    "fw_replan": {
+      "baseline": {
+        "interventions": 1,
+        "breakdown": {
+          "collision": 1,
+          "near_miss": 0,
+          "stall": 0,
+          "lost": 0,
+          "mission_timeout": 0
+        },
+        "mission_complete": true,
+        "hard_gate_pass": false
+      },
+      "policy": {
+        "interventions": 2,
+        "breakdown": {
+          "collision": 0,
+          "near_miss": 0,
+          "stall": 1,
+          "lost": 0,
+          "mission_timeout": 1
+        },
+        "mission_complete": false,
+        "hard_gate_pass": false
+      }
+    },
+    "fw_sweep": {
+      "baseline": {
+        "interventions": 0,
+        "breakdown": {
+          "collision": 0,
+          "near_miss": 0,
+          "stall": 0,
+          "lost": 0,
+          "mission_timeout": 0
+        },
+        "mission_complete": true,
+        "hard_gate_pass": true
+      },
+      "policy": {
+        "interventions": 1,
+        "breakdown": {
+          "collision": 0,
+          "near_miss": 0,
+          "stall": 0,
+          "lost": 0,
+          "mission_timeout": 1
+        },
+        "mission_complete": false,
+        "hard_gate_pass": false
+      }
+    }
+  },
+  "selection": {
+    "method": "hard gate (0 collisions AND mission_complete) first, then composite/tie-break only among gate-passers",
+    "fw_sweep": "baseline passes hard gate cleanly; policy fails (mission_timeout, incomplete) -> baseline wins",
+    "fw_replan (Wall Went Up)": "NEITHER approach clears the hard gate \u2014 baseline completed but incurred 1 collision (fails on collision alone, per plan's 'a crash scores 0' rule); policy neither completed nor collision-free (stall+timeout). Honest result, not massaged: matches the plan's own risk note that the early policy_fw.onnx may fail hard gates, but shows the reactive baseline is ALSO not yet a clean pass on this scenario \u2014 replan/reroute-around-a-new-obstacle is not yet solved by either approach at hard-gate standard.",
+    "overall": "reactive baseline is the current best of the 2 measurable approaches (1/2 scenarios hard-gate-clean vs 0/2 for the learned policy); VLM-reasoning approach untested pending real hardware"
+  },
+  "godot_capability_metrics": {
+    "note": "Perception/memory/explore capabilities can't be scored by scorecard.py (fleet Mission 'finds' targets by bare proximity, no vision/occlusion) \u2014 measured instead via fw_eval.py's Godot capability harness, which drives the REAL production backends.SimBackend/spatial_memory.SpatialMemory/search_patterns code with a scripted flight profile (not the reactive_goto_controller used above, and not a stand-in for VLM judgment \u2014 see fw_eval.py's own docstring).",
+    "reacquire (memory)": {
+      "success": true,
+      "false_positive_labels": [],
+      "reacquisition_path_efficiency": 0.593,
+      "memory_landmark_hits": 63
+    },
+    "sector_sweep (explore)": {
+      "success": true,
+      "detected_labels": [
+        "barn",
+        "silo",
+        "water_tower"
+      ],
+      "time_to_find_s": {
+        "barn": 21.4,
+        "water_tower": 65.9,
+        "silo": 124.5
+      },
+      "coverage_fraction": 1.0
+    }
+  }
+}
