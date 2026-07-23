@@ -71,6 +71,21 @@ CAM_VIEWPORT_H = 480
 # real target classes are added (see change D).
 POSSIBLY_MOVING_LABELS = {"person", "people", "pedestrian", "human", "animal", "dog", "cat"}
 
+
+def _phase_wants_count(phase: Dict[str, Any]) -> bool:
+    """Heuristic: does this phase's own objective/success text ask for a
+    count? Used to require an actual COUNT action (not just any grounded-
+    sounding completion) before a counting-flavored phase is allowed to
+    conclude — a real gap found live: a car WAS detected and remembered
+    (satisfying the existing "something relevant was seen" grounding check),
+    yet the model later concluded via a bare MISSION_COMPLETE claiming "no
+    cars found", never once calling count, contradicting its own memory.
+    Grounding verifies something relevant was seen; it doesn't verify the
+    specific claim (found vs. not, and how many) is consistent with memory."""
+    text = f"{phase.get('objective', '')} {phase.get('success', '')}".lower()
+    return "count" in text or "how many" in text
+
+
 DRONE_SDK_AVAILABLE = False
 try:
     import drone_sdk as _drone_sdk
@@ -720,6 +735,7 @@ class MissionLoop:
         phase_actions = 0
         consecutive_vlm_failures = 0
         already_reported_grounded_finding = False
+        count_recorded_this_phase = False
 
         while phase_actions < self.MAX_PHASE_ACTIONS:
             # 1. Capture current frame (via the backend, so this works identically
@@ -789,47 +805,78 @@ class MissionLoop:
             # if nothing detected/remembered so far is even mentioned in what
             # this phase is asking for, a "found it" claim isn't grounded,
             # regardless of what else happened to be in view.
-            if action.action_type in (ActionType.REPORT, ActionType.PHASE_COMPLETE, ActionType.MISSION_COMPLETE):
-                objective_blob = normalize_label(
-                    f"{phase.get('objective', '')} {phase.get('success', '')}"
-                )
-                known_labels = {normalize_label(d.label) for d in detections}
-                known_labels |= {normalize_label(lm.label) for lm in self.memory.all()}
-                grounded = any(label and label in objective_blob for label in known_labels)
-                if not grounded:
+            if action.action_type in (ActionType.REPORT, ActionType.PHASE_COMPLETE,
+                                       ActionType.MISSION_COMPLETE, ActionType.MISSION_FAILED):
+                # Extra hard guard specifically for counting phases, checked
+                # BEFORE the grounding check below (and covering MISSION_FAILED
+                # too, which the grounding check doesn't) — a real gap found
+                # live: a car WAS detected and remembered (satisfying the
+                # existing "something relevant was seen" grounding check
+                # below), yet the model concluded via a bare MISSION_COMPLETE
+                # claiming "no cars found" — never once calling the count
+                # action, contradicting its own memory. Grounding verifies
+                # SOMETHING relevant was seen; it does not verify that THIS
+                # claim (found vs. not found, and how many) is consistent
+                # with what memory actually contains. The fix isn't to parse
+                # the claim's text for negation (fragile) — it's to require
+                # a real count action to have actually run for a phase whose
+                # own objective/success text asks for one, before honoring
+                # any conclusion about it.
+                if _phase_wants_count(phase) and not count_recorded_this_phase:
                     self._report_progress(
-                        f"Rejecting ungrounded {action.action_type.value} "
-                        f"(\"{action.message}\") — nothing matching this phase's objective "
-                        f"has actually been detected or remembered"
+                        f"Rejecting {action.action_type.value} for a counting phase — "
+                        f"no count action has run yet this phase (\"{action.message}\")"
                     )
                     action = VLMAction(
                         action_type=ActionType.SEARCH_AREA,
-                        target_object=None,
-                        reasoning="Overridden: claimed a finding not backed by any matching detection/memory",
+                        target_object=action.target_object,
+                        reasoning="Overridden: a counting phase must produce a count before concluding",
                     )
-                elif action.action_type == ActionType.REPORT:
-                    # Second hard guard, same reason as the first: the system
-                    # prompt already explicitly tells the model "if RECENT
-                    # ACTIONS shows you reporting the same finding, don't
-                    # report it again — call phase_complete instead." Confirmed
-                    # live that it does NOT reliably follow this — one real run
-                    # reported the identical already-grounded finding 26 times
-                    # in a row until the action budget ran out, never once
-                    # escalating on its own. Once a grounded finding has been
-                    # reported once this phase, force any further REPORT into
-                    # PHASE_COMPLETE instead of trusting the model to notice.
-                    if already_reported_grounded_finding:
+                elif action.action_type == ActionType.MISSION_FAILED:
+                    pass  # not subject to the grounding check below (a failure
+                          # claim doesn't assert a positive finding the way
+                          # REPORT/PHASE_COMPLETE/MISSION_COMPLETE do)
+                else:
+                    objective_blob = normalize_label(
+                        f"{phase.get('objective', '')} {phase.get('success', '')}"
+                    )
+                    known_labels = {normalize_label(d.label) for d in detections}
+                    known_labels |= {normalize_label(lm.label) for lm in self.memory.all()}
+                    grounded = any(label and label in objective_blob for label in known_labels)
+                    if not grounded:
                         self._report_progress(
-                            f"Already reported this phase's finding once — forcing phase_complete "
-                            f"instead of repeating (\"{action.message}\")"
+                            f"Rejecting ungrounded {action.action_type.value} "
+                            f"(\"{action.message}\") — nothing matching this phase's objective "
+                            f"has actually been detected or remembered"
                         )
                         action = VLMAction(
-                            action_type=ActionType.PHASE_COMPLETE,
-                            message=action.message,
-                            reasoning="Overridden: repeated an already-reported grounded finding",
+                            action_type=ActionType.SEARCH_AREA,
+                            target_object=None,
+                            reasoning="Overridden: claimed a finding not backed by any matching detection/memory",
                         )
-                    else:
-                        already_reported_grounded_finding = True
+                    elif action.action_type == ActionType.REPORT:
+                        # Second hard guard, same reason as the first: the system
+                        # prompt already explicitly tells the model "if RECENT
+                        # ACTIONS shows you reporting the same finding, don't
+                        # report it again — call phase_complete instead." Confirmed
+                        # live that it does NOT reliably follow this — one real run
+                        # reported the identical already-grounded finding 26 times
+                        # in a row until the action budget ran out, never once
+                        # escalating on its own. Once a grounded finding has been
+                        # reported once this phase, force any further REPORT into
+                        # PHASE_COMPLETE instead of trusting the model to notice.
+                        if already_reported_grounded_finding:
+                            self._report_progress(
+                                f"Already reported this phase's finding once — forcing phase_complete "
+                                f"instead of repeating (\"{action.message}\")"
+                            )
+                            action = VLMAction(
+                                action_type=ActionType.PHASE_COMPLETE,
+                                message=action.message,
+                                reasoning="Overridden: repeated an already-reported grounded finding",
+                            )
+                        else:
+                            already_reported_grounded_finding = True
 
             elif action.action_type == ActionType.COUNT:
                 # Deliberately NOT the same "ungrounded claim" rejection REPORT
@@ -1080,6 +1127,7 @@ class MissionLoop:
                     "low_confidence": low_confidence, "locations": locations,
                 })
                 self._send_report(msg)
+                count_recorded_this_phase = True
 
             elif action.action_type == ActionType.CAPTURE_PHOTO:
                 self._report_progress("Capturing photo")
