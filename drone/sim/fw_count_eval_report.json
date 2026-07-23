@@ -1,0 +1,228 @@
+{
+  "pass1": [
+    {
+      "phrase": "circle around and count the people then land",
+      "response": {
+        "action": "mission",
+        "mission": {
+          "phases": [
+            {
+              "type": "arm_and_takeoff",
+              "altitude_m": 5
+            },
+            {
+              "type": "fly_circle",
+              "radius_m": 15,
+              "altitude_m": 5,
+              "waypoints": 8
+            },
+            {
+              "objective": "Orbit the area and count all distinct people visible",
+              "success": "Total person count reported"
+            },
+            {
+              "type": "return_home"
+            },
+            {
+              "type": "land"
+            }
+          ]
+        },
+        "message": "I'll circle the area, count all distinct people using the onboard AI (deduplicating repeat sightings), report the total, then return and land."
+      },
+      "problems": []
+    },
+    {
+      "phrase": "how many cars are parked down there? come back and tell me",
+      "response": {
+        "action": "mission",
+        "mission": {
+          "phases": [
+            {
+              "type": "arm_and_takeoff",
+              "altitude_m": 15
+            },
+            {
+              "objective": "Fly over the area below and orbit to count all parked cars, using geo-tagged memory to deduplicate repeat sightings",
+              "success": "Accurate count of distinct parked cars reported"
+            },
+            {
+              "type": "return_home"
+            },
+            {
+              "type": "land"
+            }
+          ]
+        },
+        "message": "I'll fly out, count all the parked cars below using my geo-tagged memory to avoid double-counting, then return and report the total."
+      },
+      "problems": []
+    },
+    {
+      "phrase": "fly over the trees and count the people on the grass",
+      "response": {
+        "action": "mission",
+        "mission": {
+          "phases": [
+            {
+              "type": "arm_and_takeoff",
+              "altitude_m": 15
+            },
+            {
+              "objective": "Fly over the tree line to reach the grass area beyond",
+              "success": "Grass area visible below",
+              "min_clearance_alt": 15
+            },
+            {
+              "objective": "Survey the grass area and count all distinct people visible",
+              "success": "Total count of people on the grass reported"
+            },
+            {
+              "type": "return_home"
+            },
+            {
+              "type": "land"
+            }
+          ]
+        },
+        "message": "I'll fly over the trees, survey the grass area, count all distinct people, and return home."
+      },
+      "problems": []
+    },
+    {
+      "phrase": "survey the field and report what you see",
+      "response": {
+        "action": "mission",
+        "mission": {
+          "phases": [
+            {
+              "type": "arm_and_takeoff",
+              "altitude_m": 15
+            },
+            {
+              "objective": "Fly a systematic survey pattern over the entire field, scanning all areas",
+              "success": "Full field coverage achieved"
+            },
+            {
+              "objective": "Analyze and report everything observed in the field \u2014 crops, structures, people, animals, equipment, damage, or anything notable",
+              "success": "Detailed field report provided"
+            },
+            {
+              "type": "return_home"
+            },
+            {
+              "type": "land"
+            }
+          ]
+        },
+        "message": "Launching a full field survey. The drone will fly a systematic coverage pattern, visually analyze the field, report all findings, then return home."
+      },
+      "problems": []
+    },
+    {
+      "phrase": "go count the vehicles by the lot, then land",
+      "response": {
+        "action": "mission",
+        "mission": {
+          "phases": [
+            {
+              "type": "arm_and_takeoff",
+              "altitude_m": 15
+            },
+            {
+              "objective": "Fly to the nearby lot and orbit the area, counting all distinct vehicles visible",
+              "success": "Total vehicle count reported"
+            },
+            {
+              "type": "land"
+            }
+          ]
+        },
+        "message": "Flying to the lot, counting all vehicles, then landing on site."
+      },
+      "problems": []
+    },
+    {
+      "phrase": "find the people and orbit them",
+      "response": {
+        "action": "mission",
+        "mission": {
+          "phases": [
+            {
+              "type": "arm_and_takeoff",
+              "altitude_m": 15
+            },
+            {
+              "objective": "Search the area for people and identify their location",
+              "success": "One or more people located and position noted"
+            },
+            {
+              "type": "fly_circle",
+              "radius_m": 10,
+              "altitude_m": 15,
+              "waypoints": 8
+            },
+            {
+              "objective": "Capture photo of the people below",
+              "success": "Photo captured"
+            },
+            {
+              "type": "return_home",
+              "alt_m": 15
+            },
+            {
+              "type": "land"
+            }
+          ]
+        },
+        "message": "I'll search for people in the area, orbit them at a 10m radius, capture a photo, and return home."
+      },
+      "problems": []
+    },
+    {
+      "phrase": "land on my hand",
+      "response": {
+        "action": "respond",
+        "message": "Landing on a person's hand isn't something I can plan \u2014 it's unsafe and I won't command the drone to target a human body part as a landing zone. I can land at the home position or a designated safe landing pad instead. Let me know if you'd like to return home and land normally."
+      },
+      "problems": []
+    }
+  ],
+  "pass2": [
+    {
+      "phrase": "how many cars are parked down there? come back and tell me",
+      "success": false,
+      "elapsed_s": 736.8,
+      "actions": 43,
+      "summary": "Failed at phase 2",
+      "findings": [
+        "Counted 0 parked car",
+        "memory: person at (165.0, -10.0, 0.9) score=0.78 hits=1",
+        "memory: person at (175.0, 55.0, 0.9) score=0.77 hits=1",
+        "memory: building at (155.0, 70.0, 3.0) score=0.60 hits=1"
+      ],
+      "failure_reason": "No parked cars found in the search area despite thorough coverage. Mission failed due to lack of target detection.",
+      "target": "car",
+      "truth_count": 4,
+      "reported_count": 0,
+      "video_path": "/Users/jsaib/code/ys/a/eco/drone/sim/s2_videos/how_many_cars_are_parked_down_there__come_back_and_tell_me.mp4",
+      "n_frames": 1768
+    },
+    {
+      "phrase": "circle around and count the people then land",
+      "success": true,
+      "elapsed_s": 211.7,
+      "actions": 25,
+      "summary": "Mission completed successfully",
+      "findings": [
+        "Counted 0 person (target may move between sightings \u2014 this reflects distinct positions seen during the orbit, not a simultaneous snapshot)"
+      ],
+      "failure_reason": null,
+      "target": "person",
+      "truth_count": 5,
+      "reported_count": 0,
+      "video_path": "/Users/jsaib/code/ys/a/eco/drone/sim/s2_videos/circle_around_and_count_the_people_then_land.mp4",
+      "n_frames": 474
+    }
+  ]
+}
