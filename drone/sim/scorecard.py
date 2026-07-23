@@ -397,18 +397,115 @@ def _load_quad_onnx_controller(onnx_path: str):
     return controller
 
 
+def _load_fixedwing_onnx_controller(onnx_path: str, seq_len: int = 16):
+    """Wrap an ONNX fixed-wing policy (56-dim state, 4D coordinated-turn action).
+
+    State layout is identical to the quad's (contract.py) — differing only in the
+    `vehicle` flag (VEHICLE_FIXEDWING=2.0, fw_contract.py) and the depth range
+    (DEPTH_MAX_FW=80.0 vs the quad's 10.0). team_world already senses fixed-wing
+    agents out to their sense_range_m=80 (vehicle_class.FIXEDWING), so obs_obj.scan
+    is already in that range; only the fallback fill value (used if a scan is ever
+    malformed) differs here.
+
+    Unlike the quad/rover policies (which carry a GRU hidden state across steps,
+    inputs `(state, h_in)` -> `(action, h_out)`), the shipped fixed-wing exports
+    (policy_fw.onnx, policy_fw_v1.onnx) are **window-mode**: a single
+    `state_window` input of shape (batch, seq_len, 56) holding the last `seq_len`
+    raw states, matching drone/common/reactive_planner.py's LearnedPlanner (same
+    SEQ_LEN=16, same "roll the ring buffer, model normalizes internally"
+    contract). Detected by input name so a future recurrent fixed-wing export
+    (input `h_in` present) is handled the same way the quad/rover loaders are.
+
+    Action is clipped to the fixed-wing envelope, not the quad's symmetric one:
+    forward speed to [min_speed_mps, max_speed_mps] (never zero/reverse — a
+    fixed-wing can't hover), yaw_rate to ±max_yaw_rate_radps. vy is unused by the
+    coordinated-turn integrator; vz gets a final climb-angle clip there too.
+    """
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        raise ImportError("onnxruntime required — pip install onnxruntime")
+
+    sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    in_names = [i.name for i in sess.get_inputs()]
+    recurrent = "h_in" in in_names
+    STATE_DIM = 56
+    VEHICLE_FIXEDWING = 2.0
+    DEPTH_MAX_FW = 80.0
+
+    if recurrent:
+        in0 = sess.get_inputs()[in_names.index("state")] if "state" in in_names else sess.get_inputs()[0]
+        in1 = sess.get_inputs()[in_names.index("h_in")]
+        hidden = in1.shape[-1]
+        hidden_states: dict[str, np.ndarray] = {}
+    else:
+        in0 = sess.get_inputs()[0]
+        windows: dict[str, np.ndarray] = {}
+
+    def _build_state_vec(agent, obs_obj) -> np.ndarray:
+        import math
+        bt = np.asarray(obs_obj.body_target, dtype=np.float32)
+        tf, tl, tu = float(bt[0]), float(bt[1]), float(bt[2])
+        dist = float(obs_obj.goal_dist)
+        yaw_err = math.atan2(tl, tf) if dist > 1e-4 else 0.0
+        c, s = math.cos(-agent.yaw), math.sin(-agent.yaw)
+        wv = agent.vel
+        vf = c * float(wv[0]) - s * float(wv[1])
+        vl = s * float(wv[0]) + c * float(wv[1])
+        vu = float(wv[2])
+        depth45 = np.asarray(obs_obj.scan, dtype=np.float32)
+        if len(depth45) != 45:
+            depth45 = np.full(45, DEPTH_MAX_FW, dtype=np.float32)
+        raw = np.array([tf, tl, tu, dist, vf, vl, vu, yaw_err, 0.0,
+                        float(agent.pos[2]), VEHICLE_FIXEDWING], dtype=np.float32)
+        return np.concatenate([raw, depth45])   # (56,)
+
+    def controller(agent, obs_obj):
+        aid = agent.id
+        state_vec = _build_state_vec(agent, obs_obj)
+
+        if recurrent:
+            if aid not in hidden_states:
+                hidden_states[aid] = np.zeros((1, 1, hidden), dtype=np.float32)
+            inp = state_vec[None, None, :]   # (1,1,56)
+            action, h_out = sess.run(None, {in0.name: inp, in1.name: hidden_states[aid]})
+            hidden_states[aid] = h_out
+            out = action[0, 0].astype(np.float32).copy()
+        else:
+            if aid not in windows:
+                windows[aid] = np.zeros((seq_len, STATE_DIM), dtype=np.float32)
+            windows[aid] = np.roll(windows[aid], -1, axis=0)
+            windows[aid][-1] = state_vec
+            inp = windows[aid][None, :, :]   # (1, seq_len, 56)
+            action = sess.run(None, {in0.name: inp})[0]
+            out = action[0].astype(np.float32).copy()
+
+        vc = agent.vclass
+        out[0] = float(np.clip(out[0], vc.min_speed_mps, vc.max_speed_mps))
+        out[1] = float(np.clip(out[1], -vc.max_speed_mps, vc.max_speed_mps))
+        out[2] = float(np.clip(out[2], -vc.max_speed_mps, vc.max_speed_mps))
+        out[3] = float(np.clip(out[3], -vc.max_yaw_rate_radps, vc.max_yaw_rate_radps))
+        return out
+
+    return controller
+
+
 # Keep the old name as an alias so any external callers don't break.
 _load_onnx_controller = _load_rover_onnx_controller
 
 
-def compare_runs(scenarios_dir: str, rover_onnx: str,
+def compare_runs(scenarios_dir: str, rover_onnx: str | None = None,
                  quad_onnx: str | None = None,
+                 fw_onnx: str | None = None,
                  out_path: str | None = None) -> dict:
     """Run the full suite twice — once with reactive baseline, once with ONNX policies.
 
-    rover_onnx: path to rover ONNX (83-dim → 2D unicycle).
-    quad_onnx:  optional path to quad ONNX (56-dim → 4D holonomic). When omitted,
-                quads fall back to TeamRuntime (same as baseline).
+    rover_onnx: optional path to rover ONNX (83-dim → 2D unicycle).
+    quad_onnx:  optional path to quad ONNX (56-dim → 4D holonomic).
+    fw_onnx:    optional path to fixed-wing ONNX (56-dim → 4D coordinated-turn).
+    Any class omitted here falls back to TeamRuntime (same as baseline) — this is
+    what makes a fixed-wing-only suite (no rover in the roster) usable without a
+    dummy rover_onnx path.
 
     Returns a comparison dict with per-scenario delta in interventions and a
     headline delta_level (positive = policy improved the autonomy level).
@@ -425,13 +522,17 @@ def compare_runs(scenarios_dir: str, rover_onnx: str,
             runner = ScenarioRunner(Scenario.from_yaml(str(f)))
             rt = TeamRuntime(runner)
             if use_onnx:
-                rover_ctrl = _load_rover_onnx_controller(rover_onnx)
+                rover_ctrl = _load_rover_onnx_controller(rover_onnx) if rover_onnx else None
                 quad_ctrl = (_load_quad_onnx_controller(quad_onnx)
                              if quad_onnx else None)
+                fw_ctrl = (_load_fixedwing_onnx_controller(fw_onnx)
+                           if fw_onnx else None)
                 _base = rt.controller
 
-                def _mixed(agent, obs, _rc=rover_ctrl, _qc=quad_ctrl, _bc=_base):
+                def _mixed(agent, obs, _rc=rover_ctrl, _qc=quad_ctrl, _fc=fw_ctrl, _bc=_base):
                     if agent.vclass.kinematics is Kinematics.UNICYCLE_2D:
+                        if _rc is None:
+                            return _bc(agent, obs)
                         action = np.asarray(_rc(agent, obs), np.float32).copy()
                         if not getattr(agent, "sensor_ok", True):
                             action[0] *= 0.08
@@ -442,6 +543,16 @@ def compare_runs(scenarios_dir: str, rover_onnx: str,
                                     and float(np.linalg.norm(rel_body[:2])) < 2.0):
                                 action[0] *= 0.4
                                 break
+                        return action
+                    elif agent.vclass.kinematics is Kinematics.COORDINATED_TURN_3D:
+                        if _fc is None:
+                            return _bc(agent, obs)
+                        action = np.asarray(_fc(agent, obs), np.float32).copy()
+                        if not getattr(agent, "sensor_ok", True):
+                            # Blind fixed-wing: no "almost stop" option (can't drop
+                            # below stall) — the safe degradation is flying more
+                            # conservatively straight, not slower.
+                            action[3] *= 0.3
                         return action
                     elif _qc is not None:
                         action = np.asarray(_qc(agent, obs), np.float32).copy()
@@ -470,7 +581,7 @@ def compare_runs(scenarios_dir: str, rover_onnx: str,
         },
         "policy": {
             "autonomy_level": pol_level, "rationale": pol_rat,
-            "rover_onnx": rover_onnx, "quad_onnx": quad_onnx,
+            "rover_onnx": rover_onnx, "quad_onnx": quad_onnx, "fw_onnx": fw_onnx,
             "mean_interventions": round(sum(s.interventions for s in policy_scores) / max(len(policy_scores), 1), 2),
             "mission_success_rate": round(sum(s.mission_complete for s in policy_scores) / max(len(policy_scores), 1), 3),
         },
@@ -513,21 +624,25 @@ def _print_comparison(cmp: dict):
         print(f"  {s['name']:28s} {s['baseline_interventions']:<5d} {s['policy_interventions']:<6d} {sign}{d}")
 
 
-def _record_comparison_videos(scenarios_dir, rover_onnx, quad_onnx, video_dir, renderer, smart):
+def _record_comparison_videos(scenarios_dir, rover_onnx, quad_onnx, video_dir, renderer, smart,
+                              fw_onnx=None):
     try:
         from .vehicle_class import Kinematics
     except ImportError:
         from vehicle_class import Kinematics
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
-    rover_ctrl = _load_rover_onnx_controller(rover_onnx)
+    rover_ctrl = _load_rover_onnx_controller(rover_onnx) if rover_onnx else None
     quad_ctrl = _load_quad_onnx_controller(quad_onnx) if quad_onnx else None
+    fw_ctrl = _load_fixedwing_onnx_controller(fw_onnx) if fw_onnx else None
     for f in files:
         runner = ScenarioRunner(Scenario.from_yaml(str(f)))
         rt = TeamRuntime(runner)
         _base = rt.controller
 
-        def _mixed(agent, obs, _rc=rover_ctrl, _qc=quad_ctrl, _bc=_base):
+        def _mixed(agent, obs, _rc=rover_ctrl, _qc=quad_ctrl, _fc=fw_ctrl, _bc=_base):
             if agent.vclass.kinematics is Kinematics.UNICYCLE_2D:
+                if _rc is None:
+                    return _bc(agent, obs)
                 action = np.asarray(_rc(agent, obs), np.float32).copy()
                 if not getattr(agent, "sensor_ok", True):
                     action[0] *= 0.08; action[1] *= 0.2
@@ -535,6 +650,13 @@ def _record_comparison_videos(scenarios_dir, rover_onnx, quad_onnx, video_dir, r
                     if (float(rel_body[0]) > 0.3 and abs(float(rel_body[1])) < 0.8
                             and float(np.linalg.norm(rel_body[:2])) < 2.0):
                         action[0] *= 0.4; break
+                return action
+            elif agent.vclass.kinematics is Kinematics.COORDINATED_TURN_3D:
+                if _fc is None:
+                    return _bc(agent, obs)
+                action = np.asarray(_fc(agent, obs), np.float32).copy()
+                if not getattr(agent, "sensor_ok", True):
+                    action[3] *= 0.3
                 return action
             elif _qc is not None:
                 action = np.asarray(_qc(agent, obs), np.float32).copy()
@@ -590,6 +712,9 @@ if __name__ == "__main__":
                     help="ONNX rover policy (83-dim → 2D) to compare against baseline")
     ap.add_argument("--quad-policy", default=None,
                     help="ONNX quad policy (56-dim → 4D); omit to keep quads on TeamRuntime")
+    ap.add_argument("--fw-policy", default=None,
+                    help="ONNX fixed-wing policy (56-dim → 4D coordinated-turn); "
+                         "omit to keep fixed-wing agents on TeamRuntime")
     ap.add_argument("--record-video", default=None, metavar="DIR",
                     help="save per-scenario overhead MP4s to this directory")
     ap.add_argument("--out", default=None, help="write report JSON to this path")
@@ -620,14 +745,16 @@ if __name__ == "__main__":
         from .smart_layer import RuleBasedSmart, LLMSmart
         smart = LLMSmart() if args.smart_layer == "llm" else RuleBasedSmart()
 
-    if args.rover_policy:
-        cmp = compare_runs(scn_dir, args.rover_policy,
+    if args.rover_policy or args.quad_policy or args.fw_policy:
+        cmp = compare_runs(scn_dir, rover_onnx=args.rover_policy,
                            quad_onnx=args.quad_policy,
+                           fw_onnx=args.fw_policy,
                            out_path=args.out)
         _print_comparison(cmp)
         if renderer and args.record_video:
             _record_comparison_videos(scn_dir, args.rover_policy,
-                                      args.quad_policy, args.record_video, renderer, smart)
+                                      args.quad_policy, args.record_video, renderer, smart,
+                                      fw_onnx=args.fw_policy)
     else:
         rep = score_suite(scn_dir, use_runtime=True, smart=smart, sensing=args.sensing)
         _print_suite(rep)
