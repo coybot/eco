@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://countdemo_env"]
+
+[ext_resource type="Script" path="res://scripts/env_countdemo.gd" id="1"]
+
+[node name="Countdemo" type="Node3D"]
+script = ExtResource("1")
