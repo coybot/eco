@@ -312,6 +312,21 @@ class MissionLoop:
             except Exception:
                 pass
 
+        # FC-enforced safety envelope (geofence + altitude floor) — the real
+        # guarantee behind any "climb over an obstacle" decision downstream;
+        # perception/reasoning only ever *trigger* a climb, this is what
+        # enforces it regardless (change E). No-ops on quad/rover/sim
+        # backends that don't have (or need) this — see configure_safety()'s
+        # per-backend docstrings. Deliberately called with no mission-
+        # specific arguments: fence radius/altitude floor are airframe/site
+        # safety parameters, not something a free-form command should be
+        # able to set.
+        try:
+            if not self._get_backend().configure_safety():
+                self._report_progress("WARNING: safety envelope not fully configured")
+        except Exception as e:
+            self._report_progress(f"WARNING: configure_safety() failed: {e}")
+
         try:
             # Execute each phase
             while not mission.is_complete():
@@ -520,10 +535,28 @@ class MissionLoop:
             return {'failed': True, 'reason': 'takeoff did not report reaching altitude', 'actions': 1}
         return {'success': True, 'actions': 1}
 
+    def _apply_clearance(self, alt_m: float, phase: Dict[str, Any]) -> float:
+        """change E's climb-to-clear mechanism: a transit phase can carry a
+        min_clearance_alt (e.g. "there's a tree line on this route, don't go
+        below Xm") — this only ever raises the commanded altitude for the
+        leg, never lowers it below what the phase already asked for. The
+        REAL guarantee is still the FC-enforced altitude floor
+        (configure_safety() at mission start); this is what lets a mission
+        *express* a known obstacle instead of relying solely on the floor's
+        much more conservative global minimum."""
+        min_clearance = phase.get('min_clearance_alt')
+        if min_clearance is not None and min_clearance > alt_m:
+            self._report_progress(
+                f"Climbing to {min_clearance}m for this leg's min_clearance_alt "
+                f"(was {alt_m}m)"
+            )
+            return min_clearance
+        return alt_m
+
     def _exec_nav(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         north_m = phase.get('north_m', 0.0)
         east_m = phase.get('east_m', 0.0)
-        alt_m = phase.get('alt_m', 5.0)
+        alt_m = self._apply_clearance(phase.get('alt_m', 5.0), phase)
         desc = phase.get('description', f'N={north_m}m E={east_m}m')
         self._report_progress(f"Navigating: {desc}")
         try:
@@ -538,7 +571,7 @@ class MissionLoop:
     def _exec_go_to_gps(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         lat = phase.get('lat')
         lon = phase.get('lon')
-        alt_m = phase.get('alt_m', 15.0)
+        alt_m = self._apply_clearance(phase.get('alt_m', 15.0), phase)
         desc = phase.get('description', f'{lat},{lon}')
         self._report_progress(f"Flying to GPS: {desc}")
         if lat is None or lon is None:

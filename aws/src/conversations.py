@@ -100,6 +100,14 @@ at import time, so keep this section in sync with it if either changes)
    {"type": "arm_and_takeoff", "altitude_m": 5}
    {"type": "nav", "north_m": 10.0, "east_m": 0.0, "alt_m": 5, "description": "fly 10m north"}
    {"type": "go_to_gps", "lat": 37.7749, "lon": -122.4194, "alt_m": 15, "description": "123 Main St"}
+   — both "nav" and "go_to_gps" accept an optional "min_clearance_alt": if you
+   know this leg needs to clear something (a tree line, a ridge, a building)
+   between here and there, set it to a safe altitude and the drone will climb
+   to at least that height for this leg specifically (it never lowers below
+   whatever alt_m already asked for). This expresses a KNOWN obstacle on the
+   route — it is not a substitute for the drone's own always-on obstacle
+   avoidance, and don't set it just to be cautious with no actual known
+   obstacle in mind.
    {"type": "fly_circle", "radius_m": 10, "altitude_m": 5, "waypoints": 8}
    {"type": "look_around", "directions": 4}
    {"type": "capture_photo"}

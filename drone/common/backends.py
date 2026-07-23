@@ -55,6 +55,12 @@ class Backend(Protocol):
     def takeoff(self, alt_m: float) -> bool: ...
     def land(self, heading_deg: Optional[float] = None) -> bool: ...
     def rtl(self, alt_m: Optional[float] = None) -> bool: ...
+    # change E: the FC-enforced safety envelope (geofence + altitude floor)
+    # that "climb over the trees" actually depends on — perception only
+    # triggers a climb, this is what guarantees it regardless.
+    def configure_safety(self, fence_radius_m: Optional[float] = None,
+                          fence_max_alt_m: Optional[float] = None,
+                          min_alt_floor_m: Optional[float] = None) -> bool: ...
 
 
 def world_from_range_bearing(
@@ -334,6 +340,38 @@ class HardwareBackend:
         # just for one enum member.
         return getattr(result, 'status', 'failed') != 'failed'
 
+    def configure_safety(self, fence_radius_m: Optional[float] = None,
+                          fence_max_alt_m: Optional[float] = None,
+                          min_alt_floor_m: Optional[float] = None) -> bool:
+        if not self._is_fixedwing():
+            # Out of scope for this plan (fixed-wing-focused) — a real
+            # ArduCopter geofence would be a separate, deliberate addition,
+            # not silently bundled in here. No-op success, not a failure:
+            # MissionLoop must be able to call this unconditionally
+            # regardless of backend (same contract as log_event()).
+            return True
+        # fence_max_alt_m/min_alt_floor_m default to plane_sdk's own
+        # MAX_ALTITUDE/MIN_ALTITUDE constants (module-level attrs on the
+        # plane_sdk module passed in as self._plane) rather than duplicating
+        # those numbers here — single source of truth. fence_radius_m has no
+        # natural per-airframe default (it's genuinely site-specific: how far
+        # this mission is allowed to range from home) — 500 m is a
+        # conservative placeholder that MUST be reviewed for the real flight
+        # site, not trusted blindly; this is deliberately not something the
+        # cloud/LLM mission planner sets per-command (see reasoning_loop.py's
+        # call site).
+        if fence_radius_m is None:
+            fence_radius_m = 500.0
+        if fence_max_alt_m is None:
+            fence_max_alt_m = getattr(self._plane, "MAX_ALTITUDE", 120.0)
+        if min_alt_floor_m is None:
+            min_alt_floor_m = getattr(self._plane, "MIN_ALTITUDE", 15.0)
+        try:
+            return bool(self._plane.configure_safety_envelope(
+                fence_radius_m, fence_max_alt_m, min_alt_floor_m))
+        except Exception:
+            return False
+
 
 class SimBackend:
     """Drives the Godot fixed-wing sim (fixedwing_manager.gd) via a DepotClient
@@ -476,3 +514,13 @@ class SimBackend:
         pose = self.get_pose()
         cruise_alt = alt_m if alt_m is not None else (pose[2] if pose else 20.0)
         return self.goto(0.0, 0.0, cruise_alt)
+
+    def configure_safety(self, fence_radius_m: Optional[float] = None,
+                          fence_max_alt_m: Optional[float] = None,
+                          min_alt_floor_m: Optional[float] = None) -> bool:
+        # No real MAVLink geofence exists in the Godot sim — genuinely
+        # nothing to configure here (unlike takeoff()/land()'s "honest
+        # best-effort" gaps above, there isn't even an approximate sim
+        # equivalent to fall back to). No-op success so MissionLoop can call
+        # this unconditionally regardless of backend, same as log_event().
+        return True
