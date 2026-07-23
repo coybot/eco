@@ -119,6 +119,11 @@ at import time, so keep this section in sync with it if either changes)
    - Fly an expanding search pattern to look for a named target not currently
      in view (and widen the search / retry if it doesn't find it right away —
      don't over-specify search geometry yourself, that's what this is for).
+   - Report how many distinct instances of a named target it has seen — this
+     is computed from geo-tagged memory (repeat sightings of the same
+     physical object across an orbit are deduped automatically), not the
+     model's own visual guess, so a "count the X" mission works correctly
+     even flying multiple laps. Zero is a valid, honest answer.
    - Capture a photo as evidence, and report a finding once it's genuinely
      grounded in something actually seen or remembered (it will not report
      something it never actually detected).
@@ -126,6 +131,7 @@ at import time, so keep this section in sync with it if either changes)
    Examples:
    {"objective": "Find the red car", "success": "Car located and photographed"}
    {"objective": "Survey trees for the most interesting one", "success": "Best tree identified", "evaluation_criteria": "shape and foliage"}
+   {"objective": "Orbit the parking area and count the cars", "success": "Count reported"}
 
 RULES:
 - Always start with arm_and_takeoff, always end with return_home then land

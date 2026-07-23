@@ -53,6 +53,15 @@ import mission_vocab
 CAM_VIEWPORT_W = 640
 CAM_VIEWPORT_H = 480
 
+# Labels worth an honest caveat on a COUNT result: SpatialMemory dedups by
+# world position, which is exactly right for a parked car but only
+# approximately right for something that can walk between sightings during an
+# orbit — not a computed confidence interval (no velocity tracking exists),
+# just an honest structural note so a count of a possibly-moving target isn't
+# presented with false precision. Deliberately small/conservative; extend as
+# real target classes are added (see change D).
+POSSIBLY_MOVING_LABELS = {"person", "people", "pedestrian", "human", "animal", "dog", "cat"}
+
 DRONE_SDK_AVAILABLE = False
 try:
     import drone_sdk as _drone_sdk
@@ -753,6 +762,35 @@ class MissionLoop:
                     else:
                         already_reported_grounded_finding = True
 
+            elif action.action_type == ActionType.COUNT:
+                # Deliberately NOT the same "ungrounded claim" rejection REPORT
+                # gets above — a real, computed zero is always a valid, honest
+                # answer (there's nothing to hallucinate about correctly
+                # reporting "covered the area, found none"). Shares the same
+                # anti-repetition state as REPORT (already_reported_grounded_
+                # finding) since both represent "I've delivered my grounded
+                # finding for this phase, stop repeating it".
+                if not action.target_object:
+                    self._report_progress("count action had no target_object — treating as a search decision instead")
+                    action = VLMAction(
+                        action_type=ActionType.SEARCH_AREA,
+                        target_object=None,
+                        reasoning="Overridden: count requested with no target_object",
+                    )
+                elif already_reported_grounded_finding:
+                    n = self.memory.count(action.target_object)
+                    self._report_progress(
+                        f"Already reported a count this phase — forcing phase_complete "
+                        f"instead of counting again (still {n} {action.target_object})"
+                    )
+                    action = VLMAction(
+                        action_type=ActionType.PHASE_COMPLETE,
+                        message=f"Counted {n} {action.target_object}",
+                        reasoning="Overridden: count already reported this phase",
+                    )
+                else:
+                    already_reported_grounded_finding = True
+
             self._history.append(f"{action.action_type.value}: {action.message or action.reasoning or ''}"[:100])
 
             # 4. Handle action
@@ -922,6 +960,32 @@ class MissionLoop:
                     backend.goto(wy, wx, alt)
                 else:
                     self._history.append(f"Search pattern exhausted for {target}")
+
+            elif action.action_type == ActionType.COUNT:
+                # The actual counting is done HERE, by SpatialMemory, not by
+                # the VLM's own arithmetic — action.target_object is only used
+                # to select which memory bucket to count (see matching()'s
+                # docstring for why this is authoritative: it's the same
+                # geo-dedup that already backs RETURN_TO_LANDMARK/REPORT).
+                target = action.target_object
+                matches = self.memory.matching(target)
+                n = len(matches)
+                low_confidence = sum(1 for lm in matches if lm.hits == 1)
+                locations = [(round(lm.x, 1), round(lm.y, 1), round(lm.z, 1)) for lm in matches]
+                confidence_note = f", {low_confidence} seen only once" if low_confidence else ""
+                moving_note = (
+                    " (target may move between sightings — this reflects distinct "
+                    "positions seen during the orbit, not a simultaneous snapshot)"
+                    if normalize_label(target) in POSSIBLY_MOVING_LABELS else ""
+                )
+                msg = f"Counted {n} {target}{confidence_note}{moving_note}"
+                self._report_progress(f"Count: {msg}")
+                self._findings.append(msg)
+                backend.log_event("count_reported", {
+                    "target": target, "count": n,
+                    "low_confidence": low_confidence, "locations": locations,
+                })
+                self._send_report(msg)
 
             elif action.action_type == ActionType.CAPTURE_PHOTO:
                 self._report_progress("Capturing photo")
@@ -1110,6 +1174,21 @@ assert _dispatch_keys == _vocab_keys, (
     f"drifted — only in dispatch: {_dispatch_keys - _vocab_keys}, only in "
     f"vocab: {_vocab_keys - _dispatch_keys}"
 )
+
+# Same idea for the VLM action vocabulary, one direction only: every
+# capability mission_vocab.VLM_CAPABILITIES describes to the cloud planner
+# must be a real ActionType vlm.py can actually parse/dispatch (catches a
+# renamed/typo'd action silently going undescribed-but-broken). Not a strict
+# equality check — VLM_CAPABILITIES deliberately omits the terminal/control
+# actions (phase_complete/mission_complete/mission_failed), which aren't
+# "capabilities" a planner composes around.
+if VLM_AVAILABLE:
+    _capability_keys = set(mission_vocab.VLM_CAPABILITIES.keys())
+    _action_values = {a.value for a in ActionType}
+    assert _capability_keys <= _action_values, (
+        f"mission_vocab.VLM_CAPABILITIES describes actions vlm.ActionType "
+        f"doesn't have: {_capability_keys - _action_values}"
+    )
 
 
 def run_mission(mission: Mission, mqtt_client=None, conversation_id: str = None, drone_sdk=None) -> MissionResult:

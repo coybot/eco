@@ -10,6 +10,7 @@ The VLM outputs structured actions that integrate with Nav2 for execution.
 """
 
 import os
+import re
 import sys
 import time
 import json
@@ -32,6 +33,11 @@ class ActionType(str, Enum):
     """Types of actions the VLM can output."""
     NAVIGATE_TO_POINT = "navigate_to_point"  # Point on image -> Nav2 goal
     NAVIGATE_TO_OBJECT = "navigate_to_object"  # Named object -> Nav2 goal
+    RETURN_TO_LANDMARK = "return_to_landmark"  # Named label -> remembered world position (memory.nearest)
+    SEARCH_AREA = "search_area"  # Fly an expanding-orbit search pattern for a named target
+    COUNT = "count"  # Report a distinct-object count for a named target, computed
+                      # from SpatialMemory (not the model's own visual arithmetic —
+                      # see reasoning_loop.py's COUNT handler)
     CAPTURE_PHOTO = "capture_photo"
     REPORT = "report"  # Send message to user
     PHASE_COMPLETE = "phase_complete"
@@ -55,10 +61,17 @@ class VLMAction:
     
     # VLM's reasoning (for debugging/display)
     reasoning: Optional[str] = None
-    
+
     # Confidence (0-1)
     confidence: float = 1.0
-    
+
+    # True only when the model's raw output was genuinely unusable (empty
+    # after retries, or no action_type recoverable by any parse strategy) —
+    # lets callers (MissionLoop) tell "the model decided X" apart from "the
+    # model failed to decide anything", instead of silently treating both the
+    # same way. See _parse_response's last-resort branch.
+    parse_failed: bool = False
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "action_type": self.action_type.value,
@@ -68,6 +81,7 @@ class VLMAction:
             "message": self.message,
             "reasoning": self.reasoning,
             "confidence": self.confidence,
+            "parse_failed": self.parse_failed,
         }
     
     @classmethod
@@ -92,16 +106,31 @@ OUTPUT FORMAT:
 You must respond with a JSON object containing:
 {
   "reasoning": "Your brief reasoning about what you see and why you chose this action",
-  "action_type": "one of: navigate_to_point, navigate_to_object, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
+  "action_type": "one of: navigate_to_point, navigate_to_object, return_to_landmark, search_area, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
   "point_x": <pixel x coordinate if navigate_to_point>,
   "point_y": <pixel y coordinate if navigate_to_point>,
-  "target_object": "<object name if navigate_to_object>",
+  "target_object": "<object name if navigate_to_object, return_to_landmark, search_area, or count>",
   "message": "<message content if report/complete/failed>"
 }
 
 ACTION TYPES:
 - navigate_to_point: Point to where the drone should fly (x,y pixel coordinates on the image)
 - navigate_to_object: Navigate toward a detected object by name
+- return_to_landmark: Fly back to a REMEMBERED LANDMARK by label (see MEMORY below) —
+  use this when a target you've already seen is no longer visible (out of range/FOV,
+  a fast vehicle flew past it) instead of re-searching from scratch
+- search_area: Fly an expanding-orbit search pattern for a named target that is
+  NOT in MEMORY (never seen) or whose remembered position turned out to be empty —
+  each decision advances one leg of the pattern, so keep issuing search_area while
+  the target remains unfound and re-evaluate once it appears in CURRENT DETECTIONS
+- count: Report how many distinct TARGET_OBJECTs have been seen so far this mission.
+  You do NOT need to count them yourself by eye — the system already tracks every
+  distinct sighting in MEMORY (it merges repeat sightings of the same physical
+  object, so flying past the same car twice doesn't double-count it) and reports
+  the real number. Your job is only to decide WHEN you're confident you've covered
+  enough of the area to call count for <target_object> — e.g. after orbiting the
+  whole area at least once, not after a single glimpse. Zero is a completely valid
+  and honest count if you've covered the area and genuinely seen none.
 - capture_photo: Take a photo of what's currently in view
 - report: Send a message/observation to the user
 - phase_complete: Current mission phase is done, move to next
@@ -110,11 +139,23 @@ ACTION TYPES:
 - ask_cloud: Need help from cloud AI (complex decision)
 
 IMPORTANT:
+- NEVER report/phase_complete/mission_complete a target as found unless it
+  actually appears in CURRENT DETECTIONS this turn OR MEMORY from earlier —
+  if you have not actually detected it, you have not found it, no matter how
+  confident the image looks. Use search_area or navigate_to_point/navigate_to_object
+  to actually go look, and only report once a real detection backs the claim.
+- If RECENT ACTIONS already shows you reporting the same finding, DO NOT report
+  it again — the finding is already recorded. Call phase_complete (or
+  mission_complete if this was the whole mission) instead of repeating yourself.
+- Same for count: if RECENT ACTIONS already shows a count for this target_object,
+  don't call count again for it — call phase_complete instead.
 - Be concise in reasoning
 - For navigation, prefer pointing to specific locations on the image
 - Consider obstacles and safety
 - Report interesting findings
-- Complete phases systematically before moving on"""
+- Complete phases systematically before moving on
+- A vehicle that cannot hover (e.g. fixed-wing) flies past what it sees — check
+  MEMORY for landmarks already spotted before deciding to search again"""
 
 
 class VLMService:
@@ -229,16 +270,23 @@ class VLMService:
         mission_phase: Dict[str, Any],
         drone_state: Dict[str, Any] = None,
         history: list = None,
+        detections: list = None,
+        memory: list = None,
     ) -> VLMAction:
         """
         Decide what action to take based on current view and mission.
-        
+
         Args:
             image: Current camera frame (path, bytes, or numpy array)
             mission_phase: Current mission phase with objective, success criteria
             drone_state: Optional drone state (position, battery, etc.)
             history: Optional recent action history
-        
+            detections: Optional list of backends.Detection from this tick's
+                perception pass (what's visible right now)
+            memory: Optional list of spatial_memory.Landmark — persistent
+                world-frame sightings from earlier in the flight (what's been
+                seen before but may not be visible now)
+
         Returns:
             VLMAction describing what to do next
         """
@@ -264,34 +312,58 @@ class VLMService:
             )
         
         # Build prompt
-        prompt = self._build_prompt(mission_phase, drone_state, history)
+        prompt = self._build_prompt(mission_phase, drone_state, history, detections, memory)
         
         # Call VLM
         try:
             start_time = time.time()
-            
-            response = self._llm.create_chat_completion(
-                messages=[
-                    {"role": "system", "content": VLM_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": image_uri}},
-                            {"type": "text", "text": prompt},
-                        ],
-                    },
-                ],
-                max_tokens=500,
-                temperature=0.1,
-            )
-            
+
+            messages = [
+                {"role": "system", "content": VLM_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_uri}},
+                        {"type": "text", "text": prompt},
+                    ],
+                },
+            ]
+
+            # A real, observed failure mode of this local model: for certain
+            # prompt states (confirmed live: longer MEMORY/RECENT ACTIONS
+            # sections, reproduced 10/10) it emits EOS as the literal first
+            # generated token — completion_tokens=0. This is NOT a sampling
+            # hiccup: it reproduced identically at temperature 0.1, 0.4, and
+            # 0.7 and with repeat_penalty up to 1.15, so a same-parameters
+            # retry is a guaranteed no-op, not "try again and get lucky".
+            # Directly confirmed the fix: banning the EOS token id via
+            # logit_bias unlocks a completely normal, sensible response
+            # underneath (verified against the exact failing prompt — model
+            # went on to emit a full, well-formed JSON action and still
+            # stopped naturally on its own after ~60 tokens, so this isn't
+            # forcing it to ramble to max_tokens, just refusing to let it
+            # quit before saying anything). Only applied from the 2nd
+            # attempt on, so the common (non-degenerate) case is untouched.
+            content = ""
+            attempts = 3
+            eos_id = self._llm.token_eos()
+            for attempt in range(attempts):
+                kwargs = dict(messages=messages, max_tokens=500, temperature=0.1)
+                if attempt > 0:
+                    kwargs["logit_bias"] = {eos_id: -100.0}
+                response = self._llm.create_chat_completion(**kwargs)
+                content = response['choices'][0]['message']['content'] or ""
+                if content.strip():
+                    break
+                print(f"VLM returned empty output (attempt {attempt + 1}/{attempts}), retrying...")
+
             elapsed = time.time() - start_time
-            
+
             # Parse response
-            content = response['choices'][0]['message']['content']
             action = self._parse_response(content)
 
-            print(f"VLM decision in {elapsed:.2f}s: {action.action_type.value}")
+            print(f"VLM decision in {elapsed:.2f}s: {action.action_type.value}"
+                 + (" (parse_failed)" if action.parse_failed else ""))
 
             # Optional training-data capture (no-op unless a recorder is enabled).
             try:
@@ -325,19 +397,21 @@ class VLMService:
         mission_phase: Dict[str, Any],
         drone_state: Dict[str, Any] = None,
         history: list = None,
+        detections: list = None,
+        memory: list = None,
     ) -> str:
         """Build the prompt for the VLM."""
         lines = [
             "CURRENT MISSION PHASE:",
             f"  Objective: {mission_phase.get('objective', 'Unknown')}",
         ]
-        
+
         if mission_phase.get('success'):
             lines.append(f"  Success when: {mission_phase.get('success')}")
-        
+
         if mission_phase.get('evaluation_criteria'):
             lines.append(f"  Evaluation criteria: {mission_phase.get('evaluation_criteria')}")
-        
+
         if drone_state:
             lines.append("")
             lines.append("DRONE STATE:")
@@ -347,24 +421,57 @@ class VLMService:
                 lines.append(f"  Position: {drone_state['position']}")
             if drone_state.get('altitude'):
                 lines.append(f"  Altitude: {drone_state['altitude']}m")
-        
+
+        if detections:
+            lines.append("")
+            lines.append("CURRENT DETECTIONS (this frame):")
+            for d in detections:
+                range_str = f", {d.range_m:.0f}m" if d.range_m is not None else ""
+                lines.append(f"  - {d.label} (confidence {d.score:.0%}{range_str})")
+
+        if memory:
+            lines.append("")
+            lines.append("MEMORY (world-frame landmarks seen earlier this flight, may not be visible now):")
+            for lm in memory:
+                lines.append(
+                    f"  - {lm.label} at world ({lm.x:.0f}, {lm.y:.0f}, {lm.z:.0f}) "
+                    f"[seen {lm.hits}x, last score {lm.score:.0%}]"
+                )
+
         if history:
             lines.append("")
             lines.append("RECENT ACTIONS:")
             for h in history[-5:]:
                 lines.append(f"  - {h}")
-        
+
         lines.append("")
         lines.append("Based on what you see in the image and the mission objective, what should the drone do next?")
-        lines.append("Respond with a JSON object.")
-        
+        lines.append("Respond with a JSON object. Output ONLY the JSON object, no other text before or after it.")
+
         return "\n".join(lines)
-    
+
     def _parse_response(self, content: str) -> VLMAction:
-        """Parse VLM response into structured action."""
-        # Try to extract JSON from response
+        """Parse VLM response into structured action.
+
+        Three layers, each a genuine attempt to recover what the model
+        actually decided, not just a formatting workaround:
+        1. Strict JSON (optionally fenced/prose-wrapped).
+        2. Regex extraction of individual fields — recovers the real decision
+           from JSON that's *almost* valid (trailing commas, smart quotes, an
+           unterminated string after the fields that matter) instead of
+           discarding it just because the whole blob doesn't parse.
+        3. Last resort: nothing above found even an action_type. This is a
+           real anomaly (a confirmed live cause: the model returning a
+           genuinely empty completion even after decide()'s own retries) —
+           NOT the same as "the model gave a normal report", so it must not
+           be silently absorbed as one. Returns parse_failed=True and
+           ActionType.ASK_CLOUD (never a bare, un-actioned REPORT) so
+           MissionLoop takes a real, bounded, safe action instead of
+           continuing on whatever it was already doing while treating this
+           tick as a no-op.
+        """
+        original = content
         try:
-            # Handle markdown code blocks
             if "```json" in content:
                 start = content.find("```json") + 7
                 end = content.find("```", start)
@@ -373,39 +480,67 @@ class VLMService:
                 start = content.find("```") + 3
                 end = content.find("```", start)
                 content = content[start:end]
-            
+            elif "{" in content and "}" in content:
+                start = content.find("{")
+                end = content.rfind("}") + 1
+                content = content[start:end]
+
             data = json.loads(content.strip())
             return VLMAction.from_dict(data)
-            
+
         except json.JSONDecodeError:
-            # Fallback: try to extract action from text
-            content_lower = content.lower()
-            
-            if "mission_complete" in content_lower or "mission complete" in content_lower:
+            pass
+
+        # Layer 2: pull individual fields out by regex, tolerating broken
+        # JSON around them — the model's intent is usually still legible even
+        # when the full blob doesn't parse.
+        action_type_match = re.search(r'"action_type"\s*:\s*"(\w+)"', original)
+        if action_type_match:
+            try:
+                action_type = ActionType(action_type_match.group(1))
+            except ValueError:
+                action_type = None
+            if action_type is not None:
+                def _field(name: str) -> Optional[str]:
+                    m = re.search(rf'"{name}"\s*:\s*"([^"]*)"', original)
+                    return m.group(1) if m else None
+
+                def _num_field(name: str) -> Optional[int]:
+                    m = re.search(rf'"{name}"\s*:\s*(-?\d+)', original)
+                    return int(m.group(1)) if m else None
+
                 return VLMAction(
-                    action_type=ActionType.MISSION_COMPLETE,
-                    message=content[:200],
-                    reasoning="Parsed from text response"
+                    action_type=action_type,
+                    target_object=_field("target_object"),
+                    message=_field("message"),
+                    reasoning=(_field("reasoning") or "Recovered from malformed JSON")[:500],
+                    point_x=_num_field("point_x"),
+                    point_y=_num_field("point_y"),
                 )
-            elif "phase_complete" in content_lower or "phase complete" in content_lower:
-                return VLMAction(
-                    action_type=ActionType.PHASE_COMPLETE,
-                    message=content[:200],
-                    reasoning="Parsed from text response"
-                )
-            elif "failed" in content_lower or "cannot" in content_lower:
-                return VLMAction(
-                    action_type=ActionType.MISSION_FAILED,
-                    message=content[:200],
-                    reasoning="Parsed from text response"
-                )
-            else:
-                # Default to report
-                return VLMAction(
-                    action_type=ActionType.REPORT,
-                    message=content[:500],
-                    reasoning="Could not parse structured action"
-                )
+
+        # Layer 3: bare text keyword match, only for the terminal actions —
+        # these are the only ones safe to infer from prose alone (no
+        # navigation target/coordinates to get wrong).
+        content_lower = original.lower()
+        if "mission_complete" in content_lower or "mission complete" in content_lower:
+            return VLMAction(action_type=ActionType.MISSION_COMPLETE,
+                             message=original[:200], reasoning="Parsed from text response")
+        if "phase_complete" in content_lower or "phase complete" in content_lower:
+            return VLMAction(action_type=ActionType.PHASE_COMPLETE,
+                             message=original[:200], reasoning="Parsed from text response")
+        if "failed" in content_lower or "cannot" in content_lower:
+            return VLMAction(action_type=ActionType.MISSION_FAILED,
+                             message=original[:200], reasoning="Parsed from text response")
+
+        # Nothing recoverable — a real anomaly (empty/garbage output that
+        # survived decide()'s own retries), not a normal decision. Escalate,
+        # don't shrug.
+        return VLMAction(
+            action_type=ActionType.ASK_CLOUD,
+            message=f"VLM produced no usable output ({len(original)} chars, no recoverable action_type)",
+            reasoning="parse_failed",
+            parse_failed=True,
+        )
     
     def describe_scene(self, image) -> str:
         """
