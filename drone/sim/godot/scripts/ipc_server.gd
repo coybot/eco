@@ -282,6 +282,12 @@ func _dispatch(line: String) -> String:
 			FixedWingManager.reset_camera(did)
 			return JSON.stringify({"ok": true})
 
+		"fw_all_states":
+			return JSON.stringify({"ok": true, "states": FixedWingManager.all_states()})
+
+		"fw_env_state":
+			return JSON.stringify({"ok": true, "env": FixedWingManager.env_state()})
+
 		"fw_events":
 			return JSON.stringify({"ok": true, "events": FixedWingManager.get_events(did)})
 

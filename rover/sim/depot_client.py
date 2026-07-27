@@ -154,6 +154,22 @@ class DepotClient:
     def fw_reset(self, rid: str) -> dict:
         return self._call({"op": "fw_reset", "id": rid})
 
+    def fw_all_states(self) -> list[dict]:
+        """ENU pose of every live fixed-wing (id, position, yaw, altitude)."""
+        r = self._call({"op": "fw_all_states"})
+        return r.get("states", [])
+
+    def fw_env_state(self) -> dict:
+        """Scenario-specific scene truth from the loaded environment.
+
+        Lets a harness assert on what the scene's actors are actually doing
+        (which phase the target is in, where it really is) rather than
+        inferring it from the drone's own detections — the same role
+        fw_prop_truth plays for static props.
+        """
+        r = self._call({"op": "fw_env_state"})
+        return r.get("env", {})
+
     def fw_prop_truth(self) -> list[dict]:
         """Ground-truth prop list (label, world pos, is_anomaly) — harness/scoring
         only, never fed to the agent's own sensing (use fw_detect for that)."""
