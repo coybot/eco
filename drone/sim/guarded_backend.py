@@ -86,6 +86,35 @@ class EnvelopeGuardedSimBackend(SimBackend):
                 best_clear, best_dir = clear, sign
         return best_dir
 
+    def path_blocked(self, to_xy) -> bool:
+        """Does the straight line from here to `to_xy` pass through structure?
+
+        goto() is a heading hold — it flies straight at whatever it is given —
+        so a destination on the far side of a wall produces a leg straight
+        THROUGH the wall. Aircraft have no collision body here, so that is not
+        even visibly a crash; the track simply passes through solid geometry,
+        which is worse than a crash because it looks like success.
+
+        Letting the vehicle refuse such a leg and say why is the same
+        arrangement as the delivery gates: deterministic code declines an
+        unflyable command, and the model decides what to do instead. It is not
+        route planning — nothing here suggests a way around.
+        """
+        pose = self.get_pose()
+        if pose is None:
+            return False
+        x, y = pose[0], pose[1]
+        tx, ty = float(to_xy[0]), float(to_xy[1])
+        dist = math.hypot(tx - x, ty - y)
+        if dist < 1.0:
+            return False
+        steps = max(2, int(dist / self.STEP_M))
+        for i in range(1, steps + 1):
+            f = i / steps
+            if self._occupied(x + (tx - x) * f, y + (ty - y) * f):
+                return True
+        return False
+
     def drive(self, airspeed: float, yaw_rate: float, climb: float = 0.0) -> None:
         pose = self.get_pose()
         if pose is None:
