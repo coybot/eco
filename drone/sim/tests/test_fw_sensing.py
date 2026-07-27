@@ -154,8 +154,15 @@ def main() -> int:
         # Both are at 35 m and the wall tops out at 50 m, so the sightline is
         # genuinely blocked — this is what stops the swarm cue from working
         # through terrain.
-        c.fw_spawn(A, (0.0, 0.0, 35.0), 0.0)
-        c.fw_spawn(B, (250.0, 0.0, 35.0), math.pi)
+        #
+        # Read the wall position from the scene rather than hard-coding it. This
+        # spawned B at a literal 250, which was comfortably past the wall when it
+        # stood at east=100 and became the wall's own mid-plane when the wall
+        # moved east — so the "sightline" ended inside the wall instead of
+        # crossing it, and the check silently stopped testing occlusion at all.
+        wall_e = c.fw_env_state()["wall"]["east"]
+        c.fw_spawn(A, (wall_e - 100.0, 0.0, 35.0), 0.0)
+        c.fw_spawn(B, (wall_e + 100.0, 0.0, 35.0), math.pi)
         time.sleep(0.3)
         through_wall = [d for d in c.fw_detect(A) if d["label"] == "aircraft"]
         print(f"peer      : across the 50 m wall -> {len(through_wall)} aircraft "

@@ -42,8 +42,21 @@ const DETECT_RANGE_BY_LABEL := {
 	"water_bottle": 40.0,
 }
 const PEER_DETECT_RANGE := 300.0  # m — see the peer pass in detect()
-const DETECT_HFOV_HALF := deg_to_rad(30.0)  # 60° horizontal FOV
-const DETECT_VFOV_HALF := deg_to_rad(17.5)  # 35° vertical FOV
+# The sensing cone MUST be the camera's cone. detect() decides what the mission
+# is told exists, the frame decides what the model can see, and when those two
+# disagree the model is looking straight at something the system swears is not
+# there — and the grounding guard then overrides its perfectly true report as
+# unfounded. They disagreed badly: these were hand-set to a 60°x35° cone while
+# the camera renders 86°x70°, so detect() denied roughly half the visible frame.
+# Measured, not derived: a subject 16.1° below boresight rendered at ny 0.722,
+# which is 70° vertical, not 35°.
+#
+# Godot's Camera3D.fov is the VERTICAL angle under the default KEEP_HEIGHT
+# aspect policy, and horizontal follows from the viewport aspect ratio. Both are
+# computed from CAM_FOV here so they cannot drift apart again.
+var DETECT_VFOV_HALF := deg_to_rad(CAM_FOV * 0.5)
+var DETECT_HFOV_HALF := atan(tan(deg_to_rad(CAM_FOV * 0.5))
+	* float(CAM_VIEWPORT_W) / float(CAM_VIEWPORT_H))
 const DETECT_LOOK_DOWN := deg_to_rad(15.0)  # 15° downward look
 const GRID_RES := 1.0
 # Sized for the flightline env's prop spread (water_tower/silo/barn out to
@@ -514,9 +527,11 @@ func detect(id: String) -> Array:
 		var range_penalty: float = clamp((dist - 40.0) / 40.0, 0.0, 1.0) * 0.3
 		var confidence: float = clamp(0.9 - range_penalty, 0.2, 0.9)
 
-		# Calculate normalized coordinates
+		# Calculate normalized coordinates. ny is IMAGE convention (0 = top row),
+		# so it runs opposite to elevation — see unproject() for how getting this
+		# backwards mirrored every pixel the model picked.
 		var nx: float = clamp(0.5 + (angle / DETECT_HFOV_HALF) * 0.5, 0.0, 1.0)
-		var ny: float = clamp(0.5 + (vert_angle / DETECT_VFOV_HALF) * 0.5, 0.0, 1.0)
+		var ny: float = clamp(0.5 - (vert_angle / DETECT_VFOV_HALF) * 0.5, 0.0, 1.0)
 
 		var row := {
 			"label": label,
@@ -563,7 +578,7 @@ func detect(id: String) -> Array:
 			"label": "aircraft",
 			"confidence": clamp(0.9 - clamp((odist - 100.0) / 200.0, 0.0, 1.0) * 0.4, 0.2, 0.9),
 			"nx": clamp(0.5 + (oangle / DETECT_HFOV_HALF) * 0.5, 0.0, 1.0),
-			"ny": clamp(0.5 + (overt / DETECT_VFOV_HALF) * 0.5, 0.0, 1.0),
+			"ny": clamp(0.5 - (overt / DETECT_VFOV_HALF) * 0.5, 0.0, 1.0),  # image convention, see detect()
 			"world": [other_st.position.x, other_st.position.y, other_st.position.z],
 			"peer_id": other_st.id,
 			"peer_alt": other_st.altitude,
@@ -689,7 +704,17 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 	# Inverse of detect()'s `vert_angle := atan2(rel_up, horiz_dist) + DETECT_LOOK_DOWN`:
 	# bearing_v here is the absolute (signed-positive-up) elevation, so DETECT_LOOK_DOWN
 	# is subtracted, not added.
-	var bearing_v := (ny - 0.5) * 2.0 * DETECT_VFOV_HALF - DETECT_LOOK_DOWN
+	#
+	# ny is IMAGE convention — 0 is the top row, 1 the bottom — because the only
+	# thing that ever picks a pixel is a model looking at the rendered frame.
+	# Elevation runs the other way (up is +), hence 0.5 - ny. This was `ny - 0.5`
+	# for the whole life of the function, i.e. vertically mirrored: measured live,
+	# unproject(0.5, 0.05) returned ground 56 m ahead while unproject(0.5, 0.95)
+	# returned null for pointing at the sky, when the near ground is plainly at the
+	# BOTTOM of the frame. Every navigate_to_point the model ever made was aimed at
+	# the mirror image of what it picked, and a sensible pick low in the frame —
+	# "the open ground just ahead" — was reported back as unresolvable.
+	var bearing_v := (0.5 - ny) * 2.0 * DETECT_VFOV_HALF - DETECT_LOOK_DOWN
 
 	# First, try to match a known visible object at this bearing
 	if _env != null:
@@ -724,7 +749,14 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 			var hit_obj := _raycast(cam_pos, target_pos, LAYER_STRUCTURE | LAYER_PROPS, [st.node, node])
 			if not hit_obj.is_empty():
 				continue
-			var diff := absf(angle - bearing_h)
+			# Angular distance in BOTH axes. This compared horizontal bearing
+			# only, so every pixel in a column snapped to whatever prop stood in
+			# that column — pointing at the open ground below someone, or at the
+			# sky above them, both returned the person. `vert_angle` is measured
+			# from the boresight while `bearing_v` is absolute elevation, hence
+			# the DETECT_LOOK_DOWN term putting them in the same frame.
+			var diff := Vector2(angle - bearing_h,
+				vert_angle - (bearing_v + DETECT_LOOK_DOWN)).length()
 			if diff < best_diff:
 				best_diff = diff
 				best_node = node

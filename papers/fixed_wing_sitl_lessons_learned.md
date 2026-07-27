@@ -429,6 +429,78 @@ comparing, or say plainly that the series was reset.
 
 ---
 
+### Bug 13: The sensing model and the camera disagreed about where things are — and only the model could tell
+
+**Symptom**: a VLM flying the aircraft kept picking a pixel near the bottom of
+its camera frame — the open ground just ahead, an entirely sensible thing to
+aim at — and kept being told the pick was unresolvable. It would then repeat
+almost identical reasoning for thirty-five consecutive decisions while the
+aircraft flew 4 km past its objective. Every outward sign said the model was
+stuck in a loop.
+
+**Cause**: two independent frame-convention errors, neither of which anything
+in the system could detect on its own.
+
+1. `unproject()` mapped the vertical pixel coordinate straight to elevation, so
+   its y axis ran bottom-to-top while the image — and the prompt describing the
+   image — ran top-to-bottom. Every pixel the model picked was answered as if
+   it had picked the vertical mirror of it. Measured: `unproject(0.5, 0.05)`
+   returned ground 56 m ahead, `unproject(0.5, 0.95)` returned "sky".
+2. `detect()`'s field of view was hand-set to 60°×35° while the camera rendered
+   86°×70°. Godot's `Camera3D.fov` is the *vertical* angle, and the constant had
+   been read as horizontal, then halved. So the sensing model denied the
+   existence of roughly half of what was plainly visible in the frame.
+
+Both had been wrong since the code was written. Nothing caught either one
+because no automated consumer ever compared them: the sim's `Detection` drops
+the pixel fields entirely, so the only component that saw both the image and
+the reported geometry was the language model — which had no way to say "your
+coordinate system is upside down", only to keep making reasonable picks and
+receiving nonsense.
+
+**Fix**: derive both FOV constants from the camera's own `fov` and viewport
+aspect so they cannot drift, flip the vertical axis to image convention at
+every emit and consume site, and add `test_pixel_axis.py` — which locates the
+subject in the *rendered pixels* and requires `detect()` to agree, plus checks
+that lower in the frame unprojects nearer. The agreement error went from 0.25
+of frame height to 0.014.
+
+**Lesson: when a human-legible artefact and a machine-legible one describe the
+same thing, something must actually compare them.** Every layer here was
+self-consistent and independently testable, and the whole stack was still
+wrong, because the one place the two representations met was inside a model
+that could only respond by behaving oddly. That is a general hazard of putting
+an LLM at a system boundary: it will absorb an enormous amount of
+inconsistency and convert it into behaviour that looks like *its* failure. The
+temptation to debug the prompt is strong and, here, was indulged twice before
+anyone measured a pixel. Test against the artefact the model actually consumes,
+not against the code that produces it.
+
+### Bug 14: A gate that passed runs which did not do the task
+
+**Symptom**: the obstacle gate reported `M6 PASS — 2/2 runs clean` on runs
+that ended 4 km from the objective with `mission_success: false` recorded in
+the same JSON.
+
+**Cause**: the pass bar was written as "east of the wall, zero envelope
+interventions, no track crossing the wall span" — three conditions about the
+obstacle, none about the mission. Getting past the wall was the interesting
+engineering problem, so it became the definition of success, and reaching the
+search area — the thing the aircraft was told to do, and the thing the run
+already measured and printed — was never in the criteria.
+
+**Fix**: require closest approach to enter the search area, and print it first
+in the summary, above the obstacle statistics.
+
+**Lesson: a gate drifts toward measuring the hard part rather than the point.**
+This is not the same as Bug 12's shifting definition — the definition here was
+stable, and stably wrong. Worth asking of any gate: if this passes, has the
+system done the job a user asked for, or only the part that was difficult to
+build? A gate that reports PASS next to its own `mission_success: false` has
+answered that question already.
+
+---
+
 ## General Lessons (Cutting Across the Above)
 
 1. **Read the simulator's own source before hand-building a workaround for

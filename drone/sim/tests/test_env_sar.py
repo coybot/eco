@@ -124,11 +124,12 @@ def main() -> int:
 
         # Observation geometry, used identically for the test and its control.
         # It has to satisfy two constraints at once or the test proves nothing:
-        # the subject must be inside the camera's 35 deg vertical FOV (boresight
-        # is 15 deg down, so depression must stay under ~32.5 deg) AND inside
-        # the 80 m detect range. A first attempt at 30 m ground / 25 m alt was
-        # a 38.8 deg depression — below the frame entirely, so detect() would
-        # have reported nothing whether or not the tunnel had a roof.
+        # the subject must be inside the camera's vertical FOV (70 deg, boresight
+        # 15 deg down, so depression must stay under 50 deg) AND inside the 80 m
+        # detect range. A first attempt at 30 m ground / 25 m alt was rejected
+        # for busting a 32.5 deg limit that turned out to be an artefact of
+        # detect() modelling a narrower cone than the camera renders; the real
+        # band is wider, but staying well inside it costs nothing.
         OBS_GROUND, OBS_ALT = 55.0, 25.0   # depression ~24 deg, slant ~60 m
 
         def look_from_south(east: float, north: float) -> list:

@@ -48,6 +48,9 @@ RID = "fw-wall"
 PORT = 9979
 
 GOAL = (400.0, 0.0)
+# The search area in env_sar is r=120 around the same centre, so entering it is
+# literally what the objective asks for.
+GOAL_RADIUS_M = 120.0
 START = (-30.0, 0.0, 35.0)
 
 OBJECTIVE = (
@@ -118,11 +121,27 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
     dist_to_goal = (math.hypot(final[0] - GOAL[0], final[1] - GOAL[1])
                     if final else None)
 
+    # Did it ever actually get to the search area? Closest approach, not final
+    # position, because nothing holds a fixed-wing still — an aircraft that
+    # flew through the area and out the far side still reached it.
+    #
+    # This is the whole objective and the gate did not check it. Runs were
+    # scored PASS for clearing the wall and then flying 4 km into open country
+    # with mission_success false: every stated criterion met, the mission
+    # plainly failed. Getting past the wall is only interesting as a means of
+    # getting somewhere.
+    closest = min((math.hypot(p["x"] - GOAL[0], p["y"] - GOAL[1]) for p in poses),
+                  default=None)
+    reached_goal = closest is not None and closest <= GOAL_RADIUS_M
+
     client.fw_despawn(RID)
 
     return {
         "run": run_idx,
-        "passed": bool(east_of_wall and backend.envelope_events == 0 and not crossed),
+        "passed": bool(east_of_wall and reached_goal
+                       and backend.envelope_events == 0 and not crossed),
+        "reached_goal": reached_goal,
+        "closest_to_goal_m": round(closest, 1) if closest is not None else None,
         "east_of_wall": east_of_wall,
         "flew_through_wall": crossed,
         "flew_over_wall": crossed_over,
@@ -159,7 +178,8 @@ def main() -> int:
             print(f"  => {'PASS' if r['passed'] else 'FAIL'} "
                   f"east={r['east_of_wall']} through={r['flew_through_wall']} over={r['flew_over_wall']} "
                   f"envelope={r['envelope_events']} refused={r['legs_refused']} "
-                  f"dist_to_goal={r['dist_to_goal_m']}m", flush=True)
+                  f"reached_goal={r['reached_goal']} "
+                  f"closest={r['closest_to_goal_m']}m", flush=True)
         client.close()
     finally:
         proc.stop()
@@ -167,8 +187,8 @@ def main() -> int:
     passed = sum(1 for r in runs if r["passed"])
     report = {
         "gate": "M6_camera_wall_avoidance",
-        "pass_bar": "all runs east of the wall, zero envelope interventions, "
-                    "no track crossing the wall span",
+        "pass_bar": "all runs reach the search area, east of the wall, zero "
+                    "envelope interventions, no track crossing the wall span",
         "runs": len(runs),
         "passed": passed,
         "total_envelope_events": sum(r["envelope_events"] for r in runs),
@@ -176,12 +196,14 @@ def main() -> int:
         "flew_through_wall": sum(1 for r in runs if r["flew_through_wall"]),
         "flew_over_wall": sum(1 for r in runs if r["flew_over_wall"]),
         "saw_wall": sum(1 for r in runs if r["saw_wall_at_least_once"]),
+        "reached_goal": sum(1 for r in runs if r["reached_goal"]),
         "detail": runs,
     }
     Path(args.out).write_text(json.dumps(report, indent=2))
 
     print("\n" + "=" * 70)
     print(f"M6 {'PASS' if passed == len(runs) else 'FAIL'} — {passed}/{len(runs)} runs clean")
+    print(f"  reached the search area: {report['reached_goal']}/{len(runs)} (the objective)")
     print(f"  envelope interventions : {report['total_envelope_events']} (must be 0)")
     print(f"  flew through the wall  : {report['flew_through_wall']} (must be 0)")
     print(f"  saw the wall on camera : {report['saw_wall']}/{len(runs)}")
