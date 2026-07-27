@@ -493,14 +493,17 @@ func grab_frame_jpeg(drone_id: String) -> Variant:
 # ------------------------------------------------------------------
 # Vantage cameras
 # ------------------------------------------------------------------
-func add_vantage(name: String, pos_enu: Vector3, look_enu: Vector3) -> void:
+## `w`/`h` default to 720p, the historical hardcoded size, so existing callers
+## are unaffected; the showcase recorders ask for 1080p.
+func add_vantage(name: String, pos_enu: Vector3, look_enu: Vector3,
+		w: int = 1280, h: int = 720) -> void:
 	if name in _vantages:
 		return
 	var godot_pos := Vector3(pos_enu.x, pos_enu.z, -pos_enu.y)
 	var godot_look := Vector3(look_enu.x, look_enu.z, -look_enu.y)
 
 	var vp := SubViewport.new()
-	vp.size = Vector2i(1280, 720)
+	vp.size = Vector2i(maxi(w, 64), maxi(h, 64))
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	vp.own_world_3d = false  # share main scene world — sees the building
 

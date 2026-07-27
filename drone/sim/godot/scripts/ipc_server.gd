@@ -110,7 +110,8 @@ func _dispatch(line: String) -> String:
 			var p: Array = req.get("p", [0.0, 0.0, 10.0])
 			var look: Array = req.get("look", [0.0, 0.0, 0.0])
 			fm.add_vantage(req.get("name", "v"), Vector3(p[0], p[1], p[2]),
-						   Vector3(look[0], look[1], look[2]))
+						   Vector3(look[0], look[1], look[2]),
+						   int(req.get("w", 1280)), int(req.get("h", 720)))
 			return JSON.stringify({"ok": true})
 
 		"auto_overhead":

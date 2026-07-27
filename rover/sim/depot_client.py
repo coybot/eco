@@ -80,8 +80,12 @@ class DepotClient:
         return self._call({"op": "phrover_stop", "id": rid})
 
     # -- vantage cameras (fixed viewpoints, shared with FleetManager) --------
-    def add_vantage(self, name: str, pos_enu: tuple[float, float, float], look_enu: tuple[float, float, float]) -> dict:
-        return self._call({"op": "add_vantage", "name": name, "p": list(pos_enu), "look": list(look_enu)})
+    def add_vantage(self, name: str, pos_enu: tuple[float, float, float],
+                    look_enu: tuple[float, float, float],
+                    w: int = 1280, h: int = 720) -> dict:
+        """`w`/`h` default to the historical 720p; showcase capture asks for 1080p."""
+        return self._call({"op": "add_vantage", "name": name, "p": list(pos_enu),
+                           "look": list(look_enu), "w": w, "h": h})
 
     def grab_vantage(self, name: str) -> bytes | None:
         r = self._call({"op": "grab_vantage", "name": name})
