@@ -132,8 +132,8 @@ You must respond with a JSON object containing:
 {
   "reasoning": "Your brief reasoning about what you see and why you chose this action",
   "action_type": "one of: navigate_to_point, navigate_to_world, navigate_to_object, return_to_landmark, search_area, orbit_point, drop_payload, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
-  "point_x": <pixel x coordinate if navigate_to_point>,
-  "point_y": <pixel y coordinate if navigate_to_point>,
+  "point_x": <pixel x if navigate_to_point, 0 to IMAGE WIDTH>,
+  "point_y": <pixel y if navigate_to_point, 0 to IMAGE HEIGHT, measured DOWN from the top>,
   "target_object": "<object name if navigate_to_object, return_to_landmark, search_area, count, or drop_payload>",
   "world_x": <world east coordinate if navigate_to_world or orbit_point>,
   "world_y": <world north coordinate if navigate_to_world or orbit_point>,
@@ -143,7 +143,13 @@ You must respond with a JSON object containing:
 }
 
 ACTION TYPES:
-- navigate_to_point: Point to where the drone should fly (x,y pixel coordinates on the image)
+- navigate_to_point: Point to where the drone should fly, as pixel coordinates
+  on the image you were just shown. The frame size is stated under CAMERA below
+  — coordinates outside it cannot be resolved and the action is wasted. y is
+  measured downward from the top, so the ground is in the LOWER half of the
+  frame and the horizon runs across the middle; a point near the top is sky and
+  resolves to nothing. If the place you want is not visible in the frame at all,
+  use navigate_to_world with coordinates instead.
 - navigate_to_world: Fly to an explicit world coordinate (world_x east, world_y
   north, optional alt_m). Use this whenever you want to go somewhere named by
   coordinates rather than by something visible in frame — a point from MEMORY,
