@@ -35,6 +35,7 @@ extends Node3D
 # See humanoid.gd — preloaded rather than referenced via `class_name`, since
 # this project has no global script class cache when launched from the CLI.
 const Humanoid = preload("res://scripts/humanoid.gd")
+const SceneKit = preload("res://scripts/scene_kit.gd")
 
 var WALLS: Array = []
 var doors: Dictionary = {}
@@ -92,9 +93,7 @@ var _sim_t: float = 0.0
 
 
 func _ready() -> void:
-	_add_sky_and_ground()
-	_add_lighting()
-	_add_environment()
+	SceneKit.build(self, true, 0)
 	_build_wall()
 	_build_tunnel()
 	_build_actors()
@@ -339,64 +338,6 @@ func sar_config(params: Dictionary) -> void:
 
 
 # ------------------------------------------------------------------ scene setup
-func _add_sky_and_ground() -> void:
-	var sphere := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 3000.0
-	sm.height = 6000.0
-	sm.flip_faces = true
-	sphere.mesh = sm
-	var smat := StandardMaterial3D.new()
-	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	smat.albedo_color = Color(0.34, 0.54, 0.88)
-	smat.cull_mode = BaseMaterial3D.CULL_BACK
-	sphere.material_override = smat
-	add_child(sphere)
-
-	var floor_mesh := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(2000.0, 2000.0)
-	floor_mesh.mesh = pm
-	var fmat := StandardMaterial3D.new()
-	fmat.albedo_color = Color(0.32, 0.42, 0.24)
-	floor_mesh.material_override = fmat
-	add_child(floor_mesh)
-
-	var floor_body := StaticBody3D.new()
-	var floor_col := CollisionShape3D.new()
-	var floor_shape := BoxShape3D.new()
-	floor_shape.size = Vector3(2000.0, 0.2, 2000.0)
-	floor_col.shape = floor_shape
-	floor_col.position = Vector3(0.0, -0.1, 0.0)
-	floor_body.add_child(floor_col)
-	floor_body.collision_layer = 1
-	add_child(floor_body)
-
-
-func _add_lighting() -> void:
-	var sun := DirectionalLight3D.new()
-	sun.light_energy = 1.2
-	sun.rotation_degrees = Vector3(-55.0, -30.0, 0.0)
-	add_child(sun)
-
-
-## See env_flightline.gd for why these exact values (washed-out capture fix).
-func _add_environment() -> void:
-	var env := WorldEnvironment.new()
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky.sky_material = sky_mat
-	environment.sky = sky
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_energy = 1.0
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	environment.tonemap_exposure = 0.85
-	env.environment = environment
-	add_child(env)
-
-
 ## Same contract as the other envs, so the standard "raise_wall" inject works
 ## here too on top of the permanent wall built at _ready().
 func add_wall(rect: Rect2, height: float = 60.0) -> void:
