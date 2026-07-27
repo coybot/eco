@@ -1094,8 +1094,31 @@ class MissionLoop:
                     alt = float(action.alt_m) if action.alt_m is not None else (
                         pose[2] if pose is not None else 35.0)
                     wx, wy = float(action.world_x), float(action.world_y)
-                    self._report_progress(f"Flying to world ({wx:.0f}, {wy:.0f}) at {alt:.0f} m")
-                    arrived = backend.goto(wy, wx, alt, timeout_s=90.0, tol_m=15.0)
+                    # goto() is a heading hold: it flies STRAIGHT at whatever it
+                    # is given. A destination on the far side of an obstacle
+                    # therefore produces a leg straight through the obstacle —
+                    # and since aircraft have no collision body in the sim, that
+                    # is not even a visible crash, just a track passing through
+                    # solid geometry, which is worse because it looks like
+                    # success. The vehicle declines the leg and says why; where
+                    # to go instead stays the model's decision, exactly like the
+                    # delivery gates.
+                    blocked = getattr(backend, "path_blocked", None)
+                    refused = blocked is not None and blocked((wx, wy))
+                    if refused:
+                        msg = (f"Cannot fly directly to ({wx:.0f}, {wy:.0f}) — that "
+                               f"straight line passes through structure. Route via a "
+                               f"clear point to one side first, then continue.")
+                        self._report_progress(msg)
+                        self._history.append(msg)
+                        backend.log_event("leg_refused", {
+                            "reason": "path crosses structure",
+                            "requested": [wx, wy]})
+                        arrived = False
+                    else:
+                        self._report_progress(
+                            f"Flying to world ({wx:.0f}, {wy:.0f}) at {alt:.0f} m")
+                        arrived = backend.goto(wy, wx, alt, timeout_s=90.0, tol_m=15.0)
                     # Record WHERE it went, not just that it navigated. The
                     # generic history line carries only the action type and the
                     # reasoning, so an aircraft that had already reached a point
@@ -1104,12 +1127,14 @@ class MissionLoop:
                     # while the objective stayed unmet. Stating the destination
                     # and the resulting position makes the repetition visible to
                     # the model, which is the only thing that can break the loop.
-                    now = backend.get_pose()
-                    where = (f"now at ({now[0]:.0f}, {now[1]:.0f})" if now else "position unknown")
-                    self._history.append(
-                        f"{'Reached' if arrived else 'Did not reach'} world "
-                        f"({wx:.0f}, {wy:.0f}) — {where}. Do not fly here again; "
-                        f"pick a different destination to make progress.")
+                    if not refused:
+                        now = backend.get_pose()
+                        where = (f"now at ({now[0]:.0f}, {now[1]:.0f})" if now
+                                 else "position unknown")
+                        self._history.append(
+                            f"{'Reached' if arrived else 'Did not reach'} world "
+                            f"({wx:.0f}, {wy:.0f}) — {where}. Do not fly here again; "
+                            f"pick a different destination to make progress.")
             
             elif action.action_type == ActionType.NAVIGATE_TO_OBJECT:
                 # Resolve via THIS tick's detections (backend.detect(), already
