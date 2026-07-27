@@ -1095,7 +1095,21 @@ class MissionLoop:
                         pose[2] if pose is not None else 35.0)
                     wx, wy = float(action.world_x), float(action.world_y)
                     self._report_progress(f"Flying to world ({wx:.0f}, {wy:.0f}) at {alt:.0f} m")
-                    backend.goto(wy, wx, alt, timeout_s=90.0, tol_m=15.0)
+                    arrived = backend.goto(wy, wx, alt, timeout_s=90.0, tol_m=15.0)
+                    # Record WHERE it went, not just that it navigated. The
+                    # generic history line carries only the action type and the
+                    # reasoning, so an aircraft that had already reached a point
+                    # saw no evidence of that and kept re-issuing the same leg —
+                    # observed live, flying to the same coordinates over and over
+                    # while the objective stayed unmet. Stating the destination
+                    # and the resulting position makes the repetition visible to
+                    # the model, which is the only thing that can break the loop.
+                    now = backend.get_pose()
+                    where = (f"now at ({now[0]:.0f}, {now[1]:.0f})" if now else "position unknown")
+                    self._history.append(
+                        f"{'Reached' if arrived else 'Did not reach'} world "
+                        f"({wx:.0f}, {wy:.0f}) — {where}. Do not fly here again; "
+                        f"pick a different destination to make progress.")
             
             elif action.action_type == ActionType.NAVIGATE_TO_OBJECT:
                 # Resolve via THIS tick's detections (backend.detect(), already
