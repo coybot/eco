@@ -43,6 +43,26 @@ def _compass(bearing_rad: float) -> str:
 
 
 @dataclass
+class _RememberedWall:
+    """A structure point retained after it has left the camera's view."""
+    x: float
+    y: float
+    top: float
+
+    @property
+    def label(self):
+        return "wall"
+
+    @property
+    def world_xyz(self):
+        return (self.x, self.y, self.top)
+
+    @property
+    def top_z(self):
+        return self.top
+
+
+@dataclass
 class PeerSighting:
     t: float
     x: float
@@ -127,9 +147,35 @@ class ObstacleTracker:
 
     AHEAD_HALF_ANGLE = math.radians(25.0)
 
+    def __init__(self):
+        # Structure stays known once seen. A wall does not cease to exist when
+        # the aircraft turns away from it, but a detections-only view says
+        # exactly that: observed live, two decisions after first sighting the
+        # obstacle block vanished while the model went on reasoning about "the
+        # wall ahead" from its own history, with no coordinates left to act on.
+        self._known: Dict[Tuple[int, int], float] = {}
+
+    def remember(self, detections) -> None:
+        for d in detections:
+            label = getattr(d, "label", None) or (
+                d.get("label") if isinstance(d, dict) else None)
+            world = getattr(d, "world_xyz", None) or (
+                d.get("world") if isinstance(d, dict) else None)
+            if label != "wall" or not world:
+                continue
+            top = getattr(d, "top_z", None)
+            if top is None and isinstance(d, dict):
+                top = d.get("top_z")
+            self._known[(int(round(world[0])), int(round(world[1])))] = float(
+                top if top is not None else world[2])
+
     def summarize(self, own_xyz: Tuple[float, float, float], yaw: float,
                   detections) -> str:
+        self.remember(detections)
+        detections = list(detections) + [
+            _RememberedWall(x, y, top) for (x, y), top in self._known.items()]
         pts = []
+        seen = set()
         for d in detections:
             label = getattr(d, "label", None) or (
                 d.get("label") if isinstance(d, dict) else None)
@@ -147,6 +193,10 @@ class ObstacleTracker:
                 top = d.get("top_z")
             if top is None:
                 top = world[2]
+            key = (int(round(world[0])), int(round(world[1])))
+            if key in seen:
+                continue
+            seen.add(key)
             dx, dy = world[0] - own_xyz[0], world[1] - own_xyz[1]
             bearing = math.atan2(dy, dx)
             rel = (bearing - yaw + math.pi) % (2 * math.pi) - math.pi
@@ -172,6 +222,21 @@ class ObstacleTracker:
         if top > own_xyz[2]:
             rows.append("- It is taller than your current altitude, so flying straight "
                         "on will not clear it.")
+        # Name the action that can actually reach those coordinates. Observed
+        # live: the model correctly described the wall and the need to go round
+        # it on every single decision, then chose navigate_to_point every time —
+        # which can only aim at what is on camera and so kept walking it into
+        # the obstacle. It was not misjudging the situation; it had the right
+        # plan and reached for a tool that cannot carry it out. Which way to go,
+        # or whether to go at all, is still entirely its call.
+        clear_s = (south[0] - 60.0, south[1] - 60.0)
+        clear_n = (north[0] - 60.0, north[1] + 60.0)
+        rows.append(
+            f"- navigate_to_point cannot route around this: it only aims at what is "
+            f"already on camera. To go around, use navigate_to_world with a point "
+            f"past one end — for example ({clear_s[0]:.0f}, {clear_s[1]:.0f}) to the "
+            f"south, or ({clear_n[0]:.0f}, {clear_n[1]:.0f}) to the north — and then "
+            f"continue east once past it.")
         return "\n".join(rows)
 
 
