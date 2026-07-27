@@ -41,6 +41,7 @@ class EnvelopeGuardedSimBackend(SimBackend):
     def __init__(self, client, agent_id: str):
         super().__init__(client, agent_id)
         self.envelope_events = 0
+        self.legs_refused = 0
         self._grid = None
         self._escape_until = 0.0
         self._escape_dir = 1.0
@@ -114,6 +115,27 @@ class EnvelopeGuardedSimBackend(SimBackend):
             if self._occupied(x + (tx - x) * f, y + (ty - y) * f):
                 return True
         return False
+
+    def goto(self, north_m: float, east_m: float, alt_m: float,
+             timeout_s: float = 60.0, tol_m: float = 5.0) -> bool:
+        """Decline any straight leg that would pass through structure.
+
+        The check lives here rather than in individual action handlers because
+        it is a property of the VEHICLE, not of the reason for flying. Checking
+        it only in navigate_to_world left every other path — a pixel unprojected
+        by navigate_to_point, a search leg, an orbit leg, a return to a
+        landmark — free to fly straight through the wall, and the track duly
+        did, while the envelope guard shoved at it. One rule at the one place
+        every leg passes through.
+        """
+        if self.path_blocked((east_m, north_m)):
+            self.legs_refused += 1
+            self.log_event("leg_refused", {
+                "reason": "path crosses structure",
+                "requested": [east_m, north_m],
+            })
+            return False
+        return super().goto(north_m, east_m, alt_m, timeout_s, tol_m)
 
     def drive(self, airspeed: float, yaw_rate: float, climb: float = 0.0) -> None:
         pose = self.get_pose()

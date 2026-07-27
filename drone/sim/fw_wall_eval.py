@@ -114,6 +114,7 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
         "east_of_wall": east_of_wall,
         "flew_through_wall": crossed,
         "envelope_events": backend.envelope_events,
+        "legs_refused": backend.legs_refused,
         "dist_to_goal_m": round(dist_to_goal, 1) if dist_to_goal else None,
         "actions": len(decisions),
         "saw_wall_at_least_once": any(d["saw_wall"] for d in decisions),
@@ -144,7 +145,7 @@ def main() -> int:
             runs.append(r)
             print(f"  => {'PASS' if r['passed'] else 'FAIL'} "
                   f"east={r['east_of_wall']} through_wall={r['flew_through_wall']} "
-                  f"envelope={r['envelope_events']} "
+                  f"envelope={r['envelope_events']} refused={r['legs_refused']} "
                   f"dist_to_goal={r['dist_to_goal_m']}m", flush=True)
         client.close()
     finally:
@@ -158,6 +159,7 @@ def main() -> int:
         "runs": len(runs),
         "passed": passed,
         "total_envelope_events": sum(r["envelope_events"] for r in runs),
+        "total_legs_refused": sum(r.get("legs_refused", 0) for r in runs),
         "flew_through_wall": sum(1 for r in runs if r["flew_through_wall"]),
         "saw_wall": sum(1 for r in runs if r["saw_wall_at_least_once"]),
         "detail": runs,
