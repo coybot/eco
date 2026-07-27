@@ -181,6 +181,7 @@ func _load_environment(env_name: String) -> void:
 		"depot":         "res://scenes/environments/depot.tscn",
 		"flightline":    "res://scenes/environments/flightline.tscn",
 		"countdemo":     "res://scenes/environments/countdemo.tscn",
+		"gate":          "res://scenes/environments/gate.tscn",
 	}
 	var path: String = env_map.get(env_name, "res://scenes/environments/office.tscn")
 	if not ResourceLoader.exists(path):

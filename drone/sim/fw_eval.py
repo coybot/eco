@@ -88,13 +88,20 @@ class GodotProcess:
 
 
 def launch_flightline(seed: int = 0, port: int = 9989, gui: bool = False,
-                      godot_bin: str | None = None) -> GodotProcess:
-    """Launch Godot with the flightline env, no quad/rover fleet, fixed-wing IPC port."""
+                      godot_bin: str | None = None, env: str = "flightline") -> GodotProcess:
+    """Launch Godot with a fixed-wing env, no quad/rover fleet, fixed-wing IPC port.
+
+    `env` names an entry in fleet_manager.gd's env_map ("flightline",
+    "countdemo", "gate", ...). It is a keyword with the historical default so
+    the existing callers (fw_vlm_smoketest.py, this file's scenarios) keep
+    working unchanged while other harnesses reuse the same proven launch +
+    "IPC ready" handshake instead of copying it.
+    """
     godot = find_godot(godot_bin)
     args = [godot, "--path", str(GODOT_PROJECT)]
     if not gui:
         args += ["--headless"]
-    args += ["--", "--fleet=", "--env=flightline", f"--seed={seed}", f"--ipc-port={port}"]
+    args += ["--", "--fleet=", f"--env={env}", f"--seed={seed}", f"--ipc-port={port}"]
 
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     ready = threading.Event()
