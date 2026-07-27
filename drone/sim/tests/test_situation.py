@@ -92,9 +92,22 @@ def main() -> int:
     s5 = ot.summarize((-100.0, 0.0, 60.0), 0.0, wall)
     bad += check("no false 'cannot clear' when above", "not clear it" not in s5)
 
+    # Fresh tracker: a used one legitimately remembers walls it has already seen.
     bad += check("ignores non-wall detections",
-                 ot.summarize((-100.0, 0.0, 35.0), 0.0,
-                              [FakeDet("person", (0.0, 0.0, 1.0))]) == "")
+                 ObstacleTracker().summarize((-100.0, 0.0, 35.0), 0.0,
+                                             [FakeDet("person", (0.0, 0.0, 1.0))]) == "")
+
+    # Structure stays known once seen. Without this the block vanished two
+    # decisions after first sighting — the guard turns the aircraft away, the
+    # wall leaves the FOV — while the model kept reasoning about "the wall
+    # ahead" with no coordinates left to act on.
+    ot2 = ObstacleTracker()
+    ot2.summarize((-100.0, 0.0, 35.0), 0.0, wall)
+    remembered = ot2.summarize((-100.0, 0.0, 35.0), 0.0, [])
+    bad += check("remembers the wall after it leaves view",
+                 "across your course" in remembered, repr(remembered[:60]))
+    bad += check("tells the model which action can route around it",
+                 "navigate_to_world" in remembered)
 
     print("\npayload_block")
     bad += check("carrying reads as ready", "ready to release" in payload_block(1))

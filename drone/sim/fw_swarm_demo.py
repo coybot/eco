@@ -117,7 +117,8 @@ def phases_from_plan(plan: dict) -> list:
 class DroneRun:
     """One aircraft's thread, backend, loop and per-decision record."""
 
-    def __init__(self, client_factory, name: str, rid: str, phases: list, port: int):
+    def __init__(self, client_factory, name: str, rid: str, phases: list, port: int,
+                 record_dir: Path = None, take: int = 0):
         self.name = name
         self.rid = rid
         self.phases = phases
@@ -140,12 +141,46 @@ class DroneRun:
             EnvelopeGuardedSimBackend(self.sampler_client, rid), self.loop.peers)
         self._thread = None
 
+        # Optional recording. The chase camera and the frames the MODEL saw are
+        # captured separately and both kept: a chase view is what makes the
+        # flight legible on screen, but it is not what the aircraft was looking
+        # at, and the demo's whole claim is about the latter.
+        self.recorder = None
+        self.tick_dir = None
+        if record_dir is not None:
+            from fw_count_eval import ChaseCamRecorder
+            self.rec_client = client_factory(port)
+            self.recorder = ChaseCamRecorder(
+                self.rec_client,
+                EnvelopeGuardedSimBackend(self.rec_client, rid),
+                record_dir / f"chase_{name}",
+                # Unique per take AND per aircraft: reusing a vantage name
+                # across runs returns a frozen frame (a documented Godot
+                # render-target reuse bug, hit for real in S2).
+                vantage_name=f"chase_{name}_t{take}_{int(time.time())}",
+                width=1920, height=1080, fps=6.0,
+            )
+            self.tick_dir = record_dir / f"onboard_{name}"
+            self.tick_dir.mkdir(parents=True, exist_ok=True)
+
     def _progress(self, msg):
         self.progress.append((time.time(), msg))
+        if self.recorder is not None:
+            self.recorder.on_progress(msg)   # captions come from the real run
         print(f"  [{self.name}] {msg}", flush=True)
 
     def _tick(self, frame, detections, action, t):
         pose = self.backend.get_pose()
+        if self.tick_dir is not None and frame:
+            idx = len(self.decisions)
+            (self.tick_dir / f"{idx:04d}.jpg").write_bytes(frame)
+            (self.tick_dir / f"{idx:04d}.json").write_text(json.dumps({
+                "t": t, "pose": list(pose) if pose else None,
+                "action": action.to_dict(),
+                "detections": [{"label": d.label, "score": d.score,
+                                "world": list(d.world_xyz) if d.world_xyz else None}
+                               for d in detections],
+            }, indent=2))
         self.decisions.append({
             "t": t,
             "pose": list(pose) if pose else None,
@@ -163,6 +198,8 @@ class DroneRun:
             time.sleep(delay_s)
             try:
                 self.sampler.start()
+                if self.recorder is not None:
+                    self.recorder.start()
                 self.result = self.loop.run(Mission(
                     mission_id=f"swarm-{self.name}",
                     phases=self.phases,
@@ -174,6 +211,8 @@ class DroneRun:
                 traceback.print_exc()
             finally:
                 self.sampler.stop()
+                if self.recorder is not None:
+                    self.recorder.stop()
         self._thread = threading.Thread(target=_run, daemon=True, name=self.name)
         self._thread.start()
 
@@ -264,7 +303,7 @@ def score_take(client, runs, env0, take_idx) -> dict:
 
 
 def run_take(client_factory, port, plans, names, take_idx, max_actions,
-             stagger_s, timeout_s) -> dict:
+             stagger_s, timeout_s, record_dir=None) -> dict:
     client = client_factory(port)
     env0 = client.fw_env_state()
 
@@ -274,7 +313,8 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
         client.fw_spawn(rid, (*DRONES[name]["home"], DRONES[name]["spawn_alt"]), 0.0)
         client.fw_reset_camera(rid)
         runs.append(DroneRun(client_factory, name, rid,
-                             phases_from_plan(plans[name]), port))
+                             phases_from_plan(plans[name]), port,
+                             record_dir=record_dir, take=take_idx))
         runs[-1].loop.MAX_PHASE_ACTIONS = max_actions
 
     print(f"\n=== take {take_idx} — {len(runs)} aircraft ===", flush=True)
@@ -290,6 +330,8 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
         client.fw_despawn(r.rid)
         r.client.close()
         r.sampler_client.close()
+        if r.recorder is not None:
+            r.rec_client.close()
     client.fw_inject("sar_config", force_phase="amble",
                      target_enu=[215.0, 58.0])
     client.close()
@@ -306,6 +348,8 @@ def main() -> int:
     ap.add_argument("--refresh-plan", action="store_true")
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--out", default="swarm_report.json")
+    ap.add_argument("--record", default=None,
+                    help="directory to record chase cams and onboard frames into")
     args = ap.parse_args()
 
     names = list(DRONES)[: args.drones]
@@ -328,8 +372,10 @@ def main() -> int:
     takes = []
     try:
         for i in range(args.takes):
+            take_dir = (Path(args.record) / f"take_{i:02d}") if args.record else None
             takes.append(run_take(client_factory, args.port, plans, names, i,
-                                  args.max_actions, args.stagger, args.timeout))
+                                  args.max_actions, args.stagger, args.timeout,
+                                  record_dir=take_dir))
             t = takes[-1]
             print(f"\n--- take {i}: "
                   f"{'ALL BEATS PASS' if t['all_beats_pass'] else 'incomplete'}")

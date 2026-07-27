@@ -79,11 +79,18 @@ class ChaseCamRecorder:
     silent flythrough.
     """
 
-    def __init__(self, client, backend, out_dir: Path, vantage_name: str = CHASE_VANTAGE):
+    def __init__(self, client, backend, out_dir: Path, vantage_name: str = CHASE_VANTAGE,
+                 width: int = 1280, height: int = 720, fps: float = 3.0):
         self.client = client
         self.backend = backend
         self.out_dir = out_dir
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        # Capture resolution and sample rate are parameters so the showcase
+        # recorders can ask for 1080p at a higher rate while existing callers
+        # keep the proven 720p defaults.
+        self.width = width
+        self.height = height
+        self.sample_hz = fps
         # MUST be unique per recorder instance, not the shared CHASE_VANTAGE
         # default — confirmed live (checked the actual rendered frames, not
         # just the code): running two missions back-to-back in the same
@@ -138,8 +145,9 @@ class ChaseCamRecorder:
             font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 18)
         except Exception:
             font = ImageFont.load_default()
-        self.client.add_vantage(self.vantage_name, (0.0, -15.0, 15.0), (0.0, 0.0, 10.0))
-        interval = 1.0 / 3.0  # ~3 chase-cam samples/sec; ffmpeg re-times to VIDEO_FPS on assembly
+        self.client.add_vantage(self.vantage_name, (0.0, -15.0, 15.0), (0.0, 0.0, 10.0),
+                                self.width, self.height)
+        interval = 1.0 / self.sample_hz  # ffmpeg re-times on assembly
         last_jpg = None
         stuck_count = 0
         while not self._stop.is_set():
