@@ -146,6 +146,10 @@ class ObstacleTracker:
     """
 
     AHEAD_HALF_ANGLE = math.radians(25.0)
+    # How close a structure has to be to still matter when it is NOT across the
+    # current heading. ~18 s of flight at cruise: close enough that turning back
+    # would reach it, far enough to cover a detour around a 140 m obstacle.
+    RELEVANT_RANGE_M = 250.0
 
     def __init__(self):
         # Structure stays known once seen. A wall does not cease to exist when
@@ -203,25 +207,51 @@ class ObstacleTracker:
             pts.append((math.hypot(dx, dy), rel, world, float(top)))
         if not pts:
             return ""
-        if not any(abs(rel) <= self.AHEAD_HALF_ANGLE for _, rel, _, _ in pts):
-            return ""   # structure exists, but not across the current course
+
+        # Whether the structure is across the CURRENT heading decides the
+        # wording, not whether the block appears at all.
+        #
+        # Suppressing it off-course undid the model's own correct plan. Observed
+        # across five runs: it chooses navigate_to_world round the north end —
+        # right answer — and the moment it turns onto that heading the wall is
+        # no longer ahead, so the block vanishes and takes the "navigate_to_point
+        # cannot route around this" line with it. It then picks a pixel near
+        # frame centre, which is "straight ahead", turns back east, and
+        # re-acquires the wall at close range. Same disease as obstacles
+        # evaporating from memory two decisions after sighting, one level up:
+        # the memory persisted, the rendering did not. A detour is precisely the
+        # situation where an obstacle is not in front of you and still governs
+        # everything you do next.
+        ahead = any(abs(rel) <= self.AHEAD_HALF_ANGLE for _, rel, _, _ in pts)
 
         nearest = min(p[0] for p in pts)
+        # A structure off your heading and this far away is genuinely behind
+        # you, not a detour in progress — keeping it in the prompt forever would
+        # have a wall you cleared minutes ago still arguing about your route.
+        if not ahead and nearest > self.RELEVANT_RANGE_M:
+            return ""
         top = max(p[3] for p in pts)
         ys = [p[2][1] for p in pts]
         xs = [p[2][0] for p in pts]  # noqa: E501 — world coords of each sensed marker
         south = (sum(xs) / len(xs), min(ys))
         north = (sum(xs) / len(xs), max(ys))
         rows = [
-            f"- Structure across your course: nearest edge {nearest:.0f} m ahead, "
+            (f"- Structure across your course: nearest edge {nearest:.0f} m ahead, "
+             if ahead else
+             f"- Structure you have seen, not currently across your heading: "
+             f"nearest edge {nearest:.0f} m away, ") +
             f"top of it about {top:.0f} m above ground (you are at {own_xyz[2]:.0f} m).",
             f"- It spans from ({south[0]:.0f}, {south[1]:.0f}) to "
             f"({north[0]:.0f}, {north[1]:.0f}) — {abs(north[1] - south[1]):.0f} m wide. "
             f"Those two ends are where it stops; beyond them the way is open.",
         ]
-        if top > own_xyz[2]:
+        if top > own_xyz[2] and ahead:
             rows.append("- It is taller than your current altitude, so flying straight "
                         "on will not clear it.")
+        elif top > own_xyz[2]:
+            rows.append("- It is taller than your current altitude. You are not pointed "
+                        "at it right now; turning back east before you are past one of "
+                        "those two ends puts you into it again.")
         # Name the action that can actually reach those coordinates. Observed
         # live: the model correctly described the wall and the need to go round
         # it on every single decision, then chose navigate_to_point every time —
