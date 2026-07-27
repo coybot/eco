@@ -6,9 +6,11 @@ hit the wall this time", and it needs the sim to not quietly fly through solid
 geometry when the model gets it wrong (fixed-wing bodies in this sim have no
 collision shape, so nothing stops them).
 
-This wraps SimBackend and checks the occupancy grid ahead of every drive
-command. If the aircraft is about to fly into structure, it turns away and logs
-an `envelope_protection` event.
+This wraps SimBackend and checks the occupancy grid ahead of the aircraft — on
+every drive command AND continuously on its own watchdog thread, because most
+of a mission's wall-clock is spent waiting on VLM inference with no drive
+command in flight at all. If the aircraft is about to fly into structure, it
+turns away and logs an `envelope_protection` event.
 
 The point is NOT to make avoidance work — an intervention means the model
 FAILED to avoid the wall itself. That is why take selection requires zero
@@ -21,6 +23,7 @@ from __future__ import annotations
 import base64
 import math
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -38,6 +41,17 @@ class EnvelopeGuardedSimBackend(SimBackend):
     ESCAPE_YAW_RATE = 0.6
     ESCAPE_HOLD_S = 0.6
 
+    # The mission thread only commands the aircraft while a leg is executing.
+    # Between legs it captures a frame and waits several seconds on VLM
+    # inference, and nothing holds a fixed-wing still — so the aircraft keeps
+    # flying its last command, unwatched. That gap is longer than the lookahead
+    # (4-8 s at 14 m/s is 55-110 m vs LOOKAHEAD_M = 60), which is how a run
+    # scored `envelope_events = 0` while its track went straight through the
+    # wall: the guard was not overruled, it was never asked. A guard that only
+    # runs inside drive() cannot support the claim its count is used to make.
+    WATCHDOG_HZ = 10.0
+    CRUISE_MS = 14.0
+
     def __init__(self, client, agent_id: str):
         super().__init__(client, agent_id)
         self.envelope_events = 0
@@ -46,6 +60,42 @@ class EnvelopeGuardedSimBackend(SimBackend):
         self._escape_until = 0.0
         self._escape_dir = 1.0
         self._in_escape = False
+        # Serialises the mission thread's drive() against the watchdog's, so the
+        # two cannot interleave halfway through an escape decision.
+        self._lock = threading.RLock()
+        self._last_airspeed = self.CRUISE_MS
+        self._stop = threading.Event()
+        self._watchdog = threading.Thread(target=self._watch, daemon=True,
+                                          name=f"envelope-{agent_id}")
+        self._watchdog.start()
+
+    def close(self) -> None:
+        self._stop.set()
+        self._watchdog.join(timeout=2.0)
+        parent = getattr(super(), "close", None)
+        if parent is not None:
+            parent()
+
+    def _watch(self) -> None:
+        """Keep checking the envelope even when nobody is flying the aircraft."""
+        period = 1.0 / self.WATCHDOG_HZ
+        while not self._stop.wait(period):
+            try:
+                with self._lock:
+                    pose = self.get_pose()
+                    if pose is None:
+                        continue
+                    x, y, z, yaw = pose
+                    # Only intervene when there is something to intervene about;
+                    # staying silent otherwise leaves the mission thread's own
+                    # commands untouched.
+                    if (time.monotonic() < self._escape_until
+                            or self._blocked_ahead(x, y, yaw, z) is not None):
+                        self._guarded_drive(self._last_airspeed, 0.0, 0.0, pose)
+            except Exception:
+                # A watchdog that dies on a transient IPC hiccup is worse than
+                # useless, because its silence still reads as "nothing to report".
+                continue
 
     def _load_grid(self):
         if self._grid is None:
@@ -154,9 +204,17 @@ class EnvelopeGuardedSimBackend(SimBackend):
         return super().goto(north_m, east_m, alt_m, timeout_s, tol_m)
 
     def drive(self, airspeed: float, yaw_rate: float, climb: float = 0.0) -> None:
-        pose = self.get_pose()
-        if pose is None:
-            return super().drive(airspeed, yaw_rate, climb)
+        with self._lock:
+            self._last_airspeed = airspeed
+            pose = self.get_pose()
+            if pose is None:
+                return super().drive(airspeed, yaw_rate, climb)
+            return self._guarded_drive(airspeed, yaw_rate, climb, pose)
+
+    def _guarded_drive(self, airspeed: float, yaw_rate: float, climb: float,
+                       pose) -> None:
+        """The actual check. Called by the mission thread and by the watchdog,
+        both holding the lock, so an escape decision is never half-applied."""
         x, y, z, yaw = pose
 
         now = time.monotonic()
@@ -197,4 +255,10 @@ class EnvelopeGuardedSimBackend(SimBackend):
             })
             return super().drive(airspeed, self._escape_dir * self.ESCAPE_YAW_RATE, climb)
 
+        # Path clear, so any encounter is over. Resetting here and not only in
+        # the escape branch matters: the hold can expire without that branch
+        # running again, which would leave `_in_escape` stuck true and silently
+        # stop counting every later encounter.
+        self._escape_until = 0.0
+        self._in_escape = False
         return super().drive(airspeed, yaw_rate, climb)
