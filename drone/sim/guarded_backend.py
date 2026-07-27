@@ -45,6 +45,7 @@ class EnvelopeGuardedSimBackend(SimBackend):
         self._grid = None
         self._escape_until = 0.0
         self._escape_dir = 1.0
+        self._in_escape = False
 
     def _load_grid(self):
         if self._grid is None:
@@ -169,6 +170,7 @@ class EnvelopeGuardedSimBackend(SimBackend):
             # stops guarding on a timer does not actually prevent anything.
             if self._blocked_ahead(x, y, yaw, z) is None:
                 self._escape_until = 0.0
+                self._in_escape = False
                 return super().drive(airspeed, yaw_rate, climb)
             self._escape_until = now + self.ESCAPE_HOLD_S
             return super().drive(airspeed, self._escape_dir * self.ESCAPE_YAW_RATE, climb)
@@ -177,7 +179,15 @@ class EnvelopeGuardedSimBackend(SimBackend):
         if hit is not None:
             self._escape_dir = self._clear_side(x, y, yaw, z)
             self._escape_until = now + self.ESCAPE_HOLD_S
-            self.envelope_events += 1
+            # Count one intervention per ENCOUNTER, not per drive() tick.
+            # Holding the turn until clear (rather than for a fixed interval)
+            # made the aircraft dip in and out of escape mode as the heading
+            # swung, and each re-entry scored another event: one run reported
+            # 281 where earlier runs reported 11, purely because the counter's
+            # meaning changed underneath the metric it was being judged by.
+            if not self._in_escape:
+                self.envelope_events += 1
+            self._in_escape = True
             self.log_event("envelope_protection", {
                 "limit": "structure_ahead",
                 "distance_m": hit,
