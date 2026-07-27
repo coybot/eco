@@ -83,10 +83,25 @@ def main() -> int:
     bad += check("uses the real top, not the marker height", "50 m above" in s3, s3)
     bad += check("warns it is not clearable", "not clear it" in s3)
 
-    # Same wall, but flying away from it — must stay silent, or a wall already
-    # passed would keep arguing for a turn.
-    s4 = ot.summarize((-100.0, 0.0, 35.0), math.pi, wall)
-    bad += check("silent when the wall is behind", s4 == "", repr(s4))
+    # Mid-detour: turned north to round the end, so the wall is no longer across
+    # the heading — but it governs every decision until the aircraft is past the
+    # end. This used to return "" and that was the bug: the model would choose
+    # the correct navigate_to_world detour, lose the block the instant it turned
+    # onto that heading, then pick a pixel near frame centre ("straight ahead"),
+    # turn back east and re-acquire the wall at close range. Measured over five
+    # runs, with the aircraft crossing the span at n=69.3 against an end at 70.
+    s4 = ot.summarize((60.0, 40.0, 35.0), math.radians(90.0), wall)
+    bad += check("still reported mid-detour", s4 != "", repr(s4))
+    bad += check("says it is not across the heading now",
+                 "not currently across your heading" in s4, s4)
+    bad += check("warns that turning back early re-enters it",
+                 "puts you into it again" in s4, s4)
+    bad += check("still names the ends mid-detour", "-70" in s4 and "70" in s4, s4)
+
+    # Genuinely past it and gone: silent, or a wall cleared minutes ago would
+    # keep arguing about the route.
+    s5 = ot.summarize((-400.0, 0.0, 35.0), math.pi, wall)
+    bad += check("silent once the wall is far behind", s5 == "", repr(s5))
 
     # Above it: still reported, but without the "cannot clear" line.
     s5 = ot.summarize((-100.0, 0.0, 60.0), 0.0, wall)
