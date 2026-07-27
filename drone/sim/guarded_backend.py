@@ -145,8 +145,17 @@ class EnvelopeGuardedSimBackend(SimBackend):
 
         now = time.monotonic()
         if now < self._escape_until:
-            # Mid-breakaway: keep turning, and ignore what the mission thread
-            # asked for until clear.
+            # Mid-breakaway. Hold the turn until the way ahead is ACTUALLY
+            # clear, not for a fixed interval: a timed nudge turned the
+            # aircraft ~20 degrees and handed control straight back, so it
+            # re-aimed at the wall and crossed it anyway — measured, 11
+            # interventions in one run and the track still went through the
+            # wall. Since nothing can hold a fixed-wing still, a guard that
+            # stops guarding on a timer does not actually prevent anything.
+            if self._blocked_ahead(x, y, yaw) is None:
+                self._escape_until = 0.0
+                return super().drive(airspeed, yaw_rate, climb)
+            self._escape_until = now + self.ESCAPE_HOLD_S
             return super().drive(airspeed, self._escape_dir * self.ESCAPE_YAW_RATE, climb)
 
         hit = self._blocked_ahead(x, y, yaw)
