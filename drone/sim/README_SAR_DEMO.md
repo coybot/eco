@@ -76,6 +76,21 @@ with any `envelope_protection` event is a failure by definition — an
 intervention means the model did not avoid the obstacle and deterministic code
 rescued it.
 
+## If a harness dies at startup
+
+`RuntimeError: Godot did not print 'IPC ready'` almost always means an orphaned
+Godot is still holding the port — killing a harness with Ctrl-C or `pkill` stops
+the Python side but leaves its Godot child running, since only a clean exit
+calls `GodotProcess.stop()`. Check and clear it:
+
+```bash
+pgrep -af godot && pkill -f godot
+```
+
+Each harness has its own default port (gate 9991, wall 9979, swarm 9978, tests
+9982–9986), so two harnesses can run concurrently, but two copies of the *same*
+one cannot. Pass `--port` to run a second.
+
 ## Two failure modes that look like something else
 
 **The forward camera freezes permanently once the VLM touches the GPU.** Every
