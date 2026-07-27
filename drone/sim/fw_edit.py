@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """Assemble the SAR demo showcase cut from a recorded take.
 
-Builds the final ~2 minute video segment by segment and concatenates, rather
-than as one giant ffmpeg filtergraph — a single mega-graph is unreadable, fails
-as a unit, and makes re-rendering one beat mean re-rendering everything.
+All text is rendered with PIL and composited onto frames, then ffmpeg only
+encodes and concatenates. That split is not a style choice: the ffmpeg on this
+machine is built without libfreetype, so the `drawtext` filter does not exist
+at all — a first version of this script used it and could not render a single
+card. fw_video_overlay.py already draws its overlays with PIL for the same
+reason; this follows that.
 
-Every caption in the cut comes from the recorded run: the tasking card shows the
-real prompt and the real plan JSON, the lower thirds show the model's own
-verbatim reasoning at that moment, and the closing card shows the actual mission
-reports. Nothing is written for the video. If a beat did not happen in the take,
-it does not appear in the cut — which is the point of scoring the take first.
+The cut is built segment by segment and concatenated, rather than as one giant
+filtergraph, so a single beat can be re-rendered without redoing everything.
+
+Every caption comes from the recorded run: the tasking card shows the real
+prompt and the real plan, the lower thirds show the model's own verbatim
+reasoning at that moment, and the closing card shows the beats as scored against
+scene truth. Nothing is written for the video — if a beat did not happen in the
+take, it does not appear in the cut.
 
 Inputs come from `fw_swarm_demo.py --record`:
-    take_NN/chase_alpha/*.jpg     chase camera, 1080p
+    take_NN/chase_alpha/*.jpg     chase camera
     take_NN/onboard_alpha/*.jpg   the frames the model actually saw
     take_NN/onboard_alpha/*.json  what it decided from each one
 
@@ -29,92 +35,105 @@ import sys
 import tempfile
 from pathlib import Path
 
+from PIL import Image, ImageDraw, ImageFont
+
 FPS = 24
 W, H = 1920, 1080
-FONT = "/System/Library/Fonts/Supplemental/Helvetica.ttc"
+BG = (11, 13, 18)
+
+FONT_CANDIDATES = [
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/SFNS.ttf",
+]
 
 
-def have_ffmpeg() -> bool:
-    return shutil.which("ffmpeg") is not None
+def font(size: int):
+    for path in FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
 
 
-def esc(text: str) -> str:
-    """Escape for ffmpeg drawtext, which is fussy about several characters."""
-    out = text.replace("\\", "\\\\").replace(":", "\\:").replace("'", "’")
-    return out.replace("%", "\\%").replace(",", "\\,").replace("[", "(").replace("]", ")")
-
-
-def wrap(text: str, width: int = 64, max_lines: int = 6) -> list:
+def wrap(draw, text: str, f, max_w: int, max_lines: int = 40) -> list:
     words, lines, cur = text.split(), [], ""
     for w in words:
-        if len(cur) + len(w) + 1 > width:
+        trial = f"{cur} {w}".strip()
+        if draw.textlength(trial, font=f) > max_w and cur:
             lines.append(cur)
             cur = w
             if len(lines) >= max_lines:
-                lines[-1] += " ..."
                 return lines
         else:
-            cur = f"{cur} {w}".strip()
+            cur = trial
     if cur:
         lines.append(cur)
     return lines
 
 
-def card(out: Path, title: str, body: str, seconds: float, subtitle: str = "") -> Path:
-    """A full-screen text card."""
-    filters = [f"drawtext=fontfile={FONT}:text='{esc(title)}':fontcolor=white:"
-               f"fontsize=64:x=(w-text_w)/2:y=180"]
+def write_seq(images, out_dir: Path, start_idx: int = 0) -> int:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for i, im in enumerate(images):
+        im.save(out_dir / f"{start_idx + i:05d}.jpg", quality=92)
+    return start_idx + len(images)
+
+
+def card_image(title: str, body: str, subtitle: str = "") -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    d = ImageDraw.Draw(im)
+    ft, fs, fb = font(58), font(30), font(30)
+
+    for line_i, line in enumerate(wrap(d, title, ft, W - 300, 3)):
+        w = d.textlength(line, font=ft)
+        d.text(((W - w) / 2, 150 + line_i * 72), line, font=ft, fill=(255, 255, 255))
     if subtitle:
-        filters.append(f"drawtext=fontfile={FONT}:text='{esc(subtitle)}':"
-                       f"fontcolor=0xAAAAAA:fontsize=32:x=(w-text_w)/2:y=270")
-    y = 380
-    for line in wrap(body, width=70, max_lines=12):
-        filters.append(f"drawtext=fontfile={FONT}:text='{esc(line)}':fontcolor=0xDDDDDD:"
-                       f"fontsize=30:x=140:y={y}")
+        w = d.textlength(subtitle, font=fs)
+        d.text(((W - w) / 2, 320), subtitle, font=fs, fill=(150, 160, 175))
+    y = 430
+    for line in wrap(d, body, fb, W - 320, 14):
+        d.text((160, y), line, font=fb, fill=(215, 220, 228))
         y += 46
+    return im
+
+
+def caption_frame(path: Path, lines: list, badge: str) -> Image.Image:
+    im = Image.open(path).convert("RGB")
+    if im.size != (W, H):
+        im = im.resize((W, H), Image.LANCZOS)
+    d = ImageDraw.Draw(im, "RGBA")
+    fb, fc = font(30), font(31)
+
+    if badge:
+        bw = d.textlength(badge, font=fb)
+        d.rectangle([W - bw - 96, 44, W - 40, 100], fill=(0, 0, 0, 190))
+        d.text((W - bw - 68, 56), badge, font=fb, fill=(255, 110, 110))
+
+    if lines:
+        box_h = 26 + len(lines) * 44
+        d.rectangle([48, H - box_h - 60, W - 48, H - 60], fill=(0, 0, 0, 190))
+        y = H - box_h - 42
+        for i, line in enumerate(lines):
+            d.text((78, y), line, font=fc,
+                   fill=(255, 255, 255) if i == 0 else (205, 212, 222))
+            y += 44
+    return im
+
+
+def encode(seq_dir: Path, out: Path, src_fps: float, smooth: bool) -> Path:
+    vf = f"minterpolate=fps={FPS}:mi_mode=mci:mc_mode=aobmc" if smooth else f"fps={FPS}"
     subprocess.run([
-        "ffmpeg", "-y", "-f", "lavfi",
-        "-i", f"color=c=0x0B0D12:s={W}x{H}:d={seconds}:r={FPS}",
-        "-vf", ",".join(filters), "-pix_fmt", "yuv420p", str(out),
+        "ffmpeg", "-y", "-framerate", str(src_fps), "-i", str(seq_dir / "%05d.jpg"),
+        "-vf", vf, "-pix_fmt", "yuv420p", "-c:v", "libx264", "-crf", "18",
+        "-r", str(FPS), str(out),
     ], check=True, capture_output=True)
-    return out
-
-
-def clip(out: Path, frames_dir: Path, start: int, count: int, src_fps: float,
-         overlays: list, badge: str = "COMMS: DENIED") -> Path:
-    """A segment of chase-cam frames with captions burned in."""
-    frames = sorted(frames_dir.glob("*.jpg"))[start:start + count]
-    if not frames:
-        return None
-    with tempfile.TemporaryDirectory() as td:
-        tmp = Path(td)
-        for i, f in enumerate(frames):
-            (tmp / f"{i:05d}.jpg").write_bytes(f.read_bytes())
-        filters = [f"scale={W}:{H}"]
-        if badge:
-            filters.append(
-                f"drawtext=fontfile={FONT}:text='{esc(badge)}':fontcolor=0xFF6666:"
-                f"fontsize=30:x=w-text_w-50:y=50:box=1:boxcolor=0x000000AA:boxborderw=12")
-        y = H - 260
-        for line in overlays:
-            filters.append(
-                f"drawtext=fontfile={FONT}:text='{esc(line)}':fontcolor=white:"
-                f"fontsize=32:x=70:y={y}:box=1:boxcolor=0x000000BB:boxborderw=14")
-            y += 48
-        # minterpolate smooths the low capture rate up to 24 fps; the sim can't
-        # render fast enough to capture at final frame rate without stalling.
-        filters.append(f"minterpolate=fps={FPS}:mi_mode=mci:mc_mode=aobmc")
-        subprocess.run([
-            "ffmpeg", "-y", "-framerate", str(src_fps), "-i", str(tmp / "%05d.jpg"),
-            "-vf", ",".join(filters), "-pix_fmt", "yuv420p", "-r", str(FPS), str(out),
-        ], check=True, capture_output=True)
     return out
 
 
 def load_decisions(take: Path, drone: str) -> list:
     out = []
-    d = take / f"onboard_{drone}"
-    for j in sorted(d.glob("*.json")):
+    for j in sorted((take / f"onboard_{drone}").glob("*.json")):
         try:
             out.append(json.loads(j.read_text()))
         except Exception:
@@ -124,14 +143,14 @@ def load_decisions(take: Path, drone: str) -> list:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--take", required=True, help="a take_NN directory from --record")
-    ap.add_argument("--report", default=None, help="swarm_report.json for the beat log")
+    ap.add_argument("--take", required=True)
+    ap.add_argument("--report", default=None)
     ap.add_argument("--plan", default="swarm_plan_cache.json")
     ap.add_argument("--out", default="final.mp4")
     ap.add_argument("--src-fps", type=float, default=6.0)
     args = ap.parse_args()
 
-    if not have_ffmpeg():
+    if shutil.which("ffmpeg") is None:
         print("FAIL: ffmpeg not on PATH", file=sys.stderr)
         return 2
     take = Path(args.take)
@@ -143,16 +162,20 @@ def main() -> int:
     work.mkdir(exist_ok=True)
     segments = []
 
-    # --- title ---------------------------------------------------------------
-    segments.append(card(
-        work / "00_title.mp4",
-        "Two aircraft. No link. One decision-maker on board.",
-        "Everything that follows was decided in flight by an 8-billion-parameter "
-        "vision-language model running on the aircraft — the size that fits a "
-        "Jetson Orin NX. Simulated flight; real model, real camera frames.",
-        6.0, subtitle="Search and rescue, comms denied"))
+    def add_card(name, title, body, seconds, subtitle=""):
+        im = card_image(title, body, subtitle)
+        d = work / f"seq_{name}"
+        if d.exists():
+            shutil.rmtree(d)
+        write_seq([im] * max(1, int(seconds * 4)), d)
+        segments.append(encode(d, work / f"{name}.mp4", 4.0, smooth=False))
 
-    # --- tasking: the REAL prompt and the REAL plan ---------------------------
+    add_card("00_title", "Two aircraft. No link. One decision-maker on board.",
+             "Everything that follows was decided in flight by an 8-billion-parameter "
+             "vision-language model running on the aircraft — the size that fits a "
+             "Jetson Orin NX. Simulated flight; real model, real camera frames.",
+             6.0, "Search and rescue, communications denied")
+
     plan_path = Path(args.plan)
     plan_txt = "(plan cache not found)"
     if plan_path.exists():
@@ -160,54 +183,50 @@ def main() -> int:
         bits = []
         for name, plan in plans.items():
             phases = plan.get("phases") or []
-            bits.append(f"{name}: {len(phases)} phases — "
-                        + "; ".join(str(p.get("objective", p.get("type", "")))[:60]
-                                    for p in phases[:3]))
-        plan_txt = "  |  ".join(bits)
-    segments.append(card(
-        work / "01_tasking.mp4", "One tasking, uplinked before launch",
-        plan_txt, 8.0,
-        subtitle="Decomposed by the cloud planner — the last contact they have"))
+            first = "; ".join(str(p.get("objective", p.get("type", "")))[:70]
+                              for p in phases[:2])
+            bits.append(f"{name}: {len(phases)} phases — {first}")
+        plan_txt = "   ".join(bits)
+    add_card("01_tasking", "One tasking, uplinked before launch", plan_txt, 9.0,
+             "Decomposed by the cloud planner — the last contact they have")
 
-    # --- flight beats, per aircraft ------------------------------------------
     for drone in ("alpha", "bravo"):
         chase = take / f"chase_{drone}"
-        if not chase.exists():
-            continue
+        frames = sorted(chase.glob("*.jpg")) if chase.exists() else []
         decisions = load_decisions(take, drone)
-        frames = sorted(chase.glob("*.jpg"))
-        if not frames:
+        if not frames or not decisions:
             continue
-        # Spread the available chase frames across the decisions, so each
-        # segment is captioned with the reasoning that was live at the time.
         per = max(1, len(frames) // max(1, len(decisions)))
         for i, dec in enumerate(decisions):
             act = dec.get("action", {})
             reasoning = (act.get("reasoning") or "").strip()
             if not reasoning:
                 continue
-            lines = [f"{drone.upper()} — onboard model: {act.get('action_type', '')}"]
-            lines += wrap(reasoning, width=78, max_lines=3)
-            seg = clip(work / f"10_{drone}_{i:03d}.mp4", chase, i * per, per,
-                       args.src_fps, lines)
-            if seg:
-                segments.append(seg)
+            chunk = frames[i * per:(i + 1) * per]
+            if not chunk:
+                break
+            probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+            lines = [f"{drone.upper()} · onboard model · {act.get('action_type', '')}"]
+            lines += wrap(probe, reasoning, font(31), W - 200, 3)
+            seq = work / f"seq_10_{drone}_{i:03d}"
+            if seq.exists():
+                shutil.rmtree(seq)
+            write_seq([caption_frame(f, lines, "COMMS: DENIED") for f in chunk], seq)
+            segments.append(encode(seq, work / f"10_{drone}_{i:03d}.mp4",
+                                   args.src_fps, smooth=True))
 
-    # --- closing: the real reports -------------------------------------------
-    closing = "Link restored on return. Both aircraft reported:"
+    closing = "Link restored on return."
     if args.report and Path(args.report).exists():
         rep = json.loads(Path(args.report).read_text())
-        best = next((t for t in rep.get("detail", []) if t.get("all_beats_pass")),
-                    (rep.get("detail") or [None])[0])
+        detail = rep.get("detail") or []
+        best = next((t for t in detail if t.get("all_beats_pass")), detail[0] if detail else None)
         if best:
-            beats = ", ".join(f"{k}: {'yes' if v['pass'] else 'no'}"
-                              for k, v in best.get("beats", {}).items())
-            closing = f"Verified against scene truth — {beats}"
-    segments.append(card(work / "99_close.mp4", "Link restored", closing, 8.0,
-                         subtitle="Beats checked against the simulator, not the "
-                                  "drones' own claims"))
+            closing = "Checked against the simulator's own truth, not the drones' claims — " + \
+                ", ".join(f"{k.replace('_', ' ')}: {'yes' if v['pass'] else 'no'}"
+                          for k, v in best.get("beats", {}).items())
+    add_card("99_close", "Link restored", closing, 9.0,
+             "Every beat verified against scene truth")
 
-    # --- concat ---------------------------------------------------------------
     lst = work / "concat.txt"
     lst.write_text("\n".join(f"file '{s.resolve()}'" for s in segments if s))
     out = Path(args.out)
