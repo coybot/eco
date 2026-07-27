@@ -18,6 +18,7 @@ airframe, since a fixed-wing has moved 25 m by the time it reasons about it.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import time
 from dataclasses import dataclass
@@ -404,14 +405,64 @@ class SimBackend:
     def __init__(self, client, agent_id: str):
         self._client = client
         self._id = agent_id
+        self._last_frame_digest = None
+        self._repeat_frames = 0
+        self.stale_frame_recoveries = 0
+
+    # Recover on the FIRST repeated capture. Measured under a real VLM, the
+    # render target re-freezes immediately after every recovery, so tolerating
+    # even one stale frame per cycle left half of all captures stale. Nothing
+    # can hold a fixed-wing still either (stop() is a 12 m/s loiter), so two
+    # genuinely identical consecutive frames essentially cannot happen in
+    # flight — and if one did, the only cost is a spare viewport rebuild.
+    _STALE_FRAME_LIMIT = 1
 
     def capture_frame(self):
-        # fixedwing_manager.gd's forward-camera IPC (fw_grab_frame) — added
-        # alongside the fw_detect() structured-sensing path once real VLM
-        # weights made a raw image worth capturing. Requires gui=True at
-        # launch (headless Godot's dummy renderer leaves it blank) — same
-        # limitation grab_vantage already has (see fw_eval.py).
-        return self._client.fw_grab_frame(self._id)
+        # fixedwing_manager.gd's forward-camera IPC (fw_grab_frame). Requires
+        # gui=True at launch (headless Godot's dummy renderer leaves it blank)
+        # — same limitation grab_vantage has (see fw_eval.py).
+        #
+        # The render target freezes PERMANENTLY once the VLM starts using the
+        # GPU, which on a mission run is essentially immediately. From then on
+        # every capture is byte-identical stale pixels while detect() carries on
+        # reporting the truth, so the model reasons about a photograph of the
+        # past and looks blind rather than misinformed. This cost a whole
+        # perception-gate run before being diagnosed; see
+        # FixedWingManager.reset_camera and Bug 11 in
+        # papers/fixed_wing_sitl_lessons_learned.md.
+        frame = self._client.fw_grab_frame(self._id)
+        if frame is None:
+            return None
+
+        digest = hashlib.md5(frame).digest()
+        if digest == self._last_frame_digest:
+            self._repeat_frames += 1
+            if self._repeat_frames >= self._STALE_FRAME_LIMIT:
+                self._recover_camera()
+                fresh = self._client.fw_grab_frame(self._id)
+                if fresh is not None:
+                    frame = fresh
+                    digest = hashlib.md5(frame).digest()
+                self._repeat_frames = 0
+        else:
+            self._repeat_frames = 0
+
+        self._last_frame_digest = digest
+        return frame
+
+    def _recover_camera(self):
+        """Rebuild the forward camera, then let it render before the next read."""
+        self.stale_frame_recoveries += 1
+        try:
+            self._client.fw_reset_camera(self._id)
+        except Exception:
+            return
+        # A freshly built SubViewport has no content until it has drawn once.
+        time.sleep(0.15)
+        self.log_event("camera_recovered", {
+            "reason": "stale forward-camera frames",
+            "count": self.stale_frame_recoveries,
+        })
 
     def detect(self) -> list:
         out = []

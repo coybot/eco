@@ -15,6 +15,7 @@ import sys
 import time
 import json
 import base64
+import threading
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
@@ -178,8 +179,23 @@ class VLMService:
         
         self._llm = None
         self._available = False
-        
+        # Serialises inference. Two aircraft fly concurrently in the two-drone
+        # demo, each with its own MissionLoop on its own thread, but they share
+        # one loaded model because a second 5 GB instance will not fit alongside
+        # the first. llama.cpp keeps KV-cache state across a call and is not
+        # thread-safe, so overlapping calls corrupt each other's context —
+        # producing plausible-looking answers to the wrong prompt, which is far
+        # worse than waiting. Each create_chat_completion is self-contained
+        # (full prompt every time), so per-call locking is sufficient.
+        self._lock = threading.RLock()
+
         self._init_model()
+
+    def _chat(self, **kwargs):
+        """The single serialised entry point to the model. Every inference call
+        in this class goes through here so no site can forget the lock."""
+        with self._lock:
+            return self._llm.create_chat_completion(**kwargs)
     
     def _init_model(self):
         """Initialize the VLM model."""
@@ -351,7 +367,7 @@ class VLMService:
                 kwargs = dict(messages=messages, max_tokens=500, temperature=0.1)
                 if attempt > 0:
                     kwargs["logit_bias"] = {eos_id: -100.0}
-                response = self._llm.create_chat_completion(**kwargs)
+                response = self._chat(**kwargs)
                 content = response['choices'][0]['message']['content'] or ""
                 if content.strip():
                     break
@@ -562,7 +578,7 @@ class VLMService:
                 image_array=image if hasattr(image, 'shape') else None,
             )
             
-            response = self._llm.create_chat_completion(
+            response = self._chat(
                 messages=[
                     {
                         "role": "user",
@@ -609,7 +625,7 @@ class VLMService:
                 image_array=image if hasattr(image, 'shape') else None,
             )
 
-            response = self._llm.create_chat_completion(
+            response = self._chat(
                 messages=[
                     {
                         "role": "user",
@@ -648,7 +664,7 @@ class VLMService:
                 image_array=image if hasattr(image, 'shape') else None,
             )
             
-            response = self._llm.create_chat_completion(
+            response = self._chat(
                 messages=[
                     {
                         "role": "user",
@@ -689,12 +705,20 @@ class VLMService:
 
 # Singleton instance
 _vlm_service = None
+# Guards CONSTRUCTION, not inference (VLMService has its own lock for that).
+# Two MissionLoop threads starting together would otherwise both see None and
+# each load a separate 5 GB model — the second load fails or thrashes, and the
+# two aircraft would end up on different model instances.
+_vlm_service_lock = threading.Lock()
+
 
 def get_vlm_service() -> VLMService:
     """Get or create the VLM service singleton."""
     global _vlm_service
     if _vlm_service is None:
-        _vlm_service = VLMService()
+        with _vlm_service_lock:
+            if _vlm_service is None:
+                _vlm_service = VLMService()
     return _vlm_service
 
 
