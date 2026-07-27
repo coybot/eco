@@ -53,6 +53,7 @@ from vehicle_class import VehicleClass, get_class
 from spatial_memory import SpatialMemory, normalize_label, labels_match
 import search_patterns
 import mission_vocab
+from situation import ObstacleTracker, PeerTracker, payload_block
 
 # Fallback image dimensions for NAVIGATE_TO_POINT's pixel->normalized conversion
 # when the captured frame isn't a numpy array to read .shape from (SimBackend's
@@ -252,6 +253,19 @@ class MissionLoop:
         self._search_plan: List[tuple] = []
         self._search_idx: int = 0
         self._search_target: Optional[str] = None
+
+        # Perception/behaviour context for the prompt. These are per-instance,
+        # so two aircraft running two MissionLoops on two threads keep entirely
+        # separate pictures of the world — which is the point, since they are
+        # meant to be reasoning independently with no link between them.
+        self._last_detections: List[Any] = []
+        self.peers = PeerTracker()
+        self.obstacles = ObstacleTracker()
+        self.payload_remaining: int = 0
+        self.payload_capacity: int = 0
+        # Optional hook: (frame_bytes, detections, action, wall_clock) for each
+        # decision, so a harness can record exactly what the model saw.
+        self.on_tick: Optional[Callable] = None
 
     def _get_vlm(self) -> Optional[VLMService]:
         """Lazy-load VLM service."""
@@ -770,6 +784,25 @@ class MissionLoop:
                 detections = []
             sense_range = self.vehicle_class.sense_range_m
             detections = [d for d in detections if d.range_m is None or d.range_m <= sense_range]
+            self._last_detections = detections
+
+            # Teammates are intercepted BEFORE the memory update below. Ordinary
+            # memory accumulates distinct objects, which is right for things that
+            # stay put and wrong for an aircraft: one teammate sighted along its
+            # track would otherwise become a scattering of phantom landmarks, and
+            # then get counted, searched for and reported as findings. It is
+            # pinned instead, so exactly one always-current entry exists and
+            # RETURN_TO_LANDMARK can still act on it.
+            peers = [d for d in detections if d.label == "aircraft"]
+            detections = [d for d in detections if d.label != "aircraft"]
+            for d in peers:
+                if d.world_xyz is None:
+                    continue
+                self.peers.observe(d.peer_id or "teammate",
+                                   d.world_xyz[0], d.world_xyz[1], d.world_xyz[2])
+                self.memory.pin("teammate", d.world_xyz[0], d.world_xyz[1], d.world_xyz[2],
+                                d.score)
+
             for d in detections:
                 if d.world_xyz is not None:
                     lm = self.memory.update(d.label, d.world_xyz[0], d.world_xyz[1], d.world_xyz[2], d.score)
@@ -794,9 +827,20 @@ class MissionLoop:
                 history=self._history[-10:],  # Last 10 actions
                 detections=detections,
                 memory=self.memory.all(),
+                extra_context=self._situation_blocks(peers, detections),
             )
 
             phase_actions += 1
+
+            # Give the caller the exact frame the model saw alongside what it
+            # decided from it. Recorded footage otherwise shows a chase camera's
+            # view, which is not what the model was looking at — and the demo's
+            # whole claim is about what the onboard model actually saw.
+            if self.on_tick is not None:
+                try:
+                    self.on_tick(frame, detections, action, time.time())
+                except Exception as exc:
+                    print(f"on_tick hook failed: {exc}")
 
             # Hard guard, not just a prompt instruction — confirmed live that
             # asking nicely in the system prompt did NOT stop this: the model
@@ -875,6 +919,12 @@ class MissionLoop:
                     )
                     known_labels = {normalize_label(d.label) for d in detections}
                     known_labels |= {normalize_label(lm.label) for lm in self.memory.all()}
+                    # Seeing a teammate is never evidence for the objective. It
+                    # is pinned in memory so the aircraft can fly to it, but a
+                    # mission phrased around aircraft ("rendezvous with the other
+                    # aircraft") would otherwise let the mere sight of one ground
+                    # any claim of success.
+                    known_labels -= self.NON_GROUNDING_LABELS
                     grounded = any(label and label in objective_blob for label in known_labels)
                     if not grounded:
                         self._report_progress(
@@ -1149,6 +1199,48 @@ class MissionLoop:
                 else:
                     self._history.append(f"Search pattern exhausted for {target}")
 
+            elif action.action_type == ActionType.ORBIT_POINT:
+                # Circle a point and keep watching it. One lap per decision, so
+                # the model re-evaluates every lap and can break off the moment
+                # something changes, rather than committing to a fixed wait.
+                pose = backend.get_pose()
+                center = self._orbit_center(action, pose)
+                if center is None:
+                    self._history.append(
+                        "orbit_point ignored: no world point given and none in memory")
+                else:
+                    radius = float(action.radius_m or 60.0)
+                    alt = float(action.alt_m) if action.alt_m is not None else (
+                        pose[2] if pose is not None else 30.0)
+                    self._report_progress(
+                        f"Orbiting ({center[0]:.0f}, {center[1]:.0f}) at r={radius:.0f} m, "
+                        f"{alt:.0f} m, watching for {action.target_object or 'activity'}")
+                    # Hold the sensor on the orbit centre for the whole lap.
+                    # Without this the aircraft circles with its camera aimed
+                    # along the tangent and never actually sees the thing it is
+                    # circling — the reason sensor pointing exists at all.
+                    self._aim_sensor_at(center)
+                    try:
+                        lap = search_patterns.orbit(center, radius, self.vehicle_class, laps=1)
+                        for wx, wy in lap:
+                            backend.goto(wy, wx, alt, timeout_s=25.0, tol_m=12.0)
+                            # Re-aim each leg: the offset is relative to the
+                            # airframe's nose, which swings right round a lap.
+                            self._aim_sensor_at(center)
+                    finally:
+                        # Always recentre. A sensor left cocked would silently
+                        # point every later detection and unprojection the wrong
+                        # way, long after the orbit ended.
+                        self._aim_sensor_at(None)
+                    backend.log_event("orbit_lap", {
+                        "center": [center[0], center[1]],
+                        "radius_m": radius, "alt_m": alt,
+                        "watching_for": action.target_object,
+                    })
+
+            elif action.action_type == ActionType.DROP_PAYLOAD:
+                self._exec_drop_payload(action, backend)
+
             elif action.action_type == ActionType.COUNT:
                 # The actual counting is done HERE, by SpatialMemory, not by
                 # the VLM's own arithmetic — action.target_object is only used
@@ -1317,6 +1409,141 @@ class MissionLoop:
             except Exception as e:
                 print(f"Failed to publish progress: {e}")
     
+    # ------------------------------------------------------------------
+    # ORBIT_POINT / DROP_PAYLOAD support
+    # ------------------------------------------------------------------
+    # A release is only authorised while the target is actually in view and
+    # this close (see _exec_drop_payload for why the gates are mechanical).
+    DROP_MAX_RANGE_M = 60.0
+    DROP_RUN_IN_ALT_M = 15.0
+
+    # Labels that can never ground a claim of mission success — they say
+    # something about the formation, not about the objective.
+    NON_GROUNDING_LABELS = {"aircraft", "teammate"}
+
+    def _situation_blocks(self, peers, detections) -> Dict[str, str]:
+        """The prompt blocks that a single frame cannot convey.
+
+        All three are computed by deterministic geometry over sensor history —
+        they describe the situation, they do not choose a response to it. What
+        to do about a teammate circling low, or a wall across the route, stays
+        entirely with the model.
+        """
+        blocks: Dict[str, str] = {}
+        pose = None
+        try:
+            pose = self._get_backend().get_pose()
+        except Exception:
+            pass
+        if pose is None:
+            return blocks
+        own = (pose[0], pose[1], pose[2])
+
+        peer_text = self.peers.summarize(own)
+        if peer_text:
+            blocks["PEER OBSERVATIONS (teammates you have SEEN — there is no radio link)"] = (
+                peer_text)
+
+        obstacle_text = self.obstacles.summarize(own, pose[3], detections)
+        if obstacle_text:
+            blocks["OBSTACLES AHEAD"] = obstacle_text
+
+        if self.payload_capacity:
+            blocks["PAYLOAD"] = payload_block(self.payload_remaining, self.payload_capacity)
+        return blocks
+
+    def _orbit_center(self, action, pose):
+        """Where to orbit: the model's world point, else a remembered landmark.
+
+        Falling back to memory matters because the point worth watching is
+        usually somewhere the target was last seen — which is exactly the
+        moment it is no longer visible to read coordinates off.
+        """
+        if action.world_x is not None and action.world_y is not None:
+            return (float(action.world_x), float(action.world_y))
+        if action.target_object:
+            origin = (pose[0], pose[1], pose[2]) if pose else (0.0, 0.0, 0.0)
+            lm = self.memory.nearest(action.target_object, origin)
+            if lm is not None:
+                return (lm.x, lm.y)
+        return None
+
+    def _aim_sensor_at(self, center) -> None:
+        """Point the sensor at an ENU point, or recentre it when given None.
+
+        Optional capability: backends without a steerable sensor simply do not
+        implement it, and everything else still works — the aircraft just can't
+        watch a point it isn't flying at.
+        """
+        backend = self._get_backend()
+        fn = getattr(backend, "aim_sensor", None)
+        if fn is None:
+            return
+        try:
+            fn(center)
+        except Exception as exc:
+            self._report_progress(f"sensor aim failed: {exc}")
+
+    def _exec_drop_payload(self, action, backend) -> None:
+        """Release the payload, but only on a target confirmed right now.
+
+        The gates below are deliberately mechanical, and they are not the
+        model second-guessing itself: they are the difference between "the
+        model believes it is over the target" and "the aircraft can currently
+        see the target". A payload cannot be recovered once released, and a
+        delivery to the wrong person is the single most damaging thing this
+        mission can do, so a decision made several seconds and a hundred metres
+        ago is not sufficient authority to let go of it.
+        """
+        target = action.target_object or "target"
+        if getattr(self, "payload_remaining", 0) <= 0:
+            self._history.append("drop_payload refused: nothing left to release")
+            self._report_progress("Cannot deliver — payload already released")
+            return
+
+        # Gate 1: the target must be visible in THIS perception pass.
+        fresh = [d for d in (self._last_detections or [])
+                 if labels_match(d.label, target) or labels_match(target, d.label)]
+        if not fresh:
+            self._history.append(
+                f"drop_payload refused: {target} not visible in the current frame")
+            self._report_progress(
+                f"Holding payload — {target} is not in view right now")
+            return
+
+        # Gate 2: close enough that a release can plausibly land near it.
+        pose = backend.get_pose()
+        best = None
+        if pose is not None:
+            for d in fresh:
+                if d.world_xyz:
+                    dist = math.hypot(d.world_xyz[0] - pose[0], d.world_xyz[1] - pose[1])
+                    if best is None or dist < best[0]:
+                        best = (dist, d)
+        if best is None:
+            self._history.append("drop_payload refused: no world position for the target")
+            return
+        dist, det = best
+        if dist > self.DROP_MAX_RANGE_M:
+            self._report_progress(
+                f"Too far to deliver ({dist:.0f} m) — closing on {target} first")
+            backend.goto(det.world_xyz[1], det.world_xyz[0],
+                         self.DROP_RUN_IN_ALT_M, timeout_s=40.0, tol_m=15.0)
+            return
+
+        release = getattr(backend, "drop_payload", None)
+        if release is None:
+            self._history.append("drop_payload unsupported by this backend")
+            return
+        result = release()
+        if result:
+            self.payload_remaining = max(0, self.payload_remaining - 1)
+            self._report_progress(
+                f"Payload released for {target} at {dist:.0f} m")
+            self._history.append(f"Released payload for {target}")
+        else:
+            self._history.append("drop_payload: release refused by the vehicle")
+
     def _replan(self, phase: Dict[str, Any], reason: str, attempt: int) -> None:
         """Loiter and clear transient per-phase state before retrying a failed
         phase — the bounded alternative to aborting (see _run_impl). Cleared
