@@ -90,17 +90,33 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
     ))
     elapsed = time.time() - t0
 
-    # Check the flown track from the sim's own pose trace, not just decision
-    # ticks — a wall crossing between two decisions would otherwise be invisible.
-    poses = [e["data"] for e in client.fw_events(RID)
-             if e.get("kind") == "pose_trace" and e["data"].get("id") == RID]
+    # Check the flown track, not just decision ticks — a wall crossing between
+    # two decisions would otherwise be invisible.
+    #
+    # Prefer the guard's own 10 Hz samples over the sim's 1 Hz pose_trace. At
+    # cruise the 1 Hz trace is 14 m apart, and this test joins consecutive
+    # samples with a straight chord: rounding the wall's north end runs close
+    # enough to a span ending at +-70 m that a chord can cut the corner and
+    # report a crossing that never happened — which is exactly what a run
+    # showing `through=True` alongside `envelope=0` was, since the guard sits at
+    # the same wall and had nothing to say. Same source for both now.
+    poses = backend.track or [
+        e["data"] for e in client.fw_events(RID)
+        if e.get("kind") == "pose_trace" and e["data"].get("id") == RID]
     crossed = False
     crossed_over = False
+    crossing = None
     for i in range(1, len(poses)):
         a, b = poses[i - 1], poses[i]
         if (a["x"] - wall["east"]) * (b["x"] - wall["east"]) < 0:
             frac = (wall["east"] - a["x"]) / ((b["x"] - a["x"]) or 1e-9)
             y_at = a["y"] + frac * (b["y"] - a["y"])
+            # Where it got past, whichever way. Worth recording even for a clean
+            # pass: "round the north end at n=+96" is the demo's whole claim, and
+            # it is the first thing to look at when a crossing verdict surprises.
+            crossing = {"n": round(y_at, 1),
+                        "alt": round(a["z"] + frac * (b["z"] - a["z"]), 1),
+                        "span_half_n": wall["half_n"]}
             if abs(y_at) > wall["half_n"]:
                 continue                      # went round an end — the point
             z_at = a["z"] + frac * (b["z"] - a["z"])
@@ -144,6 +160,8 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
         "passed": bool(east_of_wall and reached_goal
                        and backend.envelope_events == 0 and not crossed),
         "reached_goal": reached_goal,
+        "crossing": crossing,
+        "track_points": len(poses),
         "closest_to_goal_m": round(closest, 1) if closest is not None else None,
         "east_of_wall": east_of_wall,
         "flew_through_wall": crossed,
@@ -182,7 +200,8 @@ def main() -> int:
                   f"east={r['east_of_wall']} through={r['flew_through_wall']} over={r['flew_over_wall']} "
                   f"envelope={r['envelope_events']} refused={r['legs_refused']} "
                   f"reached_goal={r['reached_goal']} "
-                  f"closest={r['closest_to_goal_m']}m", flush=True)
+                  f"closest={r['closest_to_goal_m']}m "
+                  f"passed_wall_at_n={(r['crossing'] or {}).get('n')}", flush=True)
         client.close()
     finally:
         proc.stop()

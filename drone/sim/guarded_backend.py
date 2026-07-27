@@ -51,6 +51,11 @@ class EnvelopeGuardedSimBackend(SimBackend):
     # runs inside drive() cannot support the claim its count is used to make.
     WATCHDOG_HZ = 10.0
     CRUISE_MS = 14.0
+    # How long the path must stay clear before the aircraft counts as having
+    # finished with an obstacle. See the reset in _guarded_drive().
+    ENCOUNTER_CLEAR_S = 2.0
+    # ~30 min of 10 Hz track; a run is a few minutes.
+    TRACK_LIMIT = 20000
 
     def __init__(self, client, agent_id: str):
         super().__init__(client, agent_id)
@@ -60,6 +65,9 @@ class EnvelopeGuardedSimBackend(SimBackend):
         self._escape_until = 0.0
         self._escape_dir = 1.0
         self._in_escape = False
+        self._clear_since = 0.0
+        # 10 Hz flown track, sampled by the watchdog — see _watch().
+        self.track: list = []
         # Serialises the mission thread's drive() against the watchdog's, so the
         # two cannot interleave halfway through an escape decision.
         self._lock = threading.RLock()
@@ -86,6 +94,18 @@ class EnvelopeGuardedSimBackend(SimBackend):
                     if pose is None:
                         continue
                     x, y, z, yaw = pose
+                    # Record the track while we are here. The sim's own
+                    # pose_trace runs at 1 Hz — 14 m between samples at cruise —
+                    # and the gate's most important assertion, "did the track go
+                    # through the wall", was being evaluated on straight chords
+                    # between those samples. Rounding the wall's north end puts
+                    # the aircraft within ~60 m of a span that ends at +-70 m,
+                    # so a chord can cut the corner and report a crossing that
+                    # never happened. This is the same 10 Hz the guard makes its
+                    # own decisions on, so the score and the guard cannot
+                    # disagree about where the aircraft was.
+                    if len(self.track) < self.TRACK_LIMIT:
+                        self.track.append({"x": x, "y": y, "z": z})
                     # Only intervene when there is something to intervene about;
                     # staying silent otherwise leaves the mission thread's own
                     # commands untouched.
@@ -243,6 +263,7 @@ class EnvelopeGuardedSimBackend(SimBackend):
             # swung, and each re-entry scored another event: one run reported
             # 281 where earlier runs reported 11, purely because the counter's
             # meaning changed underneath the metric it was being judged by.
+            self._clear_since = 0.0
             if not self._in_escape:
                 self.envelope_events += 1
             self._in_escape = True
@@ -255,10 +276,20 @@ class EnvelopeGuardedSimBackend(SimBackend):
             })
             return super().drive(airspeed, self._escape_dir * self.ESCAPE_YAW_RATE, climb)
 
-        # Path clear, so any encounter is over. Resetting here and not only in
-        # the escape branch matters: the hold can expire without that branch
-        # running again, which would leave `_in_escape` stuck true and silently
-        # stop counting every later encounter.
-        self._escape_until = 0.0
-        self._in_escape = False
+        # An encounter ends only once the path has been continuously clear for
+        # ENCOUNTER_CLEAR_S — not on the first clear tick.
+        #
+        # Both halves of that are load-bearing, and getting either wrong
+        # corrupts the count in a different direction. Never resetting here
+        # leaves `_in_escape` stuck true when the hold expires without the
+        # escape branch running again, silently suppressing every later
+        # encounter. Resetting on the first clear tick instead makes one long
+        # scrape along a wall score once per heading swing: measured, 223
+        # "encounters" for a single approach.
+        now = time.monotonic()
+        if self._clear_since == 0.0:
+            self._clear_since = now
+        elif now - self._clear_since >= self.ENCOUNTER_CLEAR_S:
+            self._escape_until = 0.0
+            self._in_escape = False
         return super().drive(airspeed, yaw_rate, climb)
