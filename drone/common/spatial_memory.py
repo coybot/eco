@@ -61,6 +61,25 @@ class SpatialMemory:
         bucket.append(lm)
         return lm
 
+    def pin(self, label: str, x: float, y: float, z: float, score: float = 1.0) -> Landmark:
+        """Store exactly one landmark for `label`, overwriting any previous one.
+
+        update() accumulates: repeat sightings past the merge radius become
+        separate landmarks, which is right for counting distinct objects but
+        wrong for anything that MOVES. A teammate aircraft sighted eight times
+        along its track is not eight aircraft, and its position from a minute
+        ago is not worth remembering — only where it was last seen. Pinning
+        keeps a single always-current entry, so nearest() returns the latest
+        fix rather than the closest of a trail of stale ones.
+        """
+        key = normalize_label(label)
+        lm = Landmark(label=label, x=x, y=y, z=z, score=score)
+        prior = self._store.get(key)
+        if prior:
+            lm.hits = prior[0].hits + 1
+        self._store[key] = [lm]
+        return lm
+
     def nearest(self, label: str, from_xyz=(0.0, 0.0, 0.0)) -> Optional[Landmark]:
         candidates = self.matching(label)
         if not candidates:

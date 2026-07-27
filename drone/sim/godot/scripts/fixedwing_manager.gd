@@ -508,13 +508,19 @@ func detect(id: String) -> Array:
 		var nx: float = clamp(0.5 + (angle / DETECT_HFOV_HALF) * 0.5, 0.0, 1.0)
 		var ny: float = clamp(0.5 + (vert_angle / DETECT_VFOV_HALF) * 0.5, 0.0, 1.0)
 
-		out.append({
+		var row := {
 			"label": label,
 			"confidence": confidence,
 			"nx": nx,
 			"ny": ny,
 			"world": [wp.x, wp.y, target_pos.y]
-		})
+		}
+		# Vertical extent, when the prop knows it. A sensed point tells you where
+		# something is, not how tall it is, and for structure that difference
+		# decides whether it can be overflown — see the marker note in env_sar.gd.
+		if node.has_meta("top_z"):
+			row["top_z"] = node.get_meta("top_z")
+		out.append(row)
 
 	# --- peer pass -----------------------------------------------------------
 	# Other aircraft are sensed with the same FOV and occlusion rules as props,

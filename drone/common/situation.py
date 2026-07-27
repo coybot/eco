@@ -1,0 +1,182 @@
+"""Situational context blocks for the on-device VLM prompt.
+
+A single camera frame cannot show a trend. It cannot show that the teammate
+visible as a speck has been steadily descending for the last forty seconds, or
+that the structure ahead spans 140 m and tops out above your altitude. Both are
+things a pilot would know and reason from, and both are computed here by plain
+deterministic geometry over the sensor history — then handed to the model as
+text it can reason about.
+
+The division of labour matters for the demo's honesty. Nothing in this module
+decides anything: it measures, aggregates and describes. Whether a descending,
+circling teammate is worth diverting to, and whether a wall ahead should be
+rounded to the north or the south, are decisions left entirely to the model.
+Deterministic code doing the trigonometry is the same arrangement as a real
+aircraft's sensor fusion feeding a human pilot's judgement.
+"""
+from __future__ import annotations
+
+import math
+import time
+from collections import deque
+from dataclasses import dataclass
+from typing import Deque, Dict, List, Optional, Tuple
+
+# How long a sighting stays relevant. Long enough to see a trend develop, short
+# enough that a teammate's behaviour two minutes ago doesn't argue for a
+# diversion now.
+PEER_HISTORY_S = 90.0
+
+# A teammate is "low" relative to normal search altitude, and "circling" if its
+# recent track stays inside a small area. Both thresholds are descriptive, not
+# decision points — they only shape the wording handed to the model.
+LOW_ALT_M = 28.0
+CIRCLING_RADIUS_M = 90.0
+DESCENDING_RATE_MPS = 0.35
+
+
+def _compass(bearing_rad: float) -> str:
+    pts = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
+    idx = int(round(math.degrees(bearing_rad) % 360.0 / 45.0)) % 8
+    return pts[idx]
+
+
+@dataclass
+class PeerSighting:
+    t: float
+    x: float
+    y: float
+    z: float
+
+
+class PeerTracker:
+    """Rolling history of where each teammate has been seen, and what that implies.
+
+    Fed from detect()'s "aircraft" rows. A searching aircraft sweeps a 60 deg
+    cone, so it only catches a teammate for a fraction of each lap — the history
+    is what turns those intermittent glimpses into a usable statement about
+    behaviour, rather than a single instantaneous position that says nothing
+    about intent.
+    """
+
+    def __init__(self, history_s: float = PEER_HISTORY_S):
+        self.history_s = history_s
+        self._tracks: Dict[str, Deque[PeerSighting]] = {}
+
+    def observe(self, peer_id: str, x: float, y: float, z: float,
+                t: Optional[float] = None) -> None:
+        now = time.monotonic() if t is None else t
+        track = self._tracks.setdefault(peer_id, deque())
+        track.append(PeerSighting(now, x, y, z))
+        cutoff = now - self.history_s
+        while track and track[0].t < cutoff:
+            track.popleft()
+
+    def peers(self) -> List[str]:
+        return [p for p, tr in self._tracks.items() if tr]
+
+    def last(self, peer_id: str) -> Optional[PeerSighting]:
+        track = self._tracks.get(peer_id)
+        return track[-1] if track else None
+
+    def summarize(self, own_xyz: Tuple[float, float, float]) -> str:
+        """One line per teammate, or "" when none have been seen recently."""
+        rows: List[str] = []
+        for peer_id in sorted(self._tracks):
+            track = self._tracks[peer_id]
+            if not track:
+                continue
+            last = track[-1]
+            dx, dy = last.x - own_xyz[0], last.y - own_xyz[1]
+            dist = math.hypot(dx, dy)
+            phrase = (f"- {peer_id}: last seen bearing {_compass(math.atan2(dy, dx))}, "
+                      f"{dist:.0f} m away, altitude {last.z:.0f} m")
+
+            notes: List[str] = []
+            span = last.t - track[0].t
+            if len(track) >= 3 and span > 5.0:
+                rate = (last.z - track[0].z) / span
+                if rate < -DESCENDING_RATE_MPS:
+                    notes.append("descending")
+                elif rate > DESCENDING_RATE_MPS:
+                    notes.append("climbing")
+                cx = sum(s.x for s in track) / len(track)
+                cy = sum(s.y for s in track) / len(track)
+                spread = max(math.hypot(s.x - cx, s.y - cy) for s in track)
+                if spread < CIRCLING_RADIUS_M and span > 20.0:
+                    notes.append(f"staying over one spot near ({cx:.0f}, {cy:.0f})")
+            if last.z < LOW_ALT_M:
+                notes.append("flying low")
+            if notes:
+                phrase += " — " + ", ".join(notes)
+            phrase += f" [{len(track)} sightings over {span:.0f}s]"
+            rows.append(phrase)
+        return "\n".join(rows)
+
+
+class ObstacleTracker:
+    """Turns "wall" detections into a statement about what is across the route.
+
+    detect() returns one row per marker along a structure, which individually
+    say very little. Aggregated, they give distance, lateral span, and — most
+    usefully — where the structure ENDS, which is what a decision to route
+    around it actually needs. Only structure roughly ahead is reported, so a
+    wall already passed does not keep arguing for a turn.
+    """
+
+    AHEAD_HALF_ANGLE = math.radians(25.0)
+
+    def summarize(self, own_xyz: Tuple[float, float, float], yaw: float,
+                  detections) -> str:
+        pts = []
+        for d in detections:
+            label = getattr(d, "label", None) or (
+                d.get("label") if isinstance(d, dict) else None)
+            world = getattr(d, "world_xyz", None) or (
+                d.get("world") if isinstance(d, dict) else None)
+            if label != "wall" or not world:
+                continue
+            # How TALL the structure is, not how high the sensed point sits.
+            # Markers sit at mid-height (a marker at the top would never fall
+            # inside the downward-pitched FOV), so using the sensed z as the top
+            # would halve every wall and invite the model to overfly something
+            # it cannot clear.
+            top = getattr(d, "top_z", None)
+            if top is None and isinstance(d, dict):
+                top = d.get("top_z")
+            if top is None:
+                top = world[2]
+            dx, dy = world[0] - own_xyz[0], world[1] - own_xyz[1]
+            bearing = math.atan2(dy, dx)
+            rel = (bearing - yaw + math.pi) % (2 * math.pi) - math.pi
+            pts.append((math.hypot(dx, dy), rel, world, float(top)))
+        if not pts:
+            return ""
+        if not any(abs(rel) <= self.AHEAD_HALF_ANGLE for _, rel, _, _ in pts):
+            return ""   # structure exists, but not across the current course
+
+        nearest = min(p[0] for p in pts)
+        top = max(p[3] for p in pts)
+        ys = [p[2][1] for p in pts]
+        xs = [p[2][0] for p in pts]  # noqa: E501 — world coords of each sensed marker
+        south = (sum(xs) / len(xs), min(ys))
+        north = (sum(xs) / len(xs), max(ys))
+        rows = [
+            f"- Structure across your course: nearest edge {nearest:.0f} m ahead, "
+            f"top of it about {top:.0f} m above ground (you are at {own_xyz[2]:.0f} m).",
+            f"- It spans from ({south[0]:.0f}, {south[1]:.0f}) to "
+            f"({north[0]:.0f}, {north[1]:.0f}) — {abs(north[1] - south[1]):.0f} m wide. "
+            f"Those two ends are where it stops; beyond them the way is open.",
+        ]
+        if top > own_xyz[2]:
+            rows.append("- It is taller than your current altitude, so flying straight "
+                        "on will not clear it.")
+        return "\n".join(rows)
+
+
+def payload_block(remaining: int, capacity: int = 1) -> str:
+    if remaining <= 0:
+        return ("- You have released all payloads and are carrying nothing. "
+                "You cannot deliver again.")
+    return (f"- Carrying {remaining} of {capacity} payload(s), ready to release. "
+            f"You cannot pick one back up once released.")
