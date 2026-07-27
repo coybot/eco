@@ -1145,10 +1145,19 @@ class MissionLoop:
                         now = backend.get_pose()
                         where = (f"now at ({now[0]:.0f}, {now[1]:.0f})" if now
                                  else "position unknown")
+                        # Factual only. An earlier version appended "Do not fly
+                        # here again; pick a different destination" and the
+                        # model read it as a warning off navigate_to_world
+                        # ITSELF, not off that one destination: it fell back to
+                        # navigate_to_point at the dead centre of the frame and
+                        # flew straight ahead for the rest of the mission,
+                        # ending 3 km from the goal with the wall long behind
+                        # it. Telling a model what NOT to do, in a line it
+                        # re-reads every turn, is a good way to have it stop
+                        # doing something you needed.
                         self._history.append(
                             f"{'Reached' if arrived else 'Did not reach'} world "
-                            f"({wx:.0f}, {wy:.0f}) — {where}. Do not fly here again; "
-                            f"pick a different destination to make progress.")
+                            f"({wx:.0f}, {wy:.0f}); {where}.")
             
             elif action.action_type == ActionType.NAVIGATE_TO_OBJECT:
                 # Resolve via THIS tick's detections (backend.detect(), already
