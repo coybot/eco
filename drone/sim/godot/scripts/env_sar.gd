@@ -1,10 +1,10 @@
 ## SAR demo environment: the scene the two-drone showcase video is shot in.
 ##
 ## Layout (all ENU metres, x=east y=north, inside the occupancy grid's
-## x[-50,350] y[-150,150] bounds):
+## x[-50,550] y[-150,150] bounds):
 ##
-##   home pads ---- 50 m WALL ---------- search area ---- tunnel -- drop zone
-##   (-20,+-10)      e=100, n[-70,+70]     c(230,0) r120   e[250,268]  (292,18)
+##   home pads ------- 50 m WALL --------- search area --- tunnel --- drop zone
+##   (-20,+-10)         e=250, n[-70,+70]    c(400,0) r120  e[420,438]  (462,18)
 ##
 ## Three things here are load-bearing for the demo's claims, and each is real
 ## rather than staged:
@@ -13,6 +13,14 @@
 ##    blocks the direct route — the aircraft must actually route around it. The
 ##    corridors at each end are wide (80 m) so avoiding it is a navigation
 ##    decision, not a needle-threading exercise.
+##
+##    It sits 270 m from the home pads, NOT the 120 m it was first built at.
+##    That is a hard requirement, not staging taste: a decision takes the
+##    on-device model several seconds, during which a fixed-wing that cannot
+##    slow below 12 m/s covers ~60 m. At 120 m the aircraft had about two
+##    decisions between launch and the wall — it could see and describe the
+##    obstacle perfectly well and still arrive before it had finished choosing
+##    what to do, every single run. Run-in distance is thinking time.
 ## 2. The tunnel is a real roofed box on LAYER_STRUCTURE, so when the target
 ##    walks inside, detect()'s occlusion raycast genuinely loses him. Nothing
 ##    fakes the loss of contact that the "climb and wait for him to come out"
@@ -46,28 +54,28 @@ const HOME_A := Vector2(-20.0, 10.0)
 const HOME_B := Vector2(-20.0, -10.0)
 const SPAWN_ALT := 30.0
 
-const WALL_EAST := 100.0
+const WALL_EAST := 250.0
 const WALL_THICK := 4.0
 const WALL_HALF_N := 70.0     # spans n[-70,+70] = 140 m
 const WALL_HEIGHT := 50.0     # above the 35 m transit altitude, on purpose
 
-const SEARCH_CENTER := Vector2(230.0, 0.0)
+const SEARCH_CENTER := Vector2(400.0, 0.0)
 const SEARCH_RADIUS := 120.0
 
 # Tunnel: a short roofed box, open at the east and west ends.
-const TUNNEL_W_END := 250.0
-const TUNNEL_E_END := 268.0
+const TUNNEL_W_END := 420.0
+const TUNNEL_E_END := 438.0
 const TUNNEL_N := 38.0
 const TUNNEL_WIDTH := 5.0
 const TUNNEL_HEIGHT := 4.0
 
 # Drop zone: deliberately >=25 m clear of the tunnel so a released bottle can't
 # come to rest against structure geometry and jitter (see plan D4).
-const DROP_ZONE := Vector2(292.0, 18.0)
+const DROP_ZONE := Vector2(462.0, 18.0)
 
 # --- actors -----------------------------------------------------------------
-const AMBLE_A := Vector2(215.0, 58.0)
-const AMBLE_B := Vector2(226.0, 63.0)
+const AMBLE_A := Vector2(385.0, 58.0)
+const AMBLE_B := Vector2(396.0, 63.0)
 const AMBLE_SPEED := 0.8      # m/s, a walking pace
 const SPRINT_SPEED := 3.5     # m/s, a run
 const TUNNEL_DWELL_S := 40.0  # time spent hidden inside; overridable via inject
@@ -77,8 +85,8 @@ const TUNNEL_DWELL_S := 40.0  # time spent hidden inside; overridable via inject
 const TRIGGER_SLANT_M := 45.0
 const TRIGGER_ALT_M := 25.0
 
-const BYSTANDER_1 := Vector2(205.0, 45.0)   # gray, in sector A near the target
-const BYSTANDER_2 := Vector2(215.0, -55.0)  # navy, in sector B
+const BYSTANDER_1 := Vector2(375.0, 45.0)   # gray, in sector A near the target
+const BYSTANDER_2 := Vector2(385.0, -55.0)  # navy, in sector B
 
 # Target phases.
 enum { AMBLE, SPRINT_TO_TUNNEL, IN_TUNNEL, EXIT_TUNNEL, TO_DROP_ZONE, SETTLED }
