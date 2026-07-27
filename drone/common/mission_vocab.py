@@ -131,6 +131,10 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
 # ---------------------------------------------------------------------------
 VLM_CAPABILITIES: Dict[str, str] = {
     "navigate_to_point": "Fly toward a point it currently sees in-frame (pixel-located).",
+    "navigate_to_world": "Fly to an explicit world coordinate — how it acts on "
+                          "anywhere it knows about but cannot currently see, "
+                          "including routing around an obstacle to a clear point "
+                          "beyond it.",
     "navigate_to_object": "Fly toward a named object it currently sees.",
     "return_to_landmark": "Fly back toward a previously-sighted, remembered "
                            "(geo-tagged) landmark by name — works even after "
@@ -141,12 +145,57 @@ VLM_CAPABILITIES: Dict[str, str] = {
              "seen — computed from geo-tagged memory (dedups repeat "
              "sightings of the same physical object across an orbit), not "
              "the model's own visual arithmetic. Zero is a valid answer.",
+    "orbit_point": "Circle a world point with its camera held on it and keep "
+                    "watching — for something that has gone out of sight "
+                    "somewhere it may reappear (under cover, inside a "
+                    "structure). One lap per decision, so it re-evaluates "
+                    "each lap rather than committing to a fixed wait.",
+    "drop_payload": "Release a carried payload for a target it has confirmed "
+                     "and is close to. Refuses unless the target is visible "
+                     "in the current frame and within range — a payload "
+                     "cannot be recovered once released.",
     "capture_photo": "Capture a photo as evidence.",
     "report": "Report a grounded finding (backed by a real detection or "
               "memory match — cannot report something never actually seen).",
     "ask_cloud": "Ask for help if genuinely stuck (bounded — repeated "
                  "failures become a real phase failure, not an infinite ask loop).",
 }
+
+
+# ---------------------------------------------------------------------------
+# Rules the planner's free-text phases must obey to survive the on-device
+# grounding guard. These are not style preferences: the guard checks whether
+# any DETECTED LABEL appears as a substring of the phase's objective/success
+# text, one-directionally. A phase that says "locate the individual in crimson
+# outerwear" therefore contains no detectable label, so the guard rejects every
+# report the aircraft makes about it and the phase can never complete — with no
+# error anywhere, just a mission that quietly runs out of actions.
+# ---------------------------------------------------------------------------
+PHASE_WORDING_RULES: list = [
+    'Write objectives using the detector\'s own plain nouns — "person", '
+    '"water bottle", "car", "aircraft" — even when adding descriptive detail. '
+    '"Find the person in the red jacket" works; "find the individual in '
+    'crimson outerwear" does not, because no detected label appears in it.',
+    "Keep the distinguishing attribute in the text as well as the noun, so the "
+    "aircraft knows which one of several it is looking for.",
+    'For a delivery, name both the recipient and the item in the same phase, '
+    'e.g. "deliver the water bottle to the person in the red jacket".',
+    'Use the typed "return_home"/"land" phases for the trip home rather than '
+    "free text — they bypass the grounding guard, which has nothing to ground "
+    "a return against.",
+]
+
+# The wording rule exists because of how the guard compares; if that comparison
+# is ever made bidirectional, revisit this list rather than leaving it as
+# unexplained superstition.
+GUARD_MATCH_IS_ONE_DIRECTIONAL = True
+
+
+def render_phase_wording_rules() -> str:
+    lines = ["When writing an untyped phase's objective/success text:"]
+    for rule in PHASE_WORDING_RULES:
+        lines.append(f"- {rule}")
+    return "\n".join(lines)
 
 
 def render_phase_prompt_section() -> str:

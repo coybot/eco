@@ -1052,7 +1052,15 @@ class MissionLoop:
                         self._report_progress(f"Navigating to point ({action.point_x}, {action.point_y})")
                         # (north_m, east_m, alt_m) vs world_xyz's (east, north, up) — same swap as elsewhere.
                         backend.goto(world[1], world[0], world[2])
-                    elif nav:
+                    elif nav and self.backend is None:
+                        # Nav2 path, for vehicles actually flown through it. NOT
+                        # a fallback when a backend exists: against a fixed-wing
+                        # this shim reports "navigation complete (simulated)"
+                        # without moving anything, so an unresolvable pixel
+                        # turned into a silent no-op while the aircraft carried
+                        # straight on at cruise speed — observed live, flying
+                        # into the wall it had just correctly identified while
+                        # the envelope guard fought it 60 times in one run.
                         depth = self._get_depth_at_point(frame, action.point_x, action.point_y)
                         if depth is None:
                             depth = 3.0  # Default 3 meters if no depth
@@ -1061,9 +1069,33 @@ class MissionLoop:
                         if result.status == NavigationStatus.FAILED:
                             self._history.append(f"Navigation failed: {result.message}")
                     else:
-                        self._history.append(f"Could not resolve point ({action.point_x}, {action.point_y}) to a world position")
+                        # Say so in history so the model can see the pick failed
+                        # and try a different one, rather than repeating it.
+                        self._history.append(
+                            f"Could not resolve point ({action.point_x}, {action.point_y}) "
+                            f"to a world position — use navigate_to_world with coordinates instead")
+                        self._report_progress(
+                            f"Point ({action.point_x}, {action.point_y}) does not resolve to "
+                            f"anywhere on the ground")
                 else:
                     self._report_progress("Navigation requested but no point coordinates given")
+
+            elif action.action_type == ActionType.NAVIGATE_TO_WORLD:
+                # Most of the spatial information the model is given — memory,
+                # obstacle ends, detection positions — is world coordinates, and
+                # until this action existed there was no way to act on any of it
+                # except by pointing at something already on camera. That is why
+                # the aircraft could describe the wall correctly and still fly
+                # into it: it could see the way around but could not ask to take it.
+                if action.world_x is None or action.world_y is None:
+                    self._report_progress("navigate_to_world given no coordinates")
+                else:
+                    pose = backend.get_pose()
+                    alt = float(action.alt_m) if action.alt_m is not None else (
+                        pose[2] if pose is not None else 35.0)
+                    wx, wy = float(action.world_x), float(action.world_y)
+                    self._report_progress(f"Flying to world ({wx:.0f}, {wy:.0f}) at {alt:.0f} m")
+                    backend.goto(wy, wx, alt, timeout_s=90.0, tol_m=15.0)
             
             elif action.action_type == ActionType.NAVIGATE_TO_OBJECT:
                 # Resolve via THIS tick's detections (backend.detect(), already

@@ -39,6 +39,12 @@ class ActionType(str, Enum):
     COUNT = "count"  # Report a distinct-object count for a named target, computed
                       # from SpatialMemory (not the model's own visual arithmetic —
                       # see reasoning_loop.py's COUNT handler)
+    NAVIGATE_TO_WORLD = "navigate_to_world"  # Fly to an explicit world coordinate.
+                                              # Needed because most of the spatial
+                                              # information in the prompt (memory,
+                                              # obstacle ends, detections) is given
+                                              # as world coordinates, and a pixel
+                                              # cannot name a place off-camera.
     ORBIT_POINT = "orbit_point"  # Circle a world point, sensor held on it, and keep
                                   # watching — for when something you care about is
                                   # temporarily hidden and may reappear
@@ -125,12 +131,12 @@ OUTPUT FORMAT:
 You must respond with a JSON object containing:
 {
   "reasoning": "Your brief reasoning about what you see and why you chose this action",
-  "action_type": "one of: navigate_to_point, navigate_to_object, return_to_landmark, search_area, orbit_point, drop_payload, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
+  "action_type": "one of: navigate_to_point, navigate_to_world, navigate_to_object, return_to_landmark, search_area, orbit_point, drop_payload, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
   "point_x": <pixel x coordinate if navigate_to_point>,
   "point_y": <pixel y coordinate if navigate_to_point>,
   "target_object": "<object name if navigate_to_object, return_to_landmark, search_area, count, or drop_payload>",
-  "world_x": <world east coordinate if orbit_point>,
-  "world_y": <world north coordinate if orbit_point>,
+  "world_x": <world east coordinate if navigate_to_world or orbit_point>,
+  "world_y": <world north coordinate if navigate_to_world or orbit_point>,
   "radius_m": <orbit radius in metres if orbit_point, at least 45>,
   "alt_m": <altitude in metres if orbit_point>,
   "message": "<message content if report/complete/failed>"
@@ -138,6 +144,12 @@ You must respond with a JSON object containing:
 
 ACTION TYPES:
 - navigate_to_point: Point to where the drone should fly (x,y pixel coordinates on the image)
+- navigate_to_world: Fly to an explicit world coordinate (world_x east, world_y
+  north, optional alt_m). Use this whenever you want to go somewhere named by
+  coordinates rather than by something visible in frame — a point from MEMORY,
+  the end of an obstacle listed in OBSTACLES AHEAD, or a place you were told
+  about in the objective. navigate_to_point can only aim at what is currently
+  on camera, so it cannot take you around something that is in your way.
 - navigate_to_object: Navigate toward a detected object by name
 - return_to_landmark: Fly back to a REMEMBERED LANDMARK by label (see MEMORY below) —
   use this when a target you've already seen is no longer visible (out of range/FOV,

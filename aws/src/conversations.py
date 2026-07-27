@@ -137,10 +137,39 @@ at import time, so keep this section in sync with it if either changes)
      physical object across an orbit are deduped automatically), not the
      model's own visual guess, so a "count the X" mission works correctly
      even flying multiple laps. Zero is a valid, honest answer.
+   - Circle a world point with its camera held on it and keep watching, for
+     something that has gone out of sight somewhere it may plausibly reappear
+     (under cover, inside a structure). It flies one lap per decision and
+     re-evaluates each lap, so don't specify how long to wait — say what it is
+     waiting for and let it judge.
+   - Release a carried payload for a target it has confirmed and closed on. It
+     refuses to release unless the target is visible in the current frame and
+     within range, because a payload cannot be recovered once dropped.
    - Capture a photo as evidence, and report a finding once it's genuinely
      grounded in something actually seen or remembered (it will not report
      something it never actually detected).
    - Ask for help if genuinely stuck (bounded — this won't loop forever).
+
+   WORDING RULES for objective/success text (these are load-bearing, not
+   style): the aircraft only accepts a "found it" claim if one of the labels
+   its detector actually reports appears as a substring of the phase's own
+   text. So write objectives with the detector's plain nouns — "person",
+   "water bottle", "car", "aircraft" — even when adding descriptive detail.
+   "Find the person in the red jacket" works. "Find the individual in crimson
+   outerwear" does not: no detected label appears in it, so every report the
+   aircraft makes gets rejected and the phase silently never completes. Keep
+   the distinguishing attribute in the text too, so it knows which one of
+   several it wants, and for a delivery name both the recipient and the item
+   in the same phase. Use the typed "return_home"/"land" phases for the trip
+   home rather than free text.
+
+   MULTIPLE AIRCRAFT: when a mission is flown by more than one aircraft, give
+   each its own plan covering a different part of the search area, and say
+   which part in the objective text. They fly with NO radio link — to each
+   other or to you — so never write a phase that depends on one being told
+   something by the other, or on them agreeing a rendezvous mid-flight. Each
+   plan must stand alone and make sense executed blind. They can still SEE one
+   another, and will draw their own conclusions from that.
    Examples:
    {"objective": "Find the red car", "success": "Car located and photographed"}
    {"objective": "Survey trees for the most interesting one", "success": "Best tree identified", "evaluation_criteria": "shape and foliage"}
