@@ -554,6 +554,22 @@ class SimBackend:
             time.sleep(0.1)
         return False
 
+    def aim_sensor(self, center: Optional[tuple]) -> None:
+        """Hold the sensor on an ENU point, or recentre it when given None.
+
+        The camera and the detector both follow the airframe's heading, so an
+        aircraft flying a circle cannot otherwise see what it is circling.
+        """
+        if center is None:
+            self._client.fw_set_sensor(self._id, offset=0.0)
+        else:
+            self._client.fw_set_sensor(self._id, at=(center[0], center[1]))
+
+    def drop_payload(self):
+        """Release the payload ballistically; returns the release solution."""
+        result = self._client.fw_drop(self._id)
+        return result.get("release") if result.get("ok") else None
+
     def loiter(self, center: Optional[tuple], radius: float) -> None:
         # True orbit-around-a-point geometry belongs to search_patterns.py (Slice
         # 2), which drives repeated drive() calls shaped into a circle. This is the
