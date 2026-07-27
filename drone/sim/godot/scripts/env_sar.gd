@@ -107,6 +107,42 @@ func _ready() -> void:
 func _build_wall() -> void:
 	add_wall(Rect2(WALL_EAST - WALL_THICK * 0.5, -WALL_HALF_N,
 		WALL_THICK, WALL_HALF_N * 2.0), WALL_HEIGHT)
+	_build_wall_markers()
+
+
+## Sensing proxies so the wall is something the aircraft can SEE, not merely
+## something present in the occupancy grid.
+##
+## The demo's avoidance claim is "it routed around the wall from the camera, not
+## from a path planner", so the wall has to arrive through detect() like any
+## other object. detect() iterates props, so the wall gets a row of invisible
+## marker props (no mesh, no collider — they render nothing and block nothing)
+## labelled "wall", which the per-label range table senses out to 220 m.
+##
+## Offset off the face rather than embedded in it: detect()'s occlusion raycast
+## excludes only the aircraft and the target node, so a marker buried inside the
+## wall would be occluded by the wall itself and never register. Markers sit at
+## mid-height, and the east-face row is correctly hidden from an aircraft
+## approaching from the west — which is what makes "the far side is blocked"
+## true rather than asserted.
+func _build_wall_markers() -> void:
+	var spacing := 20.0
+	var n := -WALL_HALF_N
+	while n <= WALL_HALF_N + 0.01:
+		for face in [-1.0, 1.0]:
+			var m := StaticBody3D.new()
+			m.name = "wall_marker_%.0f_%s" % [n, "w" if face < 0 else "e"]
+			m.set_meta("label", "wall")
+			m.set_meta("is_anomaly", false)
+			m.position = Vector3(
+				WALL_EAST + face * (WALL_THICK * 0.5 + 1.5),
+				WALL_HEIGHT * 0.5,
+				-n)
+			m.collision_layer = 0
+			m.collision_mask = 0
+			add_child(m)
+			props.append(m)
+		n += spacing
 
 
 ## Two side walls plus a roof slab, open at both ends. The roof is what actually

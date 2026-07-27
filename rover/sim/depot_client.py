@@ -154,6 +154,26 @@ class DepotClient:
     def fw_reset(self, rid: str) -> dict:
         return self._call({"op": "fw_reset", "id": rid})
 
+    def fw_set_sensor(self, rid: str, offset: float | None = None,
+                      at: tuple[float, float] | None = None) -> dict:
+        """Point the sensor off the airframe's nose.
+
+        Pass `at` to aim at an ENU ground point, or `offset` for an explicit
+        angle in radians (0 re-centres). Needed because the camera and detect()
+        both follow the aircraft's heading, so an orbiting aircraft would
+        otherwise never see the point it is circling.
+        """
+        req = {"op": "fw_set_sensor", "id": rid}
+        if at is not None:
+            req["at"] = [at[0], at[1]]
+        else:
+            req["offset"] = offset or 0.0
+        return self._call(req)
+
+    def fw_drop(self, rid: str) -> dict:
+        """Release the payload ballistically. Returns the release solution."""
+        return self._call({"op": "fw_drop", "id": rid})
+
     def fw_all_states(self) -> list[dict]:
         """ENU pose of every live fixed-wing (id, position, yaw, altitude)."""
         r = self._call({"op": "fw_all_states"})

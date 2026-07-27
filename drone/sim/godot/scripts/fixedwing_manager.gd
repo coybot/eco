@@ -25,7 +25,18 @@ const MAX_CLIMB_RATE := 8.0      # m/s
 const MIN_CLIMB_RATE := -12.0    # m/s
 const ALT_FLOOR_M := 2.0         # hard envelope floor (see _apply_flight_dynamics)
 const ALT_CEILING_M := 120.0     # hard envelope ceiling
-const DETECT_RANGE := 80.0       # m
+const DETECT_RANGE := 80.0       # m — default; see DETECT_RANGE_BY_LABEL
+## Per-class sensing range. A single 80 m cutoff for everything was wrong in
+## both directions: a 50 m wall is visible from far further away than a person,
+## and a dropped bottle from far less. Keeping people at 80 m is deliberate —
+## it is exactly what forces the aircraft to descend for a close identification
+## pass instead of calling the target from cruise altitude.
+const DETECT_RANGE_BY_LABEL := {
+	"wall": 220.0,
+	"aircraft": 300.0,
+	"water_bottle": 40.0,
+}
+const PEER_DETECT_RANGE := 300.0  # m — see the peer pass in detect()
 const DETECT_HFOV_HALF := deg_to_rad(30.0)  # 60° horizontal FOV
 const DETECT_VFOV_HALF := deg_to_rad(17.5)  # 35° vertical FOV
 const DETECT_LOOK_DOWN := deg_to_rad(15.0)  # 15° downward look
@@ -53,6 +64,7 @@ var _fw: Dictionary = {}   # id -> FixedWingState
 var _events: Array = []    # [{t, kind, data}]
 var _sim_time: float = 0.0
 var _occ: PackedByteArray = PackedByteArray()
+var _bottles: Array = []   # released payloads awaiting rest — see _update_bottles()
 
 
 class FixedWingState:
@@ -71,6 +83,17 @@ class FixedWingState:
 	var cmd_yaw_rate := 0.0
 	var cmd_climb_rate := 0.0
 	var observed: PackedByteArray = PackedByteArray()
+	## Where the sensor points relative to the airframe's nose, in radians.
+	##
+	## Without this the demo's central beat is impossible: the forward camera
+	## AND detect() both derive from st.yaw, so an aircraft flying a circle can
+	## never see the point it is circling — it always looks along the tangent.
+	## "Climb, orbit the tunnel and watch for him to come out" would be a drone
+	## staring at the horizon. A real aircraft would use a gimbal; this is that
+	## gimbal, and it must be applied IDENTICALLY in _sync_camera() and
+	## detect(), or the model reasons about a picture it was never shown.
+	var sensor_yaw_offset := 0.0
+	var payload_remaining := 1
 	var alive := true
 	var last_pose_trace: float = 0.0
 	var drain_mult: float = 1.0
@@ -178,6 +201,7 @@ func _physics_process(delta: float) -> void:
 	_sim_time += delta
 	for st in _fw.values():
 		_step(st, delta)
+	_update_bottles()
 	_check_geofence()
 
 
@@ -296,7 +320,10 @@ func _sync_camera(st: FixedWingState) -> void:
 	# getting the axis/sign conversion right by hand proved genuinely
 	# error-prone. look_at() sidesteps all of that by construction.
 	var elevation := st.pitch - DETECT_LOOK_DOWN
-	var forward_enu := Vector3(cos(st.yaw) * cos(elevation), sin(st.yaw) * cos(elevation), sin(elevation))
+	# sensor_yaw_offset must be applied here and in detect() with the same sign,
+	# or the model is shown one scene and told about another.
+	var look_yaw := st.yaw + st.sensor_yaw_offset
+	var forward_enu := Vector3(cos(look_yaw) * cos(elevation), sin(look_yaw) * cos(elevation), sin(elevation))
 	var forward_godot := Vector3(forward_enu.x, forward_enu.z, -forward_enu.y)
 	# NOSE_OFFSET_M forward of the airframe's own origin — without this the
 	# camera sits exactly at body's position, which is INSIDE
@@ -351,7 +378,9 @@ func get_state(id: String) -> Variant:
 		"yaw": st.yaw,
 		"roll": st.roll,
 		"altitude": st.altitude,
-		"battery_level": st.battery_level
+		"battery_level": st.battery_level,
+		"payload_remaining": st.payload_remaining,
+		"sensor_yaw_offset": st.sensor_yaw_offset
 	}
 
 
@@ -421,19 +450,23 @@ func detect(id: String) -> Array:
 		return []
 	
 	var cam_pos := Vector3(st.position.x, st.position.z, -st.position.y)
-	var forward := Vector2(cos(st.yaw), sin(st.yaw))
+	# Same sensor offset the camera uses (see FixedWingState.sensor_yaw_offset).
+	var forward := Vector2(cos(st.yaw + st.sensor_yaw_offset), sin(st.yaw + st.sensor_yaw_offset))
 	var out: Array = []
 	var candidates: Array = _env.props.duplicate()
-	
+
 	for node in candidates:
 		if not is_instance_valid(node):
 			continue
 		var wp := Vector2(node.position.x, -node.position.z)
 		var to_target := wp - Vector2(st.position.x, st.position.y)
 		var dist := to_target.length()
-		if dist > DETECT_RANGE or dist < 0.01:
+		# Range is per class, so the label has to be read before the cutoff.
+		var node_label: String = node.get_meta("label", "unknown")
+		var max_range: float = DETECT_RANGE_BY_LABEL.get(node_label, DETECT_RANGE)
+		if dist > max_range or dist < 0.01:
 			continue
-		
+
 		# node.position is already Godot-space, built the same way cam_pos is (see
 		# env_flightline.gd / env_depot.gd _make_prop), so this delta is a genuine
 		# Godot-space vector — convert to (east,north,up) to compute bearing/
@@ -465,7 +498,7 @@ func detect(id: String) -> Array:
 		if not hit.is_empty():
 			continue
 
-		var label: String = node.get_meta("label", "unknown")
+		var label: String = node_label
 
 		# Calculate confidence based on distance
 		var range_penalty: float = clamp((dist - 40.0) / 40.0, 0.0, 1.0) * 0.3
@@ -482,7 +515,153 @@ func detect(id: String) -> Array:
 			"ny": ny,
 			"world": [wp.x, wp.y, target_pos.y]
 		})
+
+	# --- peer pass -----------------------------------------------------------
+	# Other aircraft are sensed with the same FOV and occlusion rules as props,
+	# but out to PEER_DETECT_RANGE. This is the entire mechanism behind the
+	# demo's comms-denied swarm claim: with no radio link between them, the only
+	# way one aircraft can learn anything from another is by LOOKING at it — so
+	# a teammate that has descended and started circling is readable as "it has
+	# probably found something". A longer range than ground objects is a
+	# disclosed stand-in for the fact that real aircraft carry transponders and
+	# are far easier to spot against sky than a person is against terrain.
+	for other_st in _fw.values():
+		if other_st == st or not other_st.alive or other_st.node == null:
+			continue
+		var opos := Vector2(other_st.position.x, other_st.position.y)
+		var odist := opos.distance_to(Vector2(st.position.x, st.position.y))
+		if odist > PEER_DETECT_RANGE or odist < 0.01:
+			continue
+		var opos_godot := Vector3(other_st.position.x, other_st.position.z, -other_st.position.y)
+		var orel := _godot_rel_to_enu(opos_godot - cam_pos)
+		var ohoriz := Vector2(orel.x, orel.y).length()
+		if ohoriz < 0.01:
+			continue
+		var oangle := forward.angle_to(Vector2(orel.x, orel.y).normalized())
+		var overt := atan2(orel.z, ohoriz) + DETECT_LOOK_DOWN
+		if absf(oangle) > DETECT_HFOV_HALF or absf(overt) > DETECT_VFOV_HALF:
+			continue
+		if not _raycast(cam_pos, opos_godot, LAYER_STRUCTURE, [st.node, other_st.node]).is_empty():
+			continue
+		out.append({
+			"label": "aircraft",
+			"confidence": clamp(0.9 - clamp((odist - 100.0) / 200.0, 0.0, 1.0) * 0.4, 0.2, 0.9),
+			"nx": clamp(0.5 + (oangle / DETECT_HFOV_HALF) * 0.5, 0.0, 1.0),
+			"ny": clamp(0.5 + (overt / DETECT_VFOV_HALF) * 0.5, 0.0, 1.0),
+			"world": [other_st.position.x, other_st.position.y, other_st.position.z],
+			"peer_id": other_st.id,
+			"peer_alt": other_st.altitude,
+		})
 	return out
+
+
+## Release the payload: a real ballistic body with the aircraft's velocity, not
+## a teleport to the aim point. Where it lands is therefore a genuine
+## consequence of the release solution the aircraft flew, which is the whole
+## reason the delivery beat is worth filming — and it means a bad release
+## visibly misses.
+##
+## Once the bottle comes to rest it is frozen and registered as a normal prop
+## labelled "water_bottle", which makes it detectable BY BOTH AIRCRAFT. That is
+## the demo's stigmergy channel: with no radio link, a bottle on the ground is
+## a message the second drone can read from the environment itself.
+func drop_payload(id: String) -> Variant:
+	var st: FixedWingState = _fw.get(id)
+	if st == null or _env == null:
+		return null
+	if st.payload_remaining <= 0:
+		_log_event("payload_release_refused", {"id": id, "reason": "no payload remaining"})
+		return null
+	st.payload_remaining -= 1
+
+	var body := RigidBody3D.new()
+	body.name = "payload_%s_%d" % [id, _bottles.size() + 1]
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.height = 0.28
+	shape.radius = 0.05
+	col.shape = shape
+	body.add_child(col)
+	var mesh := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.height = 0.28
+	cm.top_radius = 0.05
+	cm.bottom_radius = 0.05
+	mesh.mesh = cm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.25, 0.55, 0.95)
+	mat.roughness = 0.6
+	mesh.material_override = mat
+	body.add_child(mesh)
+
+	# Released from just below the airframe, carrying its velocity.
+	body.position = Vector3(st.position.x, maxf(st.position.z - 0.6, 0.2), -st.position.y)
+	body.linear_velocity = _enu_dir_to_godot(st.velocity.x, st.velocity.y, st.velocity.z)
+	body.collision_layer = 0     # nothing senses it until it has landed
+	body.collision_mask = 1      # but it does fall onto the ground
+	_env.add_child(body)
+
+	var release := {
+		"id": id,
+		"release_enu": [st.position.x, st.position.y, st.position.z],
+		"velocity_enu": [st.velocity.x, st.velocity.y, st.velocity.z],
+		"airspeed": st.airspeed,
+		"t": _sim_time,
+	}
+	_bottles.append({"body": body, "t0": _sim_time, "landed": false, "release": release})
+	_log_event("payload_released", release)
+	return release
+
+
+## Freeze bottles that have come to rest and promote them to sensable props.
+## Time-capped as well as sleep-checked: a body that ends up on a slope or is
+## nudged by geometry can jitter indefinitely without ever sleeping, and an
+## un-promoted bottle would silently break the second drone's stigmergy cue.
+func _update_bottles() -> void:
+	for b in _bottles:
+		if b["landed"]:
+			continue
+		var body: RigidBody3D = b["body"]
+		if not is_instance_valid(body):
+			b["landed"] = true
+			continue
+		var settled: bool = body.linear_velocity.length() < 0.25
+		if not (settled or _sim_time - b["t0"] > 6.0):
+			continue
+		b["landed"] = true
+		body.freeze = true
+		body.linear_velocity = Vector3.ZERO
+		body.set_meta("label", "water_bottle")
+		body.set_meta("is_anomaly", false)
+		body.collision_layer = 2   # LAYER_PROPS — now detectable by either aircraft
+		_env.props.append(body)
+		var rest := {"enu": [body.position.x, -body.position.z, body.position.y]}
+		var rel: Dictionary = b["release"]
+		var miss := Vector2(body.position.x, -body.position.z) - Vector2(
+			rel["release_enu"][0], rel["release_enu"][1])
+		_log_event("payload_landed", {"id": rel["id"], "rest_enu": rest["enu"],
+			"throw_m": miss.length()})
+
+
+## Point the sensor `offset_rad` off the nose (see FixedWingState.
+## sensor_yaw_offset). Passing 0 re-centres it.
+func set_sensor_yaw_offset(id: String, offset_rad: float) -> void:
+	var st: FixedWingState = _fw.get(id)
+	if st == null:
+		return
+	st.sensor_yaw_offset = wrapf(offset_rad, -PI, PI)
+	_sync_camera(st)
+
+
+## Aim the sensor at an ENU ground point, whatever the aircraft's heading.
+## This is what an ORBIT_POINT action uses to keep the thing being watched in
+## frame while flying a circle around it.
+func aim_sensor_at(id: String, east: float, north: float) -> void:
+	var st: FixedWingState = _fw.get(id)
+	if st == null:
+		return
+	var bearing := atan2(north - st.position.y, east - st.position.x)
+	set_sensor_yaw_offset(id, wrapf(bearing - st.yaw, -PI, PI))
 
 
 func unproject(id: String, nx: float, ny: float) -> Variant:
@@ -499,7 +678,10 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 	# First, try to match a known visible object at this bearing
 	if _env != null:
 		var cam_pos := Vector3(st.position.x, st.position.z, -st.position.y)
-		var forward := Vector2(cos(st.yaw), sin(st.yaw))
+		# Same sensor offset detect()/_sync_camera use — a pixel the model picked
+		# out of the frame has to unproject through the direction the sensor was
+		# actually pointing, not the airframe's nose.
+		var forward := Vector2(cos(st.yaw + st.sensor_yaw_offset), sin(st.yaw + st.sensor_yaw_offset))
 		var candidates: Array = _env.props.duplicate()
 		var best_node = null
 		var best_diff := 0.15  # radians
@@ -534,7 +716,8 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 			return [best_node.position.x, -best_node.position.z, best_node.position.y]
 
 	# Fallback: horizontal raycast
-	var dir_h := Vector2(cos(st.yaw + bearing_h), sin(st.yaw + bearing_h))
+	var dir_h := Vector2(cos(st.yaw + st.sensor_yaw_offset + bearing_h),
+		sin(st.yaw + st.sensor_yaw_offset + bearing_h))
 	var dir_v := _enu_dir_to_godot(dir_h.x, dir_h.y, tan(bearing_v)).normalized()
 	var from3 := Vector3(st.position.x, st.position.z, -st.position.y)
 	var to3 := from3 + dir_v * DETECT_RANGE
