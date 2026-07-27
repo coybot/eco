@@ -134,6 +134,9 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
                   default=None)
     reached_goal = closest is not None and closest <= GOAL_RADIUS_M
 
+    # Stops the envelope watchdog thread. Leaving it running would have it fly
+    # a despawned aircraft, and its events would land in the next run's count.
+    backend.close()
     client.fw_despawn(RID)
 
     return {
