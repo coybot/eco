@@ -67,8 +67,19 @@ class EnvelopeGuardedSimBackend(SimBackend):
             return False
         return g["occ"][gy * g["w"] + gx] == 1
 
-    def _blocked_ahead(self, x, y, yaw):
+    # Tallest structure in the scene. The occupancy grid is purely 2D, so
+    # without this the guard would treat an aircraft cruising at 90 m as being
+    # about to hit a 50 m wall and shove it off course — penalising the model
+    # for a perfectly good answer to "get past this obstacle". A single
+    # scene-wide height is a deliberate simplification of a 2.5D problem; it is
+    # safe because it over-estimates (nothing here is taller than the wall).
+    STRUCTURE_TOP_M = 50.0
+    OVERFLY_MARGIN_M = 10.0
+
+    def _blocked_ahead(self, x, y, yaw, z: float = 0.0):
         """Distance to structure along the current heading, or None if clear."""
+        if z > self.STRUCTURE_TOP_M + self.OVERFLY_MARGIN_M:
+            return None
         d = self.STEP_M
         while d <= self.LOOKAHEAD_M:
             if self._occupied(x + math.cos(yaw) * d, y + math.sin(yaw) * d):
@@ -76,18 +87,18 @@ class EnvelopeGuardedSimBackend(SimBackend):
             d += self.STEP_M
         return None
 
-    def _clear_side(self, x, y, yaw):
+    def _clear_side(self, x, y, yaw, z: float = 0.0):
         """Which way to break: whichever side has more room."""
         best_dir, best_clear = 1.0, -1.0
         for sign in (1.0, -1.0):
             probe = yaw + sign * math.radians(60.0)
-            hit = self._blocked_ahead(x, y, probe)
+            hit = self._blocked_ahead(x, y, probe, z)
             clear = self.LOOKAHEAD_M if hit is None else hit
             if clear > best_clear:
                 best_clear, best_dir = clear, sign
         return best_dir
 
-    def path_blocked(self, to_xy) -> bool:
+    def path_blocked(self, to_xy, alt_m: float = 0.0) -> bool:
         """Does the straight line from here to `to_xy` pass through structure?
 
         goto() is a heading hold — it flies straight at whatever it is given —
@@ -103,6 +114,10 @@ class EnvelopeGuardedSimBackend(SimBackend):
         """
         pose = self.get_pose()
         if pose is None:
+            return False
+        # A leg flown above everything in the scene cannot pass through
+        # anything, however its ground track looks on a 2D grid.
+        if max(alt_m, pose[2]) > self.STRUCTURE_TOP_M + self.OVERFLY_MARGIN_M:
             return False
         x, y = pose[0], pose[1]
         tx, ty = float(to_xy[0]), float(to_xy[1])
@@ -128,7 +143,7 @@ class EnvelopeGuardedSimBackend(SimBackend):
         did, while the envelope guard shoved at it. One rule at the one place
         every leg passes through.
         """
-        if self.path_blocked((east_m, north_m)):
+        if self.path_blocked((east_m, north_m), alt_m):
             self.legs_refused += 1
             self.log_event("leg_refused", {
                 "reason": "path crosses structure",
@@ -152,15 +167,15 @@ class EnvelopeGuardedSimBackend(SimBackend):
             # interventions in one run and the track still went through the
             # wall. Since nothing can hold a fixed-wing still, a guard that
             # stops guarding on a timer does not actually prevent anything.
-            if self._blocked_ahead(x, y, yaw) is None:
+            if self._blocked_ahead(x, y, yaw, z) is None:
                 self._escape_until = 0.0
                 return super().drive(airspeed, yaw_rate, climb)
             self._escape_until = now + self.ESCAPE_HOLD_S
             return super().drive(airspeed, self._escape_dir * self.ESCAPE_YAW_RATE, climb)
 
-        hit = self._blocked_ahead(x, y, yaw)
+        hit = self._blocked_ahead(x, y, yaw, z)
         if hit is not None:
-            self._escape_dir = self._clear_side(x, y, yaw)
+            self._escape_dir = self._clear_side(x, y, yaw, z)
             self._escape_until = now + self.ESCAPE_HOLD_S
             self.envelope_events += 1
             self.log_event("envelope_protection", {

@@ -92,12 +92,24 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
     poses = [e["data"] for e in client.fw_events(RID)
              if e.get("kind") == "pose_trace" and e["data"].get("id") == RID]
     crossed = False
+    crossed_over = False
     for i in range(1, len(poses)):
         a, b = poses[i - 1], poses[i]
         if (a["x"] - wall["east"]) * (b["x"] - wall["east"]) < 0:
             frac = (wall["east"] - a["x"]) / ((b["x"] - a["x"]) or 1e-9)
             y_at = a["y"] + frac * (b["y"] - a["y"])
-            if abs(y_at) <= wall["half_n"]:
+            if abs(y_at) > wall["half_n"]:
+                continue                      # went round an end — the point
+            z_at = a["z"] + frac * (b["z"] - a["z"])
+            # Crossing the wall's footprint ABOVE its top is flying over it,
+            # not through it. Climbing over a 50 m wall with a 120 m ceiling is
+            # a perfectly good answer to "get past this", and the model is never
+            # told not to. Scoring it as a crash was a bug in the measurement:
+            # this check, like the occupancy grid the guard uses, is purely 2D
+            # and cannot tell the two apart without consulting altitude.
+            if z_at > wall["height"] + 2.0:
+                crossed_over = True
+            else:
                 crossed = True
                 break
 
@@ -113,6 +125,7 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
         "passed": bool(east_of_wall and backend.envelope_events == 0 and not crossed),
         "east_of_wall": east_of_wall,
         "flew_through_wall": crossed,
+        "flew_over_wall": crossed_over,
         "envelope_events": backend.envelope_events,
         "legs_refused": backend.legs_refused,
         "dist_to_goal_m": round(dist_to_goal, 1) if dist_to_goal else None,
@@ -144,7 +157,7 @@ def main() -> int:
             r = run_once(client, wall, i, args.max_actions)
             runs.append(r)
             print(f"  => {'PASS' if r['passed'] else 'FAIL'} "
-                  f"east={r['east_of_wall']} through_wall={r['flew_through_wall']} "
+                  f"east={r['east_of_wall']} through={r['flew_through_wall']} over={r['flew_over_wall']} "
                   f"envelope={r['envelope_events']} refused={r['legs_refused']} "
                   f"dist_to_goal={r['dist_to_goal_m']}m", flush=True)
         client.close()
@@ -161,6 +174,7 @@ def main() -> int:
         "total_envelope_events": sum(r["envelope_events"] for r in runs),
         "total_legs_refused": sum(r.get("legs_refused", 0) for r in runs),
         "flew_through_wall": sum(1 for r in runs if r["flew_through_wall"]),
+        "flew_over_wall": sum(1 for r in runs if r["flew_over_wall"]),
         "saw_wall": sum(1 for r in runs if r["saw_wall_at_least_once"]),
         "detail": runs,
     }
