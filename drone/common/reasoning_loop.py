@@ -1115,6 +1115,20 @@ class MissionLoop:
                             "reason": "path crosses structure",
                             "requested": [wx, wy]})
                         arrived = False
+                        # Refusing is not enough on its own. Nothing can hold a
+                        # fixed-wing still — it flies at minimum airspeed no
+                        # matter what — so a refused leg that simply does
+                        # nothing leaves the aircraft coasting toward the very
+                        # obstacle it was just told it cannot cross, for the
+                        # several seconds the next decision takes. It then
+                        # arrives there regardless, and the envelope guard is
+                        # left shoving at it. The vehicle turns away and holds
+                        # instead, which is what an aircraft given an
+                        # unflyable clearance actually does. Reversing course
+                        # is deliberately the dumbest possible choice: it buys
+                        # thinking room without expressing any opinion about
+                        # which way around the obstacle to go.
+                        self._hold_off(backend)
                     else:
                         self._report_progress(
                             f"Flying to world ({wx:.0f}, {wy:.0f}) at {alt:.0f} m")
@@ -1522,6 +1536,23 @@ class MissionLoop:
         if self.payload_capacity:
             blocks["PAYLOAD"] = payload_block(self.payload_remaining, self.payload_capacity)
         return blocks
+
+    def _hold_off(self, backend, seconds: float = 5.0) -> None:
+        """Turn away and hold, after a leg the vehicle refused to fly.
+
+        Buys the next decision some room. Deliberately a plain reversal rather
+        than a turn toward any particular side: it must not smuggle in a choice
+        about how to get around the obstacle, which is the model's to make.
+        """
+        pose = backend.get_pose()
+        if pose is None:
+            return
+        rate = 0.6   # rad/s, the airframe limit — a half-turn takes ~5 s
+        t_end = time.monotonic() + seconds
+        while time.monotonic() < t_end:
+            backend.drive(14.0, rate, 0.0)
+            time.sleep(0.1)
+        backend.log_event("hold_off", {"reason": "refused leg", "seconds": seconds})
 
     def _orbit_center(self, action, pose):
         """Where to orbit: the model's world point, else a remembered landmark.
