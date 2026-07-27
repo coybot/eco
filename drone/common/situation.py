@@ -17,6 +17,7 @@ aircraft's sensor fusion feeding a human pilot's judgement.
 from __future__ import annotations
 
 import math
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -172,6 +173,66 @@ class ObstacleTracker:
             rows.append("- It is taller than your current altitude, so flying straight "
                         "on will not clear it.")
         return "\n".join(rows)
+
+
+class PerceptionSampler:
+    """Background thread that keeps a PeerTracker fed between decisions.
+
+    A decision takes seconds and the sensor sweeps a 60 deg cone, so sampling
+    only at decision time catches a teammate a couple of times a minute at
+    best — nowhere near enough to tell "descending and circling" from "passing
+    through". Polling at ~1 Hz turns those glimpses into an actual trend.
+
+    It only ever READS: detections in, tracker updated, nothing commanded. It
+    holds its own client connection so it cannot interleave with the mission
+    thread's requests on a shared socket.
+    """
+
+    def __init__(self, backend, tracker: PeerTracker, hz: float = 1.0,
+                 on_error=None):
+        self.backend = backend
+        self.tracker = tracker
+        self.period = 1.0 / max(hz, 0.05)
+        self.on_error = on_error
+        self.samples = 0
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> "PerceptionSampler":
+        self._thread = threading.Thread(target=self._run, daemon=True,
+                                        name="perception-sampler")
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+
+    def __enter__(self):
+        return self.start()
+
+    def __exit__(self, *exc):
+        self.stop()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                for d in self.backend.detect():
+                    if getattr(d, "label", None) != "aircraft":
+                        continue
+                    world = getattr(d, "world_xyz", None)
+                    if world:
+                        self.tracker.observe(getattr(d, "peer_id", None) or "teammate",
+                                             world[0], world[1], world[2])
+                self.samples += 1
+            except Exception as exc:
+                # A dropped poll is not worth killing the sampler over — the
+                # mission thread is the one that matters, and a gap in peer
+                # history just makes the trend slightly coarser.
+                if self.on_error is not None:
+                    self.on_error(exc)
+            self._stop.wait(self.period)
 
 
 def payload_block(remaining: int, capacity: int = 1) -> str:

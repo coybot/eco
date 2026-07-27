@@ -726,12 +726,27 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 		sin(st.yaw + st.sensor_yaw_offset + bearing_h))
 	var dir_v := _enu_dir_to_godot(dir_h.x, dir_h.y, tan(bearing_v)).normalized()
 	var from3 := Vector3(st.position.x, st.position.z, -st.position.y)
-	var to3 := from3 + dir_v * DETECT_RANGE
+	# Reach as far as the longest thing this sensor can see, not the default
+	# people range — a pixel near the horizon corresponds to a point hundreds of
+	# metres out, and clipping at 80 m made every such pick unresolvable.
+	var reach: float = maxf(DETECT_RANGE, PEER_DETECT_RANGE)
+	var to3 := from3 + dir_v * reach
 	var hit := _raycast(from3, to3, LAYER_STRUCTURE | LAYER_PROPS, [st.node])
-	if hit.is_empty():
-		return null
-	var p: Vector3 = hit["position"]
-	return [p.x, -p.z, p.y]
+	if not hit.is_empty():
+		var p: Vector3 = hit["position"]
+		return [p.x, -p.z, p.y]
+
+	# Nothing solid along the ray. If it is pointing downward at all it still
+	# meets the ground, and that intersection is the honest answer — returning
+	# null instead made the caller treat a perfectly ordinary "point at open
+	# terrain ahead" pick as unresolvable, and (worse) fall through to a
+	# no-op navigation path that let the aircraft keep flying straight ahead.
+	if dir_v.y < -0.01:
+		var t: float = (from3.y - 0.0) / -dir_v.y
+		if t > 0.0 and t < reach * 4.0:
+			var g := from3 + dir_v * t
+			return [g.x, -g.z, 0.0]
+	return null
 
 
 # ------------------------------------------------------------------
