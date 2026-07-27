@@ -439,13 +439,22 @@ class SimBackend:
         level = st.get("battery_level")
         return {"remaining": level} if level is not None else None
 
+    # Commanded-altitude floor for goto(). The demo flies deliberately low
+    # run-ins, but a model free to name any altitude will eventually name one
+    # that puts the aircraft in the ground; the sim's own envelope protection
+    # is the last resort, not the intended control. Kept above that hard floor
+    # so a normal descent never trips an envelope event.
+    MIN_COMMANDED_ALT_M = 12.0
+
     def drive(self, airspeed: float, yaw_rate: float, climb: float = 0.0) -> None:
-        # fixedwing_manager.gd's fw_drive(id, airspeed, yaw_rate) has no separate
-        # climb input (climb_rate is internal state, not yet an IPC command arg).
-        # `climb` is accepted for interface symmetry with HardwareBackend but is
-        # not wired through — see Slice 2 (search_patterns.py) for how altitude
-        # changes are actually commanded via pitch-equivalent airspeed/vz shaping.
-        self._client.fw_drive(self._id, airspeed, yaw_rate)
+        self._client.fw_drive(self._id, airspeed, yaw_rate, climb)
+
+    def _climb_for(self, current_alt: float, target_alt: Optional[float]) -> float:
+        """Proportional climb command toward `target_alt`, floored for safety."""
+        if target_alt is None:
+            return 0.0
+        want = max(float(target_alt), self.MIN_COMMANDED_ALT_M)
+        return max(-8.0, min(8.0, 0.9 * (want - current_alt)))
 
     def goto(self, north_m: float, east_m: float, alt_m: float,
              timeout_s: float = 60.0, tol_m: float = 5.0) -> bool:
@@ -458,13 +467,20 @@ class SimBackend:
         offsets from the world origin (this sim's coordinate convention), not an
         offset from the current position. Blocks the calling thread; callers on a
         real-time loop should prefer drive() directly with their own polling.
+
+        `alt_m` used to be accepted and ignored — every caller's target altitude
+        was silently dropped and the aircraft flew its whole mission at spawn
+        height. It is now flown as a proportional climb command alongside the
+        heading hold, floored at MIN_COMMANDED_ALT_M. Arrival is still judged on
+        horizontal distance alone: a fixed-wing trades altitude far more slowly
+        than ground track, so requiring both would stall the leg.
         """
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             pose = self.get_pose()
             if pose is None:
                 return False
-            x, y, _z, yaw = pose
+            x, y, z, yaw = pose
             dx, dy = east_m - x, north_m - y
             dist = math.hypot(dx, dy)
             if dist <= tol_m:
@@ -474,7 +490,7 @@ class SimBackend:
             st = self._client.fw_state(self._id)
             cruise = float(st.get("airspeed", 18.0))
             yaw_rate = max(-0.6, min(0.6, err * 1.5))
-            self.drive(cruise, yaw_rate)
+            self.drive(cruise, yaw_rate, self._climb_for(z, alt_m))
             time.sleep(0.1)
         return False
 

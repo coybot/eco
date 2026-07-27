@@ -352,6 +352,51 @@ recovery exists somewhere in the codebase.**
 
 ---
 
+### Bug 11: Loading the on-device VLM froze the aircraft's forward camera — and a blind model is indistinguishable from a stale one
+
+**Symptom**: a perception gate measuring whether the on-device VLM could
+identify a person by clothing colour scored 70% and "failed". The model
+answered "no people visible" on almost every frame, including staged poses
+where the subject was 15 m away and plainly visible.
+
+**Cause**: not the model. The aircraft's forward-camera render target froze
+permanently the moment the VLM began running inference on the same GPU, so
+every capture after the first was byte-for-byte identical stale pixels. This
+is the same frozen-render-target family as Bugs 9 and 10, but with a new and
+much more reliable trigger — another Metal client (llama.cpp) starting heavy
+GPU work — and on the *aircraft's own* camera rather than a recording vantage,
+which had no freeze detection at all.
+
+Two things made this dangerous rather than merely annoying. First, the failure
+mode is silent and *plausible*: "the small quantised model can't resolve a
+50-pixel figure" is exactly what one expects to find, so the wrong conclusion
+was pre-loaded and would have sent the plan down a multi-hour fine-tuning
+branch that was never needed. Second, waiting longer does not help — the bytes
+stay identical indefinitely — so the usual "add a settle delay" reflex both
+fails to fix it and, by letting the aircraft fly further off-station, makes the
+geometry genuinely wrong as well.
+
+**How it was caught**: comparing the raw capture bytes across different staged
+poses (identical length, identical md5) while `detect()` — pure CPU geometry
+on the same aircraft yaw, immune to a frozen camera — kept correctly reporting
+the person in the sensor cone. That divergence between two sensing paths that
+must agree is what named the culprit.
+
+**Fix**: an explicit `reset_camera` operation that tears down and rebuilds the
+SubViewport, exposed over IPC and called before each capture. With it, the same
+model on the same frames answered correctly, including at the ranges it had
+"failed" at.
+
+**Lesson: when a model looks incapable, first prove it was actually shown the
+data.** Cross-check a perception result against an independent sensing path
+that cannot share the same failure, and treat two byte-identical captures from
+two different poses as a hard error rather than as data. A capability gate is
+only measuring the model if the input pipeline is verified live — every
+"the AI couldn't do it" result needs the plumbing ruled out before it is
+believed, because that conclusion is far too easy to accept.
+
+---
+
 ## General Lessons (Cutting Across the Above)
 
 1. **Read the simulator's own source before hand-building a workaround for
@@ -375,6 +420,12 @@ recovery exists somewhere in the codebase.**
    (Bug 8).
 7. **Always verify by looking at the actual artifact (extracted video
    frames, real telemetry, real logs), not by reading the code and
-   reasoning that it should work** — several of these bugs (2, 6, 9, 10)
+   reasoning that it should work** — several of these bugs (2, 6, 9, 10, 11)
    were only caught this way, and would have shipped as "verified" gates
    otherwise.
+8. **A negative capability result is a claim about the whole pipeline, not
+   about the model** — before concluding a model can't do something, prove
+   it actually received the input, ideally by cross-checking an independent
+   sensing path that can't share the same failure (Bug 11). Results that
+   confirm what you already expected get the least scrutiny and so need the
+   most.

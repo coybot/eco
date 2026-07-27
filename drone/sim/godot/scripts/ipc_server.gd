@@ -268,11 +268,18 @@ func _dispatch(line: String) -> String:
 			return JSON.stringify({"ok": true, "world": world})
 
 		"fw_drive":
-			FixedWingManager.drive(did, float(req.get("airspeed", 0.0)), float(req.get("yaw_rate", 0.0)))
+			# "climb" defaults to 0 (hold altitude) so pre-existing clients that
+			# never send the field keep their exact current behaviour.
+			FixedWingManager.drive(did, float(req.get("airspeed", 0.0)),
+				float(req.get("yaw_rate", 0.0)), float(req.get("climb", 0.0)))
 			return JSON.stringify({"ok": true})
 
 		"fw_stop":
 			FixedWingManager.stop(did)
+			return JSON.stringify({"ok": true})
+
+		"fw_reset_camera":
+			FixedWingManager.reset_camera(did)
 			return JSON.stringify({"ok": true})
 
 		"fw_events":

@@ -93,3 +93,8 @@ drone/training/videos_hetero_v2/
 # artifacts instead of committing them)
 e2e/scorecard.json
 e2e/_sim_validate_report.json
+
+# VLM perception-gate captures (drone/sim/fw_gate_vlm.py). The report.json beside
+# them IS committed — it is the evidence for the M1 gate decision — but the raw
+# frames are bulky and fully regenerable by re-running the harness.
+drone/sim/gate_out/frames/

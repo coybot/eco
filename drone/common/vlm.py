@@ -581,6 +581,52 @@ class VLMService:
         except Exception as e:
             return f"Error describing scene: {e}"
     
+    def ask(self, image, question: str, max_tokens: int = 200) -> str:
+        """
+        Ask a free-form question about an image and return the raw reply.
+
+        describe_scene() and evaluate() both hard-code their own prompt shape
+        (a navigation summary, and a 0-10 score respectively). Perception
+        gating needs neither: it asks a closed question ("is a person in a red
+        jacket visible?") and scores the answer itself. This is the
+        unopinionated path for that.
+
+        Args:
+            image: Camera frame (path, bytes, or numpy array)
+            question: The prompt to ask about the image
+            max_tokens: Reply length cap
+
+        Returns:
+            Raw model reply, or a string starting with "Error" on failure.
+        """
+        if not self._available:
+            return "Error: VLM not available"
+
+        try:
+            image_uri = self._encode_image(
+                image_path=image if isinstance(image, str) else None,
+                image_bytes=image if isinstance(image, bytes) else None,
+                image_array=image if hasattr(image, 'shape') else None,
+            )
+
+            response = self._llm.create_chat_completion(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": image_uri}},
+                            {"type": "text", "text": question},
+                        ],
+                    },
+                ],
+                max_tokens=max_tokens,
+                temperature=0.1,
+            )
+            return response['choices'][0]['message']['content']
+
+        except Exception as e:
+            return f"Error asking VLM: {e}"
+
     def evaluate(self, image, criteria: str) -> Tuple[float, str]:
         """
         Evaluate something in the image based on criteria.
