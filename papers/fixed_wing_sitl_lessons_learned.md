@@ -397,6 +397,38 @@ believed, because that conclusion is far too easy to accept.
 
 ---
 
+### Bug 12: Tuning against a metric whose definition kept changing underneath it
+
+**Symptom**: an obstacle-avoidance gate was iterated on across six runs, steered
+by the envelope-intervention count: 131 → 103 → 36 → 11 → 1 → 281. The last run
+looked like a catastrophic regression.
+
+**Cause**: it was not a regression at all. Partway through the sequence the
+guard was changed to hold its escape turn until the path was actually clear,
+instead of for a fixed interval. That made the aircraft dip in and out of escape
+mode as its heading swung, and the counter incremented on every re-entry — so
+the same behaviour scored twenty times higher. Two other changes in the same
+sequence (an altitude-aware crossing test, a leg-refusal check) also altered
+what was being counted.
+
+Each individual change was defensible. The problem was making them *while*
+using the resulting number as the steering signal for the next change. Every
+comparison in that sequence was between differently-defined quantities, so the
+apparent progress — and the apparent regression — carried no information.
+
+**Fix**: count one intervention per obstacle ENCOUNTER, not per control tick,
+and re-baseline before drawing any conclusion from a run.
+
+**Lesson: when a number is driving your decisions, freeze its definition, or
+accept that you have no trend.** The failure is seductive because each redefinition
+looks like an improvement to the measurement — and it usually is. But a metric
+that improves mid-experiment is not a metric, and "the number moved" stops being
+evidence the moment the number means something new. If the definition must
+change, re-run the earlier configuration under the new definition before
+comparing, or say plainly that the series was reset.
+
+---
+
 ## General Lessons (Cutting Across the Above)
 
 1. **Read the simulator's own source before hand-building a workaround for
