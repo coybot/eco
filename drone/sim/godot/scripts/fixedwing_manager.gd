@@ -32,7 +32,12 @@ const DETECT_RANGE := 80.0       # m — default; see DETECT_RANGE_BY_LABEL
 ## it is exactly what forces the aircraft to descend for a close identification
 ## pass instead of calling the target from cruise altitude.
 const DETECT_RANGE_BY_LABEL := {
-	"wall": 220.0,
+	# A 50 m wall is visible a long way off, and the number here is really
+	# "how much warning does the aircraft get". At 220 m, starting 280 m out,
+	# the model flew blind for the first 60 m and then had about two decisions
+	# before the obstacle — it could describe the wall perfectly and still not
+	# finish choosing in time. Warning distance is thinking time.
+	"wall": 400.0,
 	"aircraft": 300.0,
 	"water_bottle": 40.0,
 }

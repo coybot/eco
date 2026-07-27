@@ -1515,6 +1515,15 @@ class MissionLoop:
         entirely with the model.
         """
         blocks: Dict[str, str] = {}
+        # State the frame geometry explicitly. Without it the model has no idea
+        # what coordinate space navigate_to_point lives in: observed live,
+        # it repeatedly picked pixel (500, 500) out of a 640x480 frame, which
+        # cannot resolve to anywhere on the ground and silently wasted a
+        # decision every time while the aircraft kept flying.
+        blocks["CAMERA"] = (
+            f"- The image is {CAM_VIEWPORT_W} wide by {CAM_VIEWPORT_H} tall. "
+            f"Pixel coordinates must fall inside that, with y measured downward "
+            f"from the top; the ground is in the lower half.")
         pose = None
         try:
             pose = self._get_backend().get_pose()
