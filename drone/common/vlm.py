@@ -39,6 +39,10 @@ class ActionType(str, Enum):
     COUNT = "count"  # Report a distinct-object count for a named target, computed
                       # from SpatialMemory (not the model's own visual arithmetic —
                       # see reasoning_loop.py's COUNT handler)
+    ORBIT_POINT = "orbit_point"  # Circle a world point, sensor held on it, and keep
+                                  # watching — for when something you care about is
+                                  # temporarily hidden and may reappear
+    DROP_PAYLOAD = "drop_payload"  # Release the carried payload near a confirmed target
     CAPTURE_PHOTO = "capture_photo"
     REPORT = "report"  # Send message to user
     PHASE_COMPLETE = "phase_complete"
@@ -57,6 +61,12 @@ class VLMAction:
     point_y: Optional[int] = None  # Pixel y coordinate
     target_object: Optional[str] = None  # Object name to navigate to
     
+    # For orbit_point: which world point to circle, and how.
+    world_x: Optional[float] = None
+    world_y: Optional[float] = None
+    radius_m: Optional[float] = None
+    alt_m: Optional[float] = None
+
     # For report/complete actions
     message: Optional[str] = None
     
@@ -79,6 +89,10 @@ class VLMAction:
             "point_x": self.point_x,
             "point_y": self.point_y,
             "target_object": self.target_object,
+            "world_x": self.world_x,
+            "world_y": self.world_y,
+            "radius_m": self.radius_m,
+            "alt_m": self.alt_m,
             "message": self.message,
             "reasoning": self.reasoning,
             "confidence": self.confidence,
@@ -92,6 +106,10 @@ class VLMAction:
             point_x=data.get("point_x"),
             point_y=data.get("point_y"),
             target_object=data.get("target_object"),
+            world_x=data.get("world_x"),
+            world_y=data.get("world_y"),
+            radius_m=data.get("radius_m"),
+            alt_m=data.get("alt_m"),
             message=data.get("message"),
             reasoning=data.get("reasoning"),
             confidence=data.get("confidence", 1.0),
@@ -107,10 +125,14 @@ OUTPUT FORMAT:
 You must respond with a JSON object containing:
 {
   "reasoning": "Your brief reasoning about what you see and why you chose this action",
-  "action_type": "one of: navigate_to_point, navigate_to_object, return_to_landmark, search_area, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
+  "action_type": "one of: navigate_to_point, navigate_to_object, return_to_landmark, search_area, orbit_point, drop_payload, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
   "point_x": <pixel x coordinate if navigate_to_point>,
   "point_y": <pixel y coordinate if navigate_to_point>,
-  "target_object": "<object name if navigate_to_object, return_to_landmark, search_area, or count>",
+  "target_object": "<object name if navigate_to_object, return_to_landmark, search_area, count, or drop_payload>",
+  "world_x": <world east coordinate if orbit_point>,
+  "world_y": <world north coordinate if orbit_point>,
+  "radius_m": <orbit radius in metres if orbit_point, at least 45>,
+  "alt_m": <altitude in metres if orbit_point>,
   "message": "<message content if report/complete/failed>"
 }
 
@@ -132,6 +154,20 @@ ACTION TYPES:
   enough of the area to call count for <target_object> — e.g. after orbiting the
   whole area at least once, not after a single glimpse. Zero is a completely valid
   and honest count if you've covered the area and genuinely seen none.
+- orbit_point: Fly a circle around a world point with the camera held on it, and
+  keep watching. Each decision flies one lap. Use this when something you care
+  about has gone out of sight somewhere it could plausibly reappear — it went
+  under cover, into a structure, behind terrain — and leaving would mean losing
+  it. Circling keeps eyes on the place while you wait, which searching elsewhere
+  does not. Give world_x/world_y for the point to watch (world coordinates, e.g.
+  from MEMORY or CURRENT DETECTIONS), radius_m (45 or more; this aircraft cannot
+  hover and stalls in too tight a turn) and alt_m.
+- drop_payload: Release the carried payload for a target you have CONFIRMED and
+  are close to. Set target_object to what you are delivering to. You carry a
+  limited number (see PAYLOAD) and cannot pick one back up, so releasing on the
+  wrong person wastes it. Only release once the distinguishing attribute named
+  in the objective is actually visible in the current frame — being near "a
+  person" is not the same as being near the RIGHT person.
 - capture_photo: Take a photo of what's currently in view
 - report: Send a message/observation to the user
 - phase_complete: Current mission phase is done, move to next
@@ -156,7 +192,29 @@ IMPORTANT:
 - Report interesting findings
 - Complete phases systematically before moving on
 - A vehicle that cannot hover (e.g. fixed-wing) flies past what it sees — check
-  MEMORY for landmarks already spotted before deciding to search again"""
+  MEMORY for landmarks already spotted before deciding to search again
+
+IDENTIFYING THE RIGHT ONE:
+- When the objective describes a target by an ATTRIBUTE (what they are wearing,
+  what colour something is), a detection of the general class is not a match.
+  "A person is visible" does not mean "the person in the red jacket is visible".
+  Close in until you can actually see the attribute, and say in your reasoning
+  what you can and cannot make out yet.
+- Bystanders who are not the target may be present. Rejecting one is real
+  progress, not a failure — say so and keep looking.
+
+OPERATING WITHOUT COMMUNICATIONS:
+- You have NO radio link: not to base, and not to any other aircraft. Nobody
+  will tell you what a teammate has found. You cannot ask, and you cannot be
+  told. Everything you know comes from your own sensors.
+- You may still be able to SEE a teammate (they appear as "aircraft" in
+  CURRENT DETECTIONS, and PEER OBSERVATIONS summarises what they have been
+  doing). What a teammate does is evidence. An aircraft that has descended and
+  is circling low over one spot has very likely found something worth looking
+  at — that is a reason to go and see for yourself, and confirm it with your
+  own eyes rather than assume.
+- Objects left in the world are also evidence. Equipment on the ground where
+  there was none before means someone has already been there and acted."""
 
 
 class VLMService:
@@ -288,6 +346,7 @@ class VLMService:
         history: list = None,
         detections: list = None,
         memory: list = None,
+        extra_context: Optional[Dict[str, str]] = None,
     ) -> VLMAction:
         """
         Decide what action to take based on current view and mission.
@@ -328,7 +387,8 @@ class VLMService:
             )
         
         # Build prompt
-        prompt = self._build_prompt(mission_phase, drone_state, history, detections, memory)
+        prompt = self._build_prompt(mission_phase, drone_state, history, detections,
+                                    memory, extra_context)
         
         # Call VLM
         try:
@@ -415,6 +475,7 @@ class VLMService:
         history: list = None,
         detections: list = None,
         memory: list = None,
+        extra_context: Optional[Dict[str, str]] = None,
     ) -> str:
         """Build the prompt for the VLM."""
         lines = [
@@ -453,6 +514,22 @@ class VLMService:
                     f"  - {lm.label} at world ({lm.x:.0f}, {lm.y:.0f}, {lm.z:.0f}) "
                     f"[seen {lm.hits}x, last score {lm.score:.0%}]"
                 )
+
+        # Caller-supplied blocks (PEER OBSERVATIONS, OBSTACLES, PAYLOAD). These
+        # carry things the single current frame cannot show — what a teammate has
+        # been doing over the last minute, structure ahead sensed beyond visual
+        # range, how many payloads are left — and are assembled by deterministic
+        # geometry in the harness, not invented by the model. Placed before
+        # RECENT ACTIONS so the situation reads before the history of responses
+        # to it.
+        if extra_context:
+            for title, body in extra_context.items():
+                if not body:
+                    continue
+                lines.append("")
+                lines.append(f"{title}:")
+                for row in str(body).strip().splitlines():
+                    lines.append(f"  {row.strip()}")
 
         if history:
             lines.append("")

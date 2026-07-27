@@ -134,6 +134,14 @@ func _build_wall_markers() -> void:
 			m.name = "wall_marker_%.0f_%s" % [n, "w" if face < 0 else "e"]
 			m.set_meta("label", "wall")
 			m.set_meta("is_anomaly", false)
+			# The marker sits at MID-height, because a marker at the top would
+			# never fall inside the camera's downward-pitched FOV from an
+			# aircraft flying below the wall's top. Its own position therefore
+			# says nothing about how tall the structure is, so the height is
+			# carried explicitly — without it a consumer reading the marker's z
+			# would conclude a 50 m wall tops out at 25 m and that flying over
+			# it at 35 m is fine.
+			m.set_meta("top_z", WALL_HEIGHT)
 			m.position = Vector3(
 				WALL_EAST + face * (WALL_THICK * 0.5 + 1.5),
 				WALL_HEIGHT * 0.5,

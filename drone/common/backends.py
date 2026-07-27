@@ -34,6 +34,13 @@ class Detection:
     range_m: Optional[float] = None
     bearing_rad: Optional[float] = None   # body-frame bearing, +left, from forward
     world_xyz: Optional[Tuple[float, float, float]] = None  # world/NED meters
+    # Top of the object in world height, when the sensing path can estimate it.
+    # A sensed point says where something is, not how tall it is, and for
+    # structure that difference decides whether it can be overflown at all.
+    top_z: Optional[float] = None
+    # Set on detections of another aircraft — the only channel a comms-denied
+    # formation has for learning anything about a teammate.
+    peer_id: Optional[str] = None
 
 
 class Backend(Protocol):
@@ -472,6 +479,8 @@ class SimBackend:
                 label=obj.get("label", "unknown"),
                 score=float(obj.get("confidence", 0.0)),
                 world_xyz=tuple(world) if world is not None else None,
+                top_z=obj.get("top_z"),
+                peer_id=obj.get("peer_id"),
             ))
         return out
 
