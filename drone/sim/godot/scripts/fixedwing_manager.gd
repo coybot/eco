@@ -684,6 +684,13 @@ func inject(name: String, params: Dictionary) -> void:
 				)
 				_env.add_wall(rect, height)
 				_rebuild_occ_grid()
+
+		"sar_config":
+			# Scenario knobs for env_sar (tunnel dwell, forced actor phase,
+			# target placement) reusing the existing inject channel rather than
+			# adding a scenario-specific IPC op.
+			if _env and _env.has_method("sar_config"):
+				_env.sar_config(params)
 	_log_event("inject_fired", {"name": name, "params": params})
 
 
@@ -691,6 +698,34 @@ func inject(name: String, params: Dictionary) -> void:
 # IPC: ground-truth oracle (harness/scoring only — never fed to the brain's
 # sensing API; use fw_detect/fw_grid for anything the agent itself sees).
 # ------------------------------------------------------------------
+## Every live aircraft's ENU pose, for consumers that need the whole formation
+## rather than one id: environments with proximity-triggered actors, and (from
+## M4) the peer-sensing pass in detect(). Returns plain Dictionaries so the same
+## shape can go over IPC unchanged.
+func all_states() -> Array:
+	var out: Array = []
+	for st in _fw.values():
+		if not st.alive:
+			continue
+		out.append({
+			"id": st.id,
+			"position": [st.position.x, st.position.y, st.position.z],
+			"yaw": st.yaw,
+			"altitude": st.altitude,
+		})
+	return out
+
+
+## Environment-specific introspection, forwarded to whatever env is loaded.
+## Scenario envs expose their actors' internal state (which phase the runner is
+## in, where the target actually is) so a harness can assert on real scene truth
+## instead of inferring it from detections — the same reason prop_truth() exists.
+func env_state() -> Dictionary:
+	if _env != null and _env.has_method("env_state"):
+		return _env.env_state()
+	return {}
+
+
 func prop_truth() -> Array:
 	if _env == null:
 		return []
