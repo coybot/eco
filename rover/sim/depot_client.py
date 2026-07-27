@@ -130,11 +130,22 @@ class DepotClient:
         r = self._call({"op": "fw_unproject", "id": rid, "nx": nx, "ny": ny})
         return r.get("world")
 
-    def fw_drive(self, rid: str, airspeed: float, yaw_rate: float) -> dict:
-        return self._call({"op": "fw_drive", "id": rid, "airspeed": airspeed, "yaw_rate": yaw_rate})
+    def fw_drive(self, rid: str, airspeed: float, yaw_rate: float,
+                 climb: float = 0.0) -> dict:
+        return self._call({"op": "fw_drive", "id": rid, "airspeed": airspeed,
+                           "yaw_rate": yaw_rate, "climb": climb})
 
     def fw_stop(self, rid: str) -> dict:
         return self._call({"op": "fw_stop", "id": rid})
+
+    def fw_reset_camera(self, rid: str) -> dict:
+        """Rebuild the forward-camera SubViewport after a frozen render target.
+
+        See FixedWingManager.reset_camera — the capture can freeze permanently
+        once the VLM starts using the GPU. Let a frame pass before the next
+        fw_grab_frame, since the new viewport starts empty.
+        """
+        return self._call({"op": "fw_reset_camera", "id": rid})
 
     def fw_events(self, rid: str) -> list[dict]:
         r = self._call({"op": "fw_events", "id": rid})

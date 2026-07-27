@@ -23,6 +23,8 @@ const MAX_YAW_RATE := 0.6        # rad/s
 const MAX_ROLL := 45.0           # degrees
 const MAX_CLIMB_RATE := 8.0      # m/s
 const MIN_CLIMB_RATE := -12.0    # m/s
+const ALT_FLOOR_M := 2.0         # hard envelope floor (see _apply_flight_dynamics)
+const ALT_CEILING_M := 120.0     # hard envelope ceiling
 const DETECT_RANGE := 80.0       # m
 const DETECT_HFOV_HALF := deg_to_rad(30.0)  # 60° horizontal FOV
 const DETECT_VFOV_HALF := deg_to_rad(17.5)  # 35° vertical FOV
@@ -67,6 +69,7 @@ class FixedWingState:
 	var battery_level := 100.0
 	var cmd_airspeed := 0.0
 	var cmd_yaw_rate := 0.0
+	var cmd_climb_rate := 0.0
 	var observed: PackedByteArray = PackedByteArray()
 	var alive := true
 	var last_pose_trace: float = 0.0
@@ -103,6 +106,7 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 		st.velocity = Vector3.ZERO
 		st.airspeed = MIN_AIRSPEED
 		st.climb_rate = 0.0
+		st.cmd_climb_rate = 0.0
 		st.pitch = 0.0
 		st.roll = 0.0
 		_apply_pose(st)
@@ -183,6 +187,12 @@ func _step(st: FixedWingState, dt: float) -> void:
 	
 	# Update position and velocity
 	st.position += st.velocity * dt
+	# Backstop the envelope in POSITION as well as in rate: zeroing climb_rate
+	# (in _apply_flight_dynamics) only stops further descent, it cannot undo the
+	# fraction of a tick that carried the aircraft past the limit. Without this
+	# the altitude floor leaks by a few centimetres and "z never below the floor"
+	# stops being a checkable invariant.
+	st.position.z = clamp(st.position.z, ALT_FLOOR_M, ALT_CEILING_M)
 	st.altitude = st.position.z
 	
 	# Apply pose
@@ -218,8 +228,41 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	var roll_rate := st.cmd_yaw_rate * st.airspeed / 9.81  # g = 9.81 m/s^2
 	st.roll = clamp(roll_rate, -deg_to_rad(MAX_ROLL), deg_to_rad(MAX_ROLL))
 	
-	# Climb rate integration
+	# Climb rate: ease toward the command, then clamp.
+	#
+	# Until the SAR demo work there was no climb COMMAND at all — climb_rate was
+	# integrated into velocity and pitch (below) but nothing outside this file
+	# could ever set it, so every fixed-wing flew the whole mission frozen at its
+	# spawn altitude. The descend-to-identify and climb-to-orbit beats need real
+	# vertical control, so the command is wired here.
+	#
+	# Eased with a ~1.5 s time constant rather than applied instantly: a step
+	# change in climb rate would snap st.pitch (computed from it just above) and
+	# make the chase camera jerk, which shows up directly in the demo footage.
+	var climb_tc := 1.5
+	st.climb_rate += (st.cmd_climb_rate - st.climb_rate) * minf(1.0, dt / climb_tc)
+	# Aerodynamic limit: a fixed-wing cannot out-climb its own airspeed. Capping
+	# to a 20° flight-path angle keeps commanded climbs physically honest at low
+	# airspeed instead of letting a 12 m/s aircraft climb at 8 m/s (a 42° angle).
+	var climb_limit: float = tan(deg_to_rad(20.0)) * st.airspeed
+	st.climb_rate = clamp(st.climb_rate, -climb_limit, climb_limit)
 	st.climb_rate = clamp(st.climb_rate, MIN_CLIMB_RATE, MAX_CLIMB_RATE)
+
+	# Envelope protection: hard altitude floor/ceiling. The demo deliberately
+	# flies low run-ins, so a model that commands an over-aggressive descent must
+	# be caught by the vehicle rather than allowed to fly into the ground — and
+	# the intervention must be VISIBLE in telemetry, since "zero envelope
+	# interventions" is one of the demo's take-selection gates.
+	if st.position.z <= ALT_FLOOR_M and st.climb_rate < 0.0:
+		st.climb_rate = 0.0
+		st.cmd_climb_rate = 0.0
+		_log_event("envelope_protection", {"id": st.id, "limit": "alt_floor",
+			"alt": st.position.z, "floor": ALT_FLOOR_M})
+	elif st.position.z >= ALT_CEILING_M and st.climb_rate > 0.0:
+		st.climb_rate = 0.0
+		st.cmd_climb_rate = 0.0
+		_log_event("envelope_protection", {"id": st.id, "limit": "alt_ceiling",
+			"alt": st.position.z, "ceiling": ALT_CEILING_M})
 	
 	# Convert to velocity vector in ENU coordinates
 	var forward := Vector3(cos(st.yaw), sin(st.yaw), 0.0)
@@ -318,6 +361,46 @@ func get_state(id: String) -> Variant:
 ## base64). Requires a real rendering driver (gui=True on this Mac) — headless
 ## Godot's "dummy" driver leaves SubViewport textures blank, same limitation
 ## already documented for grab_vantage in fw_eval.py.
+## Rebuild an aircraft's forward-camera SubViewport from scratch.
+##
+## Necessary because the render target can freeze permanently: once another
+## Metal client on this machine starts heavy GPU work — in practice the
+## on-device VLM, which is exactly what runs alongside the sim in every real
+## mission run — the SubViewport stops updating and grab_frame_jpeg() keeps
+## returning the same bytes forever, while detect() (pure CPU geometry) carries
+## on reporting the truth. That divergence is silent and dangerous: it looks
+## like a blind model rather than a stale camera, and it invalidated an entire
+## VLM gate run before being caught by comparing capture bytes across poses.
+##
+## Waiting longer does not clear it — measured, the bytes stay identical
+## indefinitely. Rebuilding the viewport does. This is the same class of
+## frozen-render-target failure already documented for vantage cameras in
+## papers/fixed_wing_sitl_lessons_learned.md, whose recovery is likewise
+## remove-and-recreate.
+##
+## The new viewport needs at least one rendered frame before it has content, so
+## callers must let a frame or two pass between reset_camera() and the next
+## grab_frame_jpeg().
+func reset_camera(id: String) -> void:
+	var st: FixedWingState = _fw.get(id)
+	if st == null or st.node == null:
+		return
+	if st.viewport != null:
+		st.viewport.queue_free()
+	var vp := SubViewport.new()
+	vp.size = Vector2i(CAM_VIEWPORT_W, CAM_VIEWPORT_H)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.own_world_3d = false
+	var cam := Camera3D.new()
+	cam.fov = CAM_FOV
+	cam.current = true   # per-viewport scoped — see spawn()
+	vp.add_child(cam)
+	st.node.add_child(vp)
+	st.viewport = vp
+	st.camera = cam
+	_sync_camera(st)
+
+
 func grab_frame_jpeg(id: String) -> Variant:
 	var st: FixedWingState = _fw.get(id)
 	if st == null or st.viewport == null:
@@ -465,12 +548,16 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 # ------------------------------------------------------------------
 # IPC: drive / stop
 # ------------------------------------------------------------------
-func drive(id: String, airspeed: float, yaw_rate: float) -> void:
+## `climb` is the commanded climb rate in m/s (positive up). It is optional so
+## every existing two-argument caller keeps its current behaviour of holding
+## altitude, rather than silently starting to descend.
+func drive(id: String, airspeed: float, yaw_rate: float, climb: float = 0.0) -> void:
 	var st: FixedWingState = _fw.get(id)
 	if st == null:
 		return
 	st.cmd_airspeed = clamp(airspeed, -MAX_AIRSPEED, MAX_AIRSPEED)
 	st.cmd_yaw_rate = clamp(yaw_rate, -MAX_YAW_RATE, MAX_YAW_RATE)
+	st.cmd_climb_rate = clamp(climb, MIN_CLIMB_RATE, MAX_CLIMB_RATE)
 
 
 func stop(id: String) -> void:
@@ -480,6 +567,7 @@ func stop(id: String) -> void:
 		return
 	st.cmd_airspeed = MIN_AIRSPEED
 	st.cmd_yaw_rate = 0.0
+	st.cmd_climb_rate = 0.0
 	st.climb_rate = 0.0
 
 
@@ -651,6 +739,7 @@ func reset(id: String) -> void:
 	st.battery_level = 100.0
 	st.cmd_airspeed = 0.0
 	st.cmd_yaw_rate = 0.0
+	st.cmd_climb_rate = 0.0
 	st.position = Vector3.ZERO
 	st.velocity = Vector3.ZERO
 	st.airspeed = MIN_AIRSPEED
