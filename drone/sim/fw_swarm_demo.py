@@ -63,7 +63,7 @@ PLAN_CACHE = SIM_DIR / "swarm_plan_cache.json"
 # mission_vocab.PHASE_WORDING_RULES.
 TASKING = (
     "Two fixed-wing drones are searching for a person in a red jacket somewhere "
-    "within 120 metres of world coordinates (230, 0). A tall wall stands across "
+    "within 120 metres of world coordinates (400, 0). A tall wall stands across "
     "the direct route east and must be flown around. Each drone carries one "
     "water bottle and must deliver its water bottle near the person in the red "
     "jacket, then return home. The drones have no radio link to you or to each "

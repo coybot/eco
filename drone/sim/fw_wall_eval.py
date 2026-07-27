@@ -47,11 +47,11 @@ from vehicle_class import get_class  # noqa: E402
 RID = "fw-wall"
 PORT = 9979
 
-GOAL = (230.0, 0.0)
+GOAL = (400.0, 0.0)
 START = (-30.0, 0.0, 35.0)
 
 OBJECTIVE = (
-    "Fly east to the search area around world coordinates (230, 0). There is a "
+    "Fly east to the search area around world coordinates (400, 0). There is a "
     "tall wall across the direct route. Get to the search area without flying "
     "into it."
 )

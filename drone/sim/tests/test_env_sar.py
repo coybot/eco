@@ -145,7 +145,7 @@ def main() -> int:
         # Control: same altitude and range, but at an UNROOFED person. If this
         # also sees nothing then the previous result proved nothing about the roof.
         gray = [p for p in c.fw_prop_truth()
-                if abs(p["world"][0] - 205.0) < 1 and abs(p["world"][1] - 45.0) < 1]
+                if abs(p["world"][0] - 375.0) < 1 and abs(p["world"][1] - 45.0) < 1]
         if not gray:
             fails.append("gray bystander not found for the occlusion control")
         else:

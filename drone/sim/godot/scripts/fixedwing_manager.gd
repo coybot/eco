@@ -48,7 +48,12 @@ const GRID_RES := 1.0
 # would read ~0 regardless of actual flight coverage) — never noticed before
 # because, per the Slice 1 investigation, fixed-wing sim had never actually run.
 const GRID_ORIGIN := Vector2(-50.0, -150.0)
-const GRID_W := 400
+# Widened east (was 400, covering x[-50,350]) when the SAR wall moved out to
+# e=250 to give the aircraft a realistic run-in. The grid has to span every
+# structure the aircraft might fly at: _occupied() reports FALSE outside it, so
+# a wall beyond the edge is invisible to both the envelope guard and the
+# leg-crossing check, which fail open rather than closed.
+const GRID_W := 600
 const GRID_H := 300
 const NEAR_MISS_DIST := 2.0
 const BASE_DRAIN_IDLE := 0.01   # %/s
