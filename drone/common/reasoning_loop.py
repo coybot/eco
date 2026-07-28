@@ -73,6 +73,14 @@ CAM_VIEWPORT_H = 480
 POSSIBLY_MOVING_LABELS = {"person", "people", "pedestrian", "human", "animal", "dog", "cat"}
 
 
+def _compass_name(yaw_rad: float) -> str:
+    """Heading as a compass point plus degrees, in the sim's ENU convention
+    (yaw 0 = east, increasing toward north)."""
+    deg = math.degrees(yaw_rad) % 360.0
+    pts = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
+    return f"{pts[int(round(deg / 45.0)) % 8]} ({deg:.0f} deg)"
+
+
 def _phase_wants_count(phase: Dict[str, Any]) -> bool:
     """Heuristic: does this phase's own objective/success text ask for a
     count? Used to require an actual COUNT action (not just any grounded-
@@ -1578,6 +1586,25 @@ class MissionLoop:
         if pose is None:
             return blocks
         own = (pose[0], pose[1], pose[2])
+
+        # Where the aircraft actually is, in the same frame as everything else
+        # it is given.
+        #
+        # This was missing entirely, and the pose was already being fetched here
+        # for the other blocks. Every spatial thing the model reads is in world
+        # coordinates — memory landmarks, obstacle ends, navigate_to_world,
+        # phase objectives and success criteria written by the planner — and it
+        # was never told its own. Observed live: a transit phase whose success
+        # read "aircraft is in the vicinity of ... east=400, north=60" could not
+        # be judged at all, so the model simply kept navigating; fifteen
+        # decisions, not one of them a completion claim, until the phase hit its
+        # action limit. It was not refusing to finish, it had no way to know it
+        # had arrived.
+        blocks["POSITION"] = (
+            f"- You are at east {pose[0]:.0f}, north {pose[1]:.0f}, altitude "
+            f"{pose[2]:.0f} m, heading {_compass_name(pose[3])}. These are the "
+            f"same world coordinates used by navigate_to_world, by the landmarks "
+            f"in memory, and by any coordinates in the mission phase above.")
 
         peer_text = self.peers.summarize(own)
         if peer_text:
