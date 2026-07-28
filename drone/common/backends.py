@@ -626,7 +626,22 @@ class SimBackend:
     def rtl(self, alt_m: Optional[float] = None) -> bool:
         pose = self.get_pose()
         cruise_alt = alt_m if alt_m is not None else (pose[2] if pose else 20.0)
-        return self.goto(0.0, 0.0, cruise_alt)
+        # Climb above anything in the scene before heading home, the way a real
+        # RTL does (ArduPilot's RTL_ALT exists for exactly this reason).
+        #
+        # Without it the return leg is a straight line at whatever altitude the
+        # planner asked for — 15 m in these plans — and from the delivery point
+        # that line crosses the 50 m wall. The vehicle correctly refuses to fly
+        # through structure, rtl() returns False, the phase fails, and nothing
+        # holds a fixed-wing still: measured, an aircraft that had just
+        # delivered its payload flew straight for fifteen minutes and finished
+        # the take 12.8 km from home.
+        #
+        # Derived from the same numbers the path check uses, so a scene with
+        # taller structure cannot leave the two disagreeing.
+        clearance = (getattr(self, "STRUCTURE_TOP_M", 50.0)
+                     + getattr(self, "OVERFLY_MARGIN_M", 10.0) + 10.0)
+        return self.goto(0.0, 0.0, max(cruise_alt, clearance))
 
     def configure_safety(self, fence_radius_m: Optional[float] = None,
                           fence_max_alt_m: Optional[float] = None,
