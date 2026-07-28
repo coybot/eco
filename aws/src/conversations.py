@@ -187,6 +187,14 @@ RULES:
   GPS fix it is rejected outright. Observed live — a transit phase emitted as
   go_to_gps with only a description killed the whole mission, both replan
   attempts included, before the aircraft had gone anywhere.
+- A phase's "success" must be checkable by the aircraft itself and must agree
+  with its own objective. The aircraft knows its position, what its camera can
+  see, and what it has already done — nothing else. Observed live: a transit
+  objective aimed at "east=400, north=0" was paired with the success criterion
+  "in the vicinity of the northern search area near east=400, north=60", so the
+  aircraft flew to the coordinates it was given and then could not honestly
+  declare the phase done. It burned the whole phase re-navigating. If the
+  objective names coordinates, the success criterion must name the same ones.
 - Use a VLM phase, NOT a typed "nav", for any transit longer than about 100 m
   across ground the aircraft has not surveyed. Typed navigation flies the exact
   straight line it is given and cannot react to anything: if something solid is
