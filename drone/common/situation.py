@@ -150,6 +150,9 @@ class ObstacleTracker:
     # current heading. ~18 s of flight at cruise: close enough that turning back
     # would reach it, far enough to cover a detour around a 140 m obstacle.
     RELEVANT_RANGE_M = 250.0
+    # How far past an end counts as genuinely round it, allowing for the fact
+    # that the sensed extent is only the markers actually seen.
+    END_CLEARANCE_M = 25.0
 
     def __init__(self):
         # Structure stays known once seen. A wall does not cease to exist when
@@ -245,10 +248,13 @@ class ObstacleTracker:
             f"({north[0]:.0f}, {north[1]:.0f}) — {abs(north[1] - south[1]):.0f} m wide. "
             f"Those two ends are where it stops; beyond them the way is open.",
         ]
+        past_n = own_xyz[1] > north[1] + self.END_CLEARANCE_M
+        past_s = own_xyz[1] < south[1] - self.END_CLEARANCE_M
+        past_end = past_n or past_s
         if top > own_xyz[2] and ahead:
             rows.append("- It is taller than your current altitude, so flying straight "
                         "on will not clear it.")
-        elif top > own_xyz[2]:
+        elif top > own_xyz[2] and not past_end:
             rows.append("- It is taller than your current altitude. You are not pointed "
                         "at it right now; turning back east before you are past one of "
                         "those two ends puts you into it again.")
@@ -259,6 +265,26 @@ class ObstacleTracker:
         # the obstacle. It was not misjudging the situation; it had the right
         # plan and reached for a tool that cannot carry it out. Which way to go,
         # or whether to go at all, is still entirely its call.
+        # Once the aircraft is already past an end, say so and stop offering the
+        # rounding waypoint.
+        #
+        # Offering it unconditionally created a loop the moment the block was
+        # made to persist through the detour: the aircraft flew to the suggested
+        # corner, arrived, was handed the same corner again, and flew to it
+        # again — observed live, fifteen consecutive decisions on (186,130) and
+        # (187,130), burning the phase budget twice over without the wall ever
+        # being a threat. Advice computed from the obstacle alone, ignoring
+        # where the reader has got to, is a standing instruction rather than a
+        # hint. What follows is still only geometry; which way to go stays the
+        # model's call.
+        if past_end:
+            side = "north" if past_n else "south"
+            rows.append(
+                f"- You are already past its {side} end ({abs(own_xyz[1] - (north[1] if past_n else south[1])):.0f} m "
+                f"clear of it), so it is no longer between you and the ground to "
+                f"the east. Continuing east from here does not cross it.")
+            return "\n".join(rows)
+
         clear_s = (south[0] - 60.0, south[1] - 60.0)
         clear_n = (north[0] - 60.0, north[1] + 60.0)
         rows.append(
