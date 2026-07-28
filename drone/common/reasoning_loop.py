@@ -1671,6 +1671,10 @@ class MissionLoop:
     # this close (see _exec_drop_payload for why the gates are mechanical).
     DROP_MAX_RANGE_M = 60.0
     DROP_RUN_IN_ALT_M = 15.0
+    # How long the terminal run-in may take before giving up with the payload
+    # still aboard. A run from DROP_MAX_RANGE_M to the release point is ~3 s of
+    # flying; this is generous enough for a target that is walking away.
+    DROP_RUN_IN_TIMEOUT_S = 45.0
 
     # Labels that can never ground a claim of mission success — they say
     # something about the formation, not about the objective.
@@ -1835,14 +1839,79 @@ class MissionLoop:
         if release is None:
             self._history.append("drop_payload unsupported by this backend")
             return
+
+        # Terminal run-in: fly at the target until the release point, then let go.
+        #
+        # Without this the payload was released the instant the target came
+        # within DROP_MAX_RANGE_M, which is 60 m — while a bottle dropped at
+        # 14 m/s from 15 m only carries v*sqrt(2h/g), about 24 m. Measured: a
+        # release at 47 m put the bottle 71 m from the person, against a 10 m
+        # assertion. The gate was letting go at ranges from which no release
+        # could possibly land near the target, so the delivery beat could only
+        # ever have succeeded by accident.
+        #
+        # This is deterministic weapons-style geometry, not the model flying:
+        # the model decides WHETHER and at WHOM, this decides WHEN to let go,
+        # exactly as labelled in the plan. The target is re-checked at 2 Hz all
+        # the way in, so if it disappears — into the tunnel, say — the run is
+        # abandoned with the payload still aboard.
+        det = self._run_in_to_release(backend, target, det)
+        if det is None:
+            return
+
         result = release()
         if result:
             self.payload_remaining = max(0, self.payload_remaining - 1)
+            pose = backend.get_pose()
+            final = (math.hypot(det.world_xyz[0] - pose[0], det.world_xyz[1] - pose[1])
+                     if pose is not None else float("nan"))
             self._report_progress(
-                f"Payload released for {target} at {dist:.0f} m")
+                f"Payload released for {target} at {final:.0f} m")
             self._history.append(f"Released payload for {target}")
         else:
             self._history.append("drop_payload: release refused by the vehicle")
+
+    def _release_range_m(self, pose) -> float:
+        """Horizontal distance a payload carries when let go: v*sqrt(2h/g)."""
+        alt = max(1.0, pose[2] if pose is not None else self.DROP_RUN_IN_ALT_M)
+        speed = getattr(self.vehicle_class, "cruise_speed_mps", 14.0) or 14.0
+        return speed * math.sqrt(2.0 * alt / 9.81)
+
+    def _run_in_to_release(self, backend, target, det):
+        """Close to the ballistic release point, keeping eyes on the target.
+
+        Returns the latest detection to release on, or None if the run was
+        abandoned (target lost, or it could not be closed in time).
+        """
+        deadline = time.monotonic() + self.DROP_RUN_IN_TIMEOUT_S
+        while time.monotonic() < deadline:
+            pose = backend.get_pose()
+            if pose is None:
+                return None
+            dist = math.hypot(det.world_xyz[0] - pose[0], det.world_xyz[1] - pose[1])
+            want = self._release_range_m(pose)
+            if dist <= want:
+                return det
+            # Steer at the target, descending to the release altitude. goto()
+            # would fly all the way to it and overshoot the release point.
+            backend.goto(det.world_xyz[1], det.world_xyz[0], self.DROP_RUN_IN_ALT_M,
+                         timeout_s=1.0, tol_m=max(5.0, want))
+            time.sleep(0.5)
+            seen = [d for d in backend.detect()
+                    if (labels_match(d.label, target) or labels_match(target, d.label))
+                    and d.world_xyz]
+            if not seen:
+                self._history.append(
+                    f"Broke off the delivery run: lost sight of {target} on the way in, "
+                    f"still carrying the payload.")
+                self._report_progress(f"Aborted run-in — {target} no longer visible")
+                return None
+            pose = backend.get_pose()
+            det = min(seen, key=lambda d: math.hypot(d.world_xyz[0] - pose[0],
+                                                     d.world_xyz[1] - pose[1]))
+        self._history.append(
+            f"Delivery run-in timed out before reaching release range for {target}.")
+        return None
 
     def _replan(self, phase: Dict[str, Any], reason: str, attempt: int) -> None:
         """Loiter and clear transient per-phase state before retrying a failed
