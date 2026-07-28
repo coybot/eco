@@ -87,11 +87,29 @@ TASKING = (
     "jacket, then return home. The drones have no radio link to you or to each "
     "other once they launch."
 )
+# A sector is how the work is DIVIDED, not a fence.
+#
+# Worded as a plain assignment ("this aircraft searches the SOUTHERN half"), the
+# planner turns it into a phase objective that reads as a boundary, and the
+# aircraft obeys it over everything else. Measured directly: shown a teammate
+# descending and circling low over one spot — the exact cue the comms-denied
+# doctrine names — the model converged 0 times in 16, reasoning "the drone is
+# currently in the southern half and needs to search for a person in a red
+# jacket". A specific instruction beats general doctrine every time, and the
+# specific instruction was one nobody meant literally: an operator dividing a
+# search area does not mean "stay there even if your teammate has found them".
+#
+# This says what the operator actually wants and still leaves the decision open
+# — nothing here tells an aircraft to converge, or when.
 SECTOR_HINT = {
-    "alpha": "This aircraft searches the NORTHERN half of the search area "
-             "(north of world y=0).",
-    "bravo": "This aircraft searches the SOUTHERN half of the search area "
-             "(south of world y=0).",
+    "alpha": "To avoid both aircraft covering the same ground, start your search "
+             "in the NORTHERN half of the search area (north of world y=0). That "
+             "is a division of effort, not a boundary — go wherever the mission "
+             "requires.",
+    "bravo": "To avoid both aircraft covering the same ground, start your search "
+             "in the SOUTHERN half of the search area (south of world y=0). That "
+             "is a division of effort, not a boundary — go wherever the mission "
+             "requires.",
 }
 
 DRONES = {
