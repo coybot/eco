@@ -803,6 +803,32 @@ class MissionLoop:
     # VLM phase executor (open-ended: perceive → decide → act loop)        #
     # ------------------------------------------------------------------ #
 
+    def _phase_action_budget(self) -> int:
+        """How many decisions this phase may take before it is cut off.
+
+        The budget exists to stop a phase looping forever. A planned search is
+        not a loop: it is a finite list of legs, one action each, and cutting it
+        off part-way means the aircraft reports "not found" having flown a
+        fraction of the area it was told to cover. Measured — a 32-leg expanding
+        search reached leg 12 of 32 before the phase died at the default 14, and
+        an earlier take only passed its search beat because the target happened
+        to lie in an early leg. That is a budget that silently depends on where
+        the target is.
+
+        Raising the global limit instead is worse, and was tried: at 40 the
+        SEARCH could finish but the TRANSIT phase used the extra rope to wander
+        to (55, 465) — 465 m north of a route due east — where at 14 it would
+        have been cut off and replanned long before. Different phases fail in
+        different directions, so the allowance follows the plan the phase is
+        actually working through.
+        """
+        base = self.MAX_PHASE_ACTIONS
+        if self._search_plan:
+            # Enough to finish the planned legs, plus the same slack any phase
+            # gets for the decisions around them (closing in, reporting).
+            return max(base, len(self._search_plan) + base)
+        return base
+
     def _exec_vlm_phase(self, phase: Dict[str, Any], mission: Mission) -> Dict[str, Any]:
         """Execute an open-ended phase using the onboard VLM perception-action loop."""
         vlm = self._get_vlm()
@@ -818,7 +844,7 @@ class MissionLoop:
         already_reported_grounded_finding = False
         count_recorded_this_phase = False
 
-        while phase_actions < self.MAX_PHASE_ACTIONS:
+        while phase_actions < self._phase_action_budget():
             # 1. Capture current frame (via the backend, so this works identically
             # whether we're flying real hardware or a sim vehicle — see backends.py)
             try:
