@@ -168,6 +168,41 @@ def main() -> int:
     bad += check("teammate labels cannot ground a success claim",
                  {"aircraft", "teammate"} <= MissionLoop.NON_GROUNDING_LABELS)
 
+    # --- which phases the delivery gate applies to -------------------------
+    # The gate exists because a delivery phase completed by repeating the
+    # PREVIOUS phase's finding ("person in red jacket located and confirmed").
+    # That claim is properly grounded, so the grounding check passed it and the
+    # aircraft went home with the bottle aboard. What matters here is that the
+    # gate fires on phases defined by an ACT and stays out of the way otherwise.
+    print("\ndelivery gate scope")
+    from reasoning_loop import _phase_wants_delivery
+    real_delivery = {
+        "objective": "Close on the person in the red jacket and release the "
+                     "carried water bottle as close as possible.",
+        "success": "water bottle delivered near person in red jacket"}
+    bad += check("fires on a real delivery phase", _phase_wants_delivery(real_delivery))
+    bad += check("ignores a search phase",
+                 not _phase_wants_delivery(
+                     {"objective": "Search the northern half for a person in a "
+                                   "red jacket.", "success": "person located"}))
+    bad += check("ignores return home",
+                 not _phase_wants_delivery({"type": "return_home"}))
+    bad += check("ignores a phase that only mentions the bottle",
+                 not _phase_wants_delivery(
+                     {"objective": "Note where the water bottle came to rest.",
+                      "success": "position recorded"}))
+    # A real plan produced "After delivering the water bottle, note the
+    # position..." — a REPORTING phase that trips the wording test. Harmless
+    # only because the payload is already gone by then, which is worth knowing
+    # rather than rediscovering: the gate is a payload-state check, so it can
+    # never block a phase that follows an actual delivery.
+    bad += check("a post-delivery reporting phase matches the wording",
+                 _phase_wants_delivery(
+                     {"objective": "After delivering the water bottle, note the "
+                                   "position of the person.",
+                      "success": "position reported"}),
+                 "documented: harmless because payload_remaining is 0 by then")
+
     print()
     if bad:
         print(f"FAIL — {bad} check(s) failed")
