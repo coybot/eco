@@ -79,25 +79,46 @@ PHASE = {
 }
 
 
-def build_peer_history(loop, client, laps: int = 14):
+# A closing to deliver descends from search altitude to the run-in altitude. The
+# rate has to be a real one: PeerTracker only calls it "descending" past
+# 0.35 m/s, and only calls it "staying over one spot" once it has more than 20 s
+# of history.
+A_START_ALT = 34.0
+SAMPLE_POINTS = 28          # two laps' worth
+LAP_TIME_S = 2 * math.pi * A_RADIUS / 14.0   # a 55 m orbit at cruise, ~25 s
+
+
+def build_peer_history(loop, client, points: int = SAMPLE_POINTS):
     """Fly A round its low orbit, sampling from B's camera, until B has a trend.
 
-    Uses the real detect() path and the real PeerTracker — the point of the gate
-    is that the block B reads is the one a flight would have produced.
+    Positions and detections are real — A is flown to each point and B looks at
+    it through the real detect() path, so the PEER OBSERVATIONS block is the one
+    a flight would produce. Only the CLOCK is compressed: sightings are stamped
+    with the time the orbit would actually have taken (a 55 m lap at cruise is
+    ~25 s) rather than the wall-clock of staging them.
+
+    That matters, and getting it wrong made the first run of this gate
+    meaningless. PeerTracker needs >5 s of history to report "descending" and
+    >20 s to report "staying over one spot" — the two cues the doctrine
+    paragraph actually names. Staged in real time the whole orbit took 4 s, so
+    the block said only "flying low", and the gate was asking whether the model
+    converges on a strictly weaker signal than the beat describes.
     """
     seen = 0
-    for i in range(laps):
-        ang = 2 * math.pi * i / laps
-        # A circles the target, descending slightly, as it would while closing.
+    t0 = time.monotonic()
+    for i in range(points):
+        frac = i / max(points - 1, 1)
+        ang = 2 * math.pi * (i / (points / 2.0))
         ax = TARGET[0] + A_RADIUS * math.cos(ang)
         ay = TARGET[1] + A_RADIUS * math.sin(ang)
-        alt = A_ALT + (4.0 * (1.0 - i / max(laps - 1, 1)))
+        alt = A_START_ALT + (A_ALT - A_START_ALT) * frac   # ~0.5 m/s descent
         client.fw_spawn(A, (ax, ay, alt), ang + math.pi / 2)
-        time.sleep(0.25)
+        time.sleep(0.2)
+        stamp = t0 + frac * (2 * LAP_TIME_S)
         for d in client.fw_detect(B):
             if d.get("label") == "aircraft" and d.get("world"):
                 w = d["world"]
-                loop.peers.observe(d.get("peer_id", A), w[0], w[1], w[2])
+                loop.peers.observe(d.get("peer_id", A), w[0], w[1], w[2], t=stamp)
                 seen += 1
     return seen
 
@@ -112,8 +133,16 @@ def classify(action, a_pos) -> tuple:
     if kind == "orbit_point" and action.world_x is not None:
         d = math.hypot(action.world_x - a_pos[0], action.world_y - a_pos[1])
         return ("converge" if d < 120.0 else "elsewhere", f"orbit {d:.0f} m from teammate")
-    if kind == "return_to_landmark" and "teammate" in (action.target_object or ""):
+    tgt = (action.target_object or "").lower()
+    if kind == "return_to_landmark" and "teammate" in tgt:
         return ("converge", "return_to_landmark teammate_last_seen")
+    # Flying at the teammate by name is converging. This was scored as "other"
+    # at first, which would have undercounted the very behaviour being measured
+    # — the model reaches for navigate_to_object because the teammate is a
+    # labelled thing in CURRENT DETECTIONS, which is a perfectly reasonable way
+    # to express "go and look at that".
+    if kind == "navigate_to_object" and any(w in tgt for w in ("aircraft", "teammate", "drone")):
+        return ("converge", f"navigate_to_object '{action.target_object}'")
     if kind in ("search_area", "navigate_to_point"):
         return ("own_search", f"carried on with {kind}")
     return ("other", kind)
@@ -168,6 +197,22 @@ def main() -> int:
                 print(f"trial {t:2d}: NO SIGHTING (peer channel gave B nothing)", flush=True)
                 continue
 
+            # The block must actually carry the cues the beat is about, or this
+            # trial asks a weaker question than the one that matters. Caught
+            # live: staged in real time the whole orbit took 4 s, PeerTracker
+            # needs >5 s for "descending" and >20 s for "staying over one spot",
+            # so the model was shown "flying low" alone and scored for not
+            # converging on it.
+            cues = [c for c in ("descending", "staying over one spot")
+                    if c not in peer_block]
+            if cues:
+                rows.append({"trial": t, "sightings": sightings,
+                             "verdict": "weak_cues", "missing": cues,
+                             "peer_block": peer_block})
+                print(f"trial {t:2d}: WEAK CUES — block lacks {cues}; not a fair "
+                      f"test of the decision", flush=True)
+                continue
+
             # Exactly the call MissionLoop makes, so the model sees the prompt a
             # real flight would have built — same blocks, same detections, same
             # PeerTracker output. A gate that assembled its own prompt would be
@@ -200,10 +245,11 @@ def main() -> int:
     finally:
         proc.stop()
 
-    decided = [r for r in rows if r["verdict"] != "no_sighting"]
+    decided = [r for r in rows if r["verdict"] not in ("no_sighting", "weak_cues")]
     converged = [r for r in decided if r["verdict"] == "converge"]
     report = {
         "gate": "swarm_peer_convergence",
+        "weak_cue_trials": sum(1 for r in rows if r["verdict"] == "weak_cues"),
         "pass_bar": "at least half of the trials in which B actually saw A end in "
                     "an action that moves B toward A",
         "trials": len(rows),
