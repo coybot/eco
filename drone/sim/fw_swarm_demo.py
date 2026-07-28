@@ -44,7 +44,10 @@ SIM_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SIM_DIR))
 sys.path.insert(0, str(SIM_DIR.parents[1] / "rover" / "sim"))
 sys.path.insert(0, str(SIM_DIR.parent / "common"))
-sys.path.insert(0, str(SIM_DIR.parents[2] / "aws" / "src"))
+# parents[1] is the eco submodule root. parents[2] is the PARENT repo, which
+# has no aws/src — the planner import then failed at the one moment it is used,
+# after the Bedrock call had already been set up.
+sys.path.insert(0, str(SIM_DIR.parents[1] / "aws" / "src"))
 
 from depot_client import DepotClient  # noqa: E402
 from fw_eval import launch_flightline  # noqa: E402
