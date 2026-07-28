@@ -64,10 +64,25 @@ PLAN_CACHE = SIM_DIR / "swarm_plan_cache.json"
 # labels against this text one-directionally, so prose like "individual in
 # crimson outerwear" would make every report unprovable. See
 # mission_vocab.PHASE_WORDING_RULES.
+# Describes the MISSION, not the terrain — deliberately.
+#
+# This used to add "a tall wall stands across the direct route east and must be
+# flown around", and the planner did exactly what it was told: it returned typed
+# `nav` waypoints at north_m=80 described as "fly north to clear the tall wall".
+# Typed nav phases are executed by deterministic code, so the aircraft rounded
+# the wall on a cloud-computed route with the on-device model contributing
+# nothing. The video's claim that each drone sees the wall and routes around it
+# from its own camera would then have been narrated over footage of a
+# pre-planned turn, and the whole of M6 would have been irrelevant to the take
+# that actually got filmed.
+#
+# An operator tasking a drone states the objective; they do not brief the
+# terrain. Leaving the wall out is what makes the on-device avoidance claim
+# true, and it is the aircraft's job to discover it on camera.
 TASKING = (
     "Two fixed-wing drones are searching for a person in a red jacket somewhere "
-    "within 120 metres of world coordinates (400, 0). A tall wall stands across "
-    "the direct route east and must be flown around. Each drone carries one "
+    "within 120 metres of world coordinates east=400, north=0 (metres, local "
+    "frame, not GPS). Each drone carries one "
     "water bottle and must deliver its water bottle near the person in the red "
     "jacket, then return home. The drones have no radio link to you or to each "
     "other once they launch."

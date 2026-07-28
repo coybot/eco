@@ -87,6 +87,29 @@ def _phase_wants_count(phase: Dict[str, Any]) -> bool:
     return "count" in text or "how many" in text
 
 
+def _phase_wants_delivery(phase: Dict[str, Any]) -> bool:
+    """Does this phase's own text ask for the payload to be released?
+
+    Same gap as _phase_wants_count, found the same way — by running it. A
+    delivery phase ("release the water bottle ... success: water bottle
+    delivered near person in red jacket") concluded with the model repeating
+    the PREVIOUS phase's finding, "person in red jacket located and confirmed".
+    That claim is perfectly grounded — a person really was detected — so the
+    grounding check passed it, the phase completed, and the aircraft flew home
+    with the bottle still aboard while the run reported success.
+
+    Grounding asks "is this claim backed by something you saw". It cannot ask
+    "is this claim the thing this phase was for". A phase whose success is
+    defined by an ACT rather than an observation needs the act to have
+    happened, and that is a fact about the vehicle, not a judgement about the
+    model: the payload either left the aircraft or it did not.
+    """
+    text = f"{phase.get('objective', '')} {phase.get('success', '')}".lower()
+    wants = any(w in text for w in ("deliver", "drop", "release"))
+    what = any(w in text for w in ("bottle", "payload", "package"))
+    return wants and what
+
+
 DRONE_SDK_AVAILABLE = False
 try:
     import drone_sdk as _drone_sdk
@@ -909,6 +932,20 @@ class MissionLoop:
                         target_object=action.target_object,
                         reasoning="Overridden: a counting phase must cover enough of the search area before concluding",
                     )
+                elif (_phase_wants_delivery(phase)
+                      and getattr(self, "payload_remaining", 0) > 0):
+                    # The payload is demonstrably still aboard, so whatever this
+                    # phase was, it was not completed. No judgement about the
+                    # model is involved and no route is suggested: it is told
+                    # the plain fact and decides what to do about it.
+                    self._report_progress(
+                        f"Rejecting {action.action_type.value} for a delivery phase — "
+                        f"the payload has not been released (\"{action.message}\")")
+                    self._history.append(
+                        "Claimed this phase was complete while still carrying the "
+                        "payload. The phase asks for the payload to be delivered; "
+                        "releasing it is what completes it.")
+                    continue
                 elif action.action_type == ActionType.MISSION_FAILED:
                     pass  # not subject to the grounding check below (a failure
                           # claim doesn't assert a positive finding the way

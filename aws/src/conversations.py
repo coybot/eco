@@ -180,6 +180,23 @@ RULES:
 - Use "nav" for any explicit distance/direction ("go 10m north", "move 5m east")
 - Use "fly_circle" for radius/orbit commands ("look around a 10m radius", "circle the area")
 - Use "go_to_gps" when you can resolve an address/landmark to approximate coordinates; include your best GPS estimate
+- If the tasking gives positions as WORLD COORDINATES in metres — "(400, 0)",
+  "120 m of position (400,0)" — that is a local frame, not GPS. Use "nav" with
+  north_m/east_m, or a VLM phase. A "go_to_gps" phase without a real lat/lon
+  cannot fly: it is rejected for missing coordinates, and on a vehicle with no
+  GPS fix it is rejected outright. Observed live — a transit phase emitted as
+  go_to_gps with only a description killed the whole mission, both replan
+  attempts included, before the aircraft had gone anywhere.
+- Use a VLM phase, NOT a typed "nav", for any transit longer than about 100 m
+  across ground the aircraft has not surveyed. Typed navigation flies the exact
+  straight line it is given and cannot react to anything: if something solid is
+  in the way, the leg is refused and the phase fails outright. A VLM phase lets
+  the aircraft see what is in front of it and route around, which is the only
+  thing that works once it is out of contact. Write it as an objective —
+  "fly east to the search area around (east 400, north 0), routing around
+  anything in the way" — and let the aircraft find the route.
+  Do NOT try to plan a detour yourself: you cannot see the terrain, and any
+  route you invent will be flown blind by deterministic code.
 - Use VLM phases for open-ended visual tasks ("find the nearest person", "photograph the prettiest tree")
 - Mix typed and VLM phases freely in the same mission
 - Keep altitude under 20m; use 15m+ for outdoor GPS navigation
