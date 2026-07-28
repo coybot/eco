@@ -57,7 +57,17 @@ TARGET = (385.0, 58.0)
 A_ALT = 22.0
 A_RADIUS = 55.0
 B_ALT = 35.0
-B_OFFSETS = [(-150.0, -90.0), (-170.0, -40.0), (-120.0, -130.0), (-190.0, -70.0)]
+# Absolute positions in bravo's actual sector — the southern half of the
+# 120 m-radius area around (400, 0) — NOT offsets from the target.
+#
+# Offsets put three of four start positions at x < 250, which is west of the
+# wall, with the wall therefore directly between the two aircraft. M4 already
+# established that peer detection is correctly blocked by structure, so the
+# gate was faithfully re-measuring that instead of the decision it exists to
+# test, and reporting "no sighting" as though the peer channel were broken.
+# Third time this session that staging geometry has quietly tested the wrong
+# thing, hence the assertion in main().
+B_STARTS = [(330.0, -60.0), (360.0, -80.0), (300.0, -40.0), (380.0, -100.0)]
 
 PHASE = {
     "objective": (
@@ -122,9 +132,22 @@ def main() -> int:
         client = DepotClient(port=args.port)
         backend_b = EnvelopeGuardedSimBackend(client, B)
 
+        # Refuse to run a rig that cannot answer the question. Both aircraft
+        # must be on the same side of the wall, or the gate measures occlusion
+        # (already proven in M4) and calls it a peer-channel failure.
+        wall_e = client.fw_env_state()["wall"]["east"]
+        bad = [p for p in B_STARTS if (p[0] - wall_e) * (TARGET[0] - wall_e) <= 0]
+        if bad:
+            print(f"staging error: {bad} are on the far side of the wall at "
+                  f"east={wall_e:.0f} from the target — the wall would occlude "
+                  f"the teammate and the result would say nothing about the "
+                  f"decision this gate exists to test.")
+            return 1
+        print(f"staging   : wall at east={wall_e:.0f}; all {len(B_STARTS)} start "
+              f"positions and the target are east of it\n")
+
         for t in range(args.trials):
-            off = B_OFFSETS[t % len(B_OFFSETS)]
-            bx, by = TARGET[0] + off[0], TARGET[1] + off[1]
+            bx, by = B_STARTS[t % len(B_STARTS)]
             client.fw_spawn(B, (bx, by, B_ALT), math.atan2(TARGET[1] - by, TARGET[0] - bx))
             client.fw_reset_camera(B)
             time.sleep(0.3)
