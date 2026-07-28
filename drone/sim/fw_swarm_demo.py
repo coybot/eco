@@ -340,10 +340,29 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
         r.start(delay_s=i * stagger_s)
 
     deadline = time.time() + timeout_s
+    # A drone that overruns the deadline must be STOPPED before the take is
+    # scored, not left flying. join()'s return value was being discarded, so
+    # score_take() ran against aircraft that were still moving: one drone was
+    # recorded as having made 6 decisions and failed its search when it had
+    # actually been cut off mid-run, and its thread carried on printing into a
+    # harness whose clients were already closed.
+    timed_out = []
     for r in runs:
-        r.join(max(1.0, deadline - time.time()))
+        if not r.join(max(1.0, deadline - time.time())):
+            r.loop.abort()
+            timed_out.append(r.name)
+    for r in runs:
+        if not r.join(30.0):
+            print(f"  [{r.name}] did not stop after abort", flush=True)
 
     report = score_take(client, runs, env0, take_idx)
+    report["timed_out"] = timed_out
+    if timed_out:
+        # A truncated take cannot be evidence for or against any beat.
+        report["all_beats_pass"] = False
+        report["truncated"] = True
+        print(f"  TAKE TRUNCATED — {', '.join(timed_out)} hit the time limit; "
+              f"beat results below are not evidence", flush=True)
     for r in runs:
         client.fw_despawn(r.rid)
         r.client.close()

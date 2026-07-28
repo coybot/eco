@@ -808,6 +808,18 @@ class MissionLoop:
     # VLM phase executor (open-ended: perceive → decide → act loop)        #
     # ------------------------------------------------------------------ #
 
+    def abort(self) -> None:
+        """Ask the loop to stop at the next decision boundary.
+
+        Without this a harness that runs out of time has no way to stop a
+        mission: it joins with a timeout, gets a thread that is still flying,
+        and scores the take anyway while the aircraft keeps moving. Observed —
+        a drone credited with 6 decisions and a failed search had in fact been
+        cut off mid-run, and its thread went on printing into a torn-down
+        harness (OSError: Bad file descriptor).
+        """
+        self._aborted = True
+
     def _phase_action_budget(self) -> int:
         """How many decisions this phase may take before it is cut off.
 
@@ -850,6 +862,9 @@ class MissionLoop:
         count_recorded_this_phase = False
 
         while phase_actions < self._phase_action_budget():
+            if getattr(self, "_aborted", False):
+                return {'failed': True, 'reason': 'aborted by the harness',
+                        'actions': phase_actions, 'aborted': True}
             # 1. Capture current frame (via the backend, so this works identically
             # whether we're flying real hardware or a sim vehicle — see backends.py)
             try:
