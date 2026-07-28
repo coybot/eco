@@ -235,6 +235,11 @@ class MissionLoop:
     MAX_ACTIONS = 200           # Maximum actions before forced termination
     MAX_DURATION_SECONDS = 1800  # Maximum duration (30 minutes)
     MAX_PHASE_ACTIONS = 50      # Maximum actions per phase
+    # Search legs flown per VLM decision. Waypoints are a turn radius apart so
+    # the aircraft can carve them, which is far finer than decisions need to be.
+    # detect() still runs after every leg and the run breaks off on a sighting,
+    # so this changes how often the model THINKS, not how often it looks.
+    SEARCH_LEGS_PER_DECISION = 6
     MAX_REPLANS_PER_PHASE = 2   # Bounded retries before a phase failure is a true abort
     MAX_CONSECUTIVE_VLM_FAILURES = 3  # Bounded before a run of unusable VLM output becomes a phase failure
     # Fraction of an in-progress SEARCH_AREA plan that must be flown before
@@ -1396,17 +1401,56 @@ class MissionLoop:
                     self._search_target = target
                     self._report_progress(f"Starting expanding-orbit search for {target}")
                 if self._search_idx < len(self._search_plan):
-                    wx, wy = self._search_plan[self._search_idx]
-                    self._search_idx += 1
-                    pose = backend.get_pose()
-                    alt = pose[2] if pose is not None else 50.0
-                    self._report_progress(
-                        f"Search leg {self._search_idx}/{len(self._search_plan)} for {target} "
-                        f"toward ({wx:.0f}, {wy:.0f})"
-                    )
-                    # Same (north_m, east_m) argument order as RETURN_TO_LANDMARK above —
-                    # wx/wy here are (east, north), so they swap into the call too.
-                    backend.goto(wy, wx, alt)
+                    # Fly a run of legs per decision, watching between each, and
+                    # break off the moment the target appears.
+                    #
+                    # One leg per decision meant one full VLM inference for every
+                    # 46 m of arc — the waypoints are spaced a turn radius apart
+                    # so the aircraft can carve them, not because a decision is
+                    # needed that often. Measured: ~7 s of thinking per 3.3 s of
+                    # flying, 186 inferences in a single take, an hour per take.
+                    # That is what makes take-farming impractical, and it buys
+                    # nothing: the model cannot act on what it has not seen, and
+                    # between legs it saw nothing, because a leg is a blocking
+                    # goto() with no sensing inside it.
+                    #
+                    # Sensing cadence is UNCHANGED — detect() still runs after
+                    # every leg, exactly as often as before. Only the thinking
+                    # is batched, and it stops early on a sighting, so the model
+                    # still gets the decision at the moment it matters. Matches
+                    # ORBIT_POINT, which already flies a lap per decision for
+                    # the same reason.
+                    flown = 0
+                    hit = None
+                    while (self._search_idx < len(self._search_plan)
+                           and flown < self.SEARCH_LEGS_PER_DECISION):
+                        wx, wy = self._search_plan[self._search_idx]
+                        self._search_idx += 1
+                        flown += 1
+                        pose = backend.get_pose()
+                        alt = pose[2] if pose is not None else 50.0
+                        self._report_progress(
+                            f"Search leg {self._search_idx}/{len(self._search_plan)} for {target} "
+                            f"toward ({wx:.0f}, {wy:.0f})"
+                        )
+                        # Same (north_m, east_m) argument order as RETURN_TO_LANDMARK
+                        # above — wx/wy here are (east, north), so they swap into
+                        # the call too.
+                        backend.goto(wy, wx, alt)
+                        try:
+                            for d in backend.detect():
+                                if labels_match(getattr(d, "label", ""), target):
+                                    hit = d
+                                    break
+                        except Exception:
+                            pass
+                        if hit is not None:
+                            break
+                    if hit is not None:
+                        self._history.append(
+                            f"Broke off the search at leg {self._search_idx} of "
+                            f"{len(self._search_plan)}: {getattr(hit, 'label', 'something')} "
+                            f"is in view now.")
                 else:
                     self._history.append(f"Search pattern exhausted for {target}")
 
