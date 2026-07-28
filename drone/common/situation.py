@@ -254,45 +254,54 @@ class ObstacleTracker:
         if top > own_xyz[2] and ahead:
             rows.append("- It is taller than your current altitude, so flying straight "
                         "on will not clear it.")
-        elif top > own_xyz[2] and not past_end:
-            rows.append("- It is taller than your current altitude. You are not pointed "
-                        "at it right now; turning back east before you are past one of "
-                        "those two ends puts you into it again.")
-        # Name the action that can actually reach those coordinates. Observed
-        # live: the model correctly described the wall and the need to go round
-        # it on every single decision, then chose navigate_to_point every time —
-        # which can only aim at what is on camera and so kept walking it into
-        # the obstacle. It was not misjudging the situation; it had the right
-        # plan and reached for a tool that cannot carry it out. Which way to go,
-        # or whether to go at all, is still entirely its call.
-        # Once the aircraft is already past an end, say so and stop offering the
-        # rounding waypoint.
-        #
-        # Offering it unconditionally created a loop the moment the block was
-        # made to persist through the detour: the aircraft flew to the suggested
-        # corner, arrived, was handed the same corner again, and flew to it
-        # again — observed live, fifteen consecutive decisions on (186,130) and
-        # (187,130), burning the phase budget twice over without the wall ever
-        # being a threat. Advice computed from the obstacle alone, ignoring
-        # where the reader has got to, is a standing instruction rather than a
-        # hint. What follows is still only geometry; which way to go stays the
-        # model's call.
+        elif top > own_xyz[2]:
+            # Deliberately states only what is true from where the aircraft is,
+            # with no guess about where it is going. An earlier version added
+            # "turning back east before you are past one of those two ends puts
+            # you into it again", which hard-codes a direction and is simply
+            # false once the aircraft is east of the wall — it read as a warning
+            # against continuing to the objective. When the structure really is
+            # across the course, the branch above says so.
+            rows.append("- It is taller than your current altitude, so you cannot "
+                        "clear it by flying over it.")
         if past_end:
             side = "north" if past_n else "south"
+            gap = abs(own_xyz[1] - (north[1] if past_n else south[1]))
             rows.append(
-                f"- You are already past its {side} end ({abs(own_xyz[1] - (north[1] if past_n else south[1])):.0f} m "
-                f"clear of it), so it is no longer between you and the ground to "
-                f"the east. Continuing east from here does not cross it.")
-            return "\n".join(rows)
+                f"- You are currently {gap:.0f} m clear of its {side} end, so from "
+                f"where you are now it is not between you and the ground beyond it.")
 
-        clear_s = (south[0] - 60.0, south[1] - 60.0)
-        clear_n = (north[0] - 60.0, north[1] + 60.0)
-        rows.append(
-            f"- navigate_to_point cannot route around this: it only aims at what is "
-            f"already on camera. To go around, use navigate_to_world with a point "
-            f"past one end — for example ({clear_s[0]:.0f}, {clear_s[1]:.0f}) to the "
-            f"south, or ({clear_n[0]:.0f}, {clear_n[1]:.0f}) to the north — and then "
-            f"continue east once past it.")
+        # The rounding waypoint is advice for "there is a wall in front of me",
+        # so it is only offered when there actually is one in front.
+        #
+        # Two loops came out of getting this wrong, in opposite directions.
+        # Suppressing the whole block off-heading lost the guidance mid-detour
+        # and the aircraft turned back into the wall. Then keeping the block but
+        # still offering the waypoint made it a standing instruction: the
+        # aircraft flew to the suggested corner, arrived, was handed the same
+        # corner, and flew to it again — fifteen consecutive decisions on
+        # (186,130), then an alternation between the corner and the goal, both
+        # of which burned the transit budget with the wall never once a threat.
+        #
+        # Describing the obstacle and instructing a manoeuvre are different
+        # jobs. The description is always true and always useful; the
+        # instruction is only true while the thing is ahead. Which way to go, or
+        # whether to go at all, stays the model's call either way.
+        if ahead:
+            # Observed live: the model correctly described the wall and the need
+            # to go round it on every single decision, then chose
+            # navigate_to_point every time — which can only aim at what is on
+            # camera, so it kept walking into the obstacle. It was not
+            # misjudging the situation; it had the right plan and reached for a
+            # tool that cannot carry it out.
+            clear_s = (south[0] - 60.0, south[1] - 60.0)
+            clear_n = (north[0] - 60.0, north[1] + 60.0)
+            rows.append(
+                f"- navigate_to_point cannot route around this: it only aims at what is "
+                f"already on camera. To go around, use navigate_to_world with a point "
+                f"past one end — for example ({clear_s[0]:.0f}, {clear_s[1]:.0f}) to the "
+                f"south, or ({clear_n[0]:.0f}, {clear_n[1]:.0f}) to the north — and then "
+                f"continue past it.")
         return "\n".join(rows)
 
 

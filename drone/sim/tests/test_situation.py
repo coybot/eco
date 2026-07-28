@@ -94,9 +94,26 @@ def main() -> int:
     bad += check("still reported mid-detour", s4 != "", repr(s4))
     bad += check("says it is not across the heading now",
                  "not currently across your heading" in s4, s4)
-    bad += check("warns that turning back early re-enters it",
-                 "puts you into it again" in s4, s4)
     bad += check("still names the ends mid-detour", "-70" in s4 and "70" in s4, s4)
+    # No manoeuvre instruction while the wall is not in front. Offering the
+    # rounding waypoint unconditionally turned it into a standing order: the
+    # aircraft flew to the suggested corner, arrived, was handed the same corner
+    # again, and flew to it again — fifteen decisions on one waypoint, then an
+    # alternation between corner and goal, burning two phase budgets with the
+    # wall never a threat. Describing an obstacle and instructing a manoeuvre
+    # are different jobs; only the description is true from everywhere.
+    bad += check("offers no waypoint while it is not ahead",
+                 "navigate_to_world with a point" not in s4, s4)
+    # And no guess about where the aircraft is headed. This said "turning back
+    # east ... puts you into it again", which hard-codes a direction and is
+    # false once the aircraft is east of the wall — where it reads as a warning
+    # against continuing to the objective.
+    bad += check("makes no directional assumption", "east" not in s4.lower(), s4)
+
+    # East of the wall entirely: still described, still no invented direction.
+    s4b = ot.summarize((160.0, 91.0, 35.0), math.radians(-30), wall)
+    bad += check("no false warning once past the wall's plane",
+                 "east" not in s4b.lower() and "cannot clear it" in s4b, s4b)
 
     # Genuinely past it and gone: silent, or a wall cleared minutes ago would
     # keep arguing about the route.
