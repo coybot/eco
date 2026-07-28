@@ -22,6 +22,7 @@ import sys
 import time
 import json
 import math
+import re
 import threading
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List
@@ -93,6 +94,35 @@ def _phase_wants_count(phase: Dict[str, Any]) -> bool:
     specific claim (found vs. not, and how many) is consistent with memory."""
     text = f"{phase.get('objective', '')} {phase.get('success', '')}".lower()
     return "count" in text or "how many" in text
+
+
+# Verbs that mean "the aircraft is expected to have SEEN something". Only
+# phases using one of these are subject to the grounding check: those are the
+# phases whose completion asserts a sighting, and a sighting is the only kind
+# of claim a detection can back.
+_SIGHTING_VERBS = (
+    "find", "locate", "search", "identify", "confirm", "spot", "sight",
+    "detect", "observe", "photograph", "count", "look for", "inspect",
+)
+
+
+def _phase_wants_sighting(phase: Dict[str, Any]) -> bool:
+    """Does completing this phase assert that something was seen?
+
+    A transit phase ("fly east to the search area") asserts a POSITION, which
+    the pose answers and no camera can. Running the grounding check against it
+    demanded that some detected label appear in wording that names no object,
+    which nothing could satisfy: the model reported "drone has reached the
+    northern search area near east=400, north=60" and was refused for not
+    having seen anything, repeatedly, until the phase hit its action limit.
+    """
+    text = f"{phase.get('objective', '')} {phase.get('success', '')}".lower()
+    # "search area" is a place, not an instruction to search. Every transit
+    # objective in these plans names one ("fly east toward the search area"),
+    # so a bare substring test classified every transit as a sighting phase —
+    # the exact phases this function exists to exempt.
+    text = re.sub(r"\bsearch (area|zone|region|sector)\b", "", text)
+    return any(re.search(rf"\b{v}", text) for v in _SIGHTING_VERBS)
 
 
 def _phase_wants_delivery(phase: Dict[str, Any]) -> bool:
@@ -958,6 +988,22 @@ class MissionLoop:
                     pass  # not subject to the grounding check below (a failure
                           # claim doesn't assert a positive finding the way
                           # REPORT/PHASE_COMPLETE/MISSION_COMPLETE do)
+                elif not _phase_wants_sighting(phase):
+                    # Nothing to ground. This phase does not ask the aircraft to
+                    # find or observe anything, so there is no sighting its
+                    # completion could be checked against — the claim it makes
+                    # is about where the aircraft is, which the pose answers.
+                    #
+                    # The grounding check demands that some DETECTED label
+                    # appear in the phase's own wording, which a transit phase
+                    # cannot satisfy: it names no object at all. Observed live,
+                    # and caused by an earlier fix — taking the wall out of the
+                    # tasking (so the on-device model has to find it rather than
+                    # being told) also removed the last detectable noun from the
+                    # transit objective. The model reported, correctly, "drone
+                    # has reached the northern search area near east=400,
+                    # north=60", and was refused for not having seen anything.
+                    pass
                 else:
                     objective_blob = normalize_label(
                         f"{phase.get('objective', '')} {phase.get('success', '')}"

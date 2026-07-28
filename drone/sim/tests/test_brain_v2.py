@@ -203,6 +203,39 @@ def main() -> int:
                       "success": "position reported"}),
                  "documented: harmless because payload_remaining is 0 by then")
 
+    # --- which phases the grounding check applies to -----------------------
+    # Grounding demands that some DETECTED label appear in the phase's own
+    # wording. That is right for a phase asserting a sighting and impossible
+    # for one asserting a position: a transit objective names no object, so
+    # nothing can ever match. Live, the model reported "drone has reached the
+    # northern search area near east=400, north=60" — true, and verifiable from
+    # pose — and was refused for not having seen anything, until the phase ran
+    # out of actions.
+    print("\ngrounding check scope")
+    from reasoning_loop import _phase_wants_sighting
+    transit = {"objective": "Fly east toward the search area centred around "
+                            "east=400, north=0, routing around anything in the way.",
+               "success": "Aircraft is in the vicinity of the northern search "
+                          "area near east=400, north=60"}
+    bad += check("exempts a transit phase", not _phase_wants_sighting(transit))
+    # "search area" is a place, not an instruction to search — and every
+    # transit objective in these plans names one, so a bare substring test
+    # classified every transit as a sighting phase, i.e. exactly the phases
+    # this is meant to exempt.
+    bad += check("still applies to a search phase that also says 'search area'",
+                 _phase_wants_sighting(
+                     {"objective": "Search the NORTHERN half of the search area "
+                                   "for a person in a red jacket.",
+                      "success": "person in red jacket located"}))
+    bad += check("applies to a bare search phase",
+                 _phase_wants_sighting({"objective": "Search the northern half "
+                                                     "for the person.",
+                                        "success": "person found"}))
+    bad += check("applies to a counting phase",
+                 _phase_wants_sighting({"objective": "Count all vehicles.",
+                                        "success": "tally reported"}))
+    bad += check("exempts return home", not _phase_wants_sighting({"type": "return_home"}))
+
     print()
     if bad:
         print(f"FAIL — {bad} check(s) failed")
