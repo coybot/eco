@@ -69,11 +69,21 @@ B_ALT = 35.0
 # thing, hence the assertion in main().
 B_STARTS = [(330.0, -60.0), (360.0, -80.0), (300.0, -40.0), (380.0, -100.0)]
 
+# Mirrors what the planner emits from SECTOR_HINT in fw_swarm_demo.py. Keep the
+# two in step: a gate measuring a phase nobody flies is evidence about nothing.
+#
+# The first version said "Search the SOUTHERN half ... for a person in a red
+# jacket", which the model read as a boundary — 0 convergences in 16, reasoning
+# "the drone is currently in the southern half and needs to search". The sector
+# is a division of effort; saying so is what an operator means, and it leaves
+# the decision open instead of contradicting the doctrine.
 PHASE = {
     "objective": (
-        "Search the SOUTHERN half of the area within 120 metres of east=400, "
-        "north=0 for a person in a red jacket. Fly an expanding search pattern. "
-        "Deliver your water bottle near the person in the red jacket once found."
+        "Find the person in a red jacket within 120 metres of east=400, north=0 "
+        "and deliver your water bottle near them. To avoid both aircraft covering "
+        "the same ground, start your search in the SOUTHERN half (south of "
+        "north=0) — that is a division of effort, not a boundary; go wherever the "
+        "mission requires."
     ),
     "success": "water bottle delivered near the person in a red jacket",
 }
@@ -84,8 +94,14 @@ PHASE = {
 # 0.35 m/s, and only calls it "staying over one spot" once it has more than 20 s
 # of history.
 A_START_ALT = 34.0
-SAMPLE_POINTS = 28          # two laps' worth
-LAP_TIME_S = 2 * math.pi * A_RADIUS / 14.0   # a 55 m orbit at cruise, ~25 s
+A_ALT_END = 20.0
+SAMPLE_POINTS = 28
+# Long enough for the circling cue (>20 s) and no longer, so the descent over
+# it stays a rate an aircraft closing to deliver would actually fly:
+# 14 m in 30 s is 0.47 m/s, comfortably past the 0.35 m/s threshold. Stretching
+# the span to two full laps made the same descent 0.24 m/s and the cue vanished.
+TREND_SPAN_S = 30.0
+LAPS = TREND_SPAN_S / (2 * math.pi * A_RADIUS / 14.0)   # ~1.2 laps at cruise
 
 
 def build_peer_history(loop, client, points: int = SAMPLE_POINTS):
@@ -108,13 +124,13 @@ def build_peer_history(loop, client, points: int = SAMPLE_POINTS):
     t0 = time.monotonic()
     for i in range(points):
         frac = i / max(points - 1, 1)
-        ang = 2 * math.pi * (i / (points / 2.0))
+        ang = 2 * math.pi * LAPS * frac
         ax = TARGET[0] + A_RADIUS * math.cos(ang)
         ay = TARGET[1] + A_RADIUS * math.sin(ang)
-        alt = A_START_ALT + (A_ALT - A_START_ALT) * frac   # ~0.5 m/s descent
+        alt = A_START_ALT + (A_ALT_END - A_START_ALT) * frac   # ~0.47 m/s descent
         client.fw_spawn(A, (ax, ay, alt), ang + math.pi / 2)
         time.sleep(0.2)
-        stamp = t0 + frac * (2 * LAP_TIME_S)
+        stamp = t0 + frac * TREND_SPAN_S
         for d in client.fw_detect(B):
             if d.get("label") == "aircraft" and d.get("world"):
                 w = d["world"]
