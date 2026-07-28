@@ -1218,14 +1218,19 @@ class MissionLoop:
                             f"Could not resolve point ({pair}) to a world position.{hint}")
                         self._report_progress(
                             f"Point ({pair}) does not resolve to anywhere on the ground")
-                        # An unflyable command must not leave the aircraft
-                        # coasting at whatever is in front of it — the same
-                        # reason navigate_to_world holds off after a refused
-                        # leg. Without this the wasted decision is compounded by
-                        # several seconds of flight toward the obstacle the
-                        # aircraft was already near: measured, 73 envelope
-                        # interventions in the run this was found in.
-                        self._hold_off(backend)
+                        # Hold off ONLY if the aircraft is actually coasting at
+                        # something. A refused world leg means the obstacle is
+                        # on the commanded line, so reversing is right; an
+                        # unresolvable pixel says nothing about what is ahead.
+                        #
+                        # Reversing unconditionally here was measurably worse
+                        # than doing nothing: 32 unresolvable picks in one take,
+                        # each throwing away a perfectly good heading, and an
+                        # aircraft that had flown the whole mission the take
+                        # before never got past its transit. The wasted decision
+                        # is only compounded when the coast leads somewhere bad.
+                        if self._structure_ahead(backend):
+                            self._hold_off(backend)
                 else:
                     self._report_progress("Navigation requested but no point coordinates given")
 
@@ -1897,6 +1902,26 @@ class MissionLoop:
             self._history.append(f"Released payload for {target}")
         else:
             self._history.append("drop_payload: release refused by the vehicle")
+
+    def _structure_ahead(self, backend, look_m: float = 60.0) -> bool:
+        """Is there structure on the aircraft's current heading?
+
+        Asks the vehicle's own path check about a point straight ahead, so this
+        agrees by construction with whatever the envelope guard would do. False
+        whenever the backend cannot answer — a vehicle with no obstacle model
+        should not have flight decisions made on its behalf by a guess.
+        """
+        blocked = getattr(backend, "path_blocked", None)
+        if blocked is None:
+            return False
+        pose = backend.get_pose()
+        if pose is None:
+            return False
+        try:
+            return bool(blocked((pose[0] + math.cos(pose[3]) * look_m,
+                                 pose[1] + math.sin(pose[3]) * look_m), pose[2]))
+        except Exception:
+            return False
 
     def _release_range_m(self, pose) -> float:
         """Horizontal distance a payload carries when let go: v*sqrt(2h/g)."""
