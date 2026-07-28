@@ -1191,14 +1191,41 @@ class MissionLoop:
                         if result.status == NavigationStatus.FAILED:
                             self._history.append(f"Navigation failed: {result.message}")
                     else:
-                        # Say so in history so the model can see the pick failed
-                        # and try a different one, rather than repeating it.
+                        # Name the likely confusion rather than just the failure.
+                        #
+                        # Observed live: an aircraft whose objective was "the
+                        # search area centred at east=400, north=0" issued
+                        # navigate_to_point(400, 0) six times in one run. Those
+                        # are the objective's WORLD coordinates dropped into the
+                        # PIXEL slots — and pixel y=0 is the top row of the
+                        # frame, i.e. sky, so it can never resolve. The old
+                        # message ("use navigate_to_world with coordinates
+                        # instead") was already correct and the model repeated
+                        # the pick anyway, because it does not read as a
+                        # description of the mistake actually made. Two actions
+                        # take a pair of numbers; when the objective names a
+                        # coordinate, choosing the wrong one puts the right
+                        # numbers in the wrong units.
+                        hint = ""
+                        pair = f"{int(action.point_x)}, {int(action.point_y)}"
+                        blob = f"{phase.get('objective', '')} {phase.get('success', '')}"
+                        if re.search(rf"{int(action.point_x)}\D{{0,12}}{int(action.point_y)}", blob):
+                            hint = (f" ({pair}) is the world coordinate from this phase's "
+                                    f"objective, not a pixel. navigate_to_point takes a "
+                                    f"pixel in the {CAM_VIEWPORT_W}x{CAM_VIEWPORT_H} image; "
+                                    f"navigate_to_world takes world coordinates like that one.")
                         self._history.append(
-                            f"Could not resolve point ({action.point_x}, {action.point_y}) "
-                            f"to a world position — use navigate_to_world with coordinates instead")
+                            f"Could not resolve point ({pair}) to a world position.{hint}")
                         self._report_progress(
-                            f"Point ({action.point_x}, {action.point_y}) does not resolve to "
-                            f"anywhere on the ground")
+                            f"Point ({pair}) does not resolve to anywhere on the ground")
+                        # An unflyable command must not leave the aircraft
+                        # coasting at whatever is in front of it — the same
+                        # reason navigate_to_world holds off after a refused
+                        # leg. Without this the wasted decision is compounded by
+                        # several seconds of flight toward the obstacle the
+                        # aircraft was already near: measured, 73 envelope
+                        # interventions in the run this was found in.
+                        self._hold_off(backend)
                 else:
                     self._report_progress("Navigation requested but no point coordinates given")
 
