@@ -279,6 +279,15 @@ def score_take(client, runs, env0, take_idx, bottles_before=()) -> dict:
                and (round(p["world"][0], 1), round(p["world"][1], 1)) not in before]
     target_xy = env["target_enu"]
 
+    # Where each delivery was AIMED, logged by the drop handler at release.
+    aims = []
+    for r in runs:
+        try:
+            aims += [e["data"]["target_xy"] for e in client.fw_events(r.rid)
+                     if e.get("kind") == "delivery_aim"]
+        except Exception:
+            pass
+
     beats = {}
     # 1. Wall cleared without the guard rescuing anyone.
     envelope = sum(r.backend.envelope_events for r in runs)
@@ -298,12 +307,25 @@ def score_take(client, runs, env0, take_idx, bottles_before=()) -> dict:
         "target_phase": env.get("target_phase"),
     }
     # 4. Deliveries landed near the target.
-    dists = [math.hypot(b["world"][0] - target_xy[0], b["world"][1] - target_xy[1])
-             for b in bottles]
+    # Measure each bottle against the point it was AIMED at, falling back to the
+    # target's current position only if no aim was logged. The target walks to a
+    # drop zone after the tunnel, so scoring against where he ended up measured
+    # his walk rather than the aircraft's aim: a release made 24 m from him
+    # scored 106 m because he then covered ninety of them on foot.
+    def _delivery_error(b):
+        bx, by = b["world"][0], b["world"][1]
+        candidates = aims or [target_xy]
+        return min(math.hypot(bx - a[0], by - a[1]) for a in candidates)
+
+    dists = [_delivery_error(b) for b in bottles]
     beats["deliveries"] = {
         "pass": len(bottles) == len(runs) and all(d <= 25.0 for d in dists),
         "count": len(bottles),
         "distances_m": [round(d, 1) for d in dists],
+        "scored_against": "aim point at release" if aims else "target position now",
+        "walked_after_release_m": (
+            round(min(math.hypot(a[0] - target_xy[0], a[1] - target_xy[1])
+                      for a in aims), 1) if aims else None),
     }
     # 5. Comms-denied swarm: bravo saw alpha before it changed course, and had
     #    no person detection of its own first. Only meaningful with two.

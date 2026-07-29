@@ -1937,6 +1937,18 @@ class MissionLoop:
         result = release()
         if result:
             self.payload_remaining = max(0, self.payload_remaining - 1)
+            # Record WHAT it was aimed at, at the moment of release. A delivery
+            # is accurate if the bottle lands near the person it was aimed at;
+            # this target walks to a drop zone after the tunnel, so scoring the
+            # bottle against where he ended up measured the person's walk, not
+            # the aircraft's aim — 106 m reported for a release that happened
+            # 24 m from him.
+            try:
+                backend.log_event("delivery_aim", {
+                    "target_xy": [det.world_xyz[0], det.world_xyz[1]],
+                    "label": target})
+            except Exception:
+                pass
             pose = backend.get_pose()
             final = (math.hypot(det.world_xyz[0] - pose[0], det.world_xyz[1] - pose[1])
                      if pose is not None else float("nan"))
