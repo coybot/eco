@@ -265,11 +265,18 @@ class DroneRun:
         return self._thread is None or not self._thread.is_alive()
 
 
-def score_take(client, runs, env0, take_idx) -> dict:
+def score_take(client, runs, env0, take_idx, bottles_before=()) -> dict:
     """Machine-check the storyboard beats against SCENE truth, not claims."""
     env = client.fw_env_state()
     truth = client.fw_prop_truth()
-    bottles = [p for p in truth if p["label"] == "water_bottle"]
+    # Only bottles dropped in THIS take. Nothing resets the scene between takes,
+    # so a delivered bottle stays on the ground and every later take was scored
+    # against it: two consecutive takes reported an identical 106.3 m, one of
+    # which had not delivered at all and was being judged on its predecessor's
+    # bottle.
+    before = set(bottles_before)
+    bottles = [p for p in truth if p["label"] == "water_bottle"
+               and (round(p["world"][0], 1), round(p["world"][1], 1)) not in before]
     target_xy = env["target_enu"]
 
     beats = {}
@@ -349,6 +356,9 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
              stagger_s, timeout_s, record_dir=None) -> dict:
     client = client_factory(port)
     env0 = client.fw_env_state()
+    # Bottles already on the ground before this take starts — see score_take.
+    bottles_before = [(round(p["world"][0], 1), round(p["world"][1], 1))
+                      for p in client.fw_prop_truth() if p["label"] == "water_bottle"]
 
     runs = []
     for i, name in enumerate(names):
@@ -380,7 +390,7 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
         if not r.join(30.0):
             print(f"  [{r.name}] did not stop after abort", flush=True)
 
-    report = score_take(client, runs, env0, take_idx)
+    report = score_take(client, runs, env0, take_idx, bottles_before)
     report["timed_out"] = timed_out
     if timed_out:
         # A truncated take cannot be evidence for or against any beat.
