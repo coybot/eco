@@ -160,10 +160,14 @@ def phases_from_plan(plan: dict) -> list:
 # This one does not track the aircraft. It sits off the drop zone at head height
 # and looks at it, the way a camera on a tripod would, so whatever flies through
 # is framed against the person rather than against grass.
+# Distances chosen from the arithmetic, then checked against a rendered frame.
+# At the first attempt's 64 m a 1.7 m figure is 20 px — still a speck, just a
+# nearer one. 25 m puts the person at ~52 px and the aircraft at ~108 px, which
+# is the difference between "someone is there" and "a person in a red jacket".
 DROP_ZONE_CAM = {
     "name": "hero_dropzone",
-    "eye": (500.0, -34.0, 9.0),
-    "look": (462.0, 18.0, 1.0),
+    "eye": (484.0, 6.0, 4.5),      # ~25 m out, head height, east of the zone
+    "look": (458.0, 20.0, 3.0),    # the run-in crosses the frame toward camera
 }
 
 
