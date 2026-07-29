@@ -75,7 +75,7 @@ B_ALT = 20.0            # the bottle is invisible above ~20 m — see the header
 # decision. Staged at 32 m it covered ~28 m during the first inference and the
 # bottle was behind it before it ever looked — a fixed-wing cannot wait at a
 # mark. From 90 m it flies into detection range with the bottle ahead.
-B_STANDOFF_M = 90.0
+B_STANDOFF_M = 55.0
 
 # No "search the area" wording: this beat starts with the aircraft already
 # inbound to the delivery site. With a search objective the model quite
@@ -139,6 +139,11 @@ def main() -> int:
             time.sleep(0.4)
 
             backend = EnvelopeGuardedSimBackend(client, BRAVO)
+            # Circle while thinking instead of sailing on. The detection bubble
+            # is 4.9 s wide and a decision takes 6-8 s, so flying straight
+            # through inference means the aircraft is past the bottle before it
+            # has finished looking at it — nine takes, zero sightings acted on.
+            backend.hold_when_idle = True
             loop = MissionLoop(backend=backend,
                                vehicle_class=get_class("fixedwing"),
                                on_progress=lambda m: print(f"    {m}", flush=True))
