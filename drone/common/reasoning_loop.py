@@ -1483,7 +1483,23 @@ class MissionLoop:
                         # Same (north_m, east_m) argument order as RETURN_TO_LANDMARK
                         # above — wx/wy here are (east, north), so they swap into
                         # the call too.
-                        backend.goto(wy, wx, alt)
+                        # Arrival tolerance sized to the airframe, not the
+                        # 5 m default. A fixed-wing with a ~23 m turn radius
+                        # frequently CANNOT get within 5 m of a point: it
+                        # overshoots and circles, and goto() then runs to its
+                        # 60 s timeout on a leg that should take three seconds.
+                        # Measured — a take spent 5 minutes on inference and
+                        # twenty on flight, 28 s per decision, and truncated in
+                        # the search phase. Passing a waypoint close enough to
+                        # have searched it is the actual requirement; hitting it
+                        # exactly is not. Half the turn radius (~21 m here, on
+                        # a 41.7 m radius) rather than the whole of it: legs are
+                        # spaced about one radius apart, so a full-radius
+                        # tolerance would count the NEXT waypoint as already
+                        # reached and the pattern would collapse.
+                        backend.goto(wy, wx, alt, timeout_s=20.0,
+                                     tol_m=max(15.0, 0.5 * search_patterns.turn_radius_m(
+                                         self.vehicle_class)))
                         try:
                             for d in backend.detect():
                                 if labels_match(getattr(d, "label", ""), target):
