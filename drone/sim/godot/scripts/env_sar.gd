@@ -192,7 +192,36 @@ func _add_structure(size: Vector3, pos_godot: Vector3, color: Color, node_name: 
 	mesh.mesh = bm
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	mat.roughness = 1.0
+	mat.roughness = 0.95
+	# Concrete rather than a flat grey slab. The ground got fractal texture in
+	# the art pass and these did not, which left the wall and the tunnel as the
+	# least convincing things on screen — big untextured rectangles next to
+	# detailed terrain. Same trick, tighter frequency, and a touch of normal
+	# depth so raking light catches the surface.
+	var cnoise := FastNoiseLite.new()
+	cnoise.frequency = 0.035
+	cnoise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	cnoise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	cnoise.fractal_octaves = 4
+	var ctex := NoiseTexture2D.new()
+	ctex.noise = cnoise
+	ctex.width = 512
+	ctex.height = 512
+	ctex.seamless = true
+	mat.albedo_texture = ctex
+	# Roughly one tile per 4 m of the largest face, so the grain reads at the
+	# distance the aircraft actually sees these from.
+	var tiles: float = maxf(2.0, maxf(size.x, maxf(size.y, size.z)) / 4.0)
+	mat.uv1_scale = Vector3(tiles, tiles, 1.0)
+	var ntex := NoiseTexture2D.new()
+	ntex.noise = cnoise
+	ntex.width = 512
+	ntex.height = 512
+	ntex.seamless = true
+	ntex.as_normal_map = true
+	ntex.bump_strength = 1.6
+	mat.normal_enabled = true
+	mat.normal_texture = ntex
 	mesh.material_override = mat
 	body.add_child(mesh)
 	body.position = pos_godot

@@ -62,7 +62,7 @@ SUCCESS = "The aircraft has reached the search area east of the wall."
 
 
 def run_once(client, wall, run_idx: int, max_actions: int,
-             record_dir=None, client_factory=None) -> dict:
+             record_dir=None, client_factory=None, port: int = PORT) -> dict:
     client.fw_spawn(RID, START, 0.0)
     client.fw_reset_camera(RID)
     time.sleep(0.3)
@@ -75,18 +75,21 @@ def run_once(client, wall, run_idx: int, max_actions: int,
     #
     # This gate is where unaided wall avoidance actually happens — 3 runs in 5
     # with zero interventions — while the full mission's wall beat keeps failing
-    # on envelope events. Without capture here the one place the claim is真
+    # on envelope events. Without capture here the one place the claim is genuinely
     # demonstrated leaves no film, and the beat has to be cut from a take where
     # the guard helped.
     recorder = None
     if record_dir is not None and client_factory is not None:
         from fw_count_eval import ChaseCamRecorder
-        rec_client = client_factory(client.port if hasattr(client, "port") else PORT)
+        # The ACTUAL port this run is on. Falling back to the module default
+        # connected to nothing and the recorder died with ConnectionRefused.
+        rec_client = client_factory(port)
         recorder = ChaseCamRecorder(
             rec_client, EnvelopeGuardedSimBackend(rec_client, RID),
             Path(record_dir) / f"run_{run_idx:02d}",
             vantage_name=f"chase_wall_{run_idx}_{int(time.time())}",
-            width=1920, height=1080, fps=6.0)
+            width=1920, height=1080, fps=6.0,
+            burn_overlay=False)
         loop.on_progress = lambda m: (print(f"    {m}", flush=True),
                                       recorder.on_progress(m))
         recorder.start()
@@ -221,7 +224,7 @@ def main() -> int:
         for i in range(args.runs):
             print(f"\n--- run {i + 1}/{args.runs} ---", flush=True)
             r = run_once(client, wall, i, args.max_actions,
-                         record_dir=args.record,
+                         record_dir=args.record, port=args.port,
                          client_factory=(lambda p: DepotClient(port=p))
                          if args.record else None)
             runs.append(r)

@@ -149,6 +149,75 @@ def phases_from_plan(plan: dict) -> list:
     return []
 
 
+# A fixed camera looking at the drop zone, so the delivery has a shot with the
+# PERSON in it.
+#
+# Sampled across a whole take, the person in the red jacket appears in 0 of 247
+# chase frames: the chase rig rides 9 m behind the aircraft, and from there a
+# 1.7 m figure fifty metres out is sub-pixel. Every hero shot in the cut is
+# therefore of an aircraft over empty ground, in a film about finding someone.
+#
+# This one does not track the aircraft. It sits off the drop zone at head height
+# and looks at it, the way a camera on a tripod would, so whatever flies through
+# is framed against the person rather than against grass.
+DROP_ZONE_CAM = {
+    "name": "hero_dropzone",
+    "eye": (500.0, -34.0, 9.0),
+    "look": (462.0, 18.0, 1.0),
+}
+
+
+class FixedCamRecorder:
+    """A camera on a tripod. Placed once, never moved, grabbed on a timer.
+
+    ChaseCamRecorder re-aims every tick to keep the aircraft framed, which is
+    what makes its footage useless for showing anything ON THE GROUND — the
+    subject is never in it. This one is pointed at a place and left there, so
+    the aircraft flies through a shot that already contains the person.
+    """
+
+    def __init__(self, client, out_dir: Path, eye, look, name: str,
+                 width: int = 1920, height: int = 1080, fps: float = 6.0):
+        self.client = client
+        self.out_dir = Path(out_dir)
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.eye, self.look = eye, look
+        # Unique per instance for the same reason ChaseCamRecorder's is: reusing
+        # a vantage name across runs in one Godot session returns stale frames.
+        self.name = f"{name}_{int(time.time())}"
+        self.width, self.height, self.fps = width, height, fps
+        self._stop = threading.Event()
+        self._thread = None
+        self._i = 0
+
+    def _loop(self):
+        self.client.add_vantage(self.name, self.eye, self.look,
+                                w=self.width, h=self.height)
+        interval = 1.0 / self.fps
+        while not self._stop.wait(interval):
+            try:
+                jpg = self.client.grab_vantage(self.name)
+                if jpg:
+                    (self.out_dir / f"f{self._i:05d}.jpg").write_bytes(jpg)
+                    self._i += 1
+            except Exception:
+                continue
+
+    def start(self):
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+        try:
+            self.client.remove_vantage(self.name)
+        except Exception:
+            pass
+        return self._i
+
+
 # ----------------------------------------------------------------- PASS 2
 class DroneRun:
     """One aircraft's thread, backend, loop and per-decision record."""
@@ -194,7 +263,7 @@ class DroneRun:
                 # across runs returns a frozen frame (a documented Godot
                 # render-target reuse bug, hit for real in S2).
                 vantage_name=f"chase_{name}_t{take}_{int(time.time())}",
-                width=1920, height=1080, fps=6.0,
+                width=1920, height=1080, burn_overlay=False, fps=6.0,
             )
             self.tick_dir = record_dir / f"onboard_{name}"
             self.tick_dir.mkdir(parents=True, exist_ok=True)
@@ -392,6 +461,13 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
                              record_dir=record_dir, take=take_idx))
         runs[-1].loop.MAX_PHASE_ACTIONS = max_actions
 
+    hero = None
+    if record_dir is not None:
+        hero = FixedCamRecorder(
+            client_factory(port), Path(record_dir) / f"take_{take_idx:02d}" / "hero",
+            DROP_ZONE_CAM["eye"], DROP_ZONE_CAM["look"], DROP_ZONE_CAM["name"])
+        hero.start()
+
     print(f"\n=== take {take_idx} — {len(runs)} aircraft ===", flush=True)
     for i, r in enumerate(runs):
         r.start(delay_s=i * stagger_s)
@@ -411,6 +487,9 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
     for r in runs:
         if not r.join(30.0):
             print(f"  [{r.name}] did not stop after abort", flush=True)
+
+    if hero is not None:
+        print(f"  hero cam: {hero.stop()} frames at the drop zone", flush=True)
 
     report = score_take(client, runs, env0, take_idx, bottles_before)
     report["timed_out"] = timed_out
