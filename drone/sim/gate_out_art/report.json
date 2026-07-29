@@ -1,0 +1,1326 @@
+{
+  "gate": "M1_red_jacket_discrimination",
+  "model": {
+    "available": true,
+    "model_path": "/Users/jsaib/code/ys/a/eco/drone/models/vlm.gguf",
+    "mmproj_path": "/Users/jsaib/code/ys/a/eco/drone/models/vlm_mmproj.gguf"
+  },
+  "pass_bar": ">=80% correct on single-subject trials at measured slant <=26 m",
+  "passed": true,
+  "stale_frames_skipped": 0,
+  "trials_not_in_sensor_cone": 0,
+  "gate_accuracy_le26m": 1.0,
+  "gate_n": 27,
+  "overall_accuracy_singles": 1.0,
+  "accuracy_by_nominal_range": {
+    "15": {
+      "n": 9,
+      "acc": 1.0
+    },
+    "25": {
+      "n": 18,
+      "acc": 1.0
+    },
+    "40": {
+      "n": 18,
+      "acc": 1.0
+    }
+  },
+  "accuracy_by_alt_mode": {
+    "centered": {
+      "n": 27,
+      "acc": 1.0
+    },
+    "swoop": {
+      "n": 18,
+      "acc": 1.0
+    }
+  },
+  "pair_frames": {
+    "n": 15,
+    "red_detected": 15,
+    "counted_two_people": 15
+  },
+  "json_parse_rate": 1.0,
+  "latency_s": {
+    "median": 1.25,
+    "max": 1.92
+  },
+  "trials": [
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.89,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.92,
+      "frame": "frames/red_jacket_r15_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket stands alone in grassy field.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.9,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.47,
+      "frame": "frames/red_jacket_r15_b120_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket stands alone in grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.9,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.46,
+      "frame": "frames/red_jacket_r15_b240_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket stands in grassy field.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.9,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.41,
+      "frame": "frames/red_jacket_r25_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible in distance.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.73,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.44,
+      "frame": "frames/red_jacket_r25_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.9,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.43,
+      "frame": "frames/red_jacket_r25_b120_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.89,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.42,
+      "frame": "frames/red_jacket_r25_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on ground.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.9,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.38,
+      "frame": "frames/red_jacket_r25_b240_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.99,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.41,
+      "frame": "frames/red_jacket_r25_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on ground.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.09,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.31,
+      "frame": "frames/red_jacket_r40_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.7,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.26,
+      "frame": "frames/red_jacket_r40_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.72,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.27,
+      "frame": "frames/red_jacket_r40_b120_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.08,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.29,
+      "frame": "frames/red_jacket_r40_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible on grassland.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.09,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/red_jacket_r40_b240_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible in distance.\"}"
+    },
+    {
+      "subject": "red_jacket",
+      "is_red_truth": true,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.7,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/red_jacket_r40_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": true, \"note\": \"One person in red jacket visible in distance.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.7,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.27,
+      "frame": "frames/gray_bystander_r15_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person visible, wearing dark clothing.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.9,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.29,
+      "frame": "frames/gray_bystander_r15_b120_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in dark clothing, no red jacket visible.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 15.08,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.26,
+      "frame": "frames/gray_bystander_r15_b240_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in dark clothing visible under tree.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.9,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/gray_bystander_r25_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person visible, not wearing red jacket.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.89,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.39,
+      "frame": "frames/gray_bystander_r25_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One small figure visible, not wearing red.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.71,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.42,
+      "frame": "frames/gray_bystander_r25_b120_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person visible, not wearing red jacket.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.89,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.47,
+      "frame": "frames/gray_bystander_r25_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One small figure visible, not wearing red.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.9,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.43,
+      "frame": "frames/gray_bystander_r25_b240_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in purple clothing visible under tree.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.73,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.4,
+      "frame": "frames/gray_bystander_r25_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in dark clothing under tree.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.46,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.31,
+      "frame": "frames/gray_bystander_r40_b0_centered.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.08,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/gray_bystander_r40_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.91,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/gray_bystander_r40_b120_centered.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.7,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/gray_bystander_r40_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.09,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/gray_bystander_r40_b240_centered.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "gray_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.89,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/gray_bystander_r40_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.7,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.19,
+      "frame": "frames/navy_bystander_r15_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in dark clothing visible.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.9,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/navy_bystander_r15_b120_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in blue suit visible under tree.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.89,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/navy_bystander_r15_b240_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in blue jacket standing in shadow.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.71,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.28,
+      "frame": "frames/navy_bystander_r25_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in dark clothing visible, not wearing red.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.55,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.28,
+      "frame": "frames/navy_bystander_r25_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in dark clothing visible, not wearing red.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.71,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/navy_bystander_r25_b120_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in blue jacket visible near tree.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.89,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/navy_bystander_r25_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One person in blue clothing visible near a tree.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 25.09,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.26,
+      "frame": "frames/navy_bystander_r25_b240_centered.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.89,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/navy_bystander_r25_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.09,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": false,
+      "answer_people": 1,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/navy_bystander_r40_b0_centered.jpg",
+      "reply": " {\"people_visible\": 1, \"red_jacket_person\": false, \"note\": \"One small figure visible, not wearing red.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.7,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/navy_bystander_r40_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.91,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/navy_bystander_r40_b120_centered.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.89,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/navy_bystander_r40_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.91,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/navy_bystander_r40_b240_centered.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "navy_bystander",
+      "is_red_truth": false,
+      "is_pair": false,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.89,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": false,
+      "answer_people": 0,
+      "detect_labels": [
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/navy_bystander_r40_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 0, \"red_jacket_person\": false, \"note\": \"No people visible in the grassland scene.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 15.08,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/pair_r15_b0_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.9,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/pair_r15_b120_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 15.0,
+      "range_measured_m": 14.7,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 4.76,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/pair_r15_b240_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.71,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/pair_r25_b0_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.71,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/pair_r25_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.71,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/pair_r25_b120_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.55,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/pair_r25_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 25.09,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 7.35,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/pair_r25_b240_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 25.0,
+      "range_measured_m": 24.73,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/pair_r25_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.72,
+      "bearing_deg": 0.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.22,
+      "frame": "frames/pair_r40_b0_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.7,
+      "bearing_deg": 0.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.22,
+      "frame": "frames/pair_r40_b0_swoop.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.91,
+      "bearing_deg": 120.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/pair_r40_b120_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.7,
+      "bearing_deg": 120.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.23,
+      "frame": "frames/pair_r40_b120_swoop.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 40.09,
+      "bearing_deg": 240.0,
+      "alt_mode": "centered",
+      "alt_m": 11.23,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.24,
+      "frame": "frames/pair_r40_b240_centered.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    },
+    {
+      "subject": "pair",
+      "is_red_truth": true,
+      "is_pair": true,
+      "range_nominal_m": 40.0,
+      "range_measured_m": 39.89,
+      "bearing_deg": 240.0,
+      "alt_mode": "swoop",
+      "alt_m": 12.0,
+      "answer_red": true,
+      "answer_people": 2,
+      "detect_labels": [
+        "person",
+        "person"
+      ],
+      "in_sensor_cone": true,
+      "parsed_json": true,
+      "correct": true,
+      "latency_s": 1.25,
+      "frame": "frames/pair_r40_b240_swoop.jpg",
+      "reply": " {\"people_visible\": 2, \"red_jacket_person\": true, \"note\": \"Two people visible, one in red jacket.\"}"
+    }
+  ]
+}
