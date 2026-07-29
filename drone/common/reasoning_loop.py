@@ -1680,10 +1680,22 @@ class MissionLoop:
     
     def _report_progress(self, message: str, phase: int = None, status: str = "in_progress"):
         """Report progress to the user."""
-        print(f"[MISSION] {message}")
-        
+        # Telemetry must never be able to end a flight. A print raised
+        # OSError: Bad file descriptor mid-mission on a long background run —
+        # stdout had gone from under it — and because nothing here caught it,
+        # the exception unwound through the phase, the mission, and the entire
+        # four-take batch. Losing a log line is acceptable; losing the run is
+        # not, and the aircraft is still flying either way.
+        try:
+            print(f"[MISSION] {message}", flush=True)
+        except Exception:
+            pass
+
         if self.on_progress:
-            self.on_progress(message)
+            try:
+                self.on_progress(message)
+            except Exception:
+                pass
         
         if self.mqtt_client and self.conversation_id:
             try:

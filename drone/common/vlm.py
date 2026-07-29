@@ -235,6 +235,22 @@ OPERATING WITHOUT COMMUNICATIONS:
   there was none before means someone has already been there and acted."""
 
 
+def _say(msg: str) -> None:
+    """Print progress without ever letting it break a flight.
+
+    A print raised OSError: Bad file descriptor mid-mission — stdout had gone
+    from under a long-running background run — and it did more than lose a log
+    line: the exception propagated out of decide(), the handler's own print
+    raised again, and the phase, the mission and the whole four-take batch died
+    with it. Whatever closed the descriptor is worth finding, but a telemetry
+    line must never be able to abort the aircraft.
+    """
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
+
+
 class VLMService:
     """
     Vision-Language Model service for drone perception and reasoning.
@@ -456,7 +472,7 @@ class VLMService:
             # Parse response
             action = self._parse_response(content)
 
-            print(f"VLM decision in {elapsed:.2f}s: {action.action_type.value}"
+            _say(f"VLM decision in {elapsed:.2f}s: {action.action_type.value}"
                  + (" (parse_failed)" if action.parse_failed else ""))
 
             # Optional training-data capture (no-op unless a recorder is enabled).
@@ -479,7 +495,7 @@ class VLMService:
             return action
             
         except Exception as e:
-            print(f"VLM inference error: {e}")
+            _say(f"VLM inference error: {e}")
             return VLMAction(
                 action_type=ActionType.ASK_CLOUD,
                 message=f"VLM error: {e}",
