@@ -98,12 +98,43 @@ def card_image(title: str, body: str, subtitle: str = "") -> Image.Image:
     return im
 
 
-def caption_frame(path: Path, lines: list, badge: str) -> Image.Image:
+def caption_frame(path: Path, lines: list, badge: str,
+                  onboard: Path = None) -> Image.Image:
     im = Image.open(path).convert("RGB")
     if im.size != (W, H):
         im = im.resize((W, H), Image.LANCZOS)
     d = ImageDraw.Draw(im, "RGBA")
     fb, fc = font(30), font(31)
+
+    # The frame the model actually saw, inset large.
+    #
+    # This is not decoration, it is the only place the subject appears. Sampled
+    # across a whole take: the person in the red jacket is in 0 of 247 chase
+    # frames and clearly legible in the onboard view. The chase camera sits 9 m
+    # back and 3 m up, so a 1.7 m figure fifty metres out is sub-pixel — a
+    # search-and-rescue film in which the chase camera is the only picture is
+    # one where the rescued person is never on screen.
+    #
+    # Onboard frames are one per decision rather than continuous, so they cannot
+    # carry motion; the chase plate does that underneath while this shows what
+    # the decision was made from.
+    if onboard is not None and onboard.exists():
+        try:
+            ob = Image.open(onboard).convert("RGB")
+            ow = int(W * 0.34)
+            ob = ob.resize((ow, int(ow * ob.height / ob.width)), Image.LANCZOS)
+            # Right side, clear of the badge: the sim burns its own telemetry
+            # into the top-left of every chase frame, and the inset was sitting
+            # on top of it.
+            ox, oy = W - ob.width - 48, 120
+            d.rectangle([ox - 6, oy - 6, ox + ob.width + 6, oy + ob.height + 40],
+                        fill=(0, 0, 0, 200))
+            im.paste(ob, (ox, oy))
+            d.text((ox + 8, oy + ob.height + 8),
+                   "ONBOARD — the frame this decision was made from",
+                   font=font(24), fill=(190, 200, 210))
+        except Exception:
+            pass
 
     if badge:
         bw = d.textlength(badge, font=fb)
@@ -237,7 +268,9 @@ def main() -> int:
             seq = work / f"seq_10_{drone}_{i:03d}"
             if seq.exists():
                 shutil.rmtree(seq)
-            write_seq([caption_frame(f, lines, "COMMS: DENIED") for f in chunk], seq)
+            ob = take / f"onboard_{drone}" / f"{i:04d}.jpg"
+            write_seq([caption_frame(f, lines, "COMMS: DENIED", ob) for f in chunk],
+                      seq)
             segments.append(encode(seq, work / f"10_{drone}_{i:03d}.mp4",
                                    args.src_fps, smooth=not args.draft))
 
