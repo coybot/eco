@@ -80,7 +80,8 @@ class ChaseCamRecorder:
     """
 
     def __init__(self, client, backend, out_dir: Path, vantage_name: str = CHASE_VANTAGE,
-                 width: int = 1280, height: int = 720, fps: float = 3.0):
+                 width: int = 1280, height: int = 720, fps: float = 3.0,
+                 burn_overlay: bool = True):
         self.client = client
         self.backend = backend
         self.out_dir = out_dir
@@ -91,6 +92,14 @@ class ChaseCamRecorder:
         self.width = width
         self.height = height
         self.sample_hz = fps
+        # Burn the caption + pose box into the frame, or leave it clean.
+        #
+        # For the showcase cut it must be OFF: fw_edit lays down its own typeset
+        # captions, and this one sits underneath them as a black debug box
+        # reading "pos=(66,-0,35)" — the single most amateur thing in frame.
+        # It stays on by default so existing callers, which rely on it as their
+        # only caption, are unaffected.
+        self.burn_overlay = burn_overlay
         # MUST be unique per recorder instance, not the shared CHASE_VANTAGE
         # default — confirmed live (checked the actual rendered frames, not
         # just the code): running two missions back-to-back in the same
@@ -170,16 +179,17 @@ class ChaseCamRecorder:
                         stuck_count = 0
                     last_jpg = jpg
                     img = Image.open(io.BytesIO(jpg)).convert("RGB")
-                    draw = ImageDraw.Draw(img)
-                    with self._lock:
-                        caption = self._latest_caption
-                    lines = [caption[i:i + 70] for i in range(0, len(caption), 70)][:3]
-                    lines.append(f"pos=({x:.0f},{y:.0f},{z:.0f})")
-                    box_h = 24 * len(lines) + 12
-                    draw.rectangle([0, 0, 760, box_h], fill=(0, 0, 0))
-                    for li, line in enumerate(lines):
-                        draw.text((8, 6 + li * 24), line, fill=(255, 255, 255), font=font)
-                    img.save(self.out_dir / f"f{self._frame_i:05d}.jpg", quality=88)
+                    if self.burn_overlay:
+                        draw = ImageDraw.Draw(img)
+                        with self._lock:
+                            caption = self._latest_caption
+                        lines = [caption[i:i + 70] for i in range(0, len(caption), 70)][:3]
+                        lines.append(f"pos=({x:.0f},{y:.0f},{z:.0f})")
+                        box_h = 24 * len(lines) + 12
+                        draw.rectangle([0, 0, 760, box_h], fill=(0, 0, 0))
+                        for li, line in enumerate(lines):
+                            draw.text((8, 6 + li * 24), line, fill=(255, 255, 255), font=font)
+                    img.save(self.out_dir / f"f{self._frame_i:05d}.jpg", quality=92)
                     self._frame_i += 1
             time.sleep(interval)
 
