@@ -98,5 +98,6 @@ e2e/_sim_validate_report.json
 # them IS committed — it is the evidence for the M1 gate decision — but the raw
 # frames are bulky and fully regenerable by re-running the harness.
 drone/sim/gate_out/frames/
+drone/sim/gate_out_*/frames/
 # Recorded demo takes: thousands of JPEGs per take, regenerable from a seed.
 drone/sim/takes/
