@@ -186,6 +186,9 @@ def main() -> int:
                     help="how many decisions to feature per aircraft")
     ap.add_argument("--clip-seconds", type=float, default=3.5,
                     help="screen time per featured decision")
+    ap.add_argument("--wall-clip", default=None,
+                    help="a CLEAN M6 wall run's frame directory, spliced in as "
+                         "the obstacle beat")
     ap.add_argument("--draft", action="store_true",
                     help="skip motion interpolation; minutes instead of hours")
     args = ap.parse_args()
@@ -229,6 +232,34 @@ def main() -> int:
         plan_txt = "   ".join(bits)
     add_card("01_tasking", "One tasking, uplinked before launch", plan_txt, 9.0,
              "Decomposed by the cloud planner — the last contact they have")
+
+    # The obstacle beat, from the gate where it is actually demonstrated.
+    #
+    # In the full mission the wall beat keeps failing on envelope interventions
+    # — the guard does the avoiding, so that footage cannot honestly carry the
+    # claim. The M6 gate is where the model routes around it unaided, 1 run in 5
+    # here and 3 in 5 previously, so the beat is cut from a run that earned it
+    # rather than from a prettier one that did not.
+    if args.wall_clip:
+        wc = Path(args.wall_clip)
+        wframes = sorted(wc.glob("*.jpg"))
+        if wframes:
+            add_card("02_wall", "A wall it was never told about",
+                     "The tasking describes the mission, not the terrain. The "
+                     "aircraft meets a 50 m wall on its own camera and routes "
+                     "around it — no map, no path planner, no operator in the "
+                     "loop. Scored clean: the envelope guard never intervened.",
+                     8.0)
+            span = max(1, int(args.src_fps * 12.0))
+            step = max(1, len(wframes) // span)
+            chunk = wframes[::step][:span]
+            seq = work / "seq_02b_wall"
+            if seq.exists():
+                shutil.rmtree(seq)
+            write_seq([caption_frame(f, ["OBSTACLE — routed around from the camera alone"],
+                                     "COMMS: DENIED") for f in chunk], seq)
+            segments.append(encode(seq, work / "02b_wall.mp4", args.src_fps,
+                                   smooth=not args.draft))
 
     for drone in ("alpha", "bravo"):
         chase = take / f"chase_{drone}"
