@@ -166,6 +166,12 @@ def main() -> int:
                     rc, EnvelopeGuardedSimBackend(rc, BRAVO), out / "chase_bravo",
                     vantage_name=f"swarm_chase_{t}_{int(time.time())}",
                     width=1920, height=1080, fps=6.0, burn_overlay=False)
+                # Pulled back and raised. The close chase framing that makes a
+                # transit legible makes THIS beat invisible: it fills the frame
+                # with aircraft and grass, and the bottle the shot is about is
+                # off-camera. The beat is a relationship between an aircraft and
+                # a thing on the ground, so both have to be in the picture.
+                chase.back_m, chase.side_m, chase.up_m = 26.0, 10.0, 14.0
                 # Point the tripod at THIS shoot's action, which is the bottle
                 # by the target's amble position — not the drop zone 85 m away
                 # that DROP_ZONE_CAM was framed for. Aimed at the wrong place it
