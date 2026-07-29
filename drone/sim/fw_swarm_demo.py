@@ -203,7 +203,14 @@ class DroneRun:
         self.progress.append((time.time(), msg))
         if self.recorder is not None:
             self.recorder.on_progress(msg)   # captions come from the real run
-        print(f"  [{self.name}] {msg}", flush=True)
+        # Never let a log line end a flight. stdout went away under a long
+        # background batch and the resulting OSError unwound through the phase,
+        # the mission and all four takes. The record of what happened lives in
+        # self.progress and the report either way.
+        try:
+            print(f"  [{self.name}] {msg}", flush=True)
+        except Exception:
+            pass
 
     def _tick(self, frame, detections, action, t):
         pose = self.backend.get_pose()
