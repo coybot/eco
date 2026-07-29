@@ -34,8 +34,9 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from pathlib import Path as pathlib_Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 FPS = 24
 W, H = 1920, 1080
@@ -46,6 +47,43 @@ FONT_CANDIDATES = [
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/System/Library/Fonts/SFNS.ttf",
 ]
+
+
+# Brand typography and palette. Archivo is the only typeface: Thin for
+# titles and body, Bold ALL-CAPS and tracked for eyebrows and labels. Three
+# brand colours, plus ONE accent per composition — Light Blue here, because the
+# footage is sky and aircraft and the brand guidance is to pick the accent that
+# harmonises with the dominant tones.
+BRAND = pathlib_Path(
+    "<brand-assets>/"
+    "brand-guidelines")
+ARCHIVO_THIN = BRAND / "assets/fonts/Archivo-Thin.ttf"
+ARCHIVO_BOLD = BRAND / "assets/fonts/Archivo-Bold.ttf"
+BRAND_LOGO_LIGHT = BRAND / "assets/logos/logo-light.png"
+BRAND_LOGO_DARK = BRAND / "assets/logos/logo-dark.png"
+
+BRIGHT_WHITE = (255, 255, 255)
+TECHNICAL_SAND = (229, 224, 217)
+DEEP_BLACK = (0, 0, 0)
+ACCENT = (117, 225, 243)          # Light Blue
+
+
+def brand_font(size: int, bold: bool = False):
+    """Archivo, or a geometric sans fallback — never a serif (brand rule)."""
+    path = ARCHIVO_BOLD if bold else ARCHIVO_THIN
+    try:
+        return ImageFont.truetype(str(path), size)
+    except Exception:
+        return font(size)
+
+
+def tracked(d, xy, text: str, f, fill, spacing: float = 0.15):
+    """Bold means ALL-CAPS and tracked out — not optional, per the brand."""
+    x, y = xy
+    for ch in text.upper():
+        d.text((x, y), ch, font=f, fill=fill)
+        x += d.textlength(ch, font=f) + f.size * spacing
+    return x
 
 
 def font(size: int):
@@ -81,20 +119,40 @@ def write_seq(images, out_dir: Path, start_idx: int = 0) -> int:
 
 
 def card_image(title: str, body: str, subtitle: str = "") -> Image.Image:
-    im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    ft, fs, fb = font(58), font(30), font(30)
+    """A brand card: Technical Sand ground, Deep Black type, one accent rule.
 
-    for line_i, line in enumerate(wrap(d, title, ft, W - 300, 3)):
-        w = d.textlength(line, font=ft)
-        d.text(((W - w) / 2, 150 + line_i * 72), line, font=ft, fill=(255, 255, 255))
+    Was white-on-near-black in a system font, which reads as a terminal dump.
+    The brand is deliberately three colours and one typeface — Archivo Thin for
+    the title and body, Bold ALL-CAPS and tracked for the eyebrow — and its
+    identity is bright and warm rather than dark and technical.
+    """
+    im = Image.new("RGB", (W, H), TECHNICAL_SAND)
+    d = ImageDraw.Draw(im)
+    ft, fs, fe = brand_font(72), brand_font(30), brand_font(22, bold=True)
+
+    # Accent rule: punctuation, not paint.
+    d.rectangle([160, 214, 268, 219], fill=ACCENT)
+
     if subtitle:
-        w = d.textlength(subtitle, font=fs)
-        d.text(((W - w) / 2, 320), subtitle, font=fs, fill=(150, 160, 175))
-    y = 430
-    for line in wrap(d, body, fb, W - 320, 14):
-        d.text((160, y), line, font=fb, fill=(215, 220, 228))
+        tracked(d, (160, 170), subtitle, fe, (90, 86, 80))
+
+    y = 258
+    for line in wrap(d, title, ft, W - 320, 3):
+        d.text((160, y), line, font=ft, fill=DEEP_BLACK)
+        y += 88
+
+    y += 40
+    for line in wrap(d, body, fs, W - 420, 14):
+        d.text((160, y), line, font=fs, fill=(58, 55, 50))
         y += 46
+
+    try:
+        logo = Image.open(BRAND_LOGO_DARK).convert("RGBA")
+        lh = 46
+        logo = logo.resize((int(lh * logo.width / logo.height), lh), Image.LANCZOS)
+        im.paste(logo, (W - logo.width - 96, H - lh - 78), logo)
+    except Exception:
+        pass
     return im
 
 
@@ -137,18 +195,43 @@ def caption_frame(path: Path, lines: list, badge: str,
             pass
 
     if badge:
-        bw = d.textlength(badge, font=fb)
-        d.rectangle([W - bw - 96, 44, W - 40, 100], fill=(0, 0, 0, 190))
-        d.text((W - bw - 68, 56), badge, font=fb, fill=(255, 110, 110))
+        fbb = brand_font(24, bold=True)
+        bw = sum(d.textlength(c, font=fbb) + fbb.size * 0.15 for c in badge)
+        d.rectangle([W - bw - 104, 44, W - 44, 96], fill=(0, 0, 0, 205))
+        d.rectangle([W - bw - 104, 44, W - bw - 100, 96], fill=ACCENT)
+        tracked(d, (W - bw - 82, 58), badge, fbb, TECHNICAL_SAND)
 
     if lines:
-        box_h = 26 + len(lines) * 44
-        d.rectangle([48, H - box_h - 60, W - 48, H - 60], fill=(0, 0, 0, 190))
-        y = H - box_h - 42
+        # Blur-and-tint the caption zone rather than dropping a black box on it.
+        #
+        # The brand is explicit that a semi-transparent dark rectangle over
+        # imagery reads as broken CSS rather than design, and that if text needs
+        # a scrim to be readable the composition is wrong. Blurring averages the
+        # frame's brightness variation into a predictable surface while keeping
+        # its colour, and a feathered top edge keeps the transition intentional.
+        box_h = 30 + len(lines) * 46
+        top = H - box_h - 64
+        zone = im.crop((0, top, W, H)).filter(ImageFilter.GaussianBlur(28))
+        tint = Image.new("RGB", zone.size, (14, 16, 18))
+        zone = Image.blend(zone, tint, 0.55)
+        # Feather: fully transparent at the top of the zone, opaque by 90 px.
+        mask = Image.new("L", zone.size, 255)
+        md = ImageDraw.Draw(mask)
+        for i in range(90):
+            md.line([(0, i), (W, i)], fill=int(255 * i / 90))
+        im.paste(zone, (0, top), mask)
+
+        d = ImageDraw.Draw(im, "RGBA")
+        y = top + 40
         for i, line in enumerate(lines):
-            d.text((78, y), line, font=fc,
-                   fill=(255, 255, 255) if i == 0 else (205, 212, 222))
-            y += 44
+            if i == 0:
+                # Eyebrow: Bold, ALL-CAPS, tracked, with the accent rule.
+                d.rectangle([78, y + 6, 78 + 54, y + 10], fill=ACCENT)
+                tracked(d, (150, y - 2), line, brand_font(22, bold=True),
+                        TECHNICAL_SAND)
+            else:
+                d.text((78, y), line, font=brand_font(31), fill=BRIGHT_WHITE)
+            y += 46
     return im
 
 
