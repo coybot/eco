@@ -61,7 +61,8 @@ OBJECTIVE = (
 SUCCESS = "The aircraft has reached the search area east of the wall."
 
 
-def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
+def run_once(client, wall, run_idx: int, max_actions: int,
+             record_dir=None, client_factory=None) -> dict:
     client.fw_spawn(RID, START, 0.0)
     client.fw_reset_camera(RID)
     time.sleep(0.3)
@@ -69,6 +70,26 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
     backend = EnvelopeGuardedSimBackend(client, RID)
     loop = MissionLoop(backend=backend, vehicle_class=get_class("fixedwing"),
                        on_progress=lambda m: print(f"    {m}", flush=True))
+
+    # Optional recording, so a CLEAN transit produces footage.
+    #
+    # This gate is where unaided wall avoidance actually happens — 3 runs in 5
+    # with zero interventions — while the full mission's wall beat keeps failing
+    # on envelope events. Without capture here the one place the claim is真
+    # demonstrated leaves no film, and the beat has to be cut from a take where
+    # the guard helped.
+    recorder = None
+    if record_dir is not None and client_factory is not None:
+        from fw_count_eval import ChaseCamRecorder
+        rec_client = client_factory(client.port if hasattr(client, "port") else PORT)
+        recorder = ChaseCamRecorder(
+            rec_client, EnvelopeGuardedSimBackend(rec_client, RID),
+            Path(record_dir) / f"run_{run_idx:02d}",
+            vantage_name=f"chase_wall_{run_idx}_{int(time.time())}",
+            width=1920, height=1080, fps=6.0)
+        loop.on_progress = lambda m: (print(f"    {m}", flush=True),
+                                      recorder.on_progress(m))
+        recorder.start()
     loop.MAX_PHASE_ACTIONS = max_actions
 
     decisions = []
@@ -132,6 +153,9 @@ def run_once(client, wall, run_idx: int, max_actions: int) -> dict:
                 crossed = True
                 break
 
+    if recorder is not None:
+        recorder.stop()
+
     final = backend.get_pose()
     east_of_wall = final is not None and final[0] > wall["east"]
     dist_to_goal = (math.hypot(final[0] - GOAL[0], final[1] - GOAL[1])
@@ -183,6 +207,8 @@ def main() -> int:
     ap.add_argument("--max-actions", type=int, default=8)
     ap.add_argument("--out", default="wall_report.json")
     ap.add_argument("--port", type=int, default=PORT)
+    ap.add_argument("--record", default=None,
+                    help="directory to record 1080p chase footage into")
     args = ap.parse_args()
 
     proc = launch_flightline(seed=0, port=args.port, gui=True, env="sar")
@@ -194,7 +220,10 @@ def main() -> int:
               f"span=+-{wall['half_n']}\n" + "=" * 70, flush=True)
         for i in range(args.runs):
             print(f"\n--- run {i + 1}/{args.runs} ---", flush=True)
-            r = run_once(client, wall, i, args.max_actions)
+            r = run_once(client, wall, i, args.max_actions,
+                         record_dir=args.record,
+                         client_factory=(lambda p: DepotClient(port=p))
+                         if args.record else None)
             runs.append(r)
             print(f"  => {'PASS' if r['passed'] else 'FAIL'} "
                   f"east={r['east_of_wall']} through={r['flew_through_wall']} over={r['flew_over_wall']} "
