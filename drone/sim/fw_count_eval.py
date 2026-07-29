@@ -100,6 +100,10 @@ class ChaseCamRecorder:
         # It stays on by default so existing callers, which rely on it as their
         # only caption, are unaffected.
         self.burn_overlay = burn_overlay
+        # Chase geometry, overridable per instance. The 9/4/3 default is tuned
+        # so a transit reads as an aircraft; a beat about the aircraft's
+        # relationship to something on the ground needs the ground in shot.
+        self.back_m, self.side_m, self.up_m = 9.0, 4.0, 3.0
         # MUST be unique per recorder instance, not the shared CHASE_VANTAGE
         # default — confirmed live (checked the actual rendered frames, not
         # just the code): running two missions back-to-back in the same
@@ -146,7 +150,13 @@ class ChaseCamRecorder:
             self.client.remove_vantage(self.vantage_name)
         except Exception:
             pass
-        self.client.add_vantage(self.vantage_name, cam_pos, look_at)
+        # Re-add at the SAME resolution. Without w/h this fell back to the 720p
+        # default, so any stuck-frame recovery silently downgraded the rest of
+        # the run — a take asked for 1080p and delivered 1280x720 from the first
+        # recovery onward, which is why some footage is sharp and some is not
+        # with no apparent pattern.
+        self.client.add_vantage(self.vantage_name, cam_pos, look_at,
+                                self.width, self.height)
 
     def _loop(self):
         from PIL import Image, ImageDraw, ImageFont
@@ -163,7 +173,8 @@ class ChaseCamRecorder:
             pose = self.backend.get_pose()
             if pose is not None:
                 x, y, z, yaw = pose
-                cam_pos, look_at = _chase_cam_pose(x, y, z, yaw)
+                cam_pos, look_at = _chase_cam_pose(x, y, z, yaw, self.back_m,
+                                                   self.side_m, self.up_m)
                 self.client.move_vantage(self.vantage_name, cam_pos, look_at)
                 jpg = self.client.grab_vantage(self.vantage_name)
                 if jpg:
