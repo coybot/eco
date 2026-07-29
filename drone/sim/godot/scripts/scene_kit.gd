@@ -60,16 +60,26 @@ static func _add_ground(parent: Node3D) -> void:
 	fmat.roughness = 1.0
 	# Faint large-scale variation so the terrain reads as ground rather than a
 	# green void, without adding anything that could be mistaken for an object.
+	# FRACTAL noise, not a single octave. One octave at frequency 0.004 tiled
+	# across a 1200 m plane gave features tens of metres wide and nothing
+	# smaller, which reads on camera as green mush with no texture at any
+	# altitude the aircraft actually flies. Octaves give both the broad patches
+	# and the fine grain in one texture.
 	var noise := FastNoiseLite.new()
-	noise.frequency = 0.004
+	noise.frequency = 0.010
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 5
+	noise.fractal_gain = 0.55
 	var tex := NoiseTexture2D.new()
 	tex.noise = noise
-	tex.width = 512
-	tex.height = 512
+	tex.width = 1024
+	tex.height = 1024
 	tex.seamless = true
 	fmat.albedo_texture = tex
-	fmat.uv1_scale = Vector3(24.0, 24.0, 1.0)
+	# ~7 m per tile: fine enough to read as ground from 20-35 m, coarse enough
+	# not to alias into noise at 120 m.
+	fmat.uv1_scale = Vector3(170.0, 170.0, 1.0)
 	# Keep the tint dominant — the texture is variation, not a new colour.
 	fmat.albedo_color = Color(0.42, 0.52, 0.32)
 	floor_mesh.material_override = fmat
@@ -88,8 +98,11 @@ static func _add_ground(parent: Node3D) -> void:
 
 static func _add_lighting(parent: Node3D) -> void:
 	var sun := DirectionalLight3D.new()
-	sun.light_energy = 1.2
-	sun.rotation_degrees = Vector3(-55.0, -30.0, 0.0)
+	sun.light_energy = 1.25
+	# Lower sun: long shadows model the terrain and, more usefully, throw a
+	# figure's shadow clear of the figure so it is legible from height.
+	sun.rotation_degrees = Vector3(-34.0, -42.0, 0.0)
+	sun.light_color = Color(1.0, 0.97, 0.90)
 	# Shadows give the footage depth and, more usefully, give a small figure on
 	# open ground a cast shadow that makes it legible at altitude.
 	sun.shadow_enabled = true
@@ -103,12 +116,34 @@ static func _add_environment(parent: Node3D) -> void:
 	environment.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var sky_mat := ProceduralSkyMaterial.new()
+	# Default is a flat wash. A graded sky with a sun disc gives the horizon a
+	# real edge, which is most of what makes aerial footage read as aerial.
+	sky_mat.sky_top_color = Color(0.20, 0.42, 0.82)
+	sky_mat.sky_horizon_color = Color(0.70, 0.80, 0.90)
+	sky_mat.sky_curve = 0.15
+	sky_mat.ground_bottom_color = Color(0.32, 0.36, 0.30)
+	sky_mat.ground_horizon_color = Color(0.66, 0.74, 0.80)
+	sky_mat.sun_angle_max = 8.0
+	sky_mat.sun_curve = 0.08
 	sky.sky_material = sky_mat
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	environment.ambient_light_energy = 1.0
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	environment.tonemap_exposure = 0.85   # see this file's header — load-bearing
+	# Depth haze. Without it everything from 30 m to the horizon is rendered at
+	# identical contrast and the footage has no depth at all — the wall 200 m out
+	# looks the same distance as a tree at 40 m.
+	#
+	# Deliberately weak and far: this changes the IMAGE THE MODEL SEES, and the
+	# M1 red-jacket gate scored 98% on the unfogged scene. Anything strong enough
+	# to wash out a subject at 40 m would be trading a measured capability for a
+	# prettier picture. Re-run fw_gate_vlm.py after touching these numbers.
+	environment.fog_enabled = true
+	environment.fog_light_color = Color(0.74, 0.81, 0.89)
+	environment.fog_density = 0.0012
+	environment.fog_sky_affect = 0.35
+	environment.fog_aerial_perspective = 0.5
 	env.environment = environment
 	parent.add_child(env)
 
@@ -127,21 +162,26 @@ static func _add_scenery(parent: Node3D, seed_val: int) -> void:
 	trunk.top_radius = 0.35
 	trunk.bottom_radius = 0.5
 	var trunk_mat := StandardMaterial3D.new()
-	trunk_mat.albedo_color = Color(0.28, 0.20, 0.13)
+	trunk_mat.albedo_color = Color(1.0, 1.0, 1.0)
 	trunk_mat.roughness = 1.0
+	trunk_mat.vertex_color_use_as_albedo = true
 	trunk.material = trunk_mat
 
 	var canopy := SphereMesh.new()
 	canopy.radius = 3.2
 	canopy.height = 6.4
 	var canopy_mat := StandardMaterial3D.new()
-	canopy_mat.albedo_color = Color(0.16, 0.32, 0.15)
+	canopy_mat.albedo_color = Color(1.0, 1.0, 1.0)
 	canopy_mat.roughness = 1.0
+	# Tint comes per-instance below; a single flat green stamped 220 times reads
+	# as one object repeated rather than as woodland.
+	canopy_mat.vertex_color_use_as_albedo = true
 	canopy.material = canopy_mat
 
 	for spec in [[trunk, 3.0], [canopy, 7.5]]:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
 		mm.mesh = spec[0]
 		var placed: Array = []
 		mm.instance_count = 220
@@ -156,10 +196,15 @@ static func _add_scenery(parent: Node3D, seed_val: int) -> void:
 			if absf(z) < 95.0 and x > -60.0 and x < 320.0:
 				continue
 			placed.append(Vector2(x, z))
-			var t := Transform3D(Basis.IDENTITY.scaled(
-				Vector3.ONE * rng.randf_range(0.8, 1.4)),
-				Vector3(x, float(spec[1]), -z))
-			mm.set_instance_transform(i, t)
+			# Non-uniform scale and a yaw, so no two are the same silhouette.
+			var s_xz := rng.randf_range(0.7, 1.6)
+			var s_y := s_xz * rng.randf_range(0.8, 1.3)
+			var basis := Basis.from_euler(Vector3(0.0, rng.randf_range(0.0, TAU), 0.0))
+			basis = basis.scaled(Vector3(s_xz, s_y, s_xz))
+			mm.set_instance_transform(i, Transform3D(basis, Vector3(x, float(spec[1]) * s_y, -z)))
+			var g := rng.randf_range(0.22, 0.42)
+			mm.set_instance_color(i, Color(g * rng.randf_range(0.45, 0.75), g,
+										   g * rng.randf_range(0.35, 0.6)))
 			i += 1
 		mm.instance_count = i
 		var mmi := MultiMeshInstance3D.new()
