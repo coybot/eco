@@ -840,7 +840,11 @@ class MissionLoop:
         actually working through.
         """
         base = self.MAX_PHASE_ACTIONS
-        if self._search_plan:
+        # A caller can refuse the search allowance. A staged shoot is thirty
+        # seconds of a specific situation, not a mission: granting it a 32-leg
+        # search budget let one fly 1500 m away looking for something that was
+        # 90 m behind it, with two cameras recording the whole excursion.
+        if self._search_plan and not getattr(self, "hard_action_cap", False):
             # Enough to finish the planned legs, plus the same slack any phase
             # gets for the decisions around them (closing in, reporting).
             return max(base, len(self._search_plan) + base)
