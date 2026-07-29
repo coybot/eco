@@ -148,6 +148,15 @@ def main() -> int:
     ap.add_argument("--plan", default="swarm_plan_cache.json")
     ap.add_argument("--out", default="final.mp4")
     ap.add_argument("--src-fps", type=float, default=6.0)
+    # A cut is a SELECTION, not a transcript. One segment per decision meant 162
+    # segments for a two-aircraft take — a half-hour video, and 2.7 hours to
+    # render because every one of them ran motion-compensated interpolation.
+    ap.add_argument("--clips-per-drone", type=int, default=6,
+                    help="how many decisions to feature per aircraft")
+    ap.add_argument("--clip-seconds", type=float, default=3.5,
+                    help="screen time per featured decision")
+    ap.add_argument("--draft", action="store_true",
+                    help="skip motion interpolation; minutes instead of hours")
     args = ap.parse_args()
 
     if shutil.which("ffmpeg") is None:
@@ -197,12 +206,29 @@ def main() -> int:
         if not frames or not decisions:
             continue
         per = max(1, len(frames) // max(1, len(decisions)))
-        for i, dec in enumerate(decisions):
+        # Feature a spread of decisions, and never drop a delivery: the release
+        # is the beat the whole mission exists for, so it is pinned in whatever
+        # else gets cut.
+        usable = [i for i, d in enumerate(decisions)
+                  if (d.get("action", {}).get("reasoning") or "").strip()]
+        pinned = {i for i in usable
+                  if decisions[i].get("action", {}).get("action_type")
+                  in ("drop_payload", "mission_complete")}
+        budget = max(1, args.clips_per_drone - len(pinned))
+        step = max(1, len(usable) // budget)
+        chosen = sorted(pinned | set(usable[::step][:budget]))
+        # Screen time per clip is fixed, so the cut's length is predictable
+        # rather than a function of how many decisions the aircraft happened
+        # to make.
+        span = max(1, int(args.src_fps * args.clip_seconds))
+        for i in chosen:
+            dec = decisions[i]
             act = dec.get("action", {})
             reasoning = (act.get("reasoning") or "").strip()
             if not reasoning:
                 continue
-            chunk = frames[i * per:(i + 1) * per]
+            start = min(i * per, max(0, len(frames) - span))
+            chunk = frames[start:start + span]
             if not chunk:
                 break
             probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
@@ -213,7 +239,7 @@ def main() -> int:
                 shutil.rmtree(seq)
             write_seq([caption_frame(f, lines, "COMMS: DENIED") for f in chunk], seq)
             segments.append(encode(seq, work / f"10_{drone}_{i:03d}.mp4",
-                                   args.src_fps, smooth=True))
+                                   args.src_fps, smooth=not args.draft))
 
     closing = "Link restored on return."
     if args.report and Path(args.report).exists():
