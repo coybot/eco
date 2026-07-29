@@ -54,6 +54,19 @@ class EnvelopeGuardedSimBackend(SimBackend):
     # How long the path must stay clear before the aircraft counts as having
     # finished with an obstacle. See the reset in _guarded_drive().
     ENCOUNTER_CLEAR_S = 2.0
+    # Hold station while the model is thinking, instead of flying straight on.
+    #
+    # Nothing commands the aircraft during inference, so it covers 85-110 m at
+    # cruise between decisions. That is the root of a great deal: an aircraft
+    # that sees something and has flown past it before it finishes deciding, a
+    # detection bubble 4.9 s wide crossed entirely between two 7 s decisions, and
+    # every overshoot of a waypoint it had just been told to reach. A real UAS
+    # awaiting its next command holds station; this one sails on.
+    #
+    # Off by default — it changes flight behaviour everywhere, and the missions
+    # measured today were measured without it.
+    HOLD_YAW_RATE = 0.28          # gentle turn, ~50 m radius at cruise
+    HOLD_AFTER_S = 1.8            # silence longer than this means "thinking"
     # ~30 min of 10 Hz track; a run is a few minutes.
     TRACK_LIMIT = 20000
 
@@ -72,6 +85,8 @@ class EnvelopeGuardedSimBackend(SimBackend):
         # two cannot interleave halfway through an escape decision.
         self._lock = threading.RLock()
         self._last_airspeed = self.CRUISE_MS
+        self._last_drive_at = 0.0
+        self.hold_when_idle = False
         self._stop = threading.Event()
         self._watchdog = threading.Thread(target=self._watch, daemon=True,
                                           name=f"envelope-{agent_id}")
@@ -109,9 +124,17 @@ class EnvelopeGuardedSimBackend(SimBackend):
                     # Only intervene when there is something to intervene about;
                     # staying silent otherwise leaves the mission thread's own
                     # commands untouched.
-                    if (time.monotonic() < self._escape_until
+                    now = time.monotonic()
+                    if (now < self._escape_until
                             or self._blocked_ahead(x, y, yaw, z) is not None):
                         self._guarded_drive(self._last_airspeed, 0.0, 0.0, pose)
+                    elif (self.hold_when_idle
+                          and now - self._last_drive_at > self.HOLD_AFTER_S):
+                        # Nobody is flying it and nothing is in the way: circle
+                        # rather than leave. Deliberately does NOT use
+                        # _guarded_drive's escape bookkeeping — this is not an
+                        # intervention and must never be counted as one.
+                        super().drive(self._last_airspeed, self.HOLD_YAW_RATE, 0.0)
             except Exception:
                 # A watchdog that dies on a transient IPC hiccup is worse than
                 # useless, because its silence still reads as "nothing to report".
@@ -226,6 +249,7 @@ class EnvelopeGuardedSimBackend(SimBackend):
     def drive(self, airspeed: float, yaw_rate: float, climb: float = 0.0) -> None:
         with self._lock:
             self._last_airspeed = airspeed
+            self._last_drive_at = time.monotonic()
             pose = self.get_pose()
             if pose is None:
                 return super().drive(airspeed, yaw_rate, climb)
