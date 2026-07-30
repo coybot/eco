@@ -528,12 +528,20 @@ def main() -> int:
         wc = Path(args.wall_clip)
         wframes = sorted(wc.glob("*.jpg"))
         if wframes:
+            # Numbers off the gate that produced this footage, not off memory.
+            score = ""
+            if args.wall_report and Path(args.wall_report).exists():
+                r = json.loads(Path(args.wall_report).read_text())
+                score = (f"   Scored over {r['runs']} runs: {r['passed']} "
+                         f"clean, {r['reached_goal']} of {r['runs']} reached "
+                         f"the search area, {r['flew_through_wall']} crossed "
+                         "the wall's span.")
             add_card("02_wall", "A wall it was never told about",
                      "The tasking describes the mission, not the terrain. The "
                      "aircraft meets a 50 m wall on its own camera and routes "
                      "around it — no map, no path planner, no operator in the "
-                     "loop. Scored clean: the envelope guard never intervened.",
-                     8.0)
+                     "loop. This run is scored clean: the envelope guard never "
+                     "intervened." + score, 8.0)
             # When it got past the wall, from the guard's 10 Hz track. Without
             # this the beat was cut from wherever the decimation landed — in
             # the first showcase that was the aircraft already 40 m east of the
