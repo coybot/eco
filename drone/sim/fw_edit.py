@@ -316,6 +316,37 @@ def main() -> int:
     add_card("01_tasking", "One tasking, uplinked before launch", plan_txt, 9.0,
              "Decomposed by the cloud planner — the last contact they have")
 
+    # Scene-camera beats, cut in where the story calls for them. Each is a
+    # DIFFERENT camera on the same flight, which is the point: an edit needs
+    # coverage, and until now every second of this cut came from one chase rig.
+    def scene_beat(name, folder, eyebrow, title, body, seconds=7.0, card=True):
+        d = take / folder
+        frames = sorted(d.glob("*.jpg"))
+        if not frames:
+            return
+        if card:
+            add_card(f"{name}_card", title, body, 6.0, eyebrow)
+        span = max(1, int(args.src_fps * seconds))
+        step = max(1, len(frames) // span)
+        chunk = frames[::step][:span]
+        seq = work / f"seq_{name}"
+        if seq.exists():
+            shutil.rmtree(seq)
+        write_seq([caption_frame(f, [eyebrow], "COMMS: DENIED") for f in chunk], seq)
+        segments.append(encode(seq, work / f"{name}.mp4", args.src_fps,
+                               smooth=not args.draft))
+
+    scene_beat("03_wide", "wide", "The area",
+               "One tasking. Two aircraft. No link after launch.",
+               "The search area sits beyond a 50 m wall. Nobody told the "
+               "aircraft the wall was there — the tasking describes the "
+               "mission, not the terrain.", seconds=6.0)
+    scene_beat("04_wall", "wall_low", "Obstacle, seen from the ground",
+               "It finds the wall itself",
+               "No map and no path planner. The wall arrives on the aircraft's "
+               "own camera, and the route around it is the on-device model's "
+               "decision.", seconds=8.0)
+
     # The obstacle beat, from the gate where it is actually demonstrated.
     #
     # In the full mission the wall beat keeps failing on envelope interventions
@@ -387,6 +418,13 @@ def main() -> int:
                       seq)
             segments.append(encode(seq, work / f"10_{drone}_{i:03d}.mp4",
                                    args.src_fps, smooth=not args.draft))
+
+    scene_beat("11_hero", "hero", "Delivery",
+               "The bottle lands 1.9 m from where it was aimed",
+               "Release range is computed from altitude and airspeed. The "
+               "model decides whether and at whom; the ballistics decide when "
+               "to let go.", seconds=7.0)
+    scene_beat("12_orbit", "orbit", "Return", "", "", seconds=5.0, card=False)
 
     closing = "Link restored on return."
     if args.report and Path(args.report).exists():
