@@ -447,6 +447,19 @@ def score_take(client, runs, env0, take_idx, bottles_before=()) -> dict:
     }
 
 
+def _write_report(out_path, takes) -> None:
+    """Persist what has been measured so far. Called after every take."""
+    good = [t for t in takes if t["all_beats_pass"]]
+    Path(out_path).write_text(json.dumps({
+        "gate": "M8_two_drone_sar_demo",
+        "takes": len(takes),
+        "takes_all_beats": len(good),
+        "best_take": good[0]["take"] if good else None,
+        "tasking": TASKING,
+        "detail": takes,
+    }, indent=2))
+
+
 def run_take(client_factory, port, plans, names, take_idx, max_actions,
              stagger_s, timeout_s, record_dir=None) -> dict:
     client = client_factory(port)
@@ -554,6 +567,13 @@ def main() -> int:
                                   args.max_actions, args.stagger, args.timeout,
                                   record_dir=take_dir))
             t = takes[-1]
+            # Write the report after EVERY take, not only when all of them
+            # finish. llama.cpp's Metal backend aborts on teardown
+            # (GGML_ASSERT rsets->data count == 0, upstream PR 17869), and when
+            # it did mid-batch it took the scores of two completed takes with
+            # it — the footage was on disk and the numbers describing it were
+            # not. A batch's value should not be all-or-nothing.
+            _write_report(args.out, takes)
             print(f"\n--- take {i}: "
                   f"{'ALL BEATS PASS' if t['all_beats_pass'] else 'incomplete'}")
             for bname, b in t["beats"].items():
@@ -563,15 +583,7 @@ def main() -> int:
         proc.stop()
 
     good = [t for t in takes if t["all_beats_pass"]]
-    out = {
-        "gate": "M8_two_drone_sar_demo",
-        "takes": len(takes),
-        "takes_all_beats": len(good),
-        "best_take": good[0]["take"] if good else None,
-        "tasking": TASKING,
-        "detail": takes,
-    }
-    Path(args.out).write_text(json.dumps(out, indent=2))
+    _write_report(args.out, takes)
     print(f"\n{len(good)}/{len(takes)} takes passed every beat. Report: {args.out}")
     return 0 if good else 1
 
