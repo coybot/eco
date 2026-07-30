@@ -120,7 +120,13 @@ class EnvelopeGuardedSimBackend(SimBackend):
                     # own decisions on, so the score and the guard cannot
                     # disagree about where the aircraft was.
                     if len(self.track) < self.TRACK_LIMIT:
-                        self.track.append({"x": x, "y": y, "z": z})
+                        # Wall-clock, not monotonic, so an editor can line the
+                        # track up against recorded frames: the recorders' only
+                        # clock is the frames' own mtimes, and a cut that wants
+                        # "the eight seconds where it rounded the wall" needs to
+                        # convert a POSITION into a TIME to find them.
+                        self.track.append({"x": x, "y": y, "z": z,
+                                           "t": time.time()})
                     # Only intervene when there is something to intervene about;
                     # staying silent otherwise leaves the mission thread's own
                     # commands untouched.
