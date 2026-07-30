@@ -222,6 +222,91 @@ class FixedCamRecorder:
         return self._i
 
 
+class OrbitCamRecorder:
+    """A camera that circles the aircraft instead of trailing it.
+
+    Every shot so far comes from one of two rigs: a chase locked behind the
+    aircraft, or a tripod. Both are static relationships, so cutting between
+    them yields two views of the same thing rather than coverage. An orbit
+    moves the camera independently of the subject, which is what makes a reveal
+    possible — the scene rotates behind the aircraft and the geography reads.
+    """
+
+    def __init__(self, client, backend, out_dir: Path, name: str,
+                 radius_m: float = 34.0, height_m: float = 12.0,
+                 period_s: float = 14.0, width: int = 1920, height: int = 1080,
+                 fps: float = 6.0):
+        self.client, self.backend = client, backend
+        self.out_dir = Path(out_dir)
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.name = f"{name}_{int(time.time())}"
+        self.radius_m, self.height_m, self.period_s = radius_m, height_m, period_s
+        self.width, self.height, self.fps = width, height, fps
+        self._stop = threading.Event()
+        self._thread = None
+        self._i = 0
+
+    def _loop(self):
+        self.client.add_vantage(self.name, (0.0, -30.0, 20.0), (0.0, 0.0, 5.0),
+                                w=self.width, h=self.height)
+        interval = 1.0 / self.fps
+        t0 = time.monotonic()
+        while not self._stop.wait(interval):
+            try:
+                pose = self.backend.get_pose()
+                if pose is None:
+                    continue
+                x, y, z = pose[0], pose[1], pose[2]
+                ang = 2 * math.pi * ((time.monotonic() - t0) / self.period_s)
+                cam = (x + self.radius_m * math.cos(ang),
+                       y + self.radius_m * math.sin(ang),
+                       max(4.0, z + self.height_m))
+                self.client.move_vantage(self.name, cam, (x, y, z))
+                jpg = self.client.grab_vantage(self.name)
+                if jpg:
+                    (self.out_dir / f"f{self._i:05d}.jpg").write_bytes(jpg)
+                    self._i += 1
+            except Exception:
+                continue
+
+    def start(self):
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+        try:
+            self.client.remove_vantage(self.name)
+        except Exception:
+            pass
+        return self._i
+
+
+# Fixed cameras placed around the scene, so the cut has coverage rather than
+# one relationship filmed twice. Positions are scene geography, not guesses:
+# the wall is at east 250 spanning +-70, the tunnel at east 420-438, the drop
+# zone at (462, 18).
+SCENE_CAMS = [
+    # Establishing: high and back, the whole run-in from home to the wall.
+    {"name": "wide", "eye": (60.0, -300.0, 190.0), "look": (300.0, 20.0, 0.0)},
+    # Ground level at the wall's south end, looking along the face. The wall is
+    # 50 m tall and reads as a slab from the air; from underneath it has scale.
+    # Back and off to the south-west, so the wall presents its FACE across the
+    # frame and an aircraft rounding the south end crosses between camera and
+    # wall. Placed close and edge-on it read as a monolith, not a barrier, and
+    # a tree filled a third of the shot.
+    # Inside the corridor the scatter deliberately keeps clear (|north| < 95 for
+    # x in -60..320), close enough that an aircraft rounding the south end is a
+    # recognisable aircraft rather than a speck. Further back the tree line
+    # masked the wall's base and the subject was 20 px.
+    {"name": "wall_low", "eye": (214.0, -88.0, 5.0), "look": (254.0, -44.0, 26.0)},
+    # The drop zone, framed so a person and an aircraft fit in one shot.
+    {"name": "hero", "eye": (484.0, 6.0, 4.5), "look": (458.0, 20.0, 3.0)},
+]
+
+
 # ----------------------------------------------------------------- PASS 2
 class DroneRun:
     """One aircraft's thread, backend, loop and per-decision record."""
@@ -478,12 +563,23 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
                              record_dir=record_dir, take=take_idx))
         runs[-1].loop.MAX_PHASE_ACTIONS = max_actions
 
-    hero = None
+    # Full camera coverage: three fixed positions around the scene plus an
+    # orbit on the lead aircraft. One chase offset filmed for a whole mission
+    # is a screen recording; coverage is what lets an edit cut.
+    scene_cams = []
     if record_dir is not None:
-        hero = FixedCamRecorder(
-            client_factory(port), Path(record_dir) / f"take_{take_idx:02d}" / "hero",
-            DROP_ZONE_CAM["eye"], DROP_ZONE_CAM["look"], DROP_ZONE_CAM["name"])
-        hero.start()
+        base = Path(record_dir) / f"take_{take_idx:02d}"
+        for spec in SCENE_CAMS:
+            scene_cams.append(FixedCamRecorder(
+                client_factory(port), base / spec["name"],
+                spec["eye"], spec["look"], spec["name"]))
+        if runs:
+            oc = client_factory(port)
+            scene_cams.append(OrbitCamRecorder(
+                oc, EnvelopeGuardedSimBackend(oc, runs[0].rid),
+                base / "orbit", "orbit"))
+        for c in scene_cams:
+            c.start()
 
     print(f"\n=== take {take_idx} — {len(runs)} aircraft ===", flush=True)
     for i, r in enumerate(runs):
@@ -505,8 +601,11 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
         if not r.join(30.0):
             print(f"  [{r.name}] did not stop after abort", flush=True)
 
-    if hero is not None:
-        print(f"  hero cam: {hero.stop()} frames at the drop zone", flush=True)
+    for c in scene_cams:
+        try:
+            print(f"  cam {c.out_dir.name}: {c.stop()} frames", flush=True)
+        except Exception:
+            pass
 
     report = score_take(client, runs, env0, take_idx, bottles_before)
     report["timed_out"] = timed_out
