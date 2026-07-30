@@ -145,6 +145,21 @@ def airframe_px(path: Path) -> int:
                 & ((g - b) > 25)).sum())
 
 
+def jacket_center(path: Path):
+    """Where the person in the red jacket is, for a punch-in to frame on.
+
+    Same separation as airframe_px, the other way round: red-dominant with
+    green and blue level. Returns None rather than a guess if they are not in
+    shot, so a beat never punches in on empty grass.
+    """
+    import numpy as np
+    a = np.asarray(Image.open(path).convert("RGB"), dtype=np.int16)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    ys, xs = np.nonzero((r > 120) & ((r - g) > 80) & ((r - b) > 80)
+                        & (abs(g - b) < 30))
+    return (int(xs.mean()), int(ys.mean())) if len(xs) > 40 else None
+
+
 def best_window_t(frames: list, seconds: float, speed: float,
                   lo_t=None, hi_t=None, step: int = 4):
     """The wall-clock instant whose surrounding window shows the most aircraft.
@@ -245,8 +260,19 @@ def card_image(title: str, body: str, subtitle: str = "") -> Image.Image:
 
 
 def caption_frame(path: Path, lines: list, badge: str,
-                  onboard: Path = None) -> Image.Image:
+                  onboard: Path = None, zoom: float = 1.0,
+                  center: tuple = None) -> Image.Image:
     im = Image.open(path).convert("RGB")
+    if zoom > 1.0:
+        # Punch-in. The tripods stand 30 m back at eye height, so a 1.7 m
+        # person fifty metres out is 27 px tall and the delivery beat reads as
+        # an empty field. Cropping is the only lens this rig has — the cameras
+        # were placed during a flight that is not going to happen again.
+        cw, ch = int(im.width / zoom), int(im.height / zoom)
+        cx, cy = center or (im.width // 2, im.height // 2)
+        cx = max(cw // 2, min(cx, im.width - cw // 2))
+        cy = max(ch // 2, min(cy, im.height - ch // 2))
+        im = im.crop((cx - cw // 2, cy - ch // 2, cx + cw // 2, cy + ch // 2))
     if im.size != (W, H):
         im = im.resize((W, H), Image.LANCZOS)
     d = ImageDraw.Draw(im, "RGBA")
@@ -435,7 +461,8 @@ def main() -> int:
     t_search_hi = max(searches) if searches else None
 
     def scene_beat(name, folder, eyebrow, title, body, seconds=7.0, card=True,
-                   at=None, speed=1.0, between=None):
+                   at=None, speed=1.0, between=None, zoom=1.0,
+                   focus_person=False):
         d = take / folder
         frames = sorted(d.glob("*.jpg"))
         if not frames:
@@ -449,10 +476,17 @@ def main() -> int:
             lead = 0.5          # the best window is already centred on itself
             print(f"  {name}: auto-anchored", flush=True)
         chunk, fps = window(frames, at, seconds, speed, lead)
+        # One centre for the whole beat, from its middle frame: re-finding the
+        # subject per frame would make the punch-in twitch every time a few
+        # pixels of jacket appear or disappear.
+        ctr = jacket_center(chunk[len(chunk) // 2]) if focus_person else None
+        if focus_person and ctr is None:
+            zoom = 1.0
         seq = work / f"seq_{name}"
         if seq.exists():
             shutil.rmtree(seq)
-        write_seq([caption_frame(f, [eyebrow], "COMMS: DENIED") for f in chunk], seq)
+        write_seq([caption_frame(f, [eyebrow], "COMMS: DENIED",
+                                 zoom=zoom, center=ctr) for f in chunk], seq)
         segments.append(encode(seq, work / f"{name}.mp4", fps,
                                smooth=not args.draft))
 
@@ -581,7 +615,8 @@ def main() -> int:
                "The bottle lands 1.9 m from where it was aimed",
                "Release range is computed from altitude and airspeed. The "
                "model decides whether and at whom; the ballistics decide when "
-               "to let go.", seconds=7.0, at=t_release, speed=1.0)
+               "to let go.", seconds=7.0, at=t_release, speed=1.0,
+               zoom=3.0, focus_person=True)
     scene_beat("12_orbit", "orbit", "Return", "", "", seconds=5.0, card=False,
                at=t_home, speed=1.5)
 
