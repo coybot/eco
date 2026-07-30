@@ -462,7 +462,7 @@ def main() -> int:
 
     def scene_beat(name, folder, eyebrow, title, body, seconds=7.0, card=True,
                    at=None, speed=1.0, between=None, zoom=1.0,
-                   focus_person=False):
+                   focus_person=False, center=None):
         d = take / folder
         frames = sorted(d.glob("*.jpg"))
         if not frames:
@@ -479,7 +479,7 @@ def main() -> int:
         # One centre for the whole beat, from its middle frame: re-finding the
         # subject per frame would make the punch-in twitch every time a few
         # pixels of jacket appear or disappear.
-        ctr = jacket_center(chunk[len(chunk) // 2]) if focus_person else None
+        ctr = jacket_center(chunk[len(chunk) // 2]) if focus_person else center
         if focus_person and ctr is None:
             zoom = 1.0
         seq = work / f"seq_{name}"
@@ -498,7 +498,12 @@ def main() -> int:
                "One tasking. Two aircraft. No link after launch.",
                "The search area sits beyond a 50 m wall. Nobody told the "
                "aircraft the wall was there — the tasking describes the "
-               "mission, not the terrain.", seconds=5.0, at=t_transit, speed=2.0)
+               "mission, not the terrain.", seconds=5.0, at=t_transit,
+               # Cropped in past the edge of the world. This camera sits 190 m
+               # up and 300 m out, far enough that the ground plane runs out
+               # inside the frame and the terrain reads as a floating slab
+               # against sky.
+               speed=2.0, zoom=2.2, center=(900, 560))
     # Auto-anchored, and captioned for what this camera can actually show. The
     # aircraft's own transit happened 200 m north of this tripod and reads as
     # four orange pixels; claiming this shot IS the avoidance would be writing
