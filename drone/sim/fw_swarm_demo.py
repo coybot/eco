@@ -568,7 +568,12 @@ def run_take(client_factory, port, plans, names, take_idx, max_actions,
     # is a screen recording; coverage is what lets an edit cut.
     scene_cams = []
     if record_dir is not None:
-        base = Path(record_dir) / f"take_{take_idx:02d}"
+        # record_dir is ALREADY this take's directory — the caller appends the
+        # take number. Appending it again nested every scene camera one level
+        # deeper (take_00/take_00/wide), which is findable but wrong and would
+        # have quietly broken any tooling that looked where the cameras are
+        # supposed to be.
+        base = Path(record_dir)
         for spec in SCENE_CAMS:
             scene_cams.append(FixedCamRecorder(
                 client_factory(port), base / spec["name"],
