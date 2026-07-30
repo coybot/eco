@@ -201,6 +201,13 @@ def run_once(client, wall, run_idx: int, max_actions: int,
         "elapsed_s": round(elapsed, 1),
         "mission_success": result.success,
         "decisions": decisions,
+        # Kept so the cut can be anchored on a MOMENT rather than on an
+        # arbitrary slice of the run. Every track sample carries wall-clock
+        # time and the recorded frames carry mtimes, so "the frames where it
+        # rounded the wall's north end" is a lookup rather than a guess.
+        "track": [{"x": round(p["x"], 1), "y": round(p["y"], 1),
+                   "z": round(p["z"], 1), "t": round(p.get("t", 0.0), 2)}
+                  for p in poses],
     }
 
 

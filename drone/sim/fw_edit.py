@@ -111,6 +111,94 @@ def wrap(draw, text: str, f, max_w: int, max_lines: int = 40) -> list:
     return lines
 
 
+def capture_fps(frames: list) -> float:
+    """The rate the frames were ACTUALLY written at, from their mtimes.
+
+    The recorders are asked for 6 fps and deliver 4-5.4 — a render at 6 plays
+    every shot 15-50% fast. Nothing about that is visible in a frame count, so
+    it went unnoticed until the aircraft started looking hurried.
+    """
+    if len(frames) < 2:
+        return 6.0
+    span = frames[-1].stat().st_mtime - frames[0].stat().st_mtime
+    return (len(frames) - 1) / span if span > 0.5 else 6.0
+
+
+def airframe_px(path: Path) -> int:
+    """How much of the high-vis orange airframe is in this frame.
+
+    Framing is the difference between a shot of an aircraft and a shot of a
+    field. The scene cameras are tripods — placed once, never re-aimed — so
+    whether the aircraft is in them at any given second is luck, and picking a
+    beat by timestamp alone produced beats with 4 orange pixels in them.
+
+    The red jacket (~200,30,30) is excluded deliberately: it is red-dominant
+    too, and counting it would score the shots framed ON THE PERSON as if the
+    aircraft were in them. The airframe (219,84,15) is separated by green
+    sitting well above blue.
+    """
+    import numpy as np
+    a = np.asarray(Image.open(path).convert("RGB").resize((640, 360)),
+                   dtype=np.int16)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    return int(((r > 130) & ((r - g) > 55) & ((r - b) > 90)
+                & ((g - b) > 25)).sum())
+
+
+def best_window_t(frames: list, seconds: float, speed: float,
+                  lo_t=None, hi_t=None, step: int = 4):
+    """The wall-clock instant whose surrounding window shows the most aircraft.
+
+    Bounded by lo_t/hi_t so a beat can be BOTH well framed and honest: the
+    obstacle beat has to come from the transit even if the aircraft happens to
+    read better an hour later on the far side, or the caption is describing
+    something the footage is not.
+    """
+    cand = [(f, f.stat().st_mtime) for f in frames[::step]]
+    cand = [(f, t) for f, t in cand
+            if (lo_t is None or t >= lo_t) and (hi_t is None or t <= hi_t)]
+    if not cand:
+        return None
+    scores = [airframe_px(f) for f, _ in cand]
+    half = max(1, int(seconds * speed * capture_fps(frames) / step / 2))
+    best, best_i = -1, 0
+    for i in range(len(scores)):
+        s = sum(scores[max(0, i - half):i + half + 1])
+        if s > best:
+            best, best_i = s, i
+    return cand[best_i][1]
+
+
+def window(frames: list, at_t, seconds: float, speed: float,
+           lead: float = 0.35) -> tuple:
+    """A CONTIGUOUS run of frames around a moment, and the fps to play it at.
+
+    This replaces sampling every Nth frame across the whole recording, which is
+    what made the aircraft look like a hummingbird on amphetamines: a 187 s
+    wall run squeezed into 12 s of screen time is a 15x time-lapse, so a
+    leisurely 41.7 m-radius turn snaps round in a third of a second, and the
+    scene cameras — 900 s into 5-7 s — were running at 110-165x. Motion
+    interpolation then made it worse rather than better, because consecutive
+    displayed frames were seconds apart in reality and there was no motion to
+    compensate: the aircraft smeared into an orange blob.
+
+    A cut shows a MOMENT, at something close to the speed it happened. `at_t`
+    is wall-clock (frame mtimes are the only clock the recorders keep, and they
+    share it with the mission's own decision log); `lead` puts that moment
+    35% of the way in, so the shot arrives before the thing it is about.
+    """
+    fps = capture_fps(frames)
+    need = max(2, int(round(seconds * speed * fps)))
+    if at_t is None:
+        start = max(0, (len(frames) - need) // 2)
+    else:
+        mt = [f.stat().st_mtime for f in frames]
+        idx = min(range(len(mt)), key=lambda i: abs(mt[i] - at_t))
+        start = idx - int(need * lead)
+    start = max(0, min(start, len(frames) - need))
+    return frames[start:start + need], fps * speed
+
+
 def write_seq(images, out_dir: Path, start_idx: int = 0) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     for i, im in enumerate(images):
@@ -272,6 +360,12 @@ def main() -> int:
     ap.add_argument("--wall-clip", default=None,
                     help="a CLEAN M6 wall run's frame directory, spliced in as "
                          "the obstacle beat")
+    ap.add_argument("--wall-report", default=None,
+                    help="fw_wall_eval report, so the obstacle beat can be cut "
+                         "at the moment the aircraft rounded the wall instead "
+                         "of wherever the recording happened to be")
+    ap.add_argument("--wall-east", type=float, default=246.5,
+                    help="east coordinate of the wall plane, for that anchor")
     ap.add_argument("--draft", action="store_true",
                     help="skip motion interpolation; minutes instead of hours")
     args = ap.parse_args()
@@ -319,33 +413,70 @@ def main() -> int:
     # Scene-camera beats, cut in where the story calls for them. Each is a
     # DIFFERENT camera on the same flight, which is the point: an edit needs
     # coverage, and until now every second of this cut came from one chase rig.
-    def scene_beat(name, folder, eyebrow, title, body, seconds=7.0, card=True):
+    # Anchors: the wall-clock instants the cut is actually about. Decision
+    # timestamps and frame mtimes are the same clock (one machine, one run), so
+    # "the frames where it released" is a lookup, not a guess about where in a
+    # 900 s recording the interesting bit fell.
+    alpha_dec = load_decisions(take, "alpha")
+
+    def moment(kind, which=-1, offset=0.0):
+        hits = [d for d in alpha_dec
+                if d.get("action", {}).get("action_type") == kind]
+        return hits[which]["t"] + offset if hits else None
+
+    # The release happens during the run-in that FOLLOWS the decision, not at
+    # the instant of it — ballistics put the bottle away several seconds later.
+    t_release = moment("drop_payload", -1, offset=5.0)
+    t_transit = alpha_dec[0]["t"] + 12.0 if alpha_dec else None
+    t_home = moment("mission_complete", -1, offset=-4.0)
+    searches = [d["t"] for d in alpha_dec
+                if d.get("action", {}).get("action_type") == "search_area"]
+    t_search_lo = min(searches) if searches else None
+    t_search_hi = max(searches) if searches else None
+
+    def scene_beat(name, folder, eyebrow, title, body, seconds=7.0, card=True,
+                   at=None, speed=1.0, between=None):
         d = take / folder
         frames = sorted(d.glob("*.jpg"))
         if not frames:
             return
         if card:
             add_card(f"{name}_card", title, body, 6.0, eyebrow)
-        span = max(1, int(args.src_fps * seconds))
-        step = max(1, len(frames) // span)
-        chunk = frames[::step][:span]
+        lead = 0.35
+        if at == "auto":
+            lo, hi = between or (None, None)
+            at = best_window_t(frames, seconds, speed, lo, hi)
+            lead = 0.5          # the best window is already centred on itself
+            print(f"  {name}: auto-anchored", flush=True)
+        chunk, fps = window(frames, at, seconds, speed, lead)
         seq = work / f"seq_{name}"
         if seq.exists():
             shutil.rmtree(seq)
         write_seq([caption_frame(f, [eyebrow], "COMMS: DENIED") for f in chunk], seq)
-        segments.append(encode(seq, work / f"{name}.mp4", args.src_fps,
+        segments.append(encode(seq, work / f"{name}.mp4", fps,
                                smooth=not args.draft))
 
+    # 2x on the transits, real time on the delivery. A fixed-wing at 14 m/s is
+    # unhurried by nature and a straight cruise leg reads fine slightly quick;
+    # the release does not, because it is the one moment where the timing is
+    # the point.
     scene_beat("03_wide", "wide", "The area",
                "One tasking. Two aircraft. No link after launch.",
                "The search area sits beyond a 50 m wall. Nobody told the "
                "aircraft the wall was there — the tasking describes the "
-               "mission, not the terrain.", seconds=6.0)
-    scene_beat("04_wall", "wall_low", "Obstacle, seen from the ground",
-               "It finds the wall itself",
-               "No map and no path planner. The wall arrives on the aircraft's "
-               "own camera, and the route around it is the on-device model's "
-               "decision.", seconds=8.0)
+               "mission, not the terrain.", seconds=5.0, at=t_transit, speed=2.0)
+    # Auto-anchored, and captioned for what this camera can actually show. The
+    # aircraft's own transit happened 200 m north of this tripod and reads as
+    # four orange pixels; claiming this shot IS the avoidance would be writing
+    # for the video. It is the obstacle at its real scale, with the aircraft
+    # working beyond it — the avoidance claim is carried by the M6 beat next,
+    # where it was scored.
+    scene_beat("04_wall", "wall_low", "The obstacle · 50 m of it",
+               "What the tasking never mentioned",
+               "A 50 m wall stands between the launch point and the search "
+               "area. It is not in the tasking, not in a map, and not in any "
+               "flight plan — the aircraft has to find it and deal with it.",
+               seconds=8.0, at="auto", speed=1.0)
 
     # The obstacle beat, from the gate where it is actually demonstrated.
     #
@@ -364,15 +495,29 @@ def main() -> int:
                      "around it — no map, no path planner, no operator in the "
                      "loop. Scored clean: the envelope guard never intervened.",
                      8.0)
-            span = max(1, int(args.src_fps * 12.0))
-            step = max(1, len(wframes) // span)
-            chunk = wframes[::step][:span]
+            # When it got past the wall, from the guard's 10 Hz track. Without
+            # this the beat was cut from wherever the decimation landed — in
+            # the first showcase that was the aircraft already 40 m east of the
+            # wall and heading away south, under a caption claiming it was
+            # routing around an obstacle that was not in the frame.
+            t_round = None
+            if args.wall_report and Path(args.wall_report).exists():
+                rep = json.loads(Path(args.wall_report).read_text())
+                idx = wc.name.split("_")[-1]
+                run = next((r for r in rep.get("detail", [])
+                            if str(r.get("run")) == str(int(idx))
+                            if idx.isdigit()), None)
+                for p in (run or {}).get("track", []):
+                    if p["x"] >= args.wall_east and p.get("t"):
+                        t_round = p["t"]
+                        break
+            chunk, wfps = window(wframes, t_round, 12.0, speed=2.0)
             seq = work / "seq_02b_wall"
             if seq.exists():
                 shutil.rmtree(seq)
             write_seq([caption_frame(f, ["OBSTACLE — routed around from the camera alone"],
                                      "COMMS: DENIED") for f in chunk], seq)
-            segments.append(encode(seq, work / "02b_wall.mp4", args.src_fps,
+            segments.append(encode(seq, work / "02b_wall.mp4", wfps,
                                    smooth=not args.draft))
 
     for drone in ("alpha", "bravo"):
@@ -381,7 +526,6 @@ def main() -> int:
         decisions = load_decisions(take, drone)
         if not frames or not decisions:
             continue
-        per = max(1, len(frames) // max(1, len(decisions)))
         # Feature a spread of decisions, and never drop a delivery: the release
         # is the beat the whole mission exists for, so it is pinned in whatever
         # else gets cut.
@@ -396,15 +540,19 @@ def main() -> int:
         # Screen time per clip is fixed, so the cut's length is predictable
         # rather than a function of how many decisions the aircraft happened
         # to make.
-        span = max(1, int(args.src_fps * args.clip_seconds))
         for i in chosen:
             dec = decisions[i]
             act = dec.get("action", {})
             reasoning = (act.get("reasoning") or "").strip()
             if not reasoning:
                 continue
-            start = min(i * per, max(0, len(frames) - span))
-            chunk = frames[start:start + span]
+            # Anchored on the decision's own timestamp rather than on
+            # frames[i * len(frames) // len(decisions)]. Decisions are 5 to 70 s
+            # apart — the even spacing that assumed is not remotely true — so
+            # the caption quoting the model's reasoning was drifting away from
+            # the footage of it acting on that reasoning.
+            chunk, cfps = window(frames, dec.get("t"), args.clip_seconds,
+                                 speed=1.0)
             if not chunk:
                 break
             probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
@@ -417,14 +565,25 @@ def main() -> int:
             write_seq([caption_frame(f, lines, "COMMS: DENIED", ob) for f in chunk],
                       seq)
             segments.append(encode(seq, work / f"10_{drone}_{i:03d}.mp4",
-                                   args.src_fps, smooth=not args.draft))
+                                   cfps, smooth=not args.draft))
 
+    # The search, before the delivery it leads to. Bounded to the search phase
+    # so the shot and the caption agree, then auto-anchored inside it — this is
+    # the one scene camera that rides close enough for the aircraft to read as
+    # an aircraft rather than a speck.
+    scene_beat("09_search", "orbit", "Searching · no link, no operator",
+               "Nobody is flying this",
+               "Eleven search legs, each one chosen on board from the previous "
+               "camera frame. There is no route uplinked and nothing to ask.",
+               seconds=7.0, at="auto", speed=1.0,
+               between=(t_search_lo, t_search_hi))
     scene_beat("11_hero", "hero", "Delivery",
                "The bottle lands 1.9 m from where it was aimed",
                "Release range is computed from altitude and airspeed. The "
                "model decides whether and at whom; the ballistics decide when "
-               "to let go.", seconds=7.0)
-    scene_beat("12_orbit", "orbit", "Return", "", "", seconds=5.0, card=False)
+               "to let go.", seconds=7.0, at=t_release, speed=1.0)
+    scene_beat("12_orbit", "orbit", "Return", "", "", seconds=5.0, card=False,
+               at=t_home, speed=1.5)
 
     closing = "Link restored on return."
     if args.report and Path(args.report).exists():
