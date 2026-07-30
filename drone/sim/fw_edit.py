@@ -145,6 +145,22 @@ def airframe_px(path: Path) -> int:
                 & ((g - b) > 25)).sum())
 
 
+def wall_px(path: Path) -> int:
+    """How much of the concrete structure is in this frame.
+
+    Warm grey: red above green above blue. Grass and trees are green-dominant
+    and sky is blue-dominant, so `r > g` alone throws out almost everything
+    else in this scene. Calibrated against a frame that is mostly wall (65k of
+    230k) and one with none (112).
+    """
+    import numpy as np
+    a = np.asarray(Image.open(path).convert("RGB").resize((640, 360)),
+                   dtype=np.int16)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    return int(((r > 110) & (r < 215) & (r > g) & ((g - b) > 5)
+                & ((r - b) > 18) & ((r - b) < 75)).sum())
+
+
 def jacket_center(path: Path):
     """Where the person in the red jacket is, for a punch-in to frame on.
 
@@ -161,12 +177,12 @@ def jacket_center(path: Path):
 
 
 def best_window_t(frames: list, seconds: float, speed: float,
-                  lo_t=None, hi_t=None, step: int = 4):
-    """The wall-clock instant whose surrounding window shows the most aircraft.
+                  lo_t=None, hi_t=None, step: int = 4, scorer=None):
+    """The wall-clock instant whose surrounding window shows the most SUBJECT.
 
     Bounded by lo_t/hi_t so a beat can be BOTH well framed and honest: the
     obstacle beat has to come from the transit even if the aircraft happens to
-    read better an hour later on the far side, or the caption is describing
+    read better a minute later on the far side, or the caption is describing
     something the footage is not.
     """
     cand = [(f, f.stat().st_mtime) for f in frames[::step]]
@@ -174,7 +190,7 @@ def best_window_t(frames: list, seconds: float, speed: float,
             if (lo_t is None or t >= lo_t) and (hi_t is None or t <= hi_t)]
     if not cand:
         return None
-    scores = [airframe_px(f) for f, _ in cand]
+    scores = [(scorer or airframe_px)(f) for f, _ in cand]
     half = max(1, int(seconds * speed * capture_fps(frames) / step / 2))
     best, best_i = -1, 0
     for i in range(len(scores)):
@@ -542,23 +558,29 @@ def main() -> int:
                      "around it — no map, no path planner, no operator in the "
                      "loop. This run is scored clean: the envelope guard never "
                      "intervened." + score, 8.0)
-            # When it got past the wall, from the guard's 10 Hz track. Without
-            # this the beat was cut from wherever the decimation landed — in
-            # the first showcase that was the aircraft already 40 m east of the
-            # wall and heading away south, under a caption claiming it was
-            # routing around an obstacle that was not in the frame.
+            # Anchor on the wall being ON CAMERA, not on the instant the track
+            # crossed its plane. Those are different moments and the crossing
+            # is the wrong one: this aircraft rounds the end 150-230 m out, so
+            # at the crossing the wall is off to one side and behind, and the
+            # beat came back as twelve seconds of grass under a caption reading
+            # "routed around from the camera alone". The shot that carries the
+            # claim is the APPROACH — wall filling frame, aircraft banking past
+            # its end — so the search is bounded to before the crossing (plus
+            # slack) and maximises wall in frame within it.
             t_round = None
             if args.wall_report and Path(args.wall_report).exists():
                 rep = json.loads(Path(args.wall_report).read_text())
                 idx = wc.name.split("_")[-1]
                 run = next((r for r in rep.get("detail", [])
-                            if str(r.get("run")) == str(int(idx))
-                            if idx.isdigit()), None)
+                            if idx.isdigit() and r.get("run") == int(idx)), None)
                 for p in (run or {}).get("track", []):
                     if p["x"] >= args.wall_east and p.get("t"):
                         t_round = p["t"]
                         break
-            chunk, wfps = window(wframes, t_round, 12.0, speed=2.0)
+            t_wall = best_window_t(wframes, 12.0, 2.0,
+                                   hi_t=(t_round + 15.0) if t_round else None,
+                                   scorer=wall_px)
+            chunk, wfps = window(wframes, t_wall, 12.0, speed=2.0, lead=0.5)
             seq = work / "seq_02b_wall"
             if seq.exists():
                 shutil.rmtree(seq)
