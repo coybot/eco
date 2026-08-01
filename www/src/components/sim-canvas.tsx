@@ -1,14 +1,36 @@
 "use client";
 
-import { useRef, Suspense } from "react";
+import { useRef, useEffect, Suspense } from "react";
 import type { RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF, Environment } from "@react-three/drei";
 import * as THREE from "three";
-import type { MissionPlan, EnvironmentType } from "@/lib/mission-types";
+import type { MissionPlan, EnvironmentType, Vehicle, Waypoint } from "@/lib/mission-types";
 import { ENV_CONFIG } from "@/lib/mission-types";
+import {
+  DEPTH_RAYS,
+  DEPTH_MAX,
+  LIDAR_RAYS,
+  LIDAR_MAX,
+  QUAD_LIMITS,
+  ROVER_LIMITS,
+  QUAD_STATE_ALTITUDE_CLAMP,
+  CRUISE_TARGET_CLAMP_M,
+  CONTROL_DT,
+  worldToBody,
+  buildQuadState,
+  buildRoverState,
+} from "@/lib/sim/contract";
+import { PolicyRunner } from "@/lib/sim/policy-runner";
+import { buildBvh, sampleDepthGrid, sampleLidarRing } from "@/lib/sim/perception";
+import { stepQuad, stepRover, resolveSoftCollision, StallWatch } from "@/lib/sim/dynamics";
 
 useGLTF.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+
+const QUAD_MODEL_URL = "/models/policy_v26rnn_dr.onnx";
+const ROVER_MODEL_URL = "/models/policy_rover_v2.onnx";
+const ROVER_DATA_URL = "/models/policy_rover_v2.onnx.data";
+const ROVER_DATA_NAME = "policy_rover_v2.onnx.data"; // must match the name baked into the rover .onnx
 
 // ─── Default plan ─────────────────────────────────────────────────────────────
 
@@ -72,8 +94,11 @@ function SceneLighting({ missionActive }: { missionActive: boolean }) {
 
 // ─── Environment GLB ──────────────────────────────────────────────────────────
 
-function EnvModel({ path }: { path: string }) {
+function EnvModel({ path, onLoaded }: { path: string; onLoaded: (root: THREE.Object3D) => void }) {
   const { scene } = useGLTF(path);
+  useEffect(() => {
+    onLoaded(scene);
+  }, [scene, onLoaded]);
   return <primitive object={scene} />;
 }
 
@@ -116,6 +141,54 @@ function RoverMesh({ glowing }: { glowing: boolean }) {
   );
 }
 
+// ─── Policy-driven vehicle simulation state ──────────────────────────────────
+
+interface VehicleSimState {
+  pos: THREE.Vector3;
+  yaw: number;
+  wpIdx: number;
+  elapsed: number; // lerp fallback: time-at-waypoint timer; policy: dwell timer once arrived
+  done: boolean;
+
+  // policy-driven fields
+  vel: THREE.Vector3; // world-frame realized velocity (quad)
+  speed: number; // signed forward realized speed (rover)
+  yawRate: number; // realized yaw rate
+  usingPolicy: boolean;
+  everUsedPolicy: boolean;
+  phase: "transit" | "dwell" | "done";
+  warmupTicks: number;
+  stall: StallWatch;
+  ticking: boolean;
+  prevPos: THREE.Vector3;
+  prevYaw: number;
+}
+
+function makeVehicleState(startPos: THREE.Vector3): VehicleSimState {
+  return {
+    pos: startPos.clone(),
+    yaw: 0,
+    wpIdx: 0,
+    elapsed: 0,
+    done: false,
+    vel: new THREE.Vector3(),
+    speed: 0,
+    yawRate: 0,
+    usingPolicy: false,
+    everUsedPolicy: false,
+    phase: "transit",
+    warmupTicks: 0,
+    stall: new StallWatch(),
+    ticking: false,
+    prevPos: startPos.clone(),
+    prevYaw: 0,
+  };
+}
+
+function reachThresholdFor(type: Vehicle["type"]): number {
+  return type === "quadcopter" ? QUAD_LIMITS.reachThreshold : ROVER_LIMITS.reachThreshold;
+}
+
 // ─── Animated fleet ───────────────────────────────────────────────────────────
 
 const PIP_W = 192;
@@ -128,25 +201,227 @@ interface FleetProps {
   missionActive: boolean;
   selectedVehicleIds?: string[];
   pipCanvasesRef?: RefObject<Map<string, HTMLCanvasElement>>;
+  envRoot: RefObject<THREE.Object3D | null>;
 }
 
-function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selectedVehicleIds, pipCanvasesRef }: FleetProps) {
+function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selectedVehicleIds, pipCanvasesRef, envRoot }: FleetProps) {
   const { gl, scene } = useThree();
   const cfg = ENV_CONFIG[plan.environment];
 
-  const stateRef = useRef<Record<string, {
-    pos: THREE.Vector3;
-    yaw: number;
-    wpIdx: number;
-    elapsed: number;
-    done: boolean;
-  }>>({});
+  const stateRef = useRef<Record<string, VehicleSimState>>({});
 
   const planKeyRef = useRef("");
   const planKey = `${plan.planVersion ?? 0}-${plan.vehicles.map(v => v.id).join(",")}-${plan.environment}`;
 
   const meshRefs = useRef<Record<string, THREE.Group | null>>({});
   const detectedRef = useRef(0);
+
+  // --- policy runtime: lazy-loaded ORT sessions, one PolicyRunner per vehicle ---
+  const policyReadyRef = useRef(false);
+  const runnersRef = useRef<Map<string, PolicyRunner>>(new Map());
+  const pendingRunnerLoadsRef = useRef<Set<string>>(new Set());
+  const observedRef = useRef(false);
+
+  useEffect(() => {
+    if (observedRef.current) return;
+    const el = gl.domElement;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some(e => e.isIntersecting) && !observedRef.current) {
+          observedRef.current = true;
+          obs.disconnect();
+          warmUpPolicies();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl]);
+
+  async function warmUpPolicies() {
+    try {
+      await Promise.all([
+        PolicyRunner.load(QUAD_MODEL_URL, { defaultHiddenDim: 128 }),
+        PolicyRunner.load(ROVER_MODEL_URL, {
+          externalDataUrl: ROVER_DATA_URL,
+          externalDataName: ROVER_DATA_NAME,
+          defaultHiddenDim: 256,
+        }),
+      ]);
+      policyReadyRef.current = true;
+      if (typeof window !== "undefined") console.info("[sim] policy runtime ready (onnxruntime-web)");
+    } catch (err) {
+      policyReadyRef.current = false;
+      if (typeof window !== "undefined") console.info("[sim] policy runtime unavailable, using scripted fallback", err);
+    }
+  }
+
+  function ensureRunnerForVehicle(v: Vehicle): PolicyRunner | undefined {
+    const existing = runnersRef.current.get(v.id);
+    if (existing) return existing;
+    if (!policyReadyRef.current) return undefined;
+    if (pendingRunnerLoadsRef.current.has(v.id)) return undefined;
+    pendingRunnerLoadsRef.current.add(v.id);
+    const load =
+      v.type === "quadcopter"
+        ? PolicyRunner.load(QUAD_MODEL_URL, { defaultHiddenDim: 128 })
+        : PolicyRunner.load(ROVER_MODEL_URL, {
+            externalDataUrl: ROVER_DATA_URL,
+            externalDataName: ROVER_DATA_NAME,
+            defaultHiddenDim: 256,
+          });
+    load
+      .then(r => runnersRef.current.set(v.id, r))
+      .catch(() => {
+        /* leave unset; vehicle stays on lerp fallback */
+      })
+      .finally(() => pendingRunnerLoadsRef.current.delete(v.id));
+    return undefined;
+  }
+
+  function beginLeg(v: Vehicle, state: VehicleSimState) {
+    const runner = ensureRunnerForVehicle(v);
+    if (runner) {
+      if (!state.everUsedPolicy) {
+        state.everUsedPolicy = true;
+        runner.reset();
+        state.warmupTicks = 0;
+      }
+      state.usingPolicy = true;
+    } else {
+      state.usingPolicy = false;
+    }
+    state.stall.reset();
+    if (state.phase !== "done") state.phase = "transit";
+    state.prevPos.copy(state.pos);
+    state.prevYaw = state.yaw;
+  }
+
+  function advanceWaypoint(v: Vehicle, state: VehicleSimState, vWaypoints: Waypoint[]) {
+    if (state.wpIdx < vWaypoints.length - 1) {
+      state.wpIdx++;
+      state.elapsed = 0;
+      beginLeg(v, state);
+      const nextWp = vWaypoints[state.wpIdx];
+      onWaypointLabel(v.id, nextWp.statusLabel);
+    } else if (!state.done) {
+      state.done = true;
+      state.phase = "done";
+      onWaypointLabel(v.id, "mission ✓");
+    }
+  }
+
+  // --- BVH perception targets, built once per env root (rebuilt on env change) ---
+  const bvhTargetsRef = useRef<THREE.Mesh[] | null>(null);
+  const bvhEnvRootRef = useRef<THREE.Object3D | null>(null);
+
+  async function tickVehiclePolicy(v: Vehicle, state: VehicleSimState, vWaypoints: Waypoint[]) {
+    if (state.phase === "done") return;
+
+    if (state.phase === "dwell") {
+      state.elapsed += CONTROL_DT;
+      const wp = vWaypoints[Math.min(state.wpIdx, vWaypoints.length - 1)];
+      if (state.elapsed >= wp.duration) advanceWaypoint(v, state, vWaypoints);
+      return;
+    }
+
+    const wp = vWaypoints[Math.min(state.wpIdx, vWaypoints.length - 1)];
+    const wpPos = new THREE.Vector3(wp.x, wp.y, wp.z);
+    const toTarget = new THREE.Vector3().subVectors(wpPos, state.pos);
+    const trueDist = toTarget.length();
+
+    const stalled = state.stall.tick(trueDist);
+    const reach = reachThresholdFor(v.type);
+
+    if (trueDist <= reach) {
+      state.phase = "dwell";
+      state.elapsed = 0;
+      return;
+    }
+    if (stalled) {
+      advanceWaypoint(v, state, vWaypoints);
+      return;
+    }
+
+    // clamp the goal into the trained goal-distance distribution (goal clamping, not path planning)
+    const clampedDist = Math.min(trueDist, CRUISE_TARGET_CLAMP_M);
+    const dirWorld = trueDist > 1e-6 ? toTarget.clone().normalize() : new THREE.Vector3();
+    const goalWorld = dirWorld.multiplyScalar(clampedDist);
+    const [tf, tl, tu] = worldToBody(goalWorld.x, goalWorld.y, goalWorld.z, state.yaw);
+    const [vf, vl, vu] = worldToBody(state.vel.x, state.vel.y, state.vel.z, state.yaw);
+
+    const runner = runnersRef.current.get(v.id);
+    if (!runner) {
+      state.usingPolicy = false;
+      return;
+    }
+
+    const bvhTargets = bvhTargetsRef.current;
+    let action: Float32Array;
+    try {
+      if (v.type === "quadcopter") {
+        const depth = bvhTargets
+          ? sampleDepthGrid(state.pos, state.yaw, bvhTargets)
+          : new Float32Array(DEPTH_RAYS).fill(DEPTH_MAX);
+        const stateVec = buildQuadState({
+          targetFwd: tf,
+          targetLeft: tl,
+          targetUp: tu,
+          velFwd: vf,
+          velLeft: vl,
+          velUp: vu,
+          yawRate: state.yawRate,
+          // state idx 9 only: both trainers hard-clamp altitude to ALT_CAP=4.0 (train_rl.py),
+          // so the city env's quadY=8 must be clamped here to stay in distribution. Real
+          // altitude (state.pos.y) is unaffected — used for dynamics/collision/render.
+          altitude: Math.min(state.pos.y, QUAD_STATE_ALTITUDE_CLAMP),
+          depth,
+        });
+        action = await runner.step(stateVec);
+      } else {
+        const lidar = bvhTargets
+          ? sampleLidarRing(state.pos, state.yaw, bvhTargets)
+          : new Float32Array(LIDAR_RAYS).fill(LIDAR_MAX);
+        const stateVec = buildRoverState({
+          targetFwd: tf,
+          targetLeft: tl,
+          velFwd: vf,
+          yawRate: state.yawRate,
+          lidar,
+        });
+        action = await runner.step(stateVec);
+      }
+    } catch {
+      state.usingPolicy = false;
+      return;
+    }
+
+    state.warmupTicks += 1;
+    if (state.warmupTicks <= 16) return; // hold still while the GRU hidden state warms up
+
+    const beforePos = state.pos.clone();
+    if (v.type === "quadcopter") {
+      const k = { pos: state.pos, vel: state.vel, yaw: state.yaw, yawRate: state.yawRate, altitude: state.pos.y };
+      stepQuad(k, action);
+      state.yaw = k.yaw;
+      state.yawRate = k.yawRate;
+    } else {
+      const k = { pos: state.pos, speed: state.speed, yaw: state.yaw, yawRate: state.yawRate };
+      stepRover(k, action);
+      state.speed = k.speed;
+      state.yaw = k.yaw;
+      state.yawRate = k.yawRate;
+    }
+
+    if (bvhTargets && bvhTargets.length) {
+      const collideR = v.type === "quadcopter" ? QUAD_LIMITS.collideR : ROVER_LIMITS.collideR;
+      const clipped = resolveSoftCollision(beforePos, state.pos, collideR, bvhTargets);
+      state.pos.copy(clipped);
+    }
+  }
 
   if (planKey !== planKeyRef.current) {
     planKeyRef.current = planKey;
@@ -157,7 +432,9 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
       const startPos = firstWp
         ? new THREE.Vector3(firstWp.x, firstWp.y, firstWp.z)
         : new THREE.Vector3(0, v.type === 'quadcopter' ? cfg.quadY : cfg.roverY, 0);
-      stateRef.current[v.id] = { pos: startPos.clone(), yaw: 0, wpIdx: 0, elapsed: 0, done: false };
+      const state = makeVehicleState(startPos);
+      stateRef.current[v.id] = state;
+      beginLeg(v, state);
     });
   }
 
@@ -182,14 +459,22 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
   const pipTempCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const pipFrameRef = useRef(0);
 
+  const accRef = useRef(0);
+
   useFrame((_, delta) => {
+    // rebuild BVH targets if the env root changed (env switch, or GLB just finished loading)
+    if (envRoot.current && envRoot.current !== bvhEnvRootRef.current) {
+      bvhEnvRootRef.current = envRoot.current;
+      bvhTargetsRef.current = buildBvh(envRoot.current);
+    }
+
     let detected = 0;
     const vehiclePositions: THREE.Vector3[] = [];
 
+    // --- lerp-fallback vehicles: original per-frame behavior, unchanged ---
     plan.vehicles.forEach(v => {
       const state = stateRef.current[v.id];
-      if (!state) return;
-      const mesh = meshRefs.current[v.id];
+      if (!state || state.usingPolicy) return;
       const vWaypoints = plan.waypoints.filter(w => w.vehicleId === v.id);
       if (!vWaypoints.length) return;
 
@@ -198,7 +483,6 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
       const toTarget = target.clone().sub(state.pos);
       const dist = toTarget.length();
 
-      // Rotate to face movement direction when actually travelling
       if (dist > 0.5) {
         const targetYaw = Math.atan2(-toTarget.x, -toTarget.z);
         let diff = targetYaw - state.yaw;
@@ -208,26 +492,57 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
       }
 
       state.pos.lerp(target, Math.min(delta * 0.35, 1));
-      if (mesh) {
-        mesh.position.copy(state.pos);
-        mesh.rotation.y = state.yaw;
-      }
 
       state.elapsed += delta;
       if (state.elapsed >= wp.duration) {
-        if (state.wpIdx < vWaypoints.length - 1) {
-          state.wpIdx++;
-          state.elapsed = 0;
-          const nextWp = vWaypoints[state.wpIdx];
-          onWaypointLabel(v.id, nextWp.statusLabel);
-        } else if (!state.done) {
-          state.done = true;
-          onWaypointLabel(v.id, "mission ✓");
+        advanceWaypoint(v, state, vWaypoints); // may upgrade to policy mode via beginLeg()
+      }
+    });
+
+    // --- fixed 10Hz accumulator for policy-driven vehicles ---
+    accRef.current += delta;
+    while (accRef.current >= CONTROL_DT) {
+      accRef.current -= CONTROL_DT;
+      plan.vehicles.forEach(v => {
+        const state = stateRef.current[v.id];
+        if (!state || !state.usingPolicy || state.ticking) return;
+        state.prevPos.copy(state.pos);
+        state.prevYaw = state.yaw;
+        state.ticking = true;
+        const vWaypoints = plan.waypoints.filter(w => w.vehicleId === v.id);
+        tickVehiclePolicy(v, state, vWaypoints).finally(() => {
+          state.ticking = false;
+        });
+      });
+    }
+
+    // --- render all vehicle meshes (policy path interpolated, lerp path direct) ---
+    const alpha = Math.min(accRef.current / CONTROL_DT, 1);
+    let anyPolicy = false;
+    let allPolicy = true;
+    plan.vehicles.forEach(v => {
+      const state = stateRef.current[v.id];
+      if (!state) return;
+      const mesh = meshRefs.current[v.id];
+      if (state.usingPolicy) {
+        anyPolicy = true;
+        if (mesh) {
+          mesh.position.lerpVectors(state.prevPos, state.pos, alpha);
+          let dy = state.yaw - state.prevYaw;
+          while (dy > Math.PI) dy -= 2 * Math.PI;
+          while (dy < -Math.PI) dy += 2 * Math.PI;
+          mesh.rotation.y = state.prevYaw + dy * alpha;
+        }
+      } else {
+        allPolicy = false;
+        if (mesh) {
+          mesh.position.copy(state.pos);
+          mesh.rotation.y = state.yaw;
         }
       }
-
       vehiclePositions.push(state.pos.clone());
     });
+    if (!anyPolicy) allPolicy = false;
 
     const detectionR = 4;
     targetPositions.current.forEach(tp => {
@@ -238,6 +553,13 @@ function Fleet({ plan, onWaypointLabel, onTargetDetected, missionActive, selecte
     if (detected !== detectedRef.current) {
       detectedRef.current = detected;
       onTargetDetected(detected);
+    }
+
+    // machine-checkable sim-mode indicator (no user-visible UI)
+    const mode = !anyPolicy ? "lerp" : allPolicy ? "policy" : "mixed";
+    if (gl.domElement.dataset.simMode !== mode) {
+      gl.domElement.dataset.simMode = mode;
+      console.info(`[sim] mode -> ${mode}`);
     }
 
     // PiP: render all selected vehicles' POV to their canvases every 3rd frame
@@ -328,6 +650,7 @@ interface SimCanvasProps {
 
 export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActive, selectedVehicleIds, pipCanvasesRef, isMobile }: SimCanvasProps) {
   const cfg = ENV_CONFIG[plan.environment];
+  const envRootRef = useRef<THREE.Object3D | null>(null);
 
   return (
     <Canvas
@@ -340,7 +663,7 @@ export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActi
       <SceneLighting missionActive={missionActive} />
 
       <Suspense fallback={null}>
-        <EnvModel path={cfg.model} />
+        <EnvModel path={cfg.model} onLoaded={(root) => { envRootRef.current = root; }} />
         <Environment preset={cfg.envPreset as any} background={false} />
       </Suspense>
 
@@ -351,6 +674,7 @@ export function SimCanvas({ plan, onTargetDetected, onWaypointLabel, missionActi
         missionActive={missionActive}
         selectedVehicleIds={selectedVehicleIds}
         pipCanvasesRef={pipCanvasesRef}
+        envRoot={envRootRef}
       />
 
       <OrbitControls
