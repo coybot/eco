@@ -50,6 +50,13 @@ drone/common/certs/thing-name.txt
 *.bin
 drone/models/*
 !drone/models/.gitignore
+
+# ...except the 3 policy files the astral.us homepage sim commits and serves directly
+# (avoids a runtime cross-origin fetch from HF and version-locks the browser's state/action
+# contract to the exact deployed weights — see eco/www/src/lib/sim/).
+!www/public/models/policy_v26rnn_dr.onnx
+!www/public/models/policy_rover_v2.onnx
+!www/public/models/policy_rover_v2.onnx.data
 !drone/models/README.md
 !drone/models/setup_models.py
 
