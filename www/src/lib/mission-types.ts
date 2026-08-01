@@ -14,7 +14,7 @@ export interface Waypoint {
   y: number;
   z: number;
   action: ActionType;
-  duration: number;     // seconds to hold here
+  duration: number;     // seconds to hold/act here after arriving (not travel time — arrival is emergent, policy-driven)
   statusLabel: string;  // short label shown in overlay, e.g. "scanning", "approaching"
 }
 

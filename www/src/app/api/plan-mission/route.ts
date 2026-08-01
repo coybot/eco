@@ -85,6 +85,7 @@ Rules:
 - label is "QC-01", "RV-01", etc.
 - waypoints is a FLAT top-level array — do NOT nest inside vehicles
 - each vehicle gets 3-5 waypoints spread across the coordinate space
+- "duration" is seconds to hold/act at that waypoint AFTER arriving (e.g. how long to scan/inspect) — it is not travel time, vehicles fly there on their own
 - for rendezvous/escort missions targetCount = 0; for counting missions set targetCount to what you actually count in the scene image provided
 - keep all coords inside the bounds above`;
 }
