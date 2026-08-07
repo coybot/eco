@@ -7,18 +7,18 @@ import { SITE } from "@/lib/site";
 import { socialMeta } from "@/lib/social-metadata";
 
 const FAQ_DESCRIPTION =
-  "Answers to common questions about autonomous drone AI: why vision-language models fail at navigation, the metric gap, autonomous drone SDKs, swarm sensing, and counter-UAS — grounded in Astral's published research.";
+  "Answers to common questions about autonomous drone AI: why vision-language models fail at navigation, the metric gap, autonomous drone SDKs, swarm sensing, and counter-UAS — grounded in Presidio's published research.";
 
 export const metadata: Metadata = {
   title: "FAQ — Autonomous Drone AI",
   description: FAQ_DESCRIPTION,
-  ...socialMeta("/faq", "FAQ — Autonomous Drone AI | Astral", FAQ_DESCRIPTION),
+  ...socialMeta("/faq", "FAQ — Autonomous Drone AI | Presidio", FAQ_DESCRIPTION),
 };
 
 const faqs: { q: string; a: string }[] = [
   {
     q: "Why do AI drones fail at navigation?",
-    a: "In Astral's 10,200-trial closed-loop benchmark across 25 vision-language models, every model scored worse than a drone that simply hovered. Failures decompose into two parts — semantic understanding (what is that object?) and metric spatial grounding (where is it, in meters?) — and the metric gap dominates. Models that name objects correctly still misplace them in 3D, and small grounding errors compound on every replan.",
+    a: "In Presidio's 10,200-trial closed-loop benchmark across 25 vision-language models, every model scored worse than a drone that simply hovered. Failures decompose into two parts — semantic understanding (what is that object?) and metric spatial grounding (where is it, in meters?) — and the metric gap dominates. Models that name objects correctly still misplace them in 3D, and small grounding errors compound on every replan.",
   },
   {
     q: "Can a vision-language model fly a drone end-to-end?",
@@ -26,19 +26,19 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "What is the metric gap in drone navigation?",
-    a: "The metric gap is the disconnect between offline perception accuracy and closed-loop flight performance. In one Astral study, fine-tuning a detector on 6.7 million frames improved detection mAP 9.7× (4.8% → 46.7%), yet closed-loop navigation success did not improve at all. Offline metrics measured the wrong thing; metric spatial grounding, not detection, was the binding constraint.",
+    a: "The metric gap is the disconnect between offline perception accuracy and closed-loop flight performance. In one Presidio study, fine-tuning a detector on 6.7 million frames improved detection mAP 9.7× (4.8% → 46.7%), yet closed-loop navigation success did not improve at all. Offline metrics measured the wrong thing; metric spatial grounding, not detection, was the binding constraint.",
   },
   {
     q: "Why does offline mAP mislead drone perception research?",
-    a: "Offline detection metrics (like mAP) can rise sharply while real navigation does not, especially when the training and evaluation simulators disagree geometrically. Astral built the Yonder dataset specifically to expose this cross-simulator generalization gap and to make closed-loop evaluation, not offline scores, the deciding metric.",
+    a: "Offline detection metrics (like mAP) can rise sharply while real navigation does not, especially when the training and evaluation simulators disagree geometrically. Presidio built the Yonder dataset specifically to expose this cross-simulator generalization gap and to make closed-loop evaluation, not offline scores, the deciding metric.",
   },
   {
     q: "What is an autonomous drone SDK?",
-    a: "An autonomous drone SDK is the software layer that lets developers build, test, and deploy autonomy — perception, planning, and control — on a drone. Astral's SDK is open source and pairs with high-fidelity simulation (ArduPilot SITL for fast iteration, Isaac-class sim for full perception loops), so autonomy code is evaluated in closed loop before it reaches hardware. It runs on your own platform or on Astral's NDAA-compliant Quadcopter, Rover, and Fixed-Wing.",
+    a: "An autonomous drone SDK is the software layer that lets developers build, test, and deploy autonomy — perception, planning, and control — on a drone. Presidio's SDK is open source and pairs with high-fidelity simulation (ArduPilot SITL for fast iteration, Isaac-class sim for full perception loops), so autonomy code is evaluated in closed loop before it reaches hardware. It runs on your own platform or on Presidio's NDAA-compliant Quadcopter, Rover, and Fixed-Wing.",
   },
   {
     q: "What sensing do large drone swarms need?",
-    a: "Camera-only swarms degrade sharply at scale: in Astral's simulations up to 1,000 agents, coverage dropped 15.8 percentage points and the collision rate rose 8× compared with ranging-equipped swarms. Ultra-wideband (UWB) ranging becomes effectively non-negotiable above roughly 100 drones.",
+    a: "Camera-only swarms degrade sharply at scale: in Presidio's simulations up to 1,000 agents, coverage dropped 15.8 percentage points and the collision rate rose 8× compared with ranging-equipped swarms. Ultra-wideband (UWB) ranging becomes effectively non-negotiable above roughly 100 drones.",
   },
   {
     q: "Are counter-UAS attacks detectable in autonomous swarms?",
@@ -73,7 +73,7 @@ export default function FaqPage() {
             </h1>
             <p className="text-lg text-muted-foreground">
               Straight answers to the questions people ask about autonomous drone
-              AI — each grounded in Astral's{" "}
+              AI — each grounded in Presidio's{" "}
               <Link href="/research" className="text-amber-500 underline">
                 published research
               </Link>

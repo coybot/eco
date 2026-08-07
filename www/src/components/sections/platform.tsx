@@ -33,8 +33,8 @@ const pillars: (PillarExternal | PillarInternal)[] = [
     description:
       "Python SDK, examples, and repositories you can run today—ArduPilot SITL for fast iteration on multicopters, fixed-wing, rovers, and more; Isaac-class sim when you need full perception loops.",
     icon: Code2,
-    href: SITE.astralSdk,
-    cta: "GitHub: astral-sdk",
+    href: SITE.presidioSdk,
+    cta: "GitHub: presidio-sdk",
     external: true as const,
   },
   {
@@ -77,7 +77,7 @@ export function PlatformSection() {
           transition={{ duration: 0.5 }}
           className="text-center mb-16 max-w-3xl mx-auto"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold">What Astral ships today</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold">What Presidio ships today</h2>
           <p className="mt-4 text-lg text-muted-foreground">
             Open software and honest benchmarks, plus operator tooling and
             simulation-first docs—backed by reference air and ground platforms and

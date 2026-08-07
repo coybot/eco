@@ -1,4 +1,4 @@
-# Astral Drone Platform
+# Presidio Drone Platform
 
 Open source autonomous drone intelligence. Natural language → on-device reasoning → flight.
 
@@ -44,7 +44,7 @@ iOS App → API Gateway → Lambda → Claude 3.5 Sonnet → IoT Core → Drone 
    │DroneOperator│         via IoT Core      │   Companion Computer      │
    └─────────────┘                           │   (Orin / RPi / other)    │
                               │                           │
-                             │   ~/astral/               │
+                             │   ~/presidio/               │
                              │     ├── daemon.py         │
                              │     ├── drone_sdk.py      │
                              │     └── certs/            │
@@ -128,7 +128,7 @@ This will:
 4. Register the drone with AWS IoT Core
 5. Clear WiFi and start a hotspot for app-based setup
 
-After installation, look for a WiFi network like `Astral-<model>-XXXX` and use the iOS app to complete setup.
+After installation, look for a WiFi network like `Presidio-<model>-XXXX` and use the iOS app to complete setup.
 
 **No manual certificate creation needed!** Fleet Provisioning handles this automatically.
 
@@ -188,14 +188,14 @@ eco/
 │   │   └── reasoning_llm.gguf     # Symlink → appropriate model for hardware
 │   │
 │   ├── ros2_ws/                   # ROS2 workspace for navigation (optional)
-│   │   └── src/astral_drone/
+│   │   └── src/presidio_drone/
 │   │       ├── package.xml
 │   │       ├── setup.py
 │   │       ├── config/
 │   │       │   └── nav2_params.yaml   # Nav2 config for indoor drone
 │   │       ├── launch/
 │   │       │   └── full_stack.launch.py
-│   │       └── astral_drone/
+│   │       └── presidio_drone/
 │   │           ├── camera_node.py     # Camera → ROS2 topics
 │   │           └── mavlink_bridge.py  # Nav2 → MAVLink
 │   │
@@ -337,10 +337,10 @@ To move a drone to a new WiFi network or transfer ownership:
 
 ```bash
 # Interactive (asks for confirmation)
-ssh $DRONE_HOST "cd ~/astral && sudo python3 factory_reset.py"
+ssh $DRONE_HOST "cd ~/presidio && sudo python3 factory_reset.py"
 
 # Non-interactive (for scripts)
-ssh $DRONE_HOST "cd ~/astral && sudo python3 factory_reset.py --force && sudo reboot"
+ssh $DRONE_HOST "cd ~/presidio && sudo python3 factory_reset.py --force && sudo reboot"
 ```
 
 After reboot, the drone will enter provisioning mode (hotspot) for 5 minutes.
@@ -382,9 +382,9 @@ The claim certificate is stored in S3 (private) and downloaded by the installer:
 ### Helper Scripts on Drone
 
 ```bash
-~/astral/reset-and-reboot.sh   # Factory reset + immediate reboot
-~/astral/show-logs.sh          # Show recent daemon logs
-~/astral/test-hotspot.sh       # Manually test hotspot creation
+~/presidio/reset-and-reboot.sh   # Factory reset + immediate reboot
+~/presidio/show-logs.sh          # Show recent daemon logs
+~/presidio/test-hotspot.sh       # Manually test hotspot creation
 ```
 
 ## Authentication
@@ -449,7 +449,7 @@ cd aws && sam deploy --region us-west-2 --capabilities CAPABILITY_IAM --resolve-
 
 ### View Drone Logs
 ```bash
-ssh $DRONE_HOST "tail -f ~/astral/logs/drone.log"
+ssh $DRONE_HOST "tail -f ~/presidio/logs/drone.log"
 ```
 
 ### Restart Drone Daemon
@@ -459,7 +459,7 @@ ssh $DRONE_HOST "sudo systemctl restart astral"
 
 ### Test Flight Controller Directly
 ```bash
-ssh $DRONE_HOST "cd ~/astral && ./venv/bin/python -c 'from drone_sdk import *; motor_test(1)'"
+ssh $DRONE_HOST "cd ~/presidio && ./venv/bin/python -c 'from drone_sdk import *; motor_test(1)'"
 ```
 
 ### Delete Everything
@@ -676,13 +676,13 @@ cd drone/ros2_ws
 colcon build
 
 # Launch full stack (camera + SLAM + Nav2)
-ros2 launch astral_drone full_stack.launch.py
+ros2 launch presidio_drone full_stack.launch.py
 ```
 
 Files:
-- `drone/ros2_ws/src/astral_drone/` - ROS2 package
-- `drone/ros2_ws/src/astral_drone/config/nav2_params.yaml` - Navigation config
-- `drone/ros2_ws/src/astral_drone/launch/full_stack.launch.py` - Launch file
+- `drone/ros2_ws/src/presidio_drone/` - ROS2 package
+- `drone/ros2_ws/src/presidio_drone/config/nav2_params.yaml` - Navigation config
+- `drone/ros2_ws/src/presidio_drone/launch/full_stack.launch.py` - Launch file
 
 ## Safety Notes
 
@@ -952,7 +952,7 @@ ssh orin-admin@<host> "~/drone-api/venv/bin/pip install websockets aiortc"
 
 **Testing telemetry directly:**
 ```bash
-ssh orin-admin@100.69.83.8 "cd /home/orin-admin/astral && venv/bin/python -c '
+ssh orin-admin@100.69.83.8 "cd /home/orin-admin/presidio && venv/bin/python -c '
 from drone_sdk import get_battery, get_telemetry
 print(\"Battery:\", get_battery())
 print(\"Telemetry:\", get_telemetry())
@@ -1033,26 +1033,26 @@ cd client/ios/DroneOperator && xcodegen generate
 cd aws && sam build && sam deploy
 
 # Deploy single file to drone
-scp drone/common/daemon.py orin-admin@100.69.83.8:/home/orin-admin/astral/
+scp drone/common/daemon.py orin-admin@100.69.83.8:/home/orin-admin/presidio/
 
 # Deploy autonomous intelligence modules
 scp drone/common/{perception,vlm,nav2_bridge,reasoning_loop}.py orin-admin@100.69.83.8:/home/orin-admin/drone-api/
 
 # Download AI models on drone
-ssh orin-admin@100.69.83.8 "cd ~/astral/models && python setup_models.py"
+ssh orin-admin@100.69.83.8 "cd ~/presidio/models && python setup_models.py"
 
 # Test provisioning locally
 cd drone/common && sudo python3 provisioning.py
 
 # Check drone logs
-ssh orin-admin@100.69.83.8 "tail -50 /home/orin-admin/astral/logs/drone.log"
+ssh orin-admin@100.69.83.8 "tail -50 /home/orin-admin/presidio/logs/drone.log"
 ```
 
 ---
 
 ## License
 
-Copyright 2026 Astral AI, Inc.
+Copyright 2026 Presidio Autonomy, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

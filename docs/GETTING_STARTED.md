@@ -1,30 +1,30 @@
-# Astral — Developer Setup
+# Presidio — Developer Setup
 
-Welcome to the Astral drone platform. This guide gets you from zero to building and deploying.
+Welcome to the Presidio drone platform. This guide gets you from zero to building and deploying.
 
 ## Prerequisites
 
 - macOS or Linux dev machine
 - Git, Python 3.11+, Rust (for clearkeep)
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [uv](https://docs.presidio.sh/uv/) (Python package manager)
 - AWS CLI v2
 - GitHub CLI (`gh`)
 - Xcode (if building the iOS app)
 
 ## 1. Clone the repos
 
-All repos live under the [astral-us](https://github.com/astral-us) GitHub org. You should have received an invite — accept it first.
+All repos live under the [presidio-autonomy](https://github.com/presidio-autonomy) GitHub org. You should have received an invite — accept it first.
 
 ```bash
-mkdir -p ~/code/astral && cd ~/code/astral
+mkdir -p ~/code/presidio && cd ~/code/presidio
 
 # Public
-git clone https://github.com/astral-us/astral-sdk.git sdk
-git clone https://github.com/astral-us/astral-docs.git docs
+git clone https://github.com/presidio-autonomy/presidio-sdk.git sdk
+git clone https://github.com/presidio-autonomy/presidio-docs.git docs
 
 # Private — requires org membership
-git clone https://github.com/astral-us/eco.git
-git clone https://github.com/astral-us/clearkeep.git
+git clone https://github.com/presidio-autonomy/eco.git
+git clone https://github.com/presidio-autonomy/clearkeep.git
 ```
 
 ### What's what
@@ -32,13 +32,13 @@ git clone https://github.com/astral-us/clearkeep.git
 | Repo | Description |
 |------|-------------|
 | **eco** | Main platform: AWS backend (SAM), iOS app, drone daemon, website |
-| **sdk** | Open-source Python SDK for ArduPilot drones (`pip install astral-sdk`) |
+| **sdk** | Open-source Python SDK for ArduPilot drones (`pip install presidio-sdk`) |
 | **docs** | Public docs site (Mintlify), rendered at astral.us/docs |
 | **clearkeep** | Encrypted messaging (Rust): QUIC + Noise + MLS, with iOS client support |
 
 ## 2. AWS access
 
-You should have received an IAM invite for the `astral` account (us-west-2). Configure your CLI:
+You should have received an IAM invite for the `presidio` account (us-west-2). Configure your CLI:
 
 ```bash
 aws configure --profile astral
@@ -65,7 +65,7 @@ cd sdk
 uv sync          # or: pip install -e ".[all]"
 ```
 
-Copy `src/astral_sdk/config_example.yaml` to `config.yaml` and edit `serial_port` for your flight controller. Run SITL examples without hardware:
+Copy `src/presidio_sdk/config_example.yaml` to `config.yaml` and edit `serial_port` for your flight controller. Run SITL examples without hardware:
 
 ```bash
 python examples/sitl/fly_sitl.py

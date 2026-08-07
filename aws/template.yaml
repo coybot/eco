@@ -379,7 +379,7 @@ Resources:
             Method: POST
 
   # Rover mission brain (see eco/rover/docs/architecture.md and CloudBrain.swift /
-  # HybridBrain.swift in the sibling astral-sdk repo). Cloud-primary half of the hybrid
+  # HybridBrain.swift in the sibling presidio-sdk repo). Cloud-primary half of the hybrid
   # brain behind MissionAgent — vision + tool-use, drives actions (navigate/lookAround/
   # ask/say/stop/done), not just conversation. Bigger memory/timeout than RoverConverse
   # since requests carry a downscaled JPEG frame.

@@ -77,7 +77,7 @@
 > - k_alt safe range: 0.7-1.2. Above ~1.5 collapses training during limbo duck.
 > - k_above/above_margin: vertical-only above-surface clearance, replaces large clear_margin.
 >   above_near() in BoxEnv fires ONLY when in box x-y footprint AND above box top.
-> - Flat copy on hoopoe: BOTH /home/yusuf/ AND ~/astral-training/eco/drone/training/.
+> - Flat copy on hoopoe: BOTH /home/yusuf/ AND ~/presidio-training/eco/drone/training/.
 >
 > ---
 > *(A* rejected. Git: f6a175e/230d12f/6a02d31/96e1289/d17b233/d493dff/08d8be8/c2a0b2b)*
@@ -85,7 +85,7 @@ Paste everything below into a fresh Claude Code session (run from `~/code/ys/a`)
 
 ---
 
-You are continuing a project that built a learned mid-level "analog pilot" for Astral
+You are continuing a project that built a learned mid-level "analog pilot" for Presidio
 drones: a small GRU policy that emits body-frame velocity setpoints `[vx,vy,vz,yaw_rate]`
 which ArduPilot tracks (GUIDED). It flies smooth paths around/over/under/through obstacles
 from a forward depth grid. The current model is `policy_v4_dr` and it WORKS for single
@@ -147,7 +147,7 @@ on the gauntlet2 geometry distribution.
 ## Training box (hoopoe = dual RTX 5090; NO A100)
 SSH: `sshpass -p "$HOOPOE_SSH_PASSWORD" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new yusuf@hoopoe`
 - Isaac/torch python: `/opt/ml/isaac-sim-env/bin/python3` (has numpy, onnxruntime, pymavlink).
-- Training package synced to `~/astral-training/`; run as `cd ~/astral-training && PYTHONPATH=. <py> -m eco.drone.training.<mod>`.
+- Training package synced to `~/presidio-training/`; run as `cd ~/presidio-training && PYTHONPATH=. <py> -m eco.drone.training.<mod>`.
 - Models staged at `/home/yusuf/models/`.
 - Isaac render + SITL run from `/home/yusuf/` using FLAT copies of `record_comparison.py`,
   `reactive_planner.py`, `isaac_vehicle.py`, `world3d.py`, `contract.py`, `video_record.py`.
@@ -158,15 +158,15 @@ SSH: `sshpass -p "$HOOPOE_SSH_PASSWORD" ssh -o PreferredAuthentications=password
 
 ## Run / verify recipes
 - Retrain: edit episodes/iters in `/tmp/run_v4seq.sh`; `ssh hoopoe 'nohup bash /tmp/run_v4seq.sh > /tmp/x.log 2>&1 &'`. (~20 min for 7000 eps + 800 RL iters.)
-- Validate: `cd ~/astral-training/eco/drone/training && PYTHONPATH=/home/yusuf/astral-training <py> validate_v3.py --models-dir /home/yusuf/models --n 300`
+- Validate: `cd ~/presidio-training/eco/drone/training && PYTHONPATH=/home/yusuf/presidio-training <py> validate_v3.py --models-dir /home/yusuf/models --n 300`
 - Render gauntlet2: stage model to `/home/yusuf/models`, copy the flat files to `/home/yusuf/`,
-  `<py> record_comparison.py --models-dir /home/yusuf/models --onnx-name policy_v4_dr.onnx --out /tmp/astral_course --env none`; pull `/tmp/astral_course/chase_gauntlet2.mp4`.
+  `<py> record_comparison.py --models-dir /home/yusuf/models --onnx-name policy_v4_dr.onnx --out /tmp/presidio_course --env none`; pull `/tmp/presidio_course/chase_gauntlet2.mp4`.
 - SITL gate: `bash /tmp/run_v4_sitl.sh` (3D courses through real ArduPilot).
 
 ## Pitfalls (these bit me — save yourself the time)
 - **Stale flat copies on `/home/yusuf/`**: if you change `SEQ_LEN` or the state contract, the
   ONNX input dims change; you MUST re-copy `reactive_planner.py` + `contract.py` + `world3d.py`
-  to BOTH `~/astral-training/eco/drone/training/` AND `/home/yusuf/`, or you get
+  to BOTH `~/presidio-training/eco/drone/training/` AND `/home/yusuf/`, or you get
   `onnxruntime ... INVALID_ARGUMENT: Got invalid dimensions for input: state_window`.
 - **Goal must be < 15 m** (LearnedPlanner range_gate) or it rejects at tick 1.
 - **Separate actor/critic GRUs are essential** — a shared trunk made PPO collapse run-to-run.

@@ -14,7 +14,7 @@ Outputs per course (to --out):
 
 Usage on hoopoe (Isaac Sim python env):
     /opt/ml/isaac-sim-env/bin/python3 /home/yusuf/record_comparison.py \
-        --models-dir /home/yusuf/models --out /tmp/astral_course
+        --models-dir /home/yusuf/models --out /tmp/presidio_course
 """
 from __future__ import annotations
 
@@ -199,7 +199,7 @@ def run_course(bridge, encode_mp4, course_name, course, drone_id, learned_planne
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--models-dir", default=None)
-    ap.add_argument("--out", default="/tmp/astral_course")
+    ap.add_argument("--out", default="/tmp/presidio_course")
     ap.add_argument("--env", default="none", help="'none' = bare ground plane (default)")
     ap.add_argument("--onnx-name", default="policy_v4_dr.onnx",
                     help="learned model to render")

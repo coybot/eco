@@ -6,9 +6,9 @@ import { Github, BookOpen, Terminal, Users, ArrowRight, Copy, Check } from "luci
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
-const codeExample = `from astral import AstralClient
+const codeExample = `from presidio import PresidioClient
 
-client = AstralClient(api_key=os.environ["ASTRAL_API_KEY"])
+client = PresidioClient(api_key=os.environ["PRESIDIO_API_KEY"])
 
 # Create a mission
 mission = client.missions.create(
@@ -45,14 +45,14 @@ const resources = [
   {
     icon: Github,
     title: "Open Source",
-    description: "Contribute to astral-sdk",
-    href: "https://github.com/astral-us/astral-sdk",
+    description: "Contribute to presidio-sdk",
+    href: "https://github.com/presidio-autonomy/presidio-sdk",
   },
   {
     icon: Users,
     title: "Community",
     description: "Browse all repos on GitHub",
-    href: "https://github.com/astral-us",
+    href: "https://github.com/presidio-autonomy",
   },
 ];
 
@@ -60,7 +60,7 @@ export function DeveloperSection() {
   const [copied, setCopied] = useState(false);
 
   const copyInstall = () => {
-    navigator.clipboard.writeText("uv add astral-sdk");
+    navigator.clipboard.writeText("uv add presidio-sdk");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -83,7 +83,7 @@ export function DeveloperSection() {
                 className="inline-flex items-center space-x-2 bg-card border border-border rounded-lg px-4 py-2 font-mono text-sm hover:border-amber-500/50 transition-colors group"
               >
                 <span className="text-muted-foreground">$</span>
-                <span>uv add astral-sdk</span>
+                <span>uv add presidio-sdk</span>
                 {copied ? (
                   <Check className="h-4 w-4 text-success" />
                 ) : (
@@ -124,7 +124,7 @@ export function DeveloperSection() {
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
               Train pre-configured LLMs or bring your own. Rapidly develop using 
-              proven, open source software. Sell your apps on the Astral App Store 
+              proven, open source software. Sell your apps on the Presidio App Store 
               or build for your specific needs.
             </p>
 

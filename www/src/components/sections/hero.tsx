@@ -75,7 +75,7 @@ export function HeroSection() {
           >
             We ran 10,200 closed-loop flight trials across 25 VLMs. The best
             end-to-end model beat a stationary hover by just 0.8 m; most were
-            worse than doing nothing. Astral's modular stack reached 1.04 m —
+            worse than doing nothing. Presidio's modular stack reached 1.04 m —
             and the full benchmark, dataset, and code are open.
           </motion.p>
 

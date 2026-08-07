@@ -136,7 +136,7 @@ class WiFiManager:
         """Generate hotspot name from model and MAC address."""
         mac = self.get_mac_address().replace(":", "")
         model = self._get_model_name()
-        return f"Astral-{model}-{mac[-4:].upper()}"
+        return f"Presidio-{model}-{mac[-4:].upper()}"
 
     def get_hotspot_password(self) -> str:
         """

@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   description: PAGE_DESCRIPTION,
   ...socialMeta(
     "/datasets/yonder",
-    "Yonder dataset | Astral",
+    "Yonder dataset | Presidio",
     PAGE_DESCRIPTION
   ),
 };
@@ -28,7 +28,7 @@ export default function YonderDatasetPage() {
     description: PAGE_DESCRIPTION,
     url: SITE.yonderDataset,
     license: "https://creativecommons.org/licenses/by-nc/4.0/",
-    creator: { "@type": "Organization", name: "Astral", url: SITE.origin },
+    creator: { "@type": "Organization", name: "Presidio", url: SITE.origin },
     isAccessibleForFree: true,
     distribution: {
       "@type": "DataDownload",

@@ -15,12 +15,12 @@ import {
 } from "lucide-react"
 import { socialMeta } from "@/lib/social-metadata"
 
-const DESC = "Access Astral Operator on web, iOS, or Android. Real-time drone telemetry, mission control, and fleet management from any device."
+const DESC = "Access Presidio Operator on web, iOS, or Android. Real-time drone telemetry, mission control, and fleet management from any device."
 
 export const metadata: Metadata = {
-  title: "Astral Operator — Web, iOS & Android",
+  title: "Presidio Operator — Web, iOS & Android",
   description: DESC,
-  ...socialMeta("/apps", "Astral Operator — Web, iOS & Android | Astral", DESC),
+  ...socialMeta("/apps", "Presidio Operator — Web, iOS & Android | Presidio", DESC),
 }
 
 export default function AppsPage() {
@@ -38,7 +38,7 @@ export default function AppsPage() {
               </div>
             </div>
             <h1 className="text-center text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6">
-              Astral Operator
+              Presidio Operator
             </h1>
             <p className="text-center text-lg text-gray-400 max-w-2xl mx-auto">
               Control your drone fleet from any device. Web, iOS, or Android — choose what works best for you.
@@ -256,7 +256,7 @@ export default function AppsPage() {
               <StepCard
                 number="1"
                 title="Sign Up"
-                description="Create an Astral account using your email. Takes less than a minute."
+                description="Create an Presidio account using your email. Takes less than a minute."
               />
               <StepCard
                 number="2"

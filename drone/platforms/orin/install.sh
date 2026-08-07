@@ -237,10 +237,10 @@ elif [ -f "$COMMON_DIR/config.yaml.example" ]; then
 fi
 
 # Create config directory
-sudo mkdir -p /etc/astral
-sudo mkdir -p /etc/astral/certs
+sudo mkdir -p /etc/presidio
+sudo mkdir -p /etc/presidio/certs
 if [ -f "$COMMON_DIR/network_manager.yaml.example" ]; then
-    sudo cp "$COMMON_DIR/network_manager.yaml.example" /etc/astral/network_manager.yaml
+    sudo cp "$COMMON_DIR/network_manager.yaml.example" /etc/presidio/network_manager.yaml
 fi
 
 # Create virtual environment

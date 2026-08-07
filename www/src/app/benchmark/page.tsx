@@ -13,16 +13,16 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: "Drone AI Benchmark",
   description: DESCRIPTION,
-  ...socialMeta("/benchmark", "Drone AI Benchmark | Astral", DESCRIPTION),
+  ...socialMeta("/benchmark", "Drone AI Benchmark | Presidio", DESCRIPTION),
 };
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Dataset",
-  name: "Astral Closed-Loop Drone AI Navigation Benchmark",
+  name: "Presidio Closed-Loop Drone AI Navigation Benchmark",
   description: DESCRIPTION,
   url: "https://astral.us/benchmark",
-  creator: { "@type": "Organization", name: "Astral", url: "https://astral.us" },
+  creator: { "@type": "Organization", name: "Presidio", url: "https://astral.us" },
   license: "https://creativecommons.org/licenses/by/4.0/",
   measurementTechnique: "Closed-loop Isaac Sim flight trials with collision and position-error scoring",
   variableMeasured: "Mean position error (m), collision rate (%), directional accuracy, step-1 prediction error",
@@ -43,9 +43,9 @@ const jsonLd = {
 const results = [
   {
     rank: 1,
-    system: "Astral Track A (modular)",
+    system: "Presidio Track A (modular)",
     type: "Modular stack",
-    org: "Astral",
+    org: "Presidio",
     meanError: "1.04 m",
     meanErrorVal: 1.04,
     collisionRate: "0%",
@@ -56,9 +56,9 @@ const results = [
   },
   {
     rank: 2,
-    system: "Astral Track A (full benchmark)",
+    system: "Presidio Track A (full benchmark)",
     type: "Modular stack",
-    org: "Astral",
+    org: "Presidio",
     meanError: "9.98 m",
     meanErrorVal: 9.98,
     collisionRate: "0%",
@@ -266,7 +266,7 @@ export default function BenchmarkPage() {
                         )}
                         {r.highlight && (
                           <span className="ml-2 text-xs bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-normal">
-                            Astral
+                            Presidio
                           </span>
                         )}
                       </td>
@@ -360,7 +360,7 @@ export default function BenchmarkPage() {
                 it at all.
               </p>
               <p>
-                We report hover as rank 3 rather than rank 1 because the Astral modular stack and the
+                We report hover as rank 3 rather than rank 1 because the Presidio modular stack and the
                 Gemma 4 modular result both beat it. Hover is not the goal — it is the floor.
               </p>
             </div>
@@ -385,7 +385,7 @@ export default function BenchmarkPage() {
           <div className="container mx-auto px-4 max-w-4xl">
             <h2 className="text-2xl font-bold mb-2">Run it yourself</h2>
             <p className="text-muted-foreground mb-8">
-              The benchmark is fully reproducible. You need Isaac Sim, the Astral SDK, and the Yonder
+              The benchmark is fully reproducible. You need Isaac Sim, the Presidio SDK, and the Yonder
               evaluation split. Everything else is open source.
             </p>
 
@@ -407,15 +407,15 @@ export default function BenchmarkPage() {
                     .
                   </li>
                   <li>
-                    <strong className="text-foreground">Astral SDK</strong> — the evaluation harness,
+                    <strong className="text-foreground">Presidio SDK</strong> — the evaluation harness,
                     task definitions, and scoring scripts.{" "}
                     <a
-                      href={SITE.astralSdk}
+                      href={SITE.presidioSdk}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-amber-500 underline"
                     >
-                      github.com/astral-us/astral-sdk
+                      github.com/presidio-autonomy/presidio-sdk
                     </a>
                     .
                   </li>
@@ -442,7 +442,7 @@ export default function BenchmarkPage() {
                 <h3 className="text-lg font-semibold mb-3">2. Install</h3>
                 <div className="bg-card rounded-lg border border-border p-4 font-mono text-sm space-y-1 text-muted-foreground overflow-x-auto">
                   <div><span className="text-muted-foreground/50"># Clone the SDK</span></div>
-                  <div>git clone https://github.com/astral-us/astral-sdk.git && cd astral-sdk</div>
+                  <div>git clone https://github.com/presidio-autonomy/presidio-sdk.git && cd presidio-sdk</div>
                   <div className="mt-2"><span className="text-muted-foreground/50"># Install dependencies</span></div>
                   <div>pip install -e ".[benchmark]"</div>
                   <div className="mt-2"><span className="text-muted-foreground/50"># Download Yonder eval split (~2 GB)</span></div>
@@ -458,8 +458,8 @@ export default function BenchmarkPage() {
                 <div className="bg-card rounded-lg border border-border p-4 font-mono text-sm space-y-1 text-muted-foreground overflow-x-auto">
                   <div><span className="text-muted-foreground/50"># Hover baseline (should give ~9.50 m mean error)</span></div>
                   <div>python benchmark/run.py --policy hover --trials 153 --output results/hover.json</div>
-                  <div className="mt-2"><span className="text-muted-foreground/50"># Astral Track A modular stack</span></div>
-                  <div>python benchmark/run.py --policy astral_track_a --trials 153 --output results/track_a.json</div>
+                  <div className="mt-2"><span className="text-muted-foreground/50"># Presidio Track A modular stack</span></div>
+                  <div>python benchmark/run.py --policy presidio_track_a --trials 153 --output results/track_a.json</div>
                   <div className="mt-2"><span className="text-muted-foreground/50"># Score and compare</span></div>
                   <div>python benchmark/score.py results/hover.json results/track_a.json</div>
                 </div>
@@ -474,7 +474,7 @@ export default function BenchmarkPage() {
                 </p>
                 <div className="bg-card rounded-lg border border-border p-4 font-mono text-sm text-muted-foreground overflow-x-auto">
                   <div><span className="text-muted-foreground/50"># benchmark/policies/my_policy.py</span></div>
-                  <div className="mt-1">from astral.benchmark import DronePolicy, Observation</div>
+                  <div className="mt-1">from presidio.benchmark import DronePolicy, Observation</div>
                   <div>import numpy as np</div>
                   <div className="mt-2">class MyPolicy(DronePolicy):</div>
                   <div>&nbsp;&nbsp;&nbsp;&nbsp;def predict(self, obs: Observation) -&gt; np.ndarray:</div>
@@ -592,10 +592,10 @@ export default function BenchmarkPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Benchmark</h3>
-                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@misc{astral2025benchmark,
+                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@misc{presidio2025benchmark,
   title  = {Closing the Metric Gap: A Closed-Loop Benchmark for
              Vision-Language Drone Navigation},
-  author = {Astral},
+  author = {Presidio},
   year   = {2025},
   url    = {https://astral.us/benchmark},
   note   = {25 VLMs, 10{,}200 closed-loop Isaac Sim flight trials}
@@ -603,10 +603,10 @@ export default function BenchmarkPage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Yonder dataset</h3>
-                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@dataset{astral2026yonder,
+                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@dataset{presidio2026yonder,
   title     = {Yonder: A 4.65M-Frame Drone-Perspective Indoor
                Navigation Dataset},
-  author    = {Astral},
+  author    = {Presidio},
   year      = {2026},
   publisher = {Hugging Face},
   url       = {https://huggingface.co/datasets/astralhf/yonder},

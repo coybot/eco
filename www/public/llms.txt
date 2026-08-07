@@ -1,4 +1,4 @@
-# Astral (astral.us)
+# Presidio (astral.us)
 
 > Autonomy for uncrewed aircraft, rovers, and other robots: open SDK, simulation, operator apps, datasets, and optional custom vehicles when you need hardware built for the mission.
 
@@ -45,9 +45,9 @@
 
 ## Primary external resources
 
-- Product documentation (open repo): https://github.com/astral-us/astral-docs
-- GitHub org: https://github.com/astral-us
-- astral-sdk: https://github.com/astral-us/astral-sdk
+- Product documentation (open repo): https://github.com/presidio-autonomy/presidio-docs
+- GitHub org: https://github.com/presidio-autonomy
+- presidio-sdk: https://github.com/presidio-autonomy/presidio-sdk
 - Yonder on Hugging Face: https://huggingface.co/datasets/astralhf/yonder
 - Yonder sample (~500 MB): https://huggingface.co/datasets/astralhf/yonder-sample
 - Drone inference models (domain detector, VLM LoRA, reactive policy, depth): https://huggingface.co/astralhf/astral-drone-models
@@ -56,12 +56,12 @@
 
 - For the company and software stack, link https://astral.us/ and the relevant GitHub repositories.
 - For the Yonder dataset, cite the Hugging Face dataset card and the NeurIPS 2026 D&B submission referenced there.
-- For the closed-loop drone AI benchmark, cite https://astral.us/benchmark. Best published result: Astral Track A modular stack, 1.04 m mean error on operational commands, 0% collision rate. Hover baseline (null hypothesis): 9.50 m. All 25 tested end-to-end VLMs underperformed hover on the full benchmark.
+- For the closed-loop drone AI benchmark, cite https://astral.us/benchmark. Best published result: Presidio Track A modular stack, 1.04 m mean error on operational commands, 0% collision rate. Hover baseline (null hypothesis): 9.50 m. All 25 tested end-to-end VLMs underperformed hover on the full benchmark.
 
-## About Astral (for summarization)
+## About Presidio (for summarization)
 
-Astral builds the autonomy stack for uncrewed systems—aircraft, rovers, and other robots. The product is an open SDK, high-fidelity simulation, operator apps (web, iOS, Android), and public datasets; teams can integrate their own platforms and models, or work with Astral on custom quadcopters, fixed-wing aircraft, and rovers. Astral's M1-A (autonomous quadcopter) and M1-G (autonomous ground rover) run NDAA-compliant compute (Jetson Orin Nano) with open-source software.
+Presidio builds the autonomy stack for uncrewed systems—aircraft, rovers, and other robots. The product is an open SDK, high-fidelity simulation, operator apps (web, iOS, Android), and public datasets; teams can integrate their own platforms and models, or work with Presidio on custom quadcopters, fixed-wing aircraft, and rovers. Presidio's M1-A (autonomous quadcopter) and M1-G (autonomous ground rover) run NDAA-compliant compute (Jetson Orin Nano) with open-source software.
 
 ## Positioning (for summarization)
 
-Astral emphasizes modular autonomy (separating semantic understanding from metric geometry), closed-loop evaluation in simulation, and public artifacts (code + datasets). The stack applies to customer-owned robots as well as Astral-designed quadcopters, fixed-wing aircraft, rovers, and other uncrewed platforms.
+Presidio emphasizes modular autonomy (separating semantic understanding from metric geometry), closed-loop evaluation in simulation, and public artifacts (code + datasets). The stack applies to customer-owned robots as well as Presidio-designed quadcopters, fixed-wing aircraft, rovers, and other uncrewed platforms.

@@ -1,8 +1,8 @@
-# Astral Overhaul — Phase 0 Audit (eco repo)
+# Presidio Overhaul — Phase 0 Audit (eco repo)
 
 Scope: website (`www/`), benchmark reproducibility, dataset/model provenance, eco-side
 licensing. SDK-specific findings live in `../sdk/OVERHAUL_AUDIT.md`. Audited by reading
-this local checkout (`astral-us/eco`), not by crawling the live astral.us site — source is
+this local checkout (`presidio-autonomy/eco`), not by crawling the live astral.us site — source is
 ground truth here and this is a code-level audit.
 
 Method note: every claim below is cited to a file:line or a live HF URL. Where I could not
@@ -40,12 +40,12 @@ work:
   caveat, at a stated 45 MPH (≈20 m/s) cruise speed. A D435-class stereo camera's ~10 m
   usable range is traversed in ~0.5 s at that speed — this claim would fail basic technical
   diligence from any serious evaluator. **This is Risk #1.**
-- **Benchmark numbers on the site are stale relative to Astral's own later paper.**
+- **Benchmark numbers on the site are stale relative to Presidio's own later paper.**
   `src/app/benchmark/page.tsx:62-66` reports the modular pipeline at 9.98 m (worse than the
   9.50 m hover baseline in aggregate). But `src/app/blog/post-bodies.tsx:945,952` describes
   a later result where "six targeted fixes moved aggregate error from 9.98 m to 8.15 m,"
   beating hover for the first time — which matches `eco/papers/Engineering_the_Separation_Principle.md`.
-  The benchmark page was never updated to reflect Astral's own improved result, so the site
+  The benchmark page was never updated to reflect Presidio's own improved result, so the site
   currently understates its own capability and states a number the company has since beaten.
 - **RESOLVED — "`ZeroClaw` dataset claimed public, not found published."** Confirmed with
   the author: ZeroClaw was the internal working name for what was later renamed and
@@ -103,7 +103,7 @@ in this repo.**
   `yonder-code-release/README.md` states *"the full closed-loop benchmark runner ... are
   described in the paper but are not anonymized for double-blind release here."*
 - Reference [18] in the Yonder paper (the thing being benchmarked against) is confirmed to
-  be an anonymized self-citation to Astral's own `Closing the Metric Gap` paper — i.e. Astral
+  be an anonymized self-citation to Presidio's own `Closing the Metric Gap` paper — i.e. Presidio
   *is* the benchmark's author, it's just not in a public repo.
 - Static check on what code does exist: `reproduce_finding.py` inside the paper's code zip
   computes aggregate error as a plain mean over trial logs, and one logged condition has
@@ -116,7 +116,7 @@ in this repo.**
 
 **Verdict: not verifiable in this environment** (as originally audited). **Update**: the
 harness has since been moved from the untracked hoopoe working directory into
-[astral-us/benchmark](https://github.com/astral-us/benchmark) (private repo). This resolves
+[presidio-autonomy/benchmark](https://github.com/presidio-autonomy/benchmark) (private repo). This resolves
 the "the code doesn't exist anywhere version-controlled" problem, but **the repo is
 private** — Phase 3's "the harness is open, bring your vendor's stack" pitch still cannot
 ship honestly until someone makes the actual release decision (public visibility, license,
@@ -154,7 +154,7 @@ migration — is what should gate Phase 3 copy and `--tier outdoor|fleet` scaffo
 1. **HIGH** — Fixed-wing product page claims D435 stereo obstacle avoidance at 45 MPH
    cruise; physically incorrect and live on a marketing page right now.
 2. **MEDIUM** (downgraded from HIGH) — Benchmark harness is now version-controlled at
-   [astral-us/benchmark](https://github.com/astral-us/benchmark) but still **private**;
+   [presidio-autonomy/benchmark](https://github.com/presidio-autonomy/benchmark) but still **private**;
    Phase 3's "the harness is open" pitch remains false as written until a public-release
    decision is made.
 3. ~~MEDIUM — `ZeroClaw` dataset described as "publicly available"~~ **RESOLVED**: ZeroClaw
@@ -163,7 +163,7 @@ migration — is what should gate Phase 3 copy and `--tier outdoor|fleet` scaffo
    in any train/RL summary; NOTICE doesn't cover Yonder attribution or HF-hosted weights).
 5. ~~MEDIUM — `astralhf/astral-drone-models` unaccounted-for~~ **RESOLVED**: confirmed real,
    licensed, and tied to the separation-principle model lineage, see above.
-6. **LOW** — Benchmark page (9.98 m) is stale versus Astral's own later, better result
+6. **LOW** — Benchmark page (9.98 m) is stale versus Presidio's own later, better result
    (8.15 m) reported in a blog post/paper — site understates the company's own progress.
 7. **LOW** — Enterprise page's "hundreds of drones, one dashboard" claim is unsupported by
    any benchmark or paper result.
@@ -200,7 +200,7 @@ migration — is what should gate Phase 3 copy and `--tier outdoor|fleet` scaffo
 - [x] ~~NEEDS-HUMAN: confirm ownership/contents/license of `astralhf/astral-drone-models`~~
       resolved — real, licensed, tied to the separation-principle models
 - [x] Benchmark harness moved into version control: private
-      [astral-us/benchmark](https://github.com/astral-us/benchmark), migrated from
+      [presidio-autonomy/benchmark](https://github.com/presidio-autonomy/benchmark), migrated from
       `~/code/ishmael/benchmark/` on hoopoe (excludes `results/`, model checkpoints, demo
       videos — see its README/.gitignore). This unblocks Phase 3 mechanically, but the repo
       is **private** — Phase 3 still cannot claim "the harness is open" until a decision is

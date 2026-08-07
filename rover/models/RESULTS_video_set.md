@@ -1,6 +1,6 @@
 # Video set — capability-by-capability, real CloudBrain, no scripted brain
 
-**Runner**: `eco/rover/sim/run_live_beats.py` -> `LiveCapstoneBeats` (astral-sdk,
+**Runner**: `eco/rover/sim/run_live_beats.py` -> `LiveCapstoneBeats` (presidio-sdk,
 `PhroverSimTests` target), plus `run_live_capstone.py` -> `CloudBrainCapstoneTests` for the
 long-form mission. **Model**: `us.anthropic.claude-opus-4-8` (Bedrock, us-west-2) — see
 bake-off below. All clips are real, separately-billed `CloudBrain` missions; no scripted

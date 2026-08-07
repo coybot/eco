@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/schema.json",
-  "name": "Astral Documentation",
+  "name": "Presidio Documentation",
   "logo": {
     "dark": "/logo/dark.svg",
     "light": "/logo/light.svg"
@@ -35,7 +35,7 @@
     {
       "name": "GitHub",
       "icon": "github",
-      "url": "https://github.com/astral-us"
+      "url": "https://github.com/presidio-autonomy"
     },
     {
       "name": "Community",
@@ -91,7 +91,7 @@
   ],
   "footerSocials": {
     "twitter": "https://twitter.com/astral_us",
-    "github": "https://github.com/astral-us",
+    "github": "https://github.com/presidio-autonomy",
     "linkedin": "https://linkedin.com/company/astral-us"
   }
 }

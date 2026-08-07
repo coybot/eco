@@ -9,7 +9,7 @@ import { SITE } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Documentation",
   description:
-    "Comprehensive documentation for Astral drones, SDK, and Mission Control platform.",
+    "Comprehensive documentation for Presidio drones, SDK, and Mission Control platform.",
 };
 
 const quickLinks = [
@@ -31,7 +31,7 @@ const quickLinks = [
     title: "SDK & API on GitHub",
     description: "Full source, quickstart, and API reference",
     icon: Github,
-    href: SITE.astralSdk,
+    href: SITE.presidioSdk,
     external: true,
   },
 ];
@@ -109,13 +109,13 @@ export default function DocsPage() {
                 <pre className="p-4 overflow-x-auto text-sm font-mono">
                   <code className="text-muted-foreground">
 {`# Install uv (if you haven't already)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://presidio.sh/uv/install.sh | sh
 
 # Create a new project
 uv init my-drone-app && cd my-drone-app
 
-# Add the Astral SDK
-uv add astral-sdk
+# Add the Presidio SDK
+uv add presidio-sdk
 
 # Run your first script
 uv run python main.py`}
@@ -124,7 +124,7 @@ uv run python main.py`}
               </div>
 
               <div className="text-center mt-8">
-                <a href={SITE.astralSdk} target="_blank" rel="noopener noreferrer">
+                <a href={SITE.presidioSdk} target="_blank" rel="noopener noreferrer">
                   <Button className="glow">
                     View docs on GitHub
                     <ArrowRight className="ml-2 h-4 w-4" />

@@ -23,7 +23,7 @@ ACTUAL_HOME=$(eval echo "~$ACTUAL_USER")
 S3_BASE="https://astral-drone-installer.s3.amazonaws.com"
 INSTALL_DIR="$ACTUAL_HOME/drone-api"
 # Replace when building a hosted installer artifact for your fleet.
-IOT_ENDPOINT="${ASTRAL_IOT_ENDPOINT:-REPLACE.iot.us-west-2.amazonaws.com}"
+IOT_ENDPOINT="${PRESIDIO_IOT_ENDPOINT:-REPLACE.iot.us-west-2.amazonaws.com}"
 
 # Colors
 RED='\033[0;31m'

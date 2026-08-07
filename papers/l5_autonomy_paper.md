@@ -310,7 +310,7 @@ The path from L5 simulation to L5 real-world operation requires SITL validation 
 
 ## Acknowledgements
 
-Simulation infrastructure and benchmark scenarios developed by the Astral team. Rendering and visualization on dual RTX 5090 hardware.
+Simulation infrastructure and benchmark scenarios developed by the Presidio team. Rendering and visualization on dual RTX 5090 hardware.
 
 ---
 

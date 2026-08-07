@@ -1,6 +1,6 @@
 name: e2e-live
 
-# Full-stack nightly regression: launches Astral Sim (Godot) drones and drives them
+# Full-stack nightly regression: launches Presidio Sim (Godot) drones and drives them
 # through the real AWS dev stack — both headlessly (run_e2e.py --tier live) and through
 # the real phone apps (run_phone.sh), so this is the fullest signal available short of a
 # human with a device. Needs a self-hosted macOS runner, pre-provisioned per
@@ -28,7 +28,7 @@ jobs:
         with:
           path: eco
 
-      - name: Bring up Astral Sim fleet (quad/rover/fixedwing)
+      - name: Bring up Presidio Sim fleet (quad/rover/fixedwing)
         working-directory: eco
         run: |
           for t in quadcopter rover fixedwing; do
@@ -46,7 +46,7 @@ jobs:
             eco/e2e/run_phone.sh --type "$t" --platform ios || true
           done
 
-      - name: Stop Astral Sim fleet
+      - name: Stop Presidio Sim fleet
         if: always()
         run: bash eco/drone/sim/launch_fleet_mac.sh stop
 

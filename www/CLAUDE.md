@@ -6,7 +6,7 @@ This is the marketing site at https://astral.us. It is **informational only**: t
 
 | Concern | Location |
 |---|---|
-| Source code | `astral-us/eco` GitHub repo, this directory (`www/`) |
+| Source code | `presidio-autonomy/eco` GitHub repo, this directory (`www/`) |
 | Production site | AWS, deployed via SST → CloudFront + Lambda + S3 |
 | Stage | `production` (live at https://astral.us) |
 | AWS profile | `astral` (account `041686205727`, IAM user `yusuf`) |
@@ -73,7 +73,7 @@ Product CTAs are "Request Info" → `/enterprise`. That's the entire commerce su
 
 ## Git identity
 
-`~/.gitconfig` defaults to `<work-email>`, which is fine for other work but wrong for `astral-us` org commits. This repo has a local override set at clone time:
+`~/.gitconfig` defaults to `<work-email>`, which is fine for other work but wrong for `presidio-autonomy` org commits. This repo has a local override set at clone time:
 
 ```bash
 git config user.name "yusuf-astral"
