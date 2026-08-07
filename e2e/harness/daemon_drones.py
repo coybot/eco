@@ -7,7 +7,7 @@ differs:
   fast tier  -- MockCloud (harness/mock_cloud.py): a local HTTP server standing in for the
                cloud round trip, so this runs in CI with no AWS/sim/network.
   live tier  -- the real cloud + IoT MQTT, via the same eco/sim/mobile/app_client.py the
-               phone app itself mirrors. Talks to a drone already brought up in Astral Sim
+               phone app itself mirrors. Talks to a drone already brought up in Presidio Sim
                (eco/drone/sim/launch_fleet_mac.sh) or on real hardware — the harness doesn't
                care which, exactly like a real phone user wouldn't.
 """

@@ -1,7 +1,7 @@
 # Counter-UAS Attack and Defense Characterization in Autonomous Drone Swarms: A Kinematic Simulation Study
 
 **Author:** Yusuf Saib  
-**Affiliation:** Astral Technology Corporation, Santa Clara, CA  
+**Affiliation:** Presidio Autonomy, Inc., Santa Clara, CA  
 **Contact:** contact@astral.us
 
 ---

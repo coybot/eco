@@ -22,7 +22,7 @@ export function AppShowcaseSection() {
               Mission Control in Your Pocket
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Configure, deploy, monitor and control drone fleets with the Astral 
+              Configure, deploy, monitor and control drone fleets with the Presidio 
               app. Build plans and missions confidently. Use our Simulator to run 
               and confirm scenarios before takeoff.
             </p>
@@ -92,7 +92,7 @@ export function AppShowcaseSection() {
             <div className="absolute left-0 top-6 w-[38%] rounded-[1.4rem] overflow-hidden border-2 border-white/10 shadow-xl rotate-[-6deg] origin-bottom-right opacity-70">
               <Image
                 src="/media/mobile-app/ios_06_chat_sent.png"
-                alt="Astral app — send a command"
+                alt="Presidio app — send a command"
                 width={390}
                 height={844}
                 className="w-full h-auto"
@@ -103,7 +103,7 @@ export function AppShowcaseSection() {
             <div className="absolute right-0 top-6 w-[38%] rounded-[1.4rem] overflow-hidden border-2 border-white/10 shadow-xl rotate-[6deg] origin-bottom-left opacity-70">
               <Image
                 src="/media/mobile-app/ios_07_chat_reply.png"
-                alt="Astral app — assistant reply"
+                alt="Presidio app — assistant reply"
                 width={390}
                 height={844}
                 className="w-full h-auto"
@@ -114,7 +114,7 @@ export function AppShowcaseSection() {
             <div className="relative w-[44%] rounded-[1.6rem] overflow-hidden border-2 border-white/20 shadow-2xl z-10">
               <Image
                 src="/media/mobile-app/ios_04_missions_online.png"
-                alt="Astral app — drone online"
+                alt="Presidio app — drone online"
                 width={390}
                 height={844}
                 className="w-full h-auto"

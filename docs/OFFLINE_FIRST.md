@@ -1,4 +1,4 @@
-# Offline-First Drone Control (Astral)
+# Offline-First Drone Control (Presidio)
 
 ## Goals
 - iOS app is the strategic brain (local LLM + optional vision).
@@ -38,10 +38,10 @@ stateDiagram-v2
   APMode --> APMode: clientConnected_or_missionActive
 ```
 
-Config lives in `/etc/astral/network_manager.yaml` (see example file).
+Config lives in `/etc/presidio/network_manager.yaml` (see example file).
 
 AP defaults:
-- SSID: `Astral-<model>-<last4>`
+- SSID: `Presidio-<model>-<last4>`
 - WPA2/WPA3 enabled
 - IP: `192.168.4.1`
 - DHCP: `192.168.4.10-192.168.4.100`

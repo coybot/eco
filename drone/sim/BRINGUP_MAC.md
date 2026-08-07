@@ -8,7 +8,7 @@ runs on the GPU host runs here, only the engine is local Godot instead of Isaac.
 
 For the **Isaac / GPU** path (hoopoe), see [`BRINGUP.md`](BRINGUP.md). This file is the Mac path.
 
-> **Region note:** the `astral` AWS profile defaults to `us-east-1`, but the entire IoT/Lambda/
+> **Region note:** the `presidio` AWS profile defaults to `us-east-1`, but the entire IoT/Lambda/
 > DynamoDB stack is in **`us-west-2`**. Every `aws` call here pins `--region us-west-2`.
 
 ## Architecture

@@ -4,7 +4,7 @@
 
 The live website at **https://astral.us** is built entirely from this directory (`eco/www/`).
 It is a Next.js 16 App Router site deployed to AWS via SST (CloudFront + Lambda).
-GitHub repo: `astral-us/eco`, path `www/`.
+GitHub repo: `presidio-autonomy/eco`, path `www/`.
 
 There is no separate CMS, no headless WordPress, no Sanity, no external blog platform.
 All content lives as TypeScript files in `src/`.
@@ -58,7 +58,7 @@ Five are blog-only posts (no companion paper):
 ## Other repos — what they are NOT
 
 - **`eco/papers/`** — raw markdown source files, not wired into the website. Pre-dates the current site. Not published anywhere automatically.
-- **`astral-us/astral-docs`** — API/SDK documentation only, served at `docs.astral.us`. No blog, no research section.
+- **`presidio-autonomy/presidio-docs`** — API/SDK documentation only, served at `docs.astral.us`. No blog, no research section.
 
 ## Models
 

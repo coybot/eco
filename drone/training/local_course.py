@@ -5,8 +5,8 @@ halts on contact — Isaac only adds visuals. This module reproduces that exact 
 gauntlet2 stall can be reproduced and the fix iterated without the training box. Trajectories are
 also returned so we can plot/inspect where the drone goes.
 
-    ~/.astral-venv/bin/python -m eco.drone.training.local_course --course gauntlet2
-    ~/.astral-venv/bin/python -m eco.drone.training.local_course --all
+    ~/.presidio-venv/bin/python -m eco.drone.training.local_course --course gauntlet2
+    ~/.presidio-venv/bin/python -m eco.drone.training.local_course --all
 """
 from __future__ import annotations
 

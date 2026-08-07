@@ -7,7 +7,7 @@ API Gateway authorizer context (userId), which in production is set by the Cogni
 authorizer. Auth is faked HERE ONLY, on a 127.0.0.1-bound server; the deployed endpoint
 is untouched.
 
-This is what lets the Swift sim (CloudBrainLiveMissionTests in the sibling astral-sdk
+This is what lets the Swift sim (CloudBrainLiveMissionTests in the sibling presidio-sdk
 repo) drive the real MissionAgent + real CloudBrain wire path against a real model:
 
     Swift MissionAgent -> CloudBrain -> http://127.0.0.1:<port>/rover/act

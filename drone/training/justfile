@@ -1,4 +1,4 @@
-# Astral analog-pilot training — tasks for hoopoe (A100).
+# Presidio analog-pilot training — tasks for hoopoe (A100).
 # Usage (from repo root):
 #   just -f eco/drone/training/justfile deploy
 #   just -f eco/drone/training/justfile dataset episodes=4000
@@ -7,7 +7,7 @@
 #   just -f eco/drone/training/justfile smoke    # run unit tests on hoopoe
 
 hoopoe := "yusuf@hoopoe"
-remote_dir := "~/astral-training"
+remote_dir := "~/presidio-training"
 model_out := "~/drone-data/bc_v2/models"
 local_models := "eco/drone/models"
 ssh_opts := "-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new"

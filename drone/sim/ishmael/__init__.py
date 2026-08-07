@@ -1,4 +1,4 @@
-"""Ishmael — natural-language test director for the Astral Isaac sim.
+"""Ishmael — natural-language test director for the Presidio Isaac sim.
 
 Turns one English sentence ("2 rovers and 3 quadcopters search the office for a
 chair and send a picture to the app") into a fully set-up simulated test: a

@@ -1,7 +1,7 @@
 # Rover — iOS-brained WAVE ROVER
 
 > **The Swift code (RoverNav / PhroverKit / PhroverCloud / PhroverOperator) has moved to
-> the public [`astral-sdk`](https://github.com/astral-us/astral-sdk) repo** — a sibling of
+> the public [`presidio-sdk`](https://github.com/presidio-autonomy/presidio-sdk) repo** — a sibling of
 > `eco`, checked out at `../sdk` in this workspace — as part of open-sourcing Phrover's
 > on-device brain. Only the cloud-side pieces (`eco/aws/src/rover.py`, `template.yaml`)
 > stay here. The "Layout"/"Building the app" sections below describe the new locations;
@@ -47,7 +47,7 @@ eco/rover/
   docs/architecture.md          full design, phases, risks
   models/                       CoreML/MLX model conversion scripts (YOLO etc.)
 
-sdk/                             ← public astral-sdk repo, sibling of eco
+sdk/                             ← public presidio-sdk repo, sibling of eco
   Package.swift                 three library products from one root manifest:
     RoverNav                    platform-independent nav core (Sources/RoverNav, TESTED)
                                  Geometry · Costmap · AStarPlanner · PursuitController · DifferentialDrive
@@ -76,7 +76,7 @@ corner-navigation sim) needs an iOS destination, since RoverNav now shares a pac
 ARKit-dependent PhroverKit/PhroverCloud, which don't build on plain macOS:
 
 ```bash
-xcodebuild test -scheme astral-sdk-Package -destination 'platform=iOS Simulator,name=iPhone 16' \
+xcodebuild test -scheme presidio-sdk-Package -destination 'platform=iOS Simulator,name=iPhone 16' \
   -only-testing:RoverNavTests
 ```
 

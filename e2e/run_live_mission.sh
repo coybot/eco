@@ -53,7 +53,7 @@ echo "simulator: $UDID"
 
 set +e
 (cd "$SDK_DIR" && TEST_RUNNER_LIVE_ROVER_ACT_URL="$URL" xcodebuild test \
-    -scheme astral-sdk-Package \
+    -scheme presidio-sdk-Package \
     -destination "id=$UDID" \
     -only-testing:PhroverKitLiveProbes/CloudBrainLiveMissionTests) 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}

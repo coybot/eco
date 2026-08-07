@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-10 · **Model**: `us.anthropic.claude-sonnet-4-6` (Bedrock, us-west-2)
 **Runner**: `eco/rover/sim/run_live_capstone.py` → `CloudBrainCapstoneTests`
-(astral-sdk, `PhroverSimTests` target)
+(presidio-sdk, `PhroverSimTests` target)
 **Mission**: *"Search the depot for the red toolbox, tell me if anything's out of place,
 and stay out of the paint room."* (seed 7)
 **Result**: 4 live runs — none reached `.done` (all stopped deliberately once behavior was

@@ -139,7 +139,7 @@ VLM_DRONE_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west
 
 
 def domain_detector(models_dir: Path) -> None:
-    """Astral domain-trained YOLOv8n (9 classes: person, drone, vehicle, ...).
+    """Presidio domain-trained YOLOv8n (9 classes: person, drone, vehicle, ...).
 
     Trained on 18 k sim frames (office/warehouse/hospital) plus public aerial sets.
     Stored in the dev S3 bucket after training on hoopoe. Falls back to curl if requests
@@ -163,7 +163,7 @@ def domain_detector(models_dir: Path) -> None:
 
 
 def vlm_drone(models_dir: Path) -> None:
-    """Astral drone-action VLM v1 — Qwen2.5-VL-3B LoRA fine-tuned on aerial missions.
+    """Presidio drone-action VLM v1 — Qwen2.5-VL-3B LoRA fine-tuned on aerial missions.
 
     Q4_K_M GGUF (~1.8 GB) + mmproj (~1.2 GB). Downloads as vlm.gguf + vlm_mmproj.gguf
     so daemon.py picks them up automatically (same slot as the stock Qwen3-VL-2B).
@@ -195,7 +195,7 @@ def vlm_drone(models_dir: Path) -> None:
 
 
 def reactive_policy(models_dir: Path) -> None:
-    """Astral reactive policy MLP v1 (~120 KB total: ONNX + external data + state norm).
+    """Presidio reactive policy MLP v1 (~120 KB total: ONNX + external data + state norm).
 
     Trained via behavioral cloning of the reactive_planner rule-set on 200k synthetic
     state→velocity-command pairs. Input: 12-dim state, output: [vx, vy, vz] m/s.
@@ -339,7 +339,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Setup AI models for drone mission autonomy")
     parser.add_argument("--yolo-only", action="store_true", help="Download YOLOv8n and export to ONNX")
     parser.add_argument("--yolox", action="store_true", help="Download YOLOv8x and export to ONNX (AGX)")
-    parser.add_argument("--domain-detector", action="store_true", help="Download astral domain detector v1 (drone/vehicle/person ONNX)")
+    parser.add_argument("--domain-detector", action="store_true", help="Download presidio domain detector v1 (drone/vehicle/person ONNX)")
     parser.add_argument("--vlm-drone", action="store_true", help="Download drone-action VLM v1 (Qwen2.5-VL-3B LoRA Q4_K_M GGUF, ~1.8+1.2 GB)")
     parser.add_argument("--reactive-policy", action="store_true", help="Download reactive policy MLP v1 (12-dim state → velocity cmd ONNX)")
     parser.add_argument("--nav-policies", type=str, nargs="*", metavar="VEHICLE",

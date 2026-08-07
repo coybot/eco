@@ -26,13 +26,13 @@ from typing import Dict, Tuple
 
 from mission_runner import MissionRunner
 
-logger = logging.getLogger("astral.local_api")
+logger = logging.getLogger("presidio.local_api")
 
-STATE_DIR = Path("/var/lib/astral")
+STATE_DIR = Path("/var/lib/presidio")
 PAIRING_TOKEN_PATH = STATE_DIR / "pairing_token.json"
 
-DEFAULT_CERT = "/etc/astral/certs/local_control.crt"
-DEFAULT_KEY = "/etc/astral/certs/local_control.key"
+DEFAULT_CERT = "/etc/presidio/certs/local_control.crt"
+DEFAULT_KEY = "/etc/presidio/certs/local_control.key"
 
 
 class LocalControlConfig:
@@ -74,7 +74,7 @@ def _ensure_cert(cert_path: str, key_path: str) -> None:
         "-out", cert_path,
         "-days", "3650",
         "-nodes",
-        "-subj", "/CN=astral-drone"
+        "-subj", "/CN=presidio-drone"
     ], check=True)
 
 

@@ -8,7 +8,7 @@ Everything below runs on this Mac. Godot must run with a real rendering driver
 every captured frame blank.
 
 ```bash
-PY=/Users/jsaib/.astral-venv/bin/python3     # the venv with llama_cpp + cv2
+PY=/Users/jsaib/.presidio-venv/bin/python3     # the venv with llama_cpp + cv2
 cd eco/drone/sim
 ```
 

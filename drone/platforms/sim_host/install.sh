@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh  — bootstrap the Astral web-simulator host on Ubuntu 22.04
+# install.sh  — bootstrap the Presidio web-simulator host on Ubuntu 22.04
 #
 # Usage:
 #   ./install.sh [--no-register] [--pool SPEC] [--godot-url URL] [--rendering-driver opengl3]
@@ -142,7 +142,7 @@ ENV_BLOCK="$ENV_BLOCK\nEnvironment=VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvid
 
 sudo tee /etc/systemd/system/sim-host.service > /dev/null << EOF
 [Unit]
-Description=Astral Web Simulator Host (Godot + session server)
+Description=Presidio Web Simulator Host (Godot + session server)
 After=network.target
 
 [Service]

@@ -25,11 +25,11 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_BASE_URL ?? "https://astral.us"
   ),
   title: {
-    default: "Astral - Open Autonomy Stack for Drones & Rovers",
-    template: "%s | Astral",
+    default: "Presidio - Open Autonomy Stack for Drones & Rovers",
+    template: "%s | Presidio",
   },
   description:
-    "Astral builds the open autonomy stack for uncrewed systems. In 10,200 closed-loop trials, most vision-language models couldn't beat a hovering drone — our modular stack reached 1.04 m. Open SDK, simulation, datasets, and NDAA-compliant hardware.",
+    "Presidio builds the open autonomy stack for uncrewed systems. In 10,200 closed-loop trials, most vision-language models couldn't beat a hovering drone — our modular stack reached 1.04 m. Open SDK, simulation, datasets, and NDAA-compliant hardware.",
   keywords: [
     "autonomous drones",
     "drone autonomy stack",
@@ -42,14 +42,14 @@ export const metadata: Metadata = {
     "Isaac Sim drone",
     "Jetson Orin drone",
   ],
-  authors: [{ name: "Astral" }],
-  creator: "Astral",
+  authors: [{ name: "Presidio" }],
+  creator: "Presidio",
   openGraph: {
     type: "website",
     locale: "en_US",
     url: "https://astral.us",
-    siteName: "Astral",
-    title: "Astral - The Autonomous Drone Fleet Platform",
+    siteName: "Presidio",
+    title: "Presidio - The Autonomous Drone Fleet Platform",
     description:
       "Empowering Developers, Enterprises, and Innovators with Agentic, Agile Unmanned Systems.",
     images: [
@@ -57,13 +57,13 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Astral - Autonomous Drone Platform",
+        alt: "Presidio - Autonomous Drone Platform",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Astral - The Autonomous Drone Fleet Platform",
+    title: "Presidio - The Autonomous Drone Fleet Platform",
     description:
       "Empowering Developers, Enterprises, and Innovators with Agentic, Agile Unmanned Systems.",
     images: ["/og-image.png"],

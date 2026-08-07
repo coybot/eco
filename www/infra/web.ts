@@ -26,7 +26,7 @@ export const web = new sst.aws.Nextjs("AstralWebsite", {
 
   transform: {
     cdn: (args) => {
-      args.comment = `Astral Website - ${$app.stage}`;
+      args.comment = `Presidio Website - ${$app.stage}`;
     },
   },
 });

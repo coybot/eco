@@ -6,11 +6,11 @@ Produces three MP4 files in --out-dir:
   3. smoothness.mp4    — side-by-side jerk / acceleration time-series for each goal
 
 Run on hoopoe (has matplotlib + ffmpeg):
-    cd ~/astral-training
+    cd ~/presidio-training
     PYTHONPATH=. /opt/ml/isaac-sim-env/bin/python3 \
         -m eco.drone.training.make_videos \
         --models-dir eco/drone/models \
-        --out-dir /tmp/astral_videos
+        --out-dir /tmp/presidio_videos
 """
 
 from __future__ import annotations
@@ -386,7 +386,7 @@ def make_3d_video(data, out_path: Path, fps=30, speed_factor=4):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--models-dir", default=None)
-    ap.add_argument("--out-dir", default="/tmp/astral_videos")
+    ap.add_argument("--out-dir", default="/tmp/presidio_videos")
     ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--speed", type=int, default=4,
                     help="Playback speed multiplier (default 4 = 4× real time).")

@@ -657,7 +657,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           <h2>Start in simulation, but validate in closed loop</h2>
           <p>
             Simulation is the right place to iterate quickly on APIs, frame
-            conventions, planner edge cases, and perception plumbing. Astral
+            conventions, planner edge cases, and perception plumbing. Presidio
             documents two practical paths: lightweight ArduPilot SITL for
             SDK-level work, and Isaac Sim for perception-in-the-loop autonomy.{" "}
             <Link href="/docs/simulation">Run in simulation</Link> walks through
@@ -691,20 +691,20 @@ export function BlogPostBody({ slug }: { slug: string }) {
           <ul>
             <li>
               <strong>Open source core:</strong>{" "}
-              <a href={SITE.astralSdk}>astral-sdk</a> and related repos on{" "}
+              <a href={SITE.presidioSdk}>presidio-sdk</a> and related repos on{" "}
               <a href={SITE.githubOrg}>GitHub</a>.
             </li>
             <li>
-              <strong>Operator tooling:</strong> the Astral mobile apps for iOS
+              <strong>Operator tooling:</strong> the Presidio mobile apps for iOS
               and Android (links on the homepage).
             </li>
             <li>
               <strong>Documentation:</strong> product docs are in the open{" "}
-              <a href={SITE.docs}>astral-docs</a> repository on GitHub.
+              <a href={SITE.docs}>presidio-docs</a> repository on GitHub.
             </li>
           </ul>
           <p>
-            Astral is aiming to be the open autonomous drone software stack: credible
+            Presidio is aiming to be the open autonomous drone software stack: credible
             benchmarks, datasets, and runnable code, not slideware. If you want
             the shortest path from reading to doing, install the SDK, run SITL,
             then turn on closed-loop trials in Isaac when you are ready to stress
@@ -1376,7 +1376,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           </p>
           <p>
             Full experimental design, metrics, and simulation methodology: <Link href="/research#droneport-atc">research section</Link>. The kinematic harness and all nine cells are available at the{" "}
-            <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer">Astral GitHub</a>.
+            <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer">Presidio GitHub</a>.
           </p>
         </Prose>
       );
