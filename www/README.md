@@ -1,4 +1,4 @@
-# Astral Website
+# Presidio Website
 
 The astral.us marketing site. Next.js + Tailwind + Shadcn/ui, deployed to AWS via SST (OpenNext → CloudFront + Lambda + S3).
 
@@ -10,7 +10,7 @@ The site is informational only — there is no cart, no checkout, no payment pro
 - **Styling**: Tailwind CSS + Shadcn/ui
 - **CMS**: Sanity.io
 - **Infrastructure**: SST (CloudFront, Lambda, S3) via OpenNext
-- **Documentation**: Mintlify (separate repo: `astral-us/astral-docs`)
+- **Documentation**: Mintlify (separate repo: `presidio-autonomy/presidio-docs`)
 
 ## Getting Started
 
@@ -79,4 +79,4 @@ npm run build
 
 ## License
 
-Proprietary — Astral, Inc.
+Proprietary — Presidio, Inc.

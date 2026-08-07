@@ -30,7 +30,7 @@ export function Header() {
         <Link href="/" className="flex items-center">
           <img
             src="/logo-white.png"
-            alt="Astral"
+            alt="Presidio"
             className="h-6 w-auto"
           />
         </Link>

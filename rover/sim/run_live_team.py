@@ -139,7 +139,7 @@ def main() -> int:
     try:
         cmd = [
             "xcodebuild", "test",
-            "-scheme", "astral-sdk-Package",
+            "-scheme", "presidio-sdk-Package",
             "-destination", f"platform=iOS Simulator,name={args.device}",
             "-only-testing:PhroverSimTests/TeamCloudBrainTests",
         ]

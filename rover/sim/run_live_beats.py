@@ -208,7 +208,7 @@ def run_one_beat(test_name: str, clip_name: str, port: int, device: str, fps: fl
     try:
         cmd = [
             "xcodebuild", "test",
-            "-scheme", "astral-sdk-Package",
+            "-scheme", "presidio-sdk-Package",
             "-destination", f"platform=iOS Simulator,name={device}",
             f"-only-testing:PhroverSimTests/LiveCapstoneBeats/{test_name}",
         ]

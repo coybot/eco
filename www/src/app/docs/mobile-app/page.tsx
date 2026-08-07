@@ -7,19 +7,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { socialMeta } from "@/lib/social-metadata";
 import { SITE } from "@/lib/site";
 
-const DESC = "Use the Astral iOS or Android app to onboard, command, and monitor your autonomous drones from anywhere via the cloud.";
+const DESC = "Use the Presidio iOS or Android app to onboard, command, and monitor your autonomous drones from anywhere via the cloud.";
 
 export const metadata: Metadata = {
   title: "Mobile Apps",
   description: DESC,
-  ...socialMeta("/docs/mobile-app", "Mobile Apps | Astral", DESC),
+  ...socialMeta("/docs/mobile-app", "Mobile Apps | Presidio", DESC),
 };
 
 const steps = [
   {
     n: "1",
     title: "Download the app",
-    body: "Get Drone Operator from the App Store (iOS) or Google Play (Android). Sign in with your Astral account.",
+    body: "Get Drone Operator from the App Store (iOS) or Google Play (Android). Sign in with your Presidio account.",
   },
   {
     n: "2",
@@ -65,7 +65,7 @@ export default function MobileAppPage() {
               <h1 className="text-4xl font-bold">Mobile Apps</h1>
             </div>
             <p className="text-muted-foreground text-lg max-w-2xl">
-              Command any Astral drone from your phone. The iOS and Android apps
+              Command any Presidio drone from your phone. The iOS and Android apps
               use the same cloud pipeline as the SDK — AWS IoT Core for
               real-time MQTT, S3 for media, and Bedrock for natural-language
               mission planning.
@@ -283,7 +283,7 @@ export default function MobileAppPage() {
                   </CardContent>
                 </Card>
               </Link>
-              <a href={SITE.astralSdk} target="_blank" rel="noopener noreferrer">
+              <a href={SITE.presidioSdk} target="_blank" rel="noopener noreferrer">
                 <Card className="bg-card border-border hover:border-amber-500/50 transition-colors cursor-pointer">
                   <CardHeader>
                     <CardTitle className="text-base">SDK & API on GitHub</CardTitle>

@@ -20,9 +20,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
-logger = logging.getLogger("astral.mission")
+logger = logging.getLogger("presidio.mission")
 
-STATE_DIR = Path("/var/lib/astral")
+STATE_DIR = Path("/var/lib/presidio")
 MISSION_ACTIVE_PATH = STATE_DIR / "mission_active.json"
 MISSION_LAST_PATH = STATE_DIR / "mission_last.json"
 

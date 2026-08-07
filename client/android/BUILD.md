@@ -1,4 +1,4 @@
-# Astral Drone Android App
+# Presidio Drone Android App
 
 Natural-language drone control from your phone. Talks to the same AWS backend the iOS app uses.
 

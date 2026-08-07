@@ -1,6 +1,6 @@
 """Fast-tier stand-in for POST /rover/act (the mission brain behind MissionAgent's
 CloudBrain — see aws/src/rover.py's act_handler and CloudBrain.swift in the sibling
-astral-sdk repo, swift/Sources/PhroverCloud/Cloud). Proves the request/response contract
+presidio-sdk repo, swift/Sources/PhroverCloud/Cloud). Proves the request/response contract
 is reachable and shaped correctly; it does not exercise real vision grounding — that's a
 hardware/live-tier concern, not a fast-CI one.
 """

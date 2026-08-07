@@ -29,7 +29,7 @@ case "$APP" in
   DroneOperator|PhroverOperator) ;;
   *) echo "--app must be DroneOperator or PhroverOperator (got: $APP)" >&2; exit 2;;
 esac
-# PhroverOperator lives in the public astral-sdk repo (sibling of eco), not eco/client/ios —
+# PhroverOperator lives in the public presidio-sdk repo (sibling of eco), not eco/client/ios —
 # see eco/e2e/README.md. Assumes both repos are checked out side by side.
 if [[ "$APP" == "PhroverOperator" ]]; then
   PROJ="$(cd "$SCRIPT_DIR/../../../sdk/examples/PhroverOperator" && pwd)"

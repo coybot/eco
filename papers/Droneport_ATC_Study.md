@@ -1,6 +1,6 @@
 # Droneport ATC Coordination: A Factorial Study of Authority, Communications, and Sensing in Urban Air Mobility
 
-**Astral Technical Report**  
+**Presidio Technical Report**  
 **June 2026**
 
 ---
@@ -112,7 +112,7 @@ The E2 reference cell (tower, continuous, ADS-B) at λ = 5 ops/hr achieves **140
 
 Table 1 and Figure 1 (full results) present the throughput–load curves and LoS rates across all nine cells. The Pareto frontier — throughput vs. safety, one point per cell at saturation — is the primary deliverable of this study.
 
-*Full results from the 9-cell × 4-load × 30-seed sweep are available at the [Astral GitHub](https://github.com/astral-us).*
+*Full results from the 9-cell × 4-load × 30-seed sweep are available at the [Presidio GitHub](https://github.com/presidio-autonomy).*
 
 ### 6.2 Authority Factor (H1)
 

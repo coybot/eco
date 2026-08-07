@@ -31,8 +31,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the vLLM, use the rule-based parser only")
     ap.add_argument("--no-register", action="store_true",
                     help="do not write DynamoDB registry rows")
-    ap.add_argument("--engine", choices=["astral_sim", "isaac"], default=None,
-                    help="sim engine: astral_sim = the project's Godot engine (default, "
+    ap.add_argument("--engine", choices=["presidio_sim", "isaac"], default=None,
+                    help="sim engine: presidio_sim = the project's Godot engine (default, "
                          "cross-platform); isaac = the optional photoreal engine on hoopoe")
     ap.add_argument("--certs-base", default=None)
     ap.add_argument("--out-dir", default=None)

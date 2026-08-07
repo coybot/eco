@@ -42,7 +42,7 @@ export function socialMeta(
       title: ogTitle,
       description,
       url: canonical,
-      siteName: "Astral",
+      siteName: "Presidio",
       locale: "en_US",
       type,
       images,

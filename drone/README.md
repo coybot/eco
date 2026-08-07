@@ -1,4 +1,4 @@
-# Astral Drone - Autonomous On-Device Intelligence
+# Presidio Drone - Autonomous On-Device Intelligence
 
 On-device AI for autonomous drone operation. Natural language goals → local reasoning → flight.
 
@@ -6,7 +6,7 @@ On-device AI for autonomous drone operation. Natural language goals → local re
 
 ## Overview
 
-This is the drone-side software for the Astral platform. It runs on NVIDIA Jetson Orin and enables:
+This is the drone-side software for the Presidio platform. It runs on NVIDIA Jetson Orin and enables:
 
 - **Mission autonomy**: VLM (Qwen3-VL) sees the environment and decides actions; Nav2 executes navigation
 - **Real-time perception**: YOLOv8 object detection with distance estimation
@@ -56,7 +56,7 @@ cd drone/platforms/orin
 
 ```bash
 # Clone the repo
-git clone https://github.com/astral-us/eco.git
+git clone https://github.com/presidio-autonomy/eco.git
 cd eco/drone/platforms/orin
 
 # Install and start immediately
@@ -115,7 +115,7 @@ sudo apt install python3-pip python3-venv
 ### 2. Python Environment
 
 ```bash
-cd /home/$USER/astral
+cd /home/$USER/presidio
 python3 -m venv venv
 source venv/bin/activate
 
@@ -209,7 +209,7 @@ For autonomous navigation with SLAM:
 ```bash
 source /opt/ros/humble/setup.bash
 source ros2_ws/install/setup.bash
-ros2 launch astral_drone full_stack.launch.py
+ros2 launch presidio_drone full_stack.launch.py
 ```
 
 ## Architecture
@@ -280,10 +280,10 @@ print(p.get_scene_description())
 
 ```bash
 # View daemon logs
-tail -f /home/$USER/astral/logs/drone.log
+tail -f /home/$USER/presidio/logs/drone.log
 
 # View systemd logs
-journalctl -u astral-drone -f
+journalctl -u presidio-drone -f
 ```
 
 ## Troubleshooting
@@ -344,7 +344,7 @@ YOLOv8n detects 80 COCO classes. For custom objects:
 
 ## License
 
-Copyright 2026 Astral AI, Inc.
+Copyright 2026 Presidio Autonomy, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

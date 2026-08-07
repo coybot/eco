@@ -5,12 +5,12 @@ import { SITE, SITE_DEFAULT_DESCRIPTION } from "@/lib/site";
 import { socialMeta } from "@/lib/social-metadata";
 
 const DESC =
-  "Astral builds the open autonomy stack for uncrewed systems. In 10,200 closed-loop trials, most vision-language models couldn't beat a hovering drone — our modular stack reached 1.04 m. Open SDK, simulation, datasets, and NDAA-compliant hardware.";
+  "Presidio builds the open autonomy stack for uncrewed systems. In 10,200 closed-loop trials, most vision-language models couldn't beat a hovering drone — our modular stack reached 1.04 m. Open SDK, simulation, datasets, and NDAA-compliant hardware.";
 
 export const metadata: Metadata = {
   title: "Autonomous Drone Platform & SDK",
   description: DESC,
-  ...socialMeta("/", "Autonomous Drone Platform & SDK | Astral", DESC),
+  ...socialMeta("/", "Autonomous Drone Platform & SDK | Presidio", DESC),
 };
 import {
   HeroSection,
@@ -28,7 +28,7 @@ import {
 const organizationJsonLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "Astral",
+  name: "Presidio",
   url: SITE.origin,
   logo: `${SITE.origin}/logo-black.png`,
   description: SITE_DEFAULT_DESCRIPTION,
@@ -38,7 +38,7 @@ const organizationJsonLd = {
 const websiteJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "Astral",
+  name: "Presidio",
   url: SITE.origin,
 };
 

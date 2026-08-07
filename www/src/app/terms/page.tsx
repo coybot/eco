@@ -2,8 +2,8 @@ import { Metadata } from "next";
 import { Header, Footer } from "@/components/layout";
 
 export const metadata: Metadata = {
-  title: "Terms of Service – Astral",
-  description: "Astral terms of service",
+  title: "Terms of Service – Presidio",
+  description: "Presidio terms of service",
 };
 
 export default function TermsPage() {
@@ -15,11 +15,11 @@ export default function TermsPage() {
         <p className="text-muted-foreground mb-12">Effective date: June 6, 2026</p>
 
         <Section title="1. Acceptance of Terms">
-          <p>By accessing or using Astral's services, including the Drone Operator platform, you agree to be bound by these Terms of Service. If you do not agree, do not use our services.</p>
+          <p>By accessing or using Presidio's services, including the Drone Operator platform, you agree to be bound by these Terms of Service. If you do not agree, do not use our services.</p>
         </Section>
 
         <Section title="2. Use of the Service">
-          <p>You may use the Astral platform only for lawful purposes and in accordance with these Terms. You are responsible for ensuring your use of the platform complies with all applicable laws and regulations, including aviation regulations in your jurisdiction.</p>
+          <p>You may use the Presidio platform only for lawful purposes and in accordance with these Terms. You are responsible for ensuring your use of the platform complies with all applicable laws and regulations, including aviation regulations in your jurisdiction.</p>
         </Section>
 
         <Section title="3. Account Responsibilities">
@@ -27,19 +27,19 @@ export default function TermsPage() {
         </Section>
 
         <Section title="4. Safety and Compliance">
-          <p>You are solely responsible for the safe operation of any drone or autonomous vehicle used with our platform. Astral does not assume liability for any injury, property damage, or regulatory violation resulting from drone operations. Always comply with local aviation authority regulations.</p>
+          <p>You are solely responsible for the safe operation of any drone or autonomous vehicle used with our platform. Presidio does not assume liability for any injury, property damage, or regulatory violation resulting from drone operations. Always comply with local aviation authority regulations.</p>
         </Section>
 
         <Section title="5. Intellectual Property">
-          <p>All content, software, and technology provided by Astral is owned by Astral or its licensors and is protected by applicable intellectual property laws. You may not copy, modify, or distribute our software or content without prior written consent.</p>
+          <p>All content, software, and technology provided by Presidio is owned by Presidio or its licensors and is protected by applicable intellectual property laws. You may not copy, modify, or distribute our software or content without prior written consent.</p>
         </Section>
 
         <Section title="6. Disclaimers">
-          <p>The service is provided "as is" without warranties of any kind. Astral does not warrant that the service will be uninterrupted, error-free, or suitable for any particular purpose.</p>
+          <p>The service is provided "as is" without warranties of any kind. Presidio does not warrant that the service will be uninterrupted, error-free, or suitable for any particular purpose.</p>
         </Section>
 
         <Section title="7. Limitation of Liability">
-          <p>To the fullest extent permitted by law, Astral shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the service.</p>
+          <p>To the fullest extent permitted by law, Presidio shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the service.</p>
         </Section>
 
         <Section title="8. Termination">

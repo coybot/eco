@@ -49,8 +49,8 @@ export default async function BlogPostPage({ params }: Props) {
     headline: post.title,
     description: post.description,
     datePublished: post.dateIso,
-    author: { "@type": "Organization", name: "Astral" },
-    publisher: { "@type": "Organization", name: "Astral", url: SITE.origin },
+    author: { "@type": "Organization", name: "Presidio" },
+    publisher: { "@type": "Organization", name: "Presidio", url: SITE.origin },
     mainEntityOfPage: {
       "@type": "WebPage",
       "@id": `${SITE.origin}/blog/${slug}`,
