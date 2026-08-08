@@ -6,7 +6,7 @@
 # Certs land in ~/eco-certs-fleet/<id>/{device.pem,private.key,root-ca.pem} —
 # the layout sim_drone_daemon.py --certs-dir expects.
 #
-#   AWS_PROFILE=astral bash provision_sim_certs.sh sim-quadcopter-001 [sim-rover-004 ...]
+#   AWS_PROFILE=presidio bash provision_sim_certs.sh sim-quadcopter-001 [sim-rover-004 ...]
 #
 # Region is pinned: the `presidio` profile defaults to us-east-1 but the IoT stack
 # lives in us-west-2.

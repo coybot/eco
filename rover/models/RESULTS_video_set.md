@@ -273,7 +273,7 @@ live retake each for cap4 (after the battery-rate fix), cap2 (passed first try),
 (one failed attempt that caught the geofence gap, one clean retake after the fix) + several
 free Godot-IPC diagnostics to calibrate the battery-drain rate and sanity-check the geofence
 occupancy-grid change before spending on live retakes. Exact total Bedrock spend not
-separately itemized here; all calls went through `AWS_PROFILE=astral`, `us-west-2`, real
+separately itemized here; all calls went through `AWS_PROFILE=presidio`, `us-west-2`, real
 billed Bedrock — no shortcuts taken to economize.
 
 **One-video-per-capability round** (completing #5/#6/#7/#8 as dedicated clips, refreshing

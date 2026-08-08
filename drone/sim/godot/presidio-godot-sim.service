@@ -1,5 +1,5 @@
 [Unit]
-Description=Astral Godot Sim Fleet (office + city)
+Description=Presidio Godot Sim Fleet (office + city)
 After=network.target
 Wants=network.target
 

@@ -2,7 +2,7 @@
 
 `parse_roster("quad:10,rover:5")` yields deterministic drone ids so the sim host
 (fleet_bridge) and the cloud registry agree. Run this module as a CLI on a host
-with AWS creds (AWS_PROFILE=astral) to bulk-register the fleet in DynamoDB under
+with AWS creds (AWS_PROFILE=presidio) to bulk-register the fleet in DynamoDB under
 a user; then launch fleet_bridge with the same --fleet spec on hoopoe.
 """
 

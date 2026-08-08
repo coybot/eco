@@ -1,5 +1,5 @@
 [Unit]
-Description=Astral Local Control API
+Description=Presidio Local Control API
 After=network-online.target
 Wants=network-online.target
 

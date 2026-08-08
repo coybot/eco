@@ -8,7 +8,7 @@ Endpoints:
   POST /abort    -> abort mission
 
 Authentication:
-  - Bearer token from /var/lib/astral/pairing_token.json
+  - Bearer token from /var/lib/presidio/pairing_token.json
   - No cloud dependency
 """
 
