@@ -62,4 +62,4 @@ to warehouse (add USDs to `_ENV_USD_MAP` in `isaac_vehicle.py` for distinct scen
 ## Cloud side
 `eco/aws/src/conversations.py` no longer special-cases `droneType=="sim"` — sim commands flow through
 the normal capability-based path and are published to IoT MQTT like any drone. **Deploy with SAM**
-(`cd eco/aws && AWS_PROFILE=astral sam build && sam deploy`).
+(`cd eco/aws && AWS_PROFILE=presidio sam build && sam deploy`).

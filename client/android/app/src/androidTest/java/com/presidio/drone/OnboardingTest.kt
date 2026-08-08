@@ -1,4 +1,4 @@
-package com.astral.drone
+package com.presidio.drone
 
 import android.graphics.Bitmap
 import android.graphics.Bitmap.CompressFormat
@@ -55,7 +55,7 @@ class OnboardingTest {
     }
 
     private fun screenshot(name: String) {
-        // Write sentinel to app files dir (readable via `adb shell run-as com.astral.drone`)
+        // Write sentinel to app files dir (readable via `adb shell run-as com.presidio.drone`)
         // so the external screencap loop knows which state we're capturing.
         try { File(instrumentation.targetContext.filesDir, "sc_signal").writeText(name) } catch (_: Exception) {}
         Thread.sleep(4_000)
@@ -167,7 +167,7 @@ class OnboardingTest {
     /**
      * Signs in, navigates through key screens with 5s pauses at each state,
      * writing a sentinel to the app's files dir so the external screencap loop
-     * can poll with `adb shell run-as com.astral.drone cat files/sc_signal`.
+     * can poll with `adb shell run-as com.presidio.drone cat files/sc_signal`.
      */
     @Test
     fun signInAndNavigate() {

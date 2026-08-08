@@ -72,7 +72,7 @@ iOS App → API Gateway → Lambda → Claude 3.5 Sonnet → IoT Core → Drone 
 - **Real-time**: MQTT over WebSocket via AWS IoT Core (using AWS Mobile SDK Gen 1)
 - **Credentials**: Cognito Identity Pool provides temporary AWS credentials for MQTT
 - **Provisioning**: Guides user through drone WiFi hotspot setup flow
-- **Bundle ID**: `us.astral.drone`
+- **Bundle ID**: `us.presidio.drone`
 - **Known warning**: `UIColor created with component values far outside the expected range` - harmless, from Apple's ASWebAuthenticationSession
 
 ## Supported Platforms
@@ -118,7 +118,7 @@ See [client/ios/README.md](client/ios/README.md) for full instructions:
 Run this on any new drone (Orin, RPi, or other Linux):
 
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://astral-drone-installer.s3.amazonaws.com/install.sh)"
+sudo /bin/bash -c "$(curl -fsSL https://presidio-drone-installer.s3.amazonaws.com/install.sh)"
 ```
 
 This will:
@@ -376,8 +376,8 @@ Drones automatically get their own unique IoT certificates via AWS IoT Fleet Pro
 ### Claim Certificate Location
 
 The claim certificate is stored in S3 (private) and downloaded by the installer:
-- `s3://astral-drone-installer/certs/claim-cert.pem`
-- `s3://astral-drone-installer/certs/claim-private.key`
+- `s3://presidio-drone-installer/certs/claim-cert.pem`
+- `s3://presidio-drone-installer/certs/claim-private.key`
 
 ### Helper Scripts on Drone
 
@@ -454,7 +454,7 @@ ssh $DRONE_HOST "tail -f ~/presidio/logs/drone.log"
 
 ### Restart Drone Daemon
 ```bash
-ssh $DRONE_HOST "sudo systemctl restart astral"
+ssh $DRONE_HOST "sudo systemctl restart presidio"
 ```
 
 ### Test Flight Controller Directly
@@ -610,7 +610,7 @@ This copies files (including the pre-built `llama-cpp-python` CUDA wheel from `d
 
 **Option 2: One-liner installer (new drones, downloads from S3)**
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://astral-drone-installer.s3.amazonaws.com/install.sh)"
+sudo /bin/bash -c "$(curl -fsSL https://presidio-drone-installer.s3.amazonaws.com/install.sh)"
 ```
 
 **Option 3: Local install (on the Orin itself)**
@@ -700,7 +700,7 @@ Files:
 | "Drone already registered" | Drone registered to another account |
 | No status updates | Check drone is online, IoT Rule writing to DynamoDB |
 | "Motor Emergency Stopped" | Press safety switch for 3-5 seconds |
-| Daemon not receiving commands | Check `systemctl status astral`, verify IoT certs |
+| Daemon not receiving commands | Check `systemctl status presidio`, verify IoT certs |
 | LLM generates bad code | Improve prompt in `handler.py` SYSTEM_PROMPT |
 | Provisioning timeout | Drone hotspot lasts 5 minutes; run `reset-and-reboot.sh` to retry |
 | Can't find drone hotspot | Check WiFi interface exists, run `nmcli radio wifi on` |
@@ -715,7 +715,7 @@ Files:
 Just run the one-liner on any Linux device:
 
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://astral-drone-installer.s3.amazonaws.com/install.sh)"
+sudo /bin/bash -c "$(curl -fsSL https://presidio-drone-installer.s3.amazonaws.com/install.sh)"
 ```
 
 The drone will:

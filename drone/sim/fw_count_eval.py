@@ -24,13 +24,13 @@ the LIVE countdemo Godot env (Milestone S1), with the REAL on-device VLM
 production) doing every perception/reasoning decision. Asserts the reported
 count against countdemo's real ground truth (fw_prop_truth()).
 
-Requires: AWS_PROFILE=astral (real Bedrock access), the presidio venv (real
+Requires: AWS_PROFILE=presidio (real Bedrock access), the presidio venv (real
 llama_cpp + boto3), and gui=True Godot (fw_grab_frame needs a real rendering
 driver — headless Godot's dummy driver leaves frames blank, an established
 finding from fw_vlm_smoketest.py).
 
 Usage:
-    AWS_PROFILE=astral AWS_REGION=us-east-1 \
+    AWS_PROFILE=presidio AWS_REGION=us-east-1 \
         /Users/jsaib/.presidio-venv/bin/python3 fw_count_eval.py
 """
 from __future__ import annotations

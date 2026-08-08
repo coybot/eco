@@ -1,6 +1,6 @@
 model_name: "Orin"
 interface: null
-ap_password: null  # If null, a default "Astral<last4>!" is used
+ap_password: null  # If null, a default "Presidio<last4>!" is used
 ap_channel: 6
 ap_ip: "192.168.4.1"
 ap_subnet: "192.168.4.0/24"
