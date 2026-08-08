@@ -320,7 +320,7 @@ final class AuthService: NSObject {
 
     // MARK: - Session Persistence
 
-    private let sessionKey = "us.astral.drone.session"
+    private let sessionKey = "us.presidio.drone.session"
 
     private func saveSession() {
         guard let tokens, let user = currentUser else { return }

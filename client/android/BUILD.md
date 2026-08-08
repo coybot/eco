@@ -64,11 +64,11 @@ aws cognito-idp admin-create-user \
   --user-pool-id us-west-2_MkixOuF3S \
   --username new@example.com \
   --temporary-password TempPass1 \
-  --profile astral --region us-west-2
+  --profile presidio --region us-west-2
 
 aws cognito-idp admin-set-user-password \
   --user-pool-id us-west-2_MkixOuF3S \
   --username new@example.com \
   --password "$E2E_TEST_PASSWORD" --permanent \
-  --profile astral --region us-west-2
+  --profile presidio --region us-west-2
 ```

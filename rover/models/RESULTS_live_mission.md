@@ -62,5 +62,5 @@ anywhere — the model chose every action.
 ## Reproduce
 
 ```bash
-AWS_PROFILE=astral bash eco/e2e/run_live_mission.sh
+AWS_PROFILE=presidio bash eco/e2e/run_live_mission.sh
 ```

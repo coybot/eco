@@ -13,8 +13,8 @@ would see in production.
 This is a diagnostic, not a test: it makes real (billed) Bedrock calls, so it does not run
 in CI or the e2e gate. Run manually:
 
-    cd eco && AWS_PROFILE=astral python3 rover/models/probe_mission_cognition.py
-    cd eco && AWS_PROFILE=astral python3 rover/models/probe_mission_cognition.py --with-photo
+    cd eco && AWS_PROFILE=presidio python3 rover/models/probe_mission_cognition.py
+    cd eco && AWS_PROFILE=presidio python3 rover/models/probe_mission_cognition.py --with-photo
 
 Grade the transcript against: did it ask when genuinely ambiguous, explore sensibly,
 recognize a dead end and switch doors, ground the chair, remember to return.

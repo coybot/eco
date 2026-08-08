@@ -2,7 +2,7 @@
 
 **Author:** Yusuf Saib  
 **Affiliation:** Presidio Autonomy, Inc., Santa Clara, CA  
-**Contact:** contact@astral.us
+**Contact:** hello@presidioautonomy.com
 
 ---
 

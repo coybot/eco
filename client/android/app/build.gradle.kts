@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.astral.drone"
+    namespace = "com.presidio.drone"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.astral.drone"
+        applicationId = "com.presidio.drone"
         minSdk = 28
         targetSdk = 35
         versionCode = 1

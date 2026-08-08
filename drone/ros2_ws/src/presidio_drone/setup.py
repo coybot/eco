@@ -18,7 +18,7 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='Presidio Team',
-    maintainer_email='team@astral.ai',
+    maintainer_email='hello@presidioautonomy.com',
     description='Presidio drone ROS2 integration',
     license='Proprietary',
     tests_require=['pytest'],

@@ -48,7 +48,7 @@ def launch_bridge() -> Bridge:
     # Default to the model bake-off winner (see RESULTS_video_set.md) unless the caller
     # explicitly overrides it — see run_live_beats.py's launch_bridge() for why this
     # matters (an entire round of recordings silently used the wrong default model).
-    env = {**os.environ, "AWS_PROFILE": "astral",
+    env = {**os.environ, "AWS_PROFILE": "presidio",
            "BEDROCK_MODEL_ID": os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8")}
     proc = subprocess.Popen(
         [sys.executable, "-m", "e2e.harness.live_rover_act_bridge"],

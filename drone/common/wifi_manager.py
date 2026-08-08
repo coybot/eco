@@ -145,7 +145,7 @@ class WiFiManager:
         Password is regenerated after each successful WiFi configuration.
         """
         import secrets
-        password_file = Path("/var/lib/astral/hotspot_password")
+        password_file = Path("/var/lib/presidio/hotspot_password")
         
         # Try to read existing password
         try:
@@ -178,7 +178,7 @@ class WiFiManager:
     
     def regenerate_hotspot_password(self) -> str:
         """Force regeneration of hotspot password (call after successful WiFi setup)."""
-        password_file = Path("/var/lib/astral/hotspot_password")
+        password_file = Path("/var/lib/presidio/hotspot_password")
         try:
             if password_file.exists():
                 password_file.unlink()

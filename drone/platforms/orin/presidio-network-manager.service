@@ -1,5 +1,5 @@
 [Unit]
-Description=Astral Network Manager (Orin)
+Description=Presidio Network Manager (Orin)
 After=network-online.target
 Wants=network-online.target
 

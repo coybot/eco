@@ -33,7 +33,7 @@ git clone https://github.com/presidio-autonomy/clearkeep.git
 |------|-------------|
 | **eco** | Main platform: AWS backend (SAM), iOS app, drone daemon, website |
 | **sdk** | Open-source Python SDK for ArduPilot drones (`pip install presidio-sdk`) |
-| **docs** | Public docs site (Mintlify), rendered at astral.us/docs |
+| **docs** | Public docs site (Mintlify), rendered at presidioautonomy.com/docs |
 | **clearkeep** | Encrypted messaging (Rust): QUIC + Noise + MLS, with iOS client support |
 
 ## 2. AWS access
@@ -41,7 +41,7 @@ git clone https://github.com/presidio-autonomy/clearkeep.git
 You should have received an IAM invite for the `presidio` account (us-west-2). Configure your CLI:
 
 ```bash
-aws configure --profile astral
+aws configure --profile presidio
 # Region: us-west-2
 # Output: json
 ```
@@ -49,13 +49,13 @@ aws configure --profile astral
 Verify access:
 
 ```bash
-AWS_PROFILE=astral aws sts get-caller-identity
+AWS_PROFILE=presidio aws sts get-caller-identity
 ```
 
 The backend stack is called `drone-api`. To see its outputs (API endpoint, IoT endpoint, etc.):
 
 ```bash
-AWS_PROFILE=astral sam list stack-outputs --stack-name drone-api --region us-west-2
+AWS_PROFILE=presidio sam list stack-outputs --stack-name drone-api --region us-west-2
 ```
 
 ## 3. SDK quickstart
@@ -84,7 +84,7 @@ If you need to redeploy the SAM stack:
 
 ```bash
 cd eco/aws
-AWS_PROFILE=astral sam deploy \
+AWS_PROFILE=presidio sam deploy \
   --region us-west-2 \
   --capabilities CAPABILITY_IAM \
   --resolve-s3 \

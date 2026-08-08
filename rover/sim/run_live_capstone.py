@@ -14,7 +14,7 @@ Always produces capstone_full.mp4 from whatever frames were captured, even if th
 is interrupted (Ctrl-C or killed) partway — video isn't contingent on the mission
 reaching .done. Also always writes events.jsonl from Godot's own event log.
 
-This makes real, billed Bedrock calls (Claude Sonnet, via AWS_PROFILE=astral) — meant to
+This makes real, billed Bedrock calls (Claude Sonnet, via AWS_PROFILE=presidio) — meant to
 be run sparingly, not iterated on the way the free scripted-brain tests were.
 
 Usage: python3 run_live_capstone.py [--seed N] [--device "iPhone 17"] [--fps 2]
@@ -57,7 +57,7 @@ def launch_bridge() -> Bridge:
     # Default to the model bake-off winner (see RESULTS_video_set.md) unless the caller
     # explicitly overrides it — see run_live_beats.py's launch_bridge() for why this
     # matters (an entire round of recordings silently used the wrong default model).
-    env = {**os.environ, "AWS_PROFILE": "astral",
+    env = {**os.environ, "AWS_PROFILE": "presidio",
            "BEDROCK_MODEL_ID": os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8")}
     proc = subprocess.Popen(
         [sys.executable, "-m", "e2e.harness.live_rover_act_bridge"],

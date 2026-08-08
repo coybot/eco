@@ -34,12 +34,12 @@ Godot (rendered, TCP IPC :9999) ──engine_client──▶ sim_drone_daemon.py
   ```
   (Apple system Python 3.9 has no PyAV/aiortc wheels — use brew python ≥3.12.)
 - Xcode (iOS Simulator) and/or Android SDK + an AVD (e.g. `Pixel_10`).
-- `AWS_PROFILE=astral` with IoT/DynamoDB/Cognito access.
+- `AWS_PROFILE=presidio` with IoT/DynamoDB/Cognito access.
 
 ## 1. Provision a drone cert (same as a real drone)
 
 ```bash
-AWS_PROFILE=astral bash drone/sim/provision_sim_certs.sh sim-quadcopter-mac01
+AWS_PROFILE=presidio bash drone/sim/provision_sim_certs.sh sim-quadcopter-mac01
 # → ~/eco-certs-fleet/sim-quadcopter-mac01/{device.pem,private.key,root-ca.pem}
 ```
 Use an id you can register under your own app user. The deterministic `sim-quadcopter-001…010`
@@ -56,7 +56,7 @@ DRONES="sim-quadcopter-mac01:quadcopter" ENV=plaza bash drone/sim/launch_fleet_m
   which leaves per-vehicle camera SubViewports blank (no photos/video).
 - Verify Online in the cloud:
   ```bash
-  AWS_PROFILE=astral aws dynamodb get-item --region us-west-2 --table-name drone-status-dev \
+  AWS_PROFILE=presidio aws dynamodb get-item --region us-west-2 --table-name drone-status-dev \
     --key '{"droneId":{"S":"sim-quadcopter-mac01"}}' \
     --query 'Item.{status:status.S,ttl:ttl.N,variant:variant.S}'
   ```
@@ -65,7 +65,7 @@ DRONES="sim-quadcopter-mac01:quadcopter" ENV=plaza bash drone/sim/launch_fleet_m
 
 Smoke-test the command + perception path without the app (publishes what the cloud Lambda does):
 ```bash
-AWS_PROFILE=astral aws iot-data publish --region us-west-2 \
+AWS_PROFILE=presidio aws iot-data publish --region us-west-2 \
   --topic "drone/sim-quadcopter-mac01/chat/smoke/command" --cli-binary-format raw-in-base64-out \
   --payload '{"conversation_id":"smoke","action":"execute","code":"capture_photo(\"test\")"}' --qos 1
 # daemon log shows: exec on conv smoke → responded (success=True, imgs=1); JPEG lands in S3.
@@ -78,16 +78,16 @@ themselves via the onboarding dialog (`registerDrone` → `POST /drones`). For a
 a deterministic user:
 ```bash
 POOL=us-west-2_MkixOuF3S; CLIENT=4j965u17ohomik14cte9ni276h
-AWS_PROFILE=astral aws cognito-idp admin-create-user --region us-west-2 --user-pool-id $POOL \
-  --username simtest@astral.dev --message-action SUPPRESS \
-  --user-attributes Name=email,Value=simtest@astral.dev Name=email_verified,Value=true
-AWS_PROFILE=astral aws cognito-idp admin-set-user-password --region us-west-2 --user-pool-id $POOL \
-  --username simtest@astral.dev --password '${E2E_TEST_PASSWORD}' --permanent
+AWS_PROFILE=presidio aws cognito-idp admin-create-user --region us-west-2 --user-pool-id $POOL \
+  --username simtest@presidioautonomy.com --message-action SUPPRESS \
+  --user-attributes Name=email,Value=simtest@presidioautonomy.com Name=email_verified,Value=true
+AWS_PROFILE=presidio aws cognito-idp admin-set-user-password --region us-west-2 --user-pool-id $POOL \
+  --username simtest@presidioautonomy.com --password '${E2E_TEST_PASSWORD}' --permanent
 ```
 If re-running the onboarding test, clear the prior registry row first (direct delete avoids the
 factory-reset that the `DELETE /drones` API triggers):
 ```bash
-AWS_PROFILE=astral aws dynamodb delete-item --region us-west-2 --table-name drone-registry-dev \
+AWS_PROFILE=presidio aws dynamodb delete-item --region us-west-2 --table-name drone-registry-dev \
   --key '{"userId":{"S":"<TEST_USER_SUB>"},"droneId":{"S":"sim-quadcopter-mac01"}}'
 ```
 
@@ -100,7 +100,7 @@ checkout is missing it.)
 ```bash
 cd client/ios/DroneOperator
 export TEST_RUNNER_RUN_HEZARFEN_E2E=1 TEST_RUNNER_E2E_DRONE_ID=sim-quadcopter-mac01
-export TEST_RUNNER_E2E_EMAIL=simtest@astral.dev TEST_RUNNER_E2E_PASSWORD='${E2E_TEST_PASSWORD}'
+export TEST_RUNNER_E2E_EMAIL=simtest@presidioautonomy.com TEST_RUNNER_E2E_PASSWORD='${E2E_TEST_PASSWORD}'
 xcodebuild test -project DroneOperator.xcodeproj -scheme DroneOperator \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   -only-testing:DroneOperatorUITests/DroneOperatorUITests/testOnboard_addSimDrone_thenCommand \
@@ -118,7 +118,7 @@ adb wait-for-device
 ./gradlew :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.RUN_HEZARFEN_E2E=1 \
   -Pandroid.testInstrumentationRunnerArguments.E2E_DRONE_ID=sim-quadcopter-mac01 \
-  -Pandroid.testInstrumentationRunnerArguments.E2E_EMAIL=simtest@astral.dev \
+  -Pandroid.testInstrumentationRunnerArguments.E2E_EMAIL=simtest@presidioautonomy.com \
   -Pandroid.testInstrumentationRunnerArguments.E2E_PASSWORD=${E2E_TEST_PASSWORD}
 ```
 

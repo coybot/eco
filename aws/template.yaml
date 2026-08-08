@@ -11,13 +11,26 @@ Parameters:
     Default: drone-001
   GoogleClientId:
     Type: String
-    Default: "1023808862480-0meugvago280fchkbguebfb2e6ll17sp.apps.googleusercontent.com"
-    Description: Google OAuth Web Client ID for Cognito federation (must be Web type, not iOS)
+    Default: ""
+    Description: >-
+      Google OAuth Web Client ID for Cognito federation (must be Web type, not iOS).
+      No default on purpose: the astral-us deployment's client ID is registered in Google
+      Cloud Console against the com.astral.drone:// redirect URI, not
+      com.presidio.drone:// — reusing it as-is will fail the OAuth handshake. Either add
+      com.presidio.drone://callback and ://logout as additional redirect URIs on that
+      same Google Cloud OAuth client, or create a new one, then pass it via
+      --parameter-overrides GoogleClientId=<id>.
   GoogleClientSecret:
     Type: String
-    Default: "${GOOGLE_CLIENT_SECRET}"
+    Default: ""
     NoEcho: true
-    Description: Google OAuth Web Client Secret for Cognito federation
+    Description: >-
+      Google OAuth Web Client Secret for Cognito federation. No default on
+      purpose — pass it explicitly: --parameter-overrides GoogleClientSecret=<secret>
+      (or resolve from SSM: '{{resolve:ssm-secure:/presidio-drone-api/google-client-secret}}').
+      The astral-us deployment's secret was previously committed here as a plaintext
+      default; if you're reusing that Google OAuth client, rotate it in the Google
+      Cloud console before relying on it here.
   AppleServicesId:
     Type: String
     Default: ""
@@ -28,11 +41,14 @@ Parameters:
     Description: EC2 instance id of the on-demand Godot sim host (web simulator)
   SimHostBase:
     Type: String
-    Default: "https://sim.astral.us"
-    Description: Base URL the orchestrator uses to reach sim_session_server on the EC2 host
+    Default: "https://sim.presidioautonomy.com"
+    Description: >-
+      Base URL the orchestrator uses to reach sim_session_server on the EC2 host.
+      This subdomain must actually be created (Route53 record + running host) before
+      the default is meaningful — nothing at sim.presidioautonomy.com exists yet.
   SimPublicWss:
     Type: String
-    Default: "wss://sim.astral.us"
+    Default: "wss://sim.presidioautonomy.com"
     Description: Public WSS base the browser uses for the sim frame stream
   SimSharedSecret:
     Type: String
@@ -110,11 +126,11 @@ Resources:
         - Google
       CallbackURLs:
         - droneoperator://callback
-        - com.astral.drone://callback
+        - com.presidio.drone://callback
         - http://localhost:3000/callback
       LogoutURLs:
         - droneoperator://logout
-        - com.astral.drone://logout
+        - com.presidio.drone://logout
         - http://localhost:3000/logout
       AllowedOAuthFlows:
         - code

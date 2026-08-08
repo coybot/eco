@@ -56,7 +56,7 @@ Godot 4 (headless, DISPLAY=:99)
 Register all five in DynamoDB before first use:
 
 ```bash
-AWS_PROFILE=astral python3 eco/drone/sim/register_sim_drones.py
+AWS_PROFILE=presidio python3 eco/drone/sim/register_sim_drones.py
 ```
 
 ## Config

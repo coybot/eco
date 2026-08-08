@@ -439,16 +439,16 @@ WantedBy=multi-user.target
 EOF
 
 # Create network manager service (if template exists)
-if [ -f "$DRONE_DIR/platforms/orin/astral-network-manager.service" ]; then
-    sudo tee "/etc/systemd/system/astral-network-manager.service" > /dev/null <<EOF
-$(cat "$DRONE_DIR/platforms/orin/astral-network-manager.service")
+if [ -f "$DRONE_DIR/platforms/orin/presidio-network-manager.service" ]; then
+    sudo tee "/etc/systemd/system/presidio-network-manager.service" > /dev/null <<EOF
+$(cat "$DRONE_DIR/platforms/orin/presidio-network-manager.service")
 EOF
 fi
 
 # Create local control API service (if template exists)
-if [ -f "$DRONE_DIR/platforms/orin/astral-local-control.service" ]; then
-    sudo tee "/etc/systemd/system/astral-local-control.service" > /dev/null <<EOF
-$(cat "$DRONE_DIR/platforms/orin/astral-local-control.service")
+if [ -f "$DRONE_DIR/platforms/orin/presidio-local-control.service" ]; then
+    sudo tee "/etc/systemd/system/presidio-local-control.service" > /dev/null <<EOF
+$(cat "$DRONE_DIR/platforms/orin/presidio-local-control.service")
 EOF
 fi
 
@@ -470,14 +470,14 @@ if [ "$START_AFTER_INSTALL" = true ]; then
     sudo systemctl start drone-api
     
     # Start optional services if they exist
-    if [ -f "/etc/systemd/system/astral-network-manager.service" ]; then
-        sudo systemctl enable astral-network-manager
-        sudo systemctl start astral-network-manager
+    if [ -f "/etc/systemd/system/presidio-network-manager.service" ]; then
+        sudo systemctl enable presidio-network-manager
+        sudo systemctl start presidio-network-manager
     fi
     
-    if [ -f "/etc/systemd/system/astral-local-control.service" ]; then
-        sudo systemctl enable astral-local-control
-        sudo systemctl start astral-local-control
+    if [ -f "/etc/systemd/system/presidio-local-control.service" ]; then
+        sudo systemctl enable presidio-local-control
+        sudo systemctl start presidio-local-control
     fi
     
     echo ""

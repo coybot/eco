@@ -11,8 +11,8 @@
 - `drone/common/network_manager.yaml.example` (config)
 - `drone/common/local_control_api.py` (local HTTPS API)
 - `drone/common/mission_runner.py` (mission state + ROS2/MAVROS stub)
-- `drone/platforms/orin/astral-network-manager.service` (systemd unit)
-- `drone/platforms/orin/astral-local-control.service` (systemd unit)
+- `drone/platforms/orin/presidio-network-manager.service` (systemd unit)
+- `drone/platforms/orin/presidio-local-control.service` (systemd unit)
 - `client/ios/DroneOperator/DroneOperator/Models/Mission.swift` (schema)
 - `client/ios/DroneOperator/DroneOperator/Services/LocalDroneControlClient.swift`
 - `client/ios/DroneOperator/DroneOperator/Services/LocalLLMService.swift`
@@ -50,7 +50,7 @@ AP defaults:
 Transport: HTTPS (self‑signed cert generated on first run).
 
 Auth:
-- Pairing token stored at `/var/lib/astral/pairing_token.json`.
+- Pairing token stored at `/var/lib/presidio/pairing_token.json`.
 - Client sends `Authorization: Bearer <token>`.
 
 Endpoints:
@@ -69,7 +69,7 @@ Mission schema:
 ```
 
 Mission execution is routed through `mission_runner.py`, which toggles
-`/var/lib/astral/mission_active.json` to keep AP alive during flight.
+`/var/lib/presidio/mission_active.json` to keep AP alive during flight.
 
 ## iOS app behavior
 - Joins the drone AP via `NEHotspotConfigurationManager` (join once, remember).

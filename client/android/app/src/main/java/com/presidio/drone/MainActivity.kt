@@ -1,4 +1,4 @@
-package com.astral.drone
+package com.presidio.drone
 
 import android.content.Context
 import android.os.Bundle
@@ -74,7 +74,7 @@ private const val COGNITO_REGION = "us-west-2"
 private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
 private const val COGNITO_URL = "https://cognito-idp.$COGNITO_REGION.amazonaws.com/"
 private const val COGNITO_HOSTED_UI = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"
-private const val OAUTH_REDIRECT_URI = "com.astral.drone://callback"
+private const val OAUTH_REDIRECT_URI = "com.presidio.drone://callback"
 private const val PREFS_NAME = "presidio_drone_prefs"
 
 // ============================================================
@@ -1388,7 +1388,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: android.content.Intent) {
         val data = intent.data ?: return
-        if (data.scheme == "com.astral.drone" && data.host == "callback") {
+        if (data.scheme == "com.presidio.drone" && data.host == "callback") {
             val code = data.getQueryParameter("code") ?: return
             vm.handleOAuthCallback(code)
         }
