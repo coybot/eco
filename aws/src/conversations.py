@@ -17,14 +17,19 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import boto3
-from botocore.config import Config as BotoConfig
 
-# AWS clients
-dynamodb = boto3.resource('dynamodb')
+import llm
+import clients
+
+# AWS clients (real boto3 by default; clients.configure() lets a GCS process
+# inject local stand-ins before this module is imported - see clients.py)
+dynamodb = clients.get_dynamodb()
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
 STATUS_TTL_SECONDS = int(os.environ.get("STATUS_TTL_SECONDS", "30"))
 
 # Bedrock model - Claude 4.5 Sonnet via cross-region inference profile
+# (only used by the bedrock LLM provider; see llm.py - the openai provider
+# resolves its own model via LLM_MODEL / endpoint auto-discovery instead)
 BEDROCK_MODEL_ID = os.environ.get(
     "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"
 )
@@ -33,13 +38,8 @@ BEDROCK_CODE_MODEL_ID = os.environ.get(
     "BEDROCK_CODE_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0"
 )
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
-bedrock = boto3.client('bedrock-runtime', region_name=AWS_REGION)
-iot = boto3.client('iot-data', region_name=AWS_REGION)
-s3 = boto3.client(
-    's3', 
-    region_name=AWS_REGION,
-    config=BotoConfig(signature_version='s3v4')
-)
+iot = clients.get_iot()
+s3 = clients.get_s3()
 
 # Pre-signed URL expiration (24 hours)
 PRESIGNED_URL_EXPIRATION = 86400
@@ -608,17 +608,7 @@ def call_agent(conversation_history, user_message, pending_images=None):
     messages.append({'role': 'user', 'content': user_content})
     
     try:
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps({
-                'anthropic_version': ANTHROPIC_VERSION,
-                'system': AGENT_SYSTEM_PROMPT,
-                'messages': messages,
-                'max_tokens': 1024
-            })
-        )
-        
-        result = json.loads(response['body'].read())
+        result = llm.invoke(AGENT_SYSTEM_PROMPT, messages, max_tokens=1024, model=BEDROCK_MODEL_ID)
         response_text = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -650,25 +640,16 @@ def generate_code(instruction, conversation_id, drone_id=None, vehicle_type=None
     else:
         system_prompt = get_code_system_prompt(drone_id) if drone_id else CODE_SYSTEM_PROMPT
     try:
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps({
-                'anthropic_version': ANTHROPIC_VERSION,
-                'system': system_prompt,
-                'messages': [
-                    {
-                        'role': 'user',
-                        'content': [{
-                            'type': 'text',
-                            'text': f"CONVERSATION_ID = '{conversation_id}'\n\nCommand: {instruction}"
-                        }]
-                    }
-                ],
-                'max_tokens': 1024
-            })
-        )
-        
-        result = json.loads(response['body'].read())
+        messages = [
+            {
+                'role': 'user',
+                'content': [{
+                    'type': 'text',
+                    'text': f"CONVERSATION_ID = '{conversation_id}'\n\nCommand: {instruction}"
+                }]
+            }
+        ]
+        result = llm.invoke(system_prompt, messages, max_tokens=1024, model=BEDROCK_MODEL_ID)
         code = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -921,17 +902,7 @@ def call_mission_agent(conversation_history, user_message, pending_images=None):
     messages.append({'role': 'user', 'content': user_content})
     
     try:
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps({
-                'anthropic_version': ANTHROPIC_VERSION,
-                'system': MISSION_SYSTEM_PROMPT,
-                'messages': messages,
-                'max_tokens': 2048  # Missions can be longer
-            })
-        )
-        
-        result = json.loads(response['body'].read())
+        result = llm.invoke(MISSION_SYSTEM_PROMPT, messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
         response_text = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -1717,19 +1688,11 @@ THE DRONE IS ASKING:
 Provide brief, actionable advice (1-3 sentences). Don't give specific code - give guidance the drone can use to figure out what to do next."""
 
     try:
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps({
-                'anthropic_version': ANTHROPIC_VERSION,
-                'system': 'You are helping a drone that is stuck while executing an autonomous task. Provide brief, practical advice.',
-                'messages': [
-                    {'role': 'user', 'content': [{'type': 'text', 'text': advice_prompt}]}
-                ],
-                'max_tokens': 256
-            })
+        messages = [{'role': 'user', 'content': [{'type': 'text', 'text': advice_prompt}]}]
+        result = llm.invoke(
+            'You are helping a drone that is stuck while executing an autonomous task. Provide brief, practical advice.',
+            messages, max_tokens=256, model=BEDROCK_MODEL_ID
         )
-        
-        result = json.loads(response['body'].read())
         advice = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -1794,7 +1757,7 @@ def upload_url_handler(event, context):
     )
     
     # Public URL for viewing
-    image_url = f'https://{IMAGES_BUCKET}.s3.amazonaws.com/{s3_key}'
+    image_url = clients.public_image_url(s3_key)
     
     return json_response(200, {
         'upload_url': upload_url,

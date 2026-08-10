@@ -1,11 +1,11 @@
 import json
 import os
-import boto3
+
+import llm
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-5")
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
-bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 RAMP_AGENT_SYSTEM_PROMPT = """You are the voice of an autonomous baggage-handling robot working \
 the ramp at Hawthorne Airport, moving luggage to and from aircraft. You are only reached for \
@@ -62,24 +62,14 @@ def converse_handler(event, context):
         return json_response(400, {"error": "Missing utterance"})
 
     try:
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps({
-                "anthropic_version": ANTHROPIC_VERSION,
-                "system": RAMP_AGENT_SYSTEM_PROMPT,
-                "messages": [
-                    {"role": "user", "content": [{"type": "text", "text": utterance}]}
-                ],
-                "max_tokens": 200,
-            }),
-        )
-        result = json.loads(response["body"].read())
+        messages = [{"role": "user", "content": [{"type": "text", "text": utterance}]}]
+        result = llm.invoke(RAMP_AGENT_SYSTEM_PROMPT, messages, max_tokens=200, model=BEDROCK_MODEL_ID)
         reply = "".join(
             block.get("text", "") for block in result.get("content", [])
             if block.get("type") == "text"
         ).strip()
     except Exception as e:
-        return json_response(500, {"error": f"Bedrock error: {str(e)}"})
+        return json_response(500, {"error": f"LLM error: {str(e)}"})
 
     return json_response(200, {"reply": reply or "Sorry, I didn't catch that."})
 
@@ -335,25 +325,18 @@ def act_handler(event, context):
     content.append({"type": "text", "text": _describe_mission(body)})
 
     try:
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps({
-                "anthropic_version": ANTHROPIC_VERSION,
-                "system": MISSION_AGENT_SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": content}],
-                "tools": [DECIDE_TOOL],
-                "tool_choice": {"type": "tool", "name": "decide"},
-                "max_tokens": 700,
-            }),
+        messages = [{"role": "user", "content": content}]
+        result = llm.invoke(
+            MISSION_AGENT_SYSTEM_PROMPT, messages, max_tokens=700, model=BEDROCK_MODEL_ID,
+            tools=[DECIDE_TOOL], tool_choice={"type": "tool", "name": "decide"},
         )
-        result = json.loads(response["body"].read())
         decision = next(
             (block["input"] for block in result.get("content", [])
              if block.get("type") == "tool_use" and block.get("name") == "decide"),
             None,
         )
     except Exception as e:
-        return json_response(500, {"error": f"Bedrock error: {str(e)}"})
+        return json_response(500, {"error": f"LLM error: {str(e)}"})
 
     if not decision or "action" not in decision:
         return json_response(200, {"action": "say", "text": "Sorry, I'm not sure what to do next."})
