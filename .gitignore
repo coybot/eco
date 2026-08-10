@@ -108,3 +108,10 @@ drone/sim/gate_out/frames/
 drone/sim/gate_out_*/frames/
 # Recorded demo takes: thousands of JPEGs per take, regenerable from a seed.
 drone/sim/takes/
+
+# Experiment render output — large, regenerable, and not referenced by any code
+# or docs. Stripped from history; keep them out. (videos_phrover/ is NOT ignored:
+# rover/sim/*.py writes to it and rover/docs references it.)
+videos_hetero_v1/
+videos_hetero_v2/
+videos_decomposed/
