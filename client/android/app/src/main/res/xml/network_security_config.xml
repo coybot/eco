@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GCS (Ground Control Station) mode talks to a box on the operator's local
+  network over plain HTTP (see eco/gcs/README.md - the GCS's own HTTP API has
+  no TLS option by default). Android blocks cleartext traffic app-wide by
+  default since API 28, so without this config ApiClient's GCS-mode calls
+  fail with a NetworkSecurityException, not a normal/debuggable connection
+  error.
+
+  This is a blanket cleartextTrafficPermitted="true", not scoped to specific
+  hosts: the GCS host is arbitrary user-entered text (a LAN IP like
+  192.168.1.50, or a hostname), and NetworkSecurityConfig's domain-config only
+  matches literal hostnames, not IP/CIDR ranges - there is no way to express
+  "any private-network address" here. The residual risk is bounded in
+  practice: every other URL this app calls is a hardcoded https:// literal
+  (API_BASE, COGNITO_URL, COGNITO_HOSTED_UI) - this config only matters for
+  requests actually built from the user-entered GCS host, i.e. it doesn't
+  downgrade any existing traffic to cleartext, it only stops a plain-HTTP
+  local request from being blocked outright.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
