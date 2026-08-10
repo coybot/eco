@@ -1,0 +1,41 @@
+# GCS (Ground Control Station) server config.
+#
+# Copy to config.yaml and adjust. Every field has a working default, so a bare
+# `python3 -m gcs.server` (no --config at all) already works against a
+# mosquitto broker on localhost:1883 and an OpenAI-compatible model server on
+# localhost:11434/v1 (Ollama's default).
+
+# Where the GCS keeps its SQLite "DynamoDB", uploaded images, device shadows,
+# and pairing tokens. Created on first run.
+data_dir: ~/gcs-data
+
+http:
+  host: 0.0.0.0     # apps on the LAN connect here
+  port: 8080
+
+mqtt:
+  host: 127.0.0.1   # the mosquitto broker the GCS itself connects to
+  port: 1883
+  username: gcs-server
+  password: null    # set to match mosquitto's password file (see gen_mosquitto_auth.sh)
+  tls: false
+  ca_cert: null      # path to the self-signed CA, only used when tls: true
+
+llm:
+  provider: openai              # openai = local vLLM/Ollama; bedrock only makes sense in cloud mode
+  base_url: http://localhost:11434/v1   # Ollama default; vLLM's OpenAI server usually serves :8000/v1
+  model: null                    # null = auto-discover via GET {base_url}/models (first model listed)
+  api_key: null                  # only needed if your local server requires one
+  timeout_s: 60
+
+# Named operators - each gets a pairing token generated on first run and
+# printed to the console (also saved in <data_dir>/auth.json). The iOS/Android
+# app's "Ground Control Station" settings screen takes this token.
+operators:
+  - operator1
+
+# Optional: override the DynamoDB-equivalent table names aws/src resolves via
+# env vars (DRONE_TABLE, STATUS_TABLE, LOGS_TABLE, CONVERSATIONS_TABLE,
+# GROUPS_TABLE). Leave empty to use the same defaults the cloud Lambdas use -
+# gcs/local_aws.py already knows the key schema for those defaults.
+tables: {}

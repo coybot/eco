@@ -1,0 +1,9 @@
+paho-mqtt>=2.0
+PyYAML>=6.0
+# aws/src's handler modules import boto3 at module scope even in GCS mode -
+# conversations.py/drones.py/groups.py use boto3.dynamodb.conditions.Key/Attr
+# as plain client-side condition-builder objects (no AWS account or network
+# access needed for that; drones.py's control-plane `iot` client is also
+# still constructed but never called in GCS mode - see clients.py). This is a
+# real but lightweight, offline-safe dependency, not a live AWS requirement.
+boto3>=1.28
