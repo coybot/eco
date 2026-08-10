@@ -1,5 +1,18 @@
 # Offline-First Drone Control (Presidio)
 
+This describes the **phone-hosted** offline path: a Core ML model on the iOS
+app itself plans missions, sent as structured JSON only (no natural-language
+chat) over a direct AP-mode HTTPS connection to the drone - no other box
+involved at all.
+
+There is a second, different offline option: a **Ground Control Station**
+(see `gcs/README.md`) - a separate PC/Mac/NVIDIA Thor on the network running
+a real LLM (Ollama/vLLM) and the same MQTT/REST flow as the cloud path (see
+`COMMAND_FLOW.md`), just pointed at a local model instead of Bedrock. Use
+this doc's phone-hosted path when there's no other hardware and only
+structured commands are needed; use a GCS when you want full natural-language
+chat and/or multiple drones served from one place.
+
 ## Goals
 - iOS app is the strategic brain (local LLM + optional vision).
 - Orin Nano is the tactical executor (ROS2 + MAVROS).
