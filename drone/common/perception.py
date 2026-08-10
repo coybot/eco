@@ -103,8 +103,8 @@ class DistanceEstimator:
         'dog': 0.5,
         'cat': 0.25,
         'bird': 0.15,
-        # Added for OpenVocabDetector's default vocabulary (change D) — an
-        # open-vocab target noun that isn't in COCO would otherwise silently
+        # Wider-than-COCO size priors — a target noun that isn't in COCO
+        # would otherwise silently
         # fall through to the generic 1.0m default below, which is a
         # meaningfully worse distance estimate for something car-sized or
         # building-sized than a real (if rough) per-class guess. Rough
@@ -447,88 +447,21 @@ class TensorRTDetector:
         return intersection / union if union > 0 else 0.0
 
 
-# Default open-vocabulary target classes for outdoor/aerial survey use — a
-# reasonable general starting vocabulary, not exhaustive. Extend at runtime
-# via OpenVocabDetector.set_classes() for a specific mission's target (e.g. a
-# COUNT action's target_object that isn't in this default list) without
-# reloading model weights.
-OPEN_VOCAB_DEFAULT_CLASSES = [
-    'person', 'car', 'truck', 'bicycle', 'motorcycle', 'bus', 'boat',
-    'animal', 'building', 'tree',
-]
-
-
-class OpenVocabDetector:
-    """
-    Open-vocabulary object detector (YOLO-World via the `ultralytics`
-    package) — the SAME .detect(rgb_frame) -> [(label, confidence, bbox)]
-    contract as TensorRTDetector (perception.py's PerceptionService.detect()
-    calls whichever detector is loaded identically either way), so
-    backends.py/reasoning_loop.py/SpatialMemory are completely unaffected by
-    which one is actually in use. This is change D of the fixed-wing
-    autonomy plan: TensorRTDetector's fixed 80/9-class head can't take an
-    arbitrary noun from a free-form command ("count the generators"); this
-    class can, via set_classes().
-
-    STATUS: this class's own logic (postprocessing ultralytics' Results
-    object into the shared (label, confidence, bbox) tuple shape) is
-    verified against a mock model matching ultralytics' real Results API —
-    it has NOT been run against real YOLO-World weights or benchmarked for
-    latency in this dev session (that needs either the target Jetson Orin NX
-    or a deliberate ~2GB+ local install of `ultralytics`+torch, neither of
-    which happened here — this Mac isn't the real target platform anyway).
-    Per the plan's M1, the actual model choice (this vs. Florence-2/
-    GroundingDINO) and viability are decided by a real on-NX latency
-    benchmark, not assumed by this code.
-    """
-
-    DEFAULT_MODEL_NAME = "yolov8s-worldv2.pt"  # ultralytics auto-downloads on first load
-
-    def __init__(self, model_path: str = None, classes: list = None,
-                 confidence_threshold: float = 0.35):
-        self.confidence_threshold = confidence_threshold
-        self.classes = list(classes) if classes else list(OPEN_VOCAB_DEFAULT_CLASSES)
-        self._model = None
-        self._load_model(model_path)
-
-    def _load_model(self, model_path: str = None):
-        from ultralytics import YOLO  # heavy (torch) import — deliberately lazy
-        self._model = YOLO(model_path or self.DEFAULT_MODEL_NAME)
-        self._model.set_classes(self.classes)
-
-    def set_classes(self, classes: list) -> None:
-        """Update the open-vocabulary target list at runtime without
-        reloading model weights — the mechanism a mission's specific target
-        (e.g. a COUNT action's target_object) becomes a real detection class."""
-        self.classes = list(classes)
-        if self._model is not None:
-            self._model.set_classes(self.classes)
-
-    def detect(self, rgb_frame: np.ndarray) -> list[tuple]:
-        """Same contract as TensorRTDetector.detect(): [(label, confidence, bbox)]."""
-        results = self._model.predict(rgb_frame, conf=self.confidence_threshold, verbose=False)
-        return self._postprocess(results)
-
-    def _postprocess(self, results) -> list[tuple]:
-        """Convert ultralytics' Results list into the shared tuple shape.
-        Split out from detect() so it's testable against a mock Results
-        object without needing real model weights loaded (see this class's
-        STATUS note)."""
-        if not results:
-            return []
-        r = results[0]
-        boxes = r.boxes
-        if boxes is None or len(boxes) == 0:
-            return []
-        names = r.names  # class_id -> label, reflects set_classes()'s order
-        detections = []
-        for box in boxes:
-            cls_id = int(box.cls[0])
-            label = names[cls_id] if isinstance(names, dict) else names[int(cls_id)]
-            confidence = float(box.conf[0])
-            x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
-            detections.append((label, confidence, (x1, y1, x2, y2)))
-        return detections
+# Open-vocabulary detection is not shipped.
+#
+# This previously ran YOLO-World through the `ultralytics` package. That
+# package is AGPL-3.0: importing it here made the distributed result a combined
+# work under a licence incompatible with this project's Apache-2.0 terms.
+# Detection now runs entirely through TensorRTDetector above, which uses ONNX
+# Runtime (or TensorRT) over exported weights and carries no such restriction.
+#
+# Re-adding open-vocabulary detection on ONNX Runtime is possible, but it is not
+# a drop-in swap. An open-vocab head scores image regions against *text*
+# embeddings, so it needs both the vision model and a text encoder exported to
+# ONNX, and set_classes() has to become "recompute text embeddings for the new
+# class list" rather than a cheap attribute update. Choose a model whose licence
+# permits redistribution: exporting weights to ONNX does not change their
+# licence.
 
 
 class PerceptionService:
@@ -539,19 +472,14 @@ class PerceptionService:
     for the on-device reasoning LLM.
     """
     
-    def __init__(self, confidence_threshold: float = 0.5, prefer_open_vocab: bool = True):
+    def __init__(self, confidence_threshold: float = 0.5, prefer_open_vocab: bool = False):
         """
         Initialize perception service.
 
         Args:
             confidence_threshold: Minimum confidence for detections
-            prefer_open_vocab: Try OpenVocabDetector (change D) first — needed
-                for a free-form command's arbitrary target noun to become a
-                real detection class. Falls back to the fixed-class
-                TensorRTDetector (domain/COCO YOLO) if `ultralytics` isn't
-                installed or its weights aren't available, so this is safe to
-                leave True even where open-vocab hasn't been set up yet (e.g.
-                this dev machine — see OpenVocabDetector's STATUS docstring).
+            prefer_open_vocab: Accepted for backward compatibility and
+                ignored — open-vocabulary detection is not shipped.
         """
         self.detector = None
         self.distance_estimator = DistanceEstimator()
@@ -562,21 +490,13 @@ class PerceptionService:
         self._last_detection_time = 0
 
     def _get_detector(self):
-        """Lazy-load detector — OpenVocabDetector first if preferred and
-        available, else the fixed-class TensorRTDetector."""
+        """Lazy-load the ONNX Runtime / TensorRT detector."""
         if self.detector is None:
             if self.prefer_open_vocab:
-                try:
-                    self.detector = OpenVocabDetector()
-                    print(f"Loaded open-vocabulary detector "
-                          f"(classes: {self.detector.classes})")
-                except Exception as e:
-                    # ImportError (ultralytics not installed) or a weights-
-                    # download/load failure — either way, fall through to the
-                    # fixed-class detector rather than disable detection
-                    # entirely (open-vocab is preferred, not required).
-                    print(f"Open-vocabulary detector unavailable ({e}), "
-                          f"falling back to fixed-class detector")
+                # Kept in the signature so existing callers don't break, but it
+                # can no longer be honoured — see the note above PerceptionService.
+                print("Open-vocabulary detection is not available in this build; "
+                      "using the fixed-class detector.")
             if self.detector is None:
                 try:
                     self.detector = TensorRTDetector(

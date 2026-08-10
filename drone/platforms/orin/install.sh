@@ -262,7 +262,11 @@ if ! pip install onnxruntime-gpu 2>/dev/null; then
         || pip install onnxruntime 2>/dev/null \
         || echo "  ⚠️  onnxruntime not installed - perception may fall back to CPU or be unavailable"
 fi
-pip install opencv-python-headless numpy ultralytics huggingface_hub
+# `ultralytics` is deliberately NOT installed here. Perception runs on ONNX
+# Runtime / TensorRT and does not import it. It is AGPL-3.0 and is only needed
+# to EXPORT yolov8*.onnx from .pt weights (drone/models/setup_models.py) — do
+# that on a build machine, or install it there yourself, and copy the .onnx over.
+pip install opencv-python-headless numpy huggingface_hub
 
 # Grounding DINO (run_prompt.py) — torch wheel is platform-specific; install may skip on failure
 echo "Installing optional HF / Track A dependencies..."
