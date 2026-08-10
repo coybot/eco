@@ -10,9 +10,13 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
 
-dynamodb = boto3.resource('dynamodb')
+import clients
+
+dynamodb = clients.get_dynamodb()
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
-iot_data = boto3.client('iot-data', region_name=AWS_REGION)
+iot_data = clients.get_iot()
+# Control-plane IoT client (Cognito identity <-> IoT policy attach/detach) -
+# cloud-only, no GCS equivalent, intentionally NOT routed through clients.py.
 iot = boto3.client('iot', region_name=AWS_REGION)
 DRONE_TABLE = os.environ.get('DRONE_TABLE', 'drone-registry-dev')
 STATUS_TABLE = os.environ.get('STATUS_TABLE', 'drone-status-dev')
