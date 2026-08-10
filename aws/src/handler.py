@@ -1,15 +1,16 @@
 import json
 import os
-import boto3
+
+import llm
+import clients
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
 BEDROCK_MODEL_ID = os.environ.get(
     "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"
 )
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
-bedrock = boto3.client('bedrock-runtime', region_name=AWS_REGION)
-iot = boto3.client('iot-data', region_name=AWS_REGION)
-dynamodb = boto3.resource('dynamodb')
+iot = clients.get_iot()
+dynamodb = clients.get_dynamodb()
 
 DRONE_TABLE = os.environ.get('DRONE_TABLE', 'drone-registry-dev')
 
@@ -196,22 +197,14 @@ def lambda_handler(event, context):
     if not verify_ownership(user_id, drone_id):
         return json_response(403, {'error': 'You do not own this drone'})
     
-    # Generate code with Claude via Bedrock
+    # Generate code with the configured LLM (Bedrock by default, or a local
+    # GCS model when LLM_PROVIDER=openai)
     try:
         system_prompt = get_system_prompt(drone_id)
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps({
-                "anthropic_version": ANTHROPIC_VERSION,
-                "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": [{"type": "text", "text": f"Command: {command}"}]}
-                ],
-                "max_tokens": 1024
-            })
-        )
-        
-        result = json.loads(response['body'].read())
+        messages = [
+            {"role": "user", "content": [{"type": "text", "text": f"Command: {command}"}]}
+        ]
+        result = llm.invoke(system_prompt, messages, max_tokens=1024, model=BEDROCK_MODEL_ID)
         code = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -223,7 +216,7 @@ def lambda_handler(event, context):
             code = '\n'.join(lines[1:-1] if lines[-1] == '```' else lines[1:])
         
     except Exception as e:
-        return json_response(500, {'error': f'Bedrock error: {str(e)}'})
+        return json_response(500, {'error': f'LLM error: {str(e)}'})
     
     # Publish to drone via IoT Core
     try:
