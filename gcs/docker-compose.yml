@@ -1,0 +1,27 @@
+# Optional convenience for running the mosquitto broker in a container instead
+# of a native install. The GCS server itself (gcs/server.py) is NOT
+# containerized here on purpose - it needs to reach whichever port your local
+# Ollama/vLLM is actually listening on, and that's simplest run directly on
+# the host (PC/Mac/NVIDIA Thor). See README.md for the native quickstart,
+# which is the path this repo actually verifies end-to-end
+# (gcs/tests/test_local_stack.py runs mosquitto natively, not via Docker).
+#
+# NOTE: mosquitto.conf's `password_file mosquitto/passwd` path is relative to
+# mosquitto's working directory, not necessarily to this compose file's mount
+# point - if the container's default workdir isn't /mosquitto/config, pass an
+# absolute path (e.g. rewrite to /mosquitto/config/passwd) before relying on
+# this for anything beyond local experimentation.
+#
+# Usage:
+#   docker compose -f gcs/docker-compose.yml up mosquitto
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./mosquitto/data:/mosquitto/data
+    command: ["mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
