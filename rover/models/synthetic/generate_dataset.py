@@ -1,4 +1,4 @@
-"""Step 2: composite cutouts onto the real HHR background to build a YOLO-format
+"""Step 2: composite cutouts onto the real airport ramp background to build a YOLO-format
 fine-tuning dataset for ramp-specific classes (baggage_cart, tug) that generic COCO
 doesn't have. `suitcase`/`person` are already COCO classes (id 28 / 0) and detect fine
 out of the box — see eco/rover/models/README.md — so they aren't the fine-tuning target
@@ -14,7 +14,13 @@ from pathlib import Path
 from PIL import Image, ImageEnhance, ImageFilter
 
 ROOT = Path(__file__).parent
-BG_SRC = ROOT / "hhr_source" / "Hawthorne_Municipal_Airport_-_Los_Angeles-01.jpg"
+BG_DIR = ROOT / "bg_source"
+# The background directory holds exactly one ground-level ramp photo (see README.md);
+# pick it by extension rather than hardcoding a filename.
+BG_SRC = next(
+    (p for p in sorted(BG_DIR.glob("*")) if p.suffix.lower() in {".jpg", ".jpeg", ".png"}),
+    None,
+)
 CUTOUTS = ROOT / "cutouts"
 OUT = ROOT / "dataset"
 
@@ -109,6 +115,8 @@ def to_yolo_line(class_id: int, box, img_w: int, img_h: int) -> str:
 def make_background_variants(n: int):
     """Cheap diversity from the single real source photo: a few different crop
     windows/flips. Still fundamentally one photograph — see README caveats."""
+    if BG_SRC is None:
+        raise SystemExit(f"No background image found in {BG_DIR} — see README.md")
     base = Image.open(BG_SRC).convert("RGB")
     variants = []
     w, h = base.size

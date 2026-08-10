@@ -29,13 +29,13 @@ data" below for how to bootstrap one without hand-labeling real ramp photos.
 
 **Cut-paste compositing is built and verified** — see `synthetic/README.md` for the full
 pipeline, sources, and honest limitations. Short version: real cutouts (a tug, baggage
-carts, suitcases — sourced from Wikimedia Commons, only one photo is actually of HHR)
-composited onto the one real ground-level HHR photo found, with randomized
+carts, suitcases — sourced from Wikimedia Commons, only one photo is actually of the
+target airport) composited onto the one real ground-level airport photo found, with randomized
 position/scale/rotation. Fine-tuned YOLOv8n for 15 epochs (val mAP50 ≈ 0.95, though that
 number reflects the synthetic distribution, not real-world generalization — see the
 limitations section), verified with real inference on a held-out image, exported to
 CoreML. **Not wired into the app** — treat as a validated pipeline, not a shippable model;
-the biggest next step is real photos taken at HHR itself.
+the biggest next step is real photos taken at the target airport itself.
 
 Two other options remain open, roughly in order of effort beyond compositing:
 1. **Isaac Sim procedural rendering** — eco already has an Isaac Sim pipeline (see the L5

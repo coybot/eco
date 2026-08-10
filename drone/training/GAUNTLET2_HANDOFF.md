@@ -145,7 +145,7 @@ on the gauntlet2 geometry distribution.
 - Model: `eco/drone/models/policy_v4_dr.onnx` (ONNX self-normalizes; ~114 KB; Orin TensorRT path).
 
 ## Training box (hoopoe = dual RTX 5090; NO A100)
-SSH: `sshpass -p 'sayplease' ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new yusuf@hoopoe`
+SSH: `sshpass -p "$HOOPOE_SSH_PASSWORD" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new yusuf@hoopoe`
 - Isaac/torch python: `/opt/ml/isaac-sim-env/bin/python3` (has numpy, onnxruntime, pymavlink).
 - Training package synced to `~/presidio-training/`; run as `cd ~/presidio-training && PYTHONPATH=. <py> -m eco.drone.training.<mod>`.
 - Models staged at `/home/yusuf/models/`.

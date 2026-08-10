@@ -82,7 +82,7 @@ AWS_PROFILE=presidio aws cognito-idp admin-create-user --region us-west-2 --user
   --username simtest@presidioautonomy.com --message-action SUPPRESS \
   --user-attributes Name=email,Value=simtest@presidioautonomy.com Name=email_verified,Value=true
 AWS_PROFILE=presidio aws cognito-idp admin-set-user-password --region us-west-2 --user-pool-id $POOL \
-  --username simtest@presidioautonomy.com --password 'SimTest!2026' --permanent
+  --username simtest@presidioautonomy.com --password '"$SIM_TEST_PASSWORD"' --permanent
 ```
 If re-running the onboarding test, clear the prior registry row first (direct delete avoids the
 factory-reset that the `DELETE /drones` API triggers):
@@ -100,7 +100,7 @@ checkout is missing it.)
 ```bash
 cd client/ios/DroneOperator
 export TEST_RUNNER_RUN_HEZARFEN_E2E=1 TEST_RUNNER_E2E_DRONE_ID=sim-quadcopter-mac01
-export TEST_RUNNER_E2E_EMAIL=simtest@presidioautonomy.com TEST_RUNNER_E2E_PASSWORD='SimTest!2026'
+export TEST_RUNNER_E2E_EMAIL=simtest@presidioautonomy.com TEST_RUNNER_E2E_PASSWORD='"$SIM_TEST_PASSWORD"'
 xcodebuild test -project DroneOperator.xcodeproj -scheme DroneOperator \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   -only-testing:DroneOperatorUITests/DroneOperatorUITests/testOnboard_addSimDrone_thenCommand \
@@ -119,7 +119,7 @@ adb wait-for-device
   -Pandroid.testInstrumentationRunnerArguments.RUN_HEZARFEN_E2E=1 \
   -Pandroid.testInstrumentationRunnerArguments.E2E_DRONE_ID=sim-quadcopter-mac01 \
   -Pandroid.testInstrumentationRunnerArguments.E2E_EMAIL=simtest@presidioautonomy.com \
-  -Pandroid.testInstrumentationRunnerArguments.E2E_PASSWORD=SimTest!2026
+  -Pandroid.testInstrumentationRunnerArguments.E2E_PASSWORD="$SIM_TEST_PASSWORD"
 ```
 
 ## Notes / gotchas

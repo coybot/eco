@@ -15,15 +15,15 @@ python := "/opt/ml/isaac-sim-env/bin/python3"
 
 # Rsync the training package to hoopoe and install deps
 deploy:
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "mkdir -p {{remote_dir}}/eco/drone/training/tests {{remote_dir}}/eco/drone/common ~/drone-data/bc_v2/models"
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/__init__.py eco/drone/__init__.py \
         {{hoopoe}}:{{remote_dir}}/eco/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/__init__.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/training/__init__.py \
         eco/drone/training/contract.py \
         eco/drone/training/expert.py \
@@ -31,21 +31,21 @@ deploy:
         eco/drone/training/dataset.py \
         eco/drone/training/train.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/training/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/training/tests/__init__.py \
         eco/drone/training/tests/test_smoothness.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/training/tests/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/common/reactive_planner.py \
         eco/drone/common/data_recorder.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/common/
     # Ensure torch + onnx available in the Isaac venv
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "uv pip install --python {{python}} --quiet torch onnx onnxruntime pytest 2>&1 | tail -3"
 
 # Generate the BC dataset on hoopoe
 dataset eps="4000" seed="0" rfrac="0.4":
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.dataset \
             --out ~/drone-data/bc_v2 \
             --episodes {{eps}} \
@@ -54,7 +54,7 @@ dataset eps="4000" seed="0" rfrac="0.4":
 
 # Train + export on hoopoe
 train epochs="30" hidden="64" version="v2":
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.train \
             --data ~/drone-data/bc_v2/dataset.npz \
             --out {{model_out}} \
@@ -65,7 +65,7 @@ train epochs="30" hidden="64" version="v2":
 # Pull trained models back to local eco/drone/models/
 pull version="v2":
     mkdir -p {{local_models}}
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         "{{hoopoe}}:{{model_out}}/policy_{{version}}.onnx" \
         "{{hoopoe}}:{{model_out}}/policy_{{version}}_state_norm.npy" \
         "{{hoopoe}}:{{model_out}}/policy_{{version}}_train_summary.json" \
@@ -73,26 +73,26 @@ pull version="v2":
 
 # Run unit tests on hoopoe (no torch needed for most tests)
 smoke:
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m pytest eco/drone/training/tests -q"
 
 # Deploy multi-agent training files to hoopoe
 deploy-ma:
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/training/dynamics.py \
         eco/drone/training/rover_contract.py \
         eco/drone/training/train_rl_rover.py \
         eco/drone/training/train_ma_rover.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/training/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/training/tests/test_train_ma_rover.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/training/tests/
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "uv pip install --python {{python}} --quiet torch onnx onnxruntime pytest 2>&1 | tail -3"
 
 # Train multi-agent IPPO on hoopoe (warm-start from single-agent checkpoint recommended)
 train-ma iters="1200" envs="256" agents="4" version="ma_rover_v1" ckpt="":
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.train_ma_rover \
             --out ~/drone-data/rover/models \
             --version {{version}} \
@@ -104,7 +104,7 @@ train-ma iters="1200" envs="256" agents="4" version="ma_rover_v1" ckpt="":
 # Pull MA rover model back locally
 pull-ma version="ma_rover_v1":
     mkdir -p {{local_models}}
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         "{{hoopoe}}:~/drone-data/rover/models/policy_{{version}}.onnx" \
         "{{hoopoe}}:~/drone-data/rover/models/policy_{{version}}_state_norm.npy" \
         "{{hoopoe}}:~/drone-data/rover/models/policy_{{version}}_rl_summary.json" \
@@ -126,15 +126,15 @@ train-ma-all version="ma_rover_v1" iters="1200":
 
 # Deploy fixed-wing (Dubins-airplane) training files to hoopoe
 deploy-fw:
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "mkdir -p {{remote_dir}}/eco/drone/training/tests {{remote_dir}}/eco/drone/common ~/drone-data/fixedwing/models"
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/__init__.py eco/drone/__init__.py \
         {{hoopoe}}:{{remote_dir}}/eco/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/__init__.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/training/__init__.py \
         eco/drone/training/contract.py \
         eco/drone/training/fw_contract.py \
@@ -142,15 +142,15 @@ deploy-fw:
         eco/drone/training/train_rl.py \
         eco/drone/training/train_rl_fixedwing.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/training/
-    sshpass -p 'sayplease' scp {{ssh_opts}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
         eco/drone/common/vehicle_class.py \
         {{hoopoe}}:{{remote_dir}}/eco/drone/common/
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "uv pip install --python {{python}} --quiet torch onnx onnxruntime pytest 2>&1 | tail -3"
 
 # Train fixed-wing PPO on hoopoe (from scratch, no BC warm-start — see train_rl_fixedwing.py docstring)
 train-fw iters="800" envs="512" version="fw_v1":
-    sshpass -p 'sayplease' ssh {{ssh_opts}} {{hoopoe}} \
+    sshpass -p "$HOOPOE_SSH_PASSWORD" ssh {{ssh_opts}} {{hoopoe}} \
         "cd {{remote_dir}} && PYTHONPATH=. {{python}} -m eco.drone.training.train_rl_fixedwing \
             --out ~/drone-data/fixedwing/models \
             --version {{version}} \
@@ -162,7 +162,7 @@ train-fw iters="800" envs="512" version="fw_v1":
 pull-fw version="fw_v1":
     mkdir -p {{local_models}}
     for f in policy_{{version}}.onnx policy_{{version}}_ac.pt policy_{{version}}_rl_summary.json; do \
-        sshpass -p 'sayplease' scp {{ssh_opts}} \
+        sshpass -p "$HOOPOE_SSH_PASSWORD" scp {{ssh_opts}} \
             "{{hoopoe}}:~/drone-data/fixedwing/models/$f" {{local_models}}/; \
     done
 
