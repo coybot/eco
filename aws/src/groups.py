@@ -15,12 +15,13 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-import boto3
 from boto3.dynamodb.conditions import Key
 
 import conversations as C  # reuse get_user_id, json_response, generate_code, publish_*
+import llm
+import clients
 
-dynamodb = boto3.resource("dynamodb")
+dynamodb = clients.get_dynamodb()
 GROUPS_TABLE = os.environ.get("GROUPS_TABLE", "drone-groups-dev")
 DRONE_TABLE = os.environ.get("DRONE_TABLE", "drone-registry-dev")
 
@@ -99,19 +100,13 @@ def _member_types(user_id, members):
 
 # --- group message: split + fan out ------------------------------------------
 def split_orders(message: str, member_types: dict) -> dict:
-    """One Bedrock call → {drone_id: per-drone order}."""
+    """One LLM call (Bedrock by default, or a local GCS model) → {drone_id: per-drone order}."""
     roster = "\n".join(f"- {did} ({vt})" for did, vt in member_types.items())
-    resp = C.bedrock.invoke_model(
-        modelId=C.BEDROCK_MODEL_ID,
-        body=json.dumps({
-            "anthropic_version": C.ANTHROPIC_VERSION,
-            "system": SPLIT_SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": [{"type": "text",
-                "text": f"Roster:\n{roster}\n\nGroup instruction: {message}"}]}],
-            "max_tokens": 1024,
-        }))
-    text = "".join(b.get("text", "") for b in json.loads(resp["body"].read())
-                   .get("content", []) if b.get("type") == "text").strip()
+    messages = [{"role": "user", "content": [{"type": "text",
+        "text": f"Roster:\n{roster}\n\nGroup instruction: {message}"}]}]
+    result = llm.invoke(SPLIT_SYSTEM_PROMPT, messages, max_tokens=1024, model=C.BEDROCK_MODEL_ID)
+    text = "".join(b.get("text", "") for b in result.get("content", [])
+                   if b.get("type") == "text").strip()
     if "```" in text:
         import re
         m = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
