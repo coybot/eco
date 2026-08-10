@@ -15,7 +15,8 @@ Install scripts copy `drone/common/*.py` flat into `~/drone-api/` (or your chose
 ## Cloud vs local control
 
 - **Cloud**: `daemon.py` connects to AWS IoT Core using `certs/` + `iot_endpoint` in `config.yaml`, subscribes to command topics, executes sandboxed Python that calls `drone_sdk`.
-- **Local**: `run_prompt.py` runs the Track A perception loop over SSH; it uses the same `config.yaml` defaults for MAVLink when you do not pass `--mav-port` / `--mav-baud`.
+- **Local (perception loop)**: `run_prompt.py` runs the Track A perception loop over SSH; it uses the same `config.yaml` defaults for MAVLink when you do not pass `--mav-port` / `--mav-baud`.
+- **Local (Ground Control Station)**: `config.yaml`'s `control_plane: gcs` (default `aws`) points `daemon.py` at a GCS server (see `gcs/README.md`) instead of AWS IoT Core — same MQTT topics, no AWS account or internet needed. The GCS runs the same `aws/src` Lambda handlers unmodified against local storage and a local model (Ollama/vLLM) instead of DynamoDB/Bedrock. iOS/Android switch control planes from their Settings screen.
 
 `drone_sdk._connect()` resolves the flight controller MAVLink `target_system` / `target_component` the same way as `run_prompt.py` (prefer ArduPilot heartbeats; avoid bogus `sys=0`).
 
