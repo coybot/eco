@@ -1,3 +1,12 @@
+# WARNING: `xcodegen generate` from this file is DESTRUCTIVE against the
+# checked-in DroneOperator.xcodeproj - it drops the hand-added
+# DroneOperatorUITests target (see add_uitest_target.rb) and deletes the
+# shared DroneOperator.xcscheme (xcshareddata/xcschemes/), neither of which
+# this file declares. To add a new Swift file or SPM package to the existing
+# project WITHOUT a full regenerate, use add_source_files.rb /
+# add_spm_package.rb instead (both edit project.pbxproj surgically via the
+# `xcodeproj` gem). If you do need a full regenerate, re-run
+# add_uitest_target.rb afterward and restore the scheme from git.
 name: DroneOperator
 options:
   bundleIdPrefix: us.presidio
@@ -18,6 +27,12 @@ packages:
   AWSiOSSDKV2:
     url: https://github.com/aws-amplify/aws-sdk-ios-spm
     from: "2.36.0"
+  # GCS (Ground Control Station) control plane, see Services/CocoaMQTTClient.swift
+  # and eco/gcs/README.md - AWS IoT's own SDK is SigV4/WebSocket-only and
+  # can't point at an arbitrary local broker.
+  CocoaMQTT:
+    url: https://github.com/emqx/CocoaMQTT
+    from: "2.1.6"
 
 targets:
   DroneOperator:
@@ -48,3 +63,4 @@ targets:
         product: AWSIoT
       - package: AWSiOSSDKV2
         product: AWSCore
+      - package: CocoaMQTT
