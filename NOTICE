@@ -5,7 +5,12 @@ This product includes software developed at Presidio Autonomy, Inc.
 (https://presidioautonomy.com/).
 
 Third-party components:
-- YOLOv8 (Ultralytics) - AGPL-3.0 (model weights only, not linked)
+- YOLOv8 (Ultralytics) - AGPL-3.0. NOTE: `drone/common/perception.py` imports
+  `ultralytics` at runtime, so this is a linked dependency, not weights-only.
+  AGPL-3.0 is not compatible with distributing this project under Apache-2.0.
+  Resolve before any public release: swap to an Apache/MIT-licensed detector
+  (e.g. plain ONNX Runtime inference on the exported weights), obtain an
+  Ultralytics commercial licence, or relicense accordingly.
 - Phi-3 (Microsoft) - MIT License
 - Llama 3 (Meta) - Meta Llama 3 Community License
 - ArduPilot MAVLink - LGPL-3.0

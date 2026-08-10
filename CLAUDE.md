@@ -51,7 +51,7 @@ They stay `astral` until the device is reflashed or its user/password is changed
 ```bash
 DRONE=astral@quadcopter   # or your host/IP
 
-sshpass -p 'astral' scp \
+sshpass -p "$DRONE_SSH_PASSWORD" scp \
   -o PreferredAuthentications=password \
   -o PubkeyAuthentication=no \
   -o StrictHostKeyChecking=accept-new \
@@ -59,7 +59,7 @@ sshpass -p 'astral' scp \
   eco/drone/common/drone_sdk.py \
   "$DRONE":~/drone-api/
 
-sshpass -p 'astral' ssh \
+sshpass -p "$DRONE_SSH_PASSWORD" ssh \
   -o PreferredAuthentications=password \
   -o PubkeyAuthentication=no \
   -o StrictHostKeyChecking=accept-new \

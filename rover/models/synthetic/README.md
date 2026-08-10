@@ -1,8 +1,8 @@
-# Synthetic ramp data (HHR) — cut-paste compositing pipeline
+# Synthetic ramp data — cut-paste compositing pipeline
 
 Builds a YOLO fine-tuning dataset for the two ramp-specific classes generic COCO doesn't
 have — **baggage_cart** and **tug** — by compositing real cutout objects onto a real
-photo of Hawthorne Municipal Airport (HHR). `person` and `suitcase` are already COCO
+photo of an airport ramp. `person` and `suitcase` are already COCO
 classes and detect fine out of the box (see `../README.md`), so they aren't the target
 here; a few suitcase cutouts are included only for scene clutter/realism.
 
@@ -20,16 +20,16 @@ python3 -c "from ultralytics import YOLO; YOLO('yolov8n.pt').train(
     project='synthetic/runs', name='ramp_finetune', exist_ok=True)"
 ```
 
-## Real image sources (HHR + ramp equipment)
+## Real image sources (airport ramp + ramp equipment)
 
 Fetched from Wikimedia Commons via `Special:FilePath` (stable direct-download redirect).
-Only **one** photo is actually of HHR — see limitations below.
+Only **one** photo is actually of the target airport — see limitations below.
 
 | File | Used for | License | Author |
 |---|---|---|---|
-| `Hawthorne_Municipal_Airport_-_Los_Angeles-01.jpg` | background (the only real HHR ground-level photo found) | Public domain (PD-self) | Priwo |
-| `Menzies Aviation aircraft tug.jpg` | tug + baggage cart cutouts (generic ramp, not HHR) | CC BY-SA 4.0 | Oleg Yunakov |
-| `Luggage awaiting loading at airport IMG 3140.JPG` | suitcase cutouts (generic, not HHR) | CC BY 3.0 | Billy Hathorn |
+| airport ramp background (Wikimedia Commons) | background (the only real ground-level photo of the target airport found) | Public domain (PD-self) | Priwo |
+| `Menzies Aviation aircraft tug.jpg` | tug + baggage cart cutouts (generic ramp, not the target airport) | CC BY-SA 4.0 | Oleg Yunakov |
+| `Luggage awaiting loading at airport IMG 3140.JPG` | suitcase cutouts (generic, not the target airport) | CC BY 3.0 | Billy Hathorn |
 
 **License note:** the tug/cart source is CC BY-SA 4.0 (ShareAlike) — if this dataset,
 the cutouts, or a model trained on them is ever published/open-sourced outside eco,
@@ -39,7 +39,7 @@ before any external release.
 ## What was verified (not just generated)
 
 - Viewed every downloaded source image directly to confirm it actually shows what its
-  filename claimed before using it (the other two HHR Wikipedia images — a 1994 USGS
+  filename claimed before using it (the other two Wikipedia images of the same airport — a 1994 USGS
   aerial and a 1972 aerial — were low-res/grayscale top-down shots, useless for a
   ground-level detector, and correctly excluded).
 - Viewed `rembg` cutout output directly — clean alpha-matted extraction, not a guess.
@@ -55,11 +55,11 @@ before any external release.
 
 ## Honest limitations — this is a proof of the pipeline, not a production model
 
-- **One real HHR photo.** Background "diversity" (6 variants) comes from cropping/flipping
+- **One real airport photo.** Background "diversity" (6 variants) comes from cropping/flipping
   that single photograph, not genuinely different scenes. A production dataset needs
-  photos from multiple angles, times of day, and weather at HHR itself.
-- **Neither the tug nor the suitcases are HHR-specific** — sourced from other airports.
-  Real HHR ramp equipment will look different; swap in real photos as they become
+  photos from multiple angles, times of day, and weather at the target airport itself.
+- **Neither the tug nor the suitcases are specific to the target airport** — sourced from
+  other airports. Real ramp equipment at the target airport will look different; swap in real photos as they become
   available (same `extract_cutouts.py` pipeline, new crop boxes).
 - **The 0.95+ mAP is not a real generalization measure.** Train and val composites are
   drawn from the *same* single background and the *same* small cutout library — the
@@ -74,7 +74,7 @@ before any external release.
 
 ## Next steps toward something deployable
 
-1. Collect real photos actually taken at the ramp at HHR (multiple angles, lighting,
+1. Collect real photos actually taken at the target airport's ramp (multiple angles, lighting,
    weather) — this is the single highest-leverage fix for every limitation above.
 2. Add a held-out test set from genuinely different source photos (not just a different
    random split of the same compositing distribution) to get a real accuracy signal.

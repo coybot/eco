@@ -11,7 +11,7 @@ An indoor autonomous ground robot where the **brain is an iPhone Pro or iPad Pro
 Jetson Orin. The phone's camera, LiDAR, IMU, mic, speaker, and Neural Engine do the
 perception, navigation, and voice; a **Waveshare WAVE ROVER** 4WD chassis does the driving.
 
-First use case: an autonomous ramp-agent robot at **Hawthorne Airport** — talk to ground
+First use case: an autonomous ramp-agent robot at **an airport** — talk to ground
 crew and autonomously move baggage to/from aircraft on the tarmac.
 
 > Sibling platform to `eco/drone/` (the Orin-based drone). Reuses the eco AWS/IoT/Cognito
@@ -134,12 +134,12 @@ select a development team in Signing & Capabilities, and deploy to an iPhone/iPa
   hardware) — the connect/publish code path is the same one already working in the live
   DroneOperator app, just re-pointed at a rover-generated device id.
 - ✅ **Synthetic ramp data pipeline** (`eco/rover/models/synthetic/`): real cutouts
-  (tug, baggage carts, suitcases) composited onto a real HHR ground-level photo found via
+  (tug, baggage carts, suitcases) composited onto a real airport ramp ground-level photo found via
   Wikimedia Commons; fine-tuned YOLOv8n (15 epochs, val mAP50 ≈ 0.95), verified with real
   inference on a held-out image, exported to CoreML. **Proof-of-concept, not
-  production** — one real HHR background, non-HHR-specific equipment photos, and the mAP
+  production** — one real airport background, non-airport-specific equipment photos, and the mAP
   number reflects the synthetic distribution rather than real-world generalization; see
-  `models/synthetic/README.md` for the honest limitations and next steps (real HHR photos
+  `models/synthetic/README.md` for the honest limitations and next steps (real airport ramp photos
   are the highest-leverage fix). Not wired into the app.
 - ⏭️ Running on a real LiDAR device (simulator can compile but not exercise
   ARKit/FoundationModels at runtime — that's the one thing left that can only be verified
