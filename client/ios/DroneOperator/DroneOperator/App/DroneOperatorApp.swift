@@ -14,11 +14,12 @@ struct DroneOperatorApp: App {
                 .environment(apiClient)
                 .environment(mqttService)
                 .task {
-                    // Connect MQTT when user is authenticated
+                    // Connect MQTT when authenticated (cloud) or already
+                    // configured (GCS - no sign-in needed, see ContentView)
                     await setupMQTT()
                 }
                 .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
-                    if isAuthenticated {
+                    if isAuthenticated || GCSSettings.shared.isGCSMode {
                         Task { await setupMQTT() }
                     } else {
                         mqttService.disconnect()
@@ -26,15 +27,31 @@ struct DroneOperatorApp: App {
                 }
         }
     }
-    
+
     private func setupMQTT() async {
-        print("🔌 setupMQTT called - isAuthenticated: \(authService.isAuthenticated), hasToken: \(authService.idToken != nil)")
-        
+        let isGCSMode = GCSSettings.shared.isGCSMode
+        print("🔌 setupMQTT called - isGCSMode: \(isGCSMode), isAuthenticated: \(authService.isAuthenticated), hasToken: \(authService.idToken != nil)")
+
+        if isGCSMode {
+            guard !GCSSettings.shared.pairingToken.isEmpty else {
+                print("🔌 setupMQTT: GCS mode but no pairing token set yet, skipping MQTT")
+                return
+            }
+            do {
+                try await mqttService.connect(withToken: "")
+                print("🔌 setupMQTT: GCS MQTT connected successfully!")
+            } catch {
+                print("❌ setupMQTT: GCS MQTT connection failed: \(error)")
+                AppLogger.mqtt.error("Failed to connect GCS MQTT: \(error.localizedDescription)")
+            }
+            return
+        }
+
         guard authService.isAuthenticated else {
             print("🔌 setupMQTT: Not authenticated, skipping MQTT")
-            return 
+            return
         }
-        
+
         // Proactively refresh token if needed before connecting
         do {
             try await authService.refreshTokensIfNeeded()
@@ -42,12 +59,12 @@ struct DroneOperatorApp: App {
             // If refresh fails, we might still have a valid token - continue
             print("⚠️ setupMQTT: Token refresh failed, continuing with existing token")
         }
-        
+
         guard let token = authService.idToken else {
             print("🔌 setupMQTT: No token available, skipping MQTT")
             return
         }
-        
+
         print("🔌 setupMQTT: Calling mqttService.connect...")
         do {
             try await mqttService.connect(withToken: token)
@@ -61,10 +78,12 @@ struct DroneOperatorApp: App {
 
 struct ContentView: View {
     @Environment(AuthService.self) private var authService
-    
+
     var body: some View {
         Group {
-            if authService.isAuthenticated {
+            // GCS mode has no Cognito/Google/Apple sign-in - a pairing token
+            // from Settings is all that's needed, so skip AuthView entirely.
+            if authService.isAuthenticated || GCSSettings.shared.isGCSMode {
                 MainTabView()
             } else {
                 AuthView()
@@ -97,13 +116,13 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    if let user = authService.currentUser {
+                if let user = authService.currentUser {
+                    Section {
                         HStack {
                             Image(systemName: "person.circle.fill")
                                 .font(.system(size: 50))
                                 .foregroundStyle(.secondary)
-                            
+
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(user.displayName)
                                     .font(.headline)
@@ -117,12 +136,22 @@ struct SettingsView: View {
                         .padding(.vertical, 8)
                     }
                 }
-                
+
                 Section {
-                    Button(role: .destructive) {
-                        authService.signOut()
+                    NavigationLink {
+                        ControlPlaneSettingsView()
                     } label: {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("Ground Control Station", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                }
+
+                if !GCSSettings.shared.isGCSMode {
+                    Section {
+                        Button(role: .destructive) {
+                            authService.signOut()
+                        } label: {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
                     }
                 }
             }
