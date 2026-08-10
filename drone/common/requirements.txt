@@ -2,6 +2,11 @@
 awsiotsdk>=1.27.0
 boto3>=1.42.0
 
+# GCS (Ground Control Station) control plane - only used when config.yaml
+# has control_plane: gcs (see gcs_mqtt.py). Still installed by default so the
+# same device image supports either control plane via config alone.
+paho-mqtt>=2.0
+
 # MAVLink / Flight Controller
 pymavlink>=2.4.49
 pyserial>=3.5
