@@ -1266,56 +1266,92 @@ def look_around(directions=4):
     return urls
 
 
+def _load_config():
+    import yaml
+    config_path = DRONE_DIR / 'config.yaml'
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
 def upload_photo(local_path, conversation_id):
     """
-    Upload a photo to S3 and return the public URL.
-    
+    Upload a photo and return its public URL - to S3 (control_plane: aws,
+    default) or to a local Ground Control Station's HTTP API
+    (control_plane: gcs, see eco/gcs/README.md).
+
     Args:
         local_path: Path to the local image file.
         conversation_id: Conversation ID for organizing uploads.
-    
+
     Returns:
         Public URL of the uploaded image, or None if upload failed.
     """
+    config = _load_config()
+    drone_id = config.get('drone_id', 'unknown')
+    filename = Path(local_path).name
+    from datetime import datetime
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    image_key = f'drones/{drone_id}/conversations/{conversation_id}/{timestamp}_{filename}'
+
+    if config.get('control_plane') == 'gcs':
+        return _upload_photo_gcs(local_path, image_key, config.get('gcs', {}) or {})
+    return _upload_photo_s3(local_path, image_key)
+
+
+def _upload_photo_s3(local_path, s3_key):
     s3, bucket = _get_s3()
     if s3 is None or bucket is None:
         print("Error: S3 not available")
         return None
-    
+
     try:
-        import yaml
-        from datetime import datetime
-        
-        # Get drone ID from config
-        config_path = DRONE_DIR / 'config.yaml'
-        if config_path.exists():
-            with open(config_path, 'r') as f:
-                config = yaml.safe_load(f) or {}
-            drone_id = config.get('drone_id', 'unknown')
-        else:
-            drone_id = 'unknown'
-        
-        # Create S3 key
-        filename = Path(local_path).name
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        s3_key = f'drones/{drone_id}/conversations/{conversation_id}/{timestamp}_{filename}'
-        
-        # Upload
         s3.upload_file(
             local_path,
             bucket,
             s3_key,
             ExtraArgs={'ContentType': 'image/jpeg'}
         )
-        
+
         # Generate public URL
         url = f'https://{bucket}.s3.amazonaws.com/{s3_key}'
         print(f"Photo uploaded: {url}")
-        
+
         return url
-        
+
     except Exception as e:
         print(f"Error uploading photo: {e}")
+        return None
+
+
+def _upload_photo_gcs(local_path, image_key, gcs_config):
+    """HTTP PUT to the GCS's own /images/{key} route (gcs/http_api.py),
+    authenticated with this drone's own pairing token - the GCS-mode
+    counterpart of _upload_photo_s3's IoT-role-credentialed S3 upload."""
+    images_base_url = gcs_config.get('images_base_url')
+    auth_token = gcs_config.get('auth_token')
+    if not images_base_url or not auth_token:
+        print("Error: gcs.images_base_url / gcs.auth_token not configured for control_plane: gcs")
+        return None
+
+    import urllib.request
+
+    url = f"{images_base_url.rstrip('/')}/images/{image_key}"
+    try:
+        with open(local_path, 'rb') as f:
+            data = f.read()
+        req = urllib.request.Request(url, data=data, method='PUT')
+        req.add_header('Content-Type', 'image/jpeg')
+        req.add_header('Authorization', f'Bearer {auth_token}')
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status != 200:
+                print(f"Error uploading photo to GCS: HTTP {resp.status}")
+                return None
+        print(f"Photo uploaded: {url}")
+        return url
+    except Exception as e:
+        print(f"Error uploading photo to GCS: {e}")
         return None
 
 
