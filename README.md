@@ -1,12 +1,119 @@
 # Presidio Drone Platform
 
-Open source autonomous drone intelligence. Natural language → on-device reasoning → flight.
+**Autonomy is a stack, not a switch.** Open source autonomous drone intelligence —
+natural language → on-device reasoning → flight.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![iOS](https://img.shields.io/badge/iOS-SwiftUI-lightgrey.svg)](client/ios)
+[![Platforms](https://img.shields.io/badge/runs%20on-Orin%20%7C%20RPi%20%7C%20Linux-informational.svg)](#supported-platforms)
+
+Most "autonomous" drones fly a pre-planned GPS route and call it autonomy. Real autonomy is
+what happens when GPS drops, comms die, and the target isn't where you left it. Presidio is
+what actually decides in that moment.
 
 ```
 iOS App → API Gateway → Lambda → Claude 3.5 Sonnet → IoT Core → Drone → Motors spin
 ```
+
+## Table of Contents
+
+- [What Autonomy Actually Means](#what-autonomy-actually-means)
+- [Architecture](#architecture)
+- [Components](#components)
+- [Supported Platforms](#supported-platforms)
+- [Quick Start](#quick-start)
+- [File Structure](#file-structure)
+- [API Endpoints](#api-endpoints)
+- [WiFi Provisioning (Hotspot Onboarding)](#wifi-provisioning-hotspot-onboarding)
+- [Fleet Provisioning](#fleet-provisioning)
+- [Authentication](#authentication)
+- [Drone SDK Functions](#drone-sdk-functions)
+- [AWS Resources Created](#aws-resources-created)
+- [Common Tasks](#common-tasks)
+- [Hardware Tested](#hardware-tested)
+- [Camera (OAK-D Lite)](#camera-oak-d-lite)
+- [Autonomous Intelligence (On-Device Reasoning)](#autonomous-intelligence-on-device-reasoning)
+- [Safety Notes](#safety-notes)
+- [Troubleshooting](#troubleshooting)
+- [Extending](#extending)
+- [Notes for AI Assistants](#notes-for-ai-assistants)
+- [License](#license)
+
+## What Autonomy Actually Means
+
+### What happens when reality deviates from the plan?
+
+That one question separates three very different machines — all sold as "autonomous."
+
+**01 · Waypoints — the script decides**
+
+![A drone flies a fixed four-waypoint route, meets an obstacle that was never in the plan, and
+turns around: RTH, returning home](docs/media/autonomy/01-waypoints.gif)
+
+You tap the route; the vehicle stores and replays it — geofences and failsafes underneath. The
+whole mission was decided before takeoff, so anything unexpected gets one fixed answer:
+**hover, land, or return home.** This is what almost all commercial "autonomy" is.
+
+**02 · The vehicle decides — perception · reasoning · memory**
+
+![A drone tracks a target that passes behind a building; the track is held in memory across the
+occlusion and reacquired on the far side](docs/media/autonomy/02-vehicle-decides.gif)
+
+The vehicle perceives, reasons, and remembers. Its target slips behind a structure — **it keeps
+the track alive in memory, predicts, and reacquires on the far side.** Decisions you didn't
+pre-specify, toward a goal you did.
+
+**03 · Heterogeneous comms-denied swarm — the team decides**
+
+![A carrier aircraft deploys three small drones; one finds a moving target and orbits it, and
+the other two read the orbit and converge](docs/media/autonomy/03-swarm.gif)
+
+A slow carrier hauls three small drones marsupial-style. They deploy; one finds the moving
+target and circles it — **the orbit itself is the signal. The other two see it and converge.**
+No one told them which drone does what.
+
+### The two axes
+
+Two independent axes decide what a drone really is: how it's **tasked** (mission cognition)
+and what it can **execute** on its own (execution autonomy). Everything below the top rungs is
+automation — useful, deterministic, decided before takeoff. Autonomy begins where the vehicle
+makes decisions you didn't pre-specify, within bounds you approved. (★ = where most marketed
+"autonomy" actually sits.)
+
+| Mission cognition (tasking) | What it means |
+|---|---|
+| **C4** | Intent + cognition — you state outcomes; it keeps a world model, explores to reduce uncertainty, knows what it doesn't know, and escalates |
+| **C3** | Generated plans — the system authors a branching plan from your goals; you approve exactly what will execute |
+| **C2** ★ | Canned behaviors — pick from pre-built behaviors (orbit here, scan that polygon); voice input here is a convenience, not intelligence |
+| **C1** ★ | Waypoint tasking — you specify the route; the vehicle stores and replays it |
+
+| Execution autonomy | What it means |
+|---|---|
+| **E5** | Teams — multiple vehicles hold one joint plan and re-divide the mission when a member is lost; the team outlives any teammate |
+| **E4** | Contingency — walks an approved branching plan solo when the link or GNSS dies, then resyncs and accepts override instantly |
+| **E3** ★ | Perception — sees the world: obstacle avoidance, GPS-denied navigation, tracking |
+| **E2** ★ | Waypoints + rules — routes, geofences, failsafes; deterministic, and deliberately kept in authority underneath everything smarter |
+| **E1** | Manual — a human pilots directly, stabilization at most |
+
+"Works without GPS" isn't a rung — it's a condition every layer must survive.
+
+### Where real systems actually sit
+
+| System class | Position | Why |
+|---|---|---|
+| Consumer & mapping drones | C1 × E2–E3 | Excellent automation. The "autonomy" is obstacle avoidance and subject tracking. |
+| Voice / touch tasking layers | C2 × E2 | A microphone over canned behaviors. Talking to it doesn't make it think. |
+| GPS-denied autonomy stacks | C1 × E3–E4 | The flying is real. The tasking is still a tap on a map. |
+| Inspection & survey platforms | C2 × E3 | Real perception, one narrow scripted behavior per mission type, a human consent gate. |
+| Research swarms | C2 × E5 | Genuine team coordination — in controlled settings, rarely hardened to denial. |
+| **The open problem** | **C4 × E5** | Intent-level cognition over team execution, sustained under denial. Nobody ships all of it yet. |
+
+Presidio's north star is closing that last cell. See
+[What Drone Autonomy Actually Means](https://presidioautonomy.com/autonomy) for the full
+argument, the benchmark numbers, and the metric gap that sinks vision-language models in
+closed-loop flight.
+
+> autonomy = the transfer of decision-making — not the absence of a human
 
 ## Architecture
 
@@ -624,7 +731,7 @@ This will:
 2. Detect Orin variant (Nano vs NX vs AGX)
 3. Install `llama-cpp-python` with CUDA GPU support (pre-built wheel or ~45 min build)
 4. Download appropriate AI models (~2-5 GB depending on variant)
-5. Install Python dependencies (onnxruntime, ultralytics, huggingface_hub)
+5. Install Python dependencies (onnxruntime, huggingface_hub)
 6. Run fleet provisioning (get device certificates)
 7. Set up and start systemd service
 

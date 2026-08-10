@@ -28,5 +28,4 @@ requests>=2.32.0
 
 # Model setup (setup_models.py)
 huggingface_hub>=0.20.0
-ultralytics>=8.0.0
 
