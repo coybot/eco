@@ -4,11 +4,28 @@
 # Drone Identity (auto-generated if not set)
 # drone_id: "drone-abc123"
 
-# AWS IoT Configuration
+# Control plane: "aws" (default, AWS IoT Core + Bedrock) or "gcs" (a local
+# Ground Control Station - see eco/gcs/README.md). Same MQTT topics either
+# way; only the transport/auth and where the LLM lives differ.
+# control_plane: "gcs"
+
+# AWS IoT Configuration (control_plane: aws)
 iot_endpoint: "YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com"  # Get from: aws iot describe-endpoint --endpoint-type iot:Data-ATS
 
 # AWS Region (match your deployed SAM stack)
 region: "us-west-2"
+
+# Ground Control Station Configuration (control_plane: gcs) - the GCS prints
+# this drone's auth_token on first `POST /drones` registration (see
+# eco/gcs/README.md); paste it below. images_base_url is the GCS's own HTTP
+# API (same host:port as mqtt_host, different port - see eco/gcs/config.yaml).
+# gcs:
+#   mqtt_host: "192.168.1.50"        # the GCS box's LAN IP
+#   mqtt_port: 1883
+#   mqtt_tls: false
+#   mqtt_ca_cert: "certs/gcs-ca.pem"  # only used when mqtt_tls: true
+#   auth_token: "PASTE_DRONE_PAIRING_TOKEN_HERE"
+#   images_base_url: "http://192.168.1.50:8080"
 
 # Flight Controller Connection
 serial_port: "/dev/ttyACM0"

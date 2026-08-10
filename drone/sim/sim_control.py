@@ -18,6 +18,32 @@ import traceback
 from sim_sdk import latlon_to_xy, xy_to_latlon, HOME_LAT, HOME_LON
 
 
+def _upload_jpeg_to_gcs(upload_conf, drone_id, conversation_id, jpg_bytes) -> str:
+    """GCS-mode counterpart of cloud_creds.upload_jpeg_to_s3: PUT to the local
+    Ground Control Station's /images/{key} route (gcs/http_api.py) instead of
+    S3, authenticated with this sim drone's own pairing token - same
+    key-naming convention as drone_sdk.py's _upload_photo_gcs."""
+    import time
+    import urllib.request
+
+    images_base_url = upload_conf.get("images_base_url")
+    token = upload_conf.get("auth_token")
+    if not images_base_url or not token:
+        raise RuntimeError("gcs.images_base_url / drone pairing token not configured")
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    key = f"drones/{drone_id}/conversations/{conversation_id}/{timestamp}_photo.jpg"
+    url = f"{images_base_url.rstrip('/')}/images/{key}"
+
+    req = urllib.request.Request(url, data=jpg_bytes, method="PUT")
+    req.add_header("Content-Type", "image/jpeg")
+    req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"GCS image upload failed: HTTP {resp.status}")
+    return url
+
+
 def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
     is_rover = vtype == "rover"
     ROVER_ALT = 0.0
@@ -83,12 +109,15 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
         if not upload_conf:
             return "sim://image"
         try:
-            from cloud_creds import iot_credentials, upload_jpeg_to_s3
-            c = upload_conf
-            creds = iot_credentials(c["certs_dir"], c["credentials_endpoint"],
-                                    c["s3_role_alias"], c["thing_name"])
-            url = upload_jpeg_to_s3(creds, c["images_bucket"], c["region"],
-                                    did, conversation_id, jpg)
+            if upload_conf.get("control_plane") == "gcs":
+                url = _upload_jpeg_to_gcs(upload_conf, did, conversation_id, jpg)
+            else:
+                from cloud_creds import iot_credentials, upload_jpeg_to_s3
+                c = upload_conf
+                creds = iot_credentials(c["certs_dir"], c["credentials_endpoint"],
+                                        c["s3_role_alias"], c["thing_name"])
+                url = upload_jpeg_to_s3(creds, c["images_bucket"], c["region"],
+                                        did, conversation_id, jpg)
             images.append(url)
             return url
         except Exception as e:

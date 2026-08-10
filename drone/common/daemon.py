@@ -48,6 +48,13 @@ DRONE_ID = get_or_create_drone_id()
 IOT_ENDPOINT = config.get('iot_endpoint')
 LOG_LEVEL = config.get('log_level', 'INFO')
 
+# Control plane: "aws" (default, AWS IoT Core mTLS) or "gcs" (a local Ground
+# Control Station's mosquitto broker - see gcs/README.md and
+# config.yaml.example's `gcs:` section). Same topics either way; only the
+# transport/auth differs (build_mqtt_connection(), below).
+CONTROL_PLANE = config.get('control_plane', 'aws')
+GCS_CONFIG = config.get('gcs', {}) or {}
+
 # Vehicle type ('quadcopter' [default], 'rover', 'fixedwing') — drives which
 # flight SDK / backend / VehicleClass the mission loop uses below. There is no
 # cloud-registry write path for this yet (see the fixed-wing autonomy plan) —
@@ -1295,11 +1302,28 @@ def check_video_watchdog():
 def on_video_command(topic, payload, **kwargs):
     """Handle video streaming commands from iOS app."""
     global _video_last_heartbeat, _mqtt_connection
-    
+
+    if CONTROL_PLANE == 'gcs':
+        # Video streaming uses AWS Kinesis Video Streams WebRTC - no local
+        # equivalent in GCS mode (see gcs/README.md's "degraded features").
+        logger.info("Video command received but unsupported in GCS mode (control_plane: gcs)")
+        if _mqtt_connection:
+            _mqtt_connection.publish(
+                topic=f"drone/{DRONE_ID}/video/status",
+                payload=json.dumps({
+                    'droneId': DRONE_ID,
+                    'streaming': False,
+                    'error': 'video is unsupported in GCS mode',
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }),
+                qos=mqtt.QoS.AT_MOST_ONCE
+            )
+        return
+
     try:
         data = json.loads(payload)
         action = data.get('action', '')
-        
+
         if action == 'start':
             logger.info("Video start command received")
             success = start_video_streaming()
@@ -1642,83 +1666,76 @@ def resubscribe_topics(connection):
     subscribe_future.result()
     logger.info(f"Subscribed to {video_topic}")
 
-    # Subscribe to Thing Shadow topics (offline-safe decommission/reset)
-    topics = _shadow_topics()
-    logger.info(f"Subscribing to {topics['get_accepted']}")
-    subscribe_future, _ = connection.subscribe(
-        topic=topics["get_accepted"],
-        qos=mqtt.QoS.AT_LEAST_ONCE,
-        callback=on_shadow_get_accepted
-    )
-    subscribe_future.result()
+    # Thing Shadow (offline-safe decommission/reset) is an AWS IoT-specific
+    # service - there's no equivalent to subscribe to on a local GCS
+    # mosquitto broker, so this whole block is AWS-only. See gcs/README.md's
+    # "degraded features" section: wifi/battery-config/factory-reset are
+    # store-only (REST) in GCS mode rather than live-pushed via shadow.
+    if CONTROL_PLANE == 'aws':
+        topics = _shadow_topics()
+        logger.info(f"Subscribing to {topics['get_accepted']}")
+        subscribe_future, _ = connection.subscribe(
+            topic=topics["get_accepted"],
+            qos=mqtt.QoS.AT_LEAST_ONCE,
+            callback=on_shadow_get_accepted
+        )
+        subscribe_future.result()
 
-    logger.info(f"Subscribing to {topics['get_rejected']}")
-    subscribe_future, _ = connection.subscribe(
-        topic=topics["get_rejected"],
-        qos=mqtt.QoS.AT_LEAST_ONCE,
-        callback=on_shadow_rejected
-    )
-    subscribe_future.result()
+        logger.info(f"Subscribing to {topics['get_rejected']}")
+        subscribe_future, _ = connection.subscribe(
+            topic=topics["get_rejected"],
+            qos=mqtt.QoS.AT_LEAST_ONCE,
+            callback=on_shadow_rejected
+        )
+        subscribe_future.result()
 
-    logger.info(f"Subscribing to {topics['delta']}")
-    subscribe_future, _ = connection.subscribe(
-        topic=topics["delta"],
-        qos=mqtt.QoS.AT_LEAST_ONCE,
-        callback=on_shadow_delta
-    )
-    subscribe_future.result()
+        logger.info(f"Subscribing to {topics['delta']}")
+        subscribe_future, _ = connection.subscribe(
+            topic=topics["delta"],
+            qos=mqtt.QoS.AT_LEAST_ONCE,
+            callback=on_shadow_delta
+        )
+        subscribe_future.result()
 
-    logger.info(f"Subscribing to {topics['update_rejected']}")
-    subscribe_future, _ = connection.subscribe(
-        topic=topics["update_rejected"],
-        qos=mqtt.QoS.AT_LEAST_ONCE,
-        callback=on_shadow_rejected
-    )
-    subscribe_future.result()
+        logger.info(f"Subscribing to {topics['update_rejected']}")
+        subscribe_future, _ = connection.subscribe(
+            topic=topics["update_rejected"],
+            qos=mqtt.QoS.AT_LEAST_ONCE,
+            callback=on_shadow_rejected
+        )
+        subscribe_future.result()
 
-    # Initial pull of desired state
-    request_shadow_get()
+    # Initial pull of desired state (AWS-only, see guard above)
+    if CONTROL_PLANE == 'aws':
+        request_shadow_get()
 
 
-def main():
-    """Main daemon loop."""
-    global _mqtt_connection
-    
-    # Load battery configuration from disk
-    _load_battery_config()
-    
-    # Step 1: Check WiFi provisioning
-    if not check_provisioning():
-        logger.info("No WiFi configured, exiting. Power cycle to retry setup.")
-        sys.exit(0)
-    
-    # Step 2: Check IoT configuration
+def _build_aws_mqtt_connection():
+    """AWS IoT Core, mTLS with device certs. Unchanged from before the GCS
+    control-plane switch was added."""
     if not IOT_ENDPOINT:
         logger.error("IoT endpoint not configured in config.yaml!")
         logger.info("Please configure iot_endpoint in config.yaml")
         sys.exit(1)
-    
-    # Certificate paths
+
     cert_dir = DRONE_DIR / 'certs'
     root_ca = cert_dir / 'root-ca.pem'
     private_key = cert_dir / 'private.key'
     certificate = cert_dir / 'device.pem'
-    
-    # Check certificates exist
+
     for path in [root_ca, private_key, certificate]:
         if not path.exists():
             logger.error(f"Missing certificate: {path}")
             sys.exit(1)
-    
+
     # Initialize event loop group for SDK v2
     event_loop_group = io.EventLoopGroup(1)
     host_resolver = io.DefaultHostResolver(event_loop_group)
     client_bootstrap = io.ClientBootstrap(event_loop_group, host_resolver)
-    
-    # Create MQTT connection using SDK v2
+
     client_id = f"{DRONE_ID}-{int(time.time())}"
     logger.info(f"Creating MQTT connection with client_id: {client_id}")
-    
+
     mqtt_connection = mqtt_connection_builder.mtls_from_path(
         endpoint=IOT_ENDPOINT,
         port=8883,
@@ -1733,13 +1750,73 @@ def main():
         on_connection_interrupted=on_connection_interrupted,
         on_connection_resumed=on_connection_resumed
     )
-    
-    # Connect
+
     logger.info(f"Connecting to {IOT_ENDPOINT}...")
     connect_future = mqtt_connection.connect()
     connect_future.result()  # Wait for connection
     logger.info("Connected to AWS IoT Core!")
-    
+    return mqtt_connection
+
+
+def _build_gcs_mqtt_connection():
+    """A local Ground Control Station's mosquitto broker instead of AWS IoT
+    Core - plain TCP (or TLS with a self-signed CA) and username/password
+    auth instead of mTLS certs. See gcs/README.md and this file's
+    config.yaml.example `gcs:` section. Returns drone/common/gcs_mqtt.py's
+    PahoMqttAdapter, which exposes the same .publish/.subscribe/.disconnect
+    surface as the awsiot mqtt_connection above, so every call site below
+    (resubscribe_topics, on_command, publish_heartbeat, ...) works unmodified
+    regardless of which control plane is active."""
+    from gcs_mqtt import PahoMqttAdapter  # local import: awscrt/AWS IoT SDK not needed for this path
+
+    host = GCS_CONFIG.get('mqtt_host')
+    port = int(GCS_CONFIG.get('mqtt_port', 1883))
+    if not host:
+        logger.error("control_plane: gcs but gcs.mqtt_host is not configured in config.yaml!")
+        sys.exit(1)
+
+    client_id = f"{DRONE_ID}-{int(time.time())}"
+    logger.info(f"Creating GCS MQTT connection to {host}:{port} with client_id: {client_id}")
+
+    connection = PahoMqttAdapter(
+        host=host, port=port, client_id=client_id,
+        username=DRONE_ID, password=GCS_CONFIG.get('auth_token'),
+        tls=bool(GCS_CONFIG.get('mqtt_tls', False)), ca_cert=GCS_CONFIG.get('mqtt_ca_cert'),
+        on_connection_interrupted=on_connection_interrupted,
+        on_connection_resumed=on_connection_resumed,
+    )
+
+    logger.info(f"Connecting to GCS mosquitto broker at {host}:{port}...")
+    connect_future = connection.connect()
+    connect_future.result()
+    logger.info("Connected to GCS!")
+    return connection
+
+
+def build_mqtt_connection():
+    """Dispatches on CONTROL_PLANE (config.yaml's `control_plane: aws|gcs`,
+    default aws)."""
+    if CONTROL_PLANE == 'gcs':
+        return _build_gcs_mqtt_connection()
+    return _build_aws_mqtt_connection()
+
+
+def main():
+    """Main daemon loop."""
+    global _mqtt_connection
+
+    # Load battery configuration from disk
+    _load_battery_config()
+
+    # Step 1: Check WiFi provisioning
+    if not check_provisioning():
+        logger.info("No WiFi configured, exiting. Power cycle to retry setup.")
+        sys.exit(0)
+
+    # Step 2: Connect to the configured control plane (AWS IoT Core, or a
+    # local GCS - see build_mqtt_connection() above).
+    mqtt_connection = build_mqtt_connection()
+
     # Store global reference
     _mqtt_connection = mqtt_connection
     
@@ -1750,8 +1827,10 @@ def main():
     # Subscribe to topics
     resubscribe_topics(mqtt_connection)
 
-    # If we previously performed a factory reset, clear desired.decommission now that we're back online.
-    ack_factory_reset_if_pending()
+    # If we previously performed a factory reset, clear desired.decommission
+    # now that we're back online (Thing Shadow, AWS-only - see guard above).
+    if CONTROL_PLANE == 'aws':
+        ack_factory_reset_if_pending()
     
     logger.info(f"Drone {DRONE_ID} ready and listening for commands...")
     
