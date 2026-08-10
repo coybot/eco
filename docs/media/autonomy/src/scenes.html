@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=block" rel="stylesheet">
+<style>
+body{margin:0;background:#000;color:#f2f2ef;font-family:'Space Grotesk',sans-serif;}
+.cap{width:760px;background:#000;padding:16px 18px;}
+.labelrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+.canvas{position:relative;height:230px;border-radius:12px;overflow:hidden;
+  background-color:#0b0b0d;
+  background-image:linear-gradient(#151518 1px,transparent 1px),linear-gradient(90deg,#151518 1px,transparent 1px);
+  background-size:24px 24px;}
+
+/* --- keyframes (loop periods tuned to divide evenly into each scene's master
+       loop so the exported GIFs cycle without a visible seam) --- */
+@keyframes travel{to{offset-distance:100%}}
+@keyframes outback{0%{offset-distance:0%}40%{offset-distance:76%}50%{offset-distance:76%}92%{offset-distance:0%}100%{offset-distance:0%}}
+@keyframes blinker{0%,55%,100%{opacity:1}75%{opacity:.15}}
+@keyframes dashmarch{to{stroke-dashoffset:-30}}
+@keyframes swDock{0%,20%{opacity:1}23%,100%{opacity:0}}
+@keyframes swDeploy{0%,18%{offset-distance:0%;opacity:0}21%{opacity:1}30%{opacity:1}34%{offset-distance:100%;opacity:0}100%{offset-distance:100%;opacity:0}}
+@keyframes swTarget{0%{transform:translate(170px,168px)}100%{transform:translate(590px,150px)}}
+@keyframes swOrbitIn{0%,31%{opacity:0}36%,100%{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes swConvA{0%,33%{transform:translate(-150px,-78px);opacity:0}37%{opacity:1}48%{transform:translate(-150px,-78px)}74%,100%{transform:translate(-34px,-32px);opacity:1}}
+@keyframes swConvB{0%,33%{transform:translate(128px,-96px);opacity:0}37%{opacity:1}48%{transform:translate(128px,-96px)}74%,100%{transform:translate(36px,-26px);opacity:1}}
+@keyframes swLbl1{0%,16%{opacity:0}20%,30%{opacity:1}34%,100%{opacity:0}}
+@keyframes swLbl2{0%,35%{opacity:0}39%,50%{opacity:1}55%,100%{opacity:0}}
+/* starts after swLbl2 is fully out (55%) so the two never overlap mid-fade */
+@keyframes swLbl3{0%,55%{opacity:0}61%,100%{opacity:1}}
+</style>
+</head>
+<body>
+
+<!-- ============================ SCENE 01 ============================ -->
+<div class="cap" id="scene1">
+  <div class="labelrow">
+    <span style="color:#8b8b85;letter-spacing:0.1em;">01 &middot; WAYPOINTS</span>
+    <span style="color:#f2f2ef;">the script decides</span>
+  </div>
+  <div class="canvas" style="border:1px solid #222226;">
+    <svg viewBox="0 0 760 230" style="position:absolute;inset:0;width:100%;height:100%;">
+      <path d="M 50 190 L 220 80 L 450 150 L 700 50" fill="none" stroke="#2a2a30" stroke-width="1.5"></path>
+      <rect x="46" y="186" width="8" height="8" fill="#55555c"></rect>
+      <rect x="216" y="76" width="8" height="8" fill="#55555c"></rect>
+      <rect x="446" y="146" width="8" height="8" fill="#55555c"></rect>
+      <rect x="696" y="46" width="8" height="8" fill="#55555c"></rect>
+    </svg>
+    <div style="position:absolute;left:78%;top:39%;width:0;height:0;animation:blinker 2s linear infinite;">
+      <span style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:3px;background:oklch(0.78 0.14 75 / 0.25);border:1.5px solid oklch(0.78 0.14 75);transform:rotate(45deg);display:block;"></span>
+      <span style="position:absolute;left:-34px;top:12px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:oklch(0.78 0.14 75);white-space:nowrap;">OBSTACLE</span>
+    </div>
+    <div style="position:absolute;left:0;top:0;width:100%;height:100%;">
+      <div style="position:absolute;width:11px;height:11px;border-radius:50%;background:#9a9ab0;box-shadow:0 0 12px rgba(160,160,190,0.6);offset-path:path('M 50 190 L 220 80 L 450 150 L 700 50');offset-rotate:0deg;animation:outback 8s ease-in-out infinite;"></div>
+    </div>
+    <div style="position:absolute;right:14px;bottom:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#55555c;">RTH: RETURNING HOME</div>
+  </div>
+</div>
+
+<!-- ============================ SCENE 02 ============================ -->
+<div class="cap" id="scene2">
+  <div class="labelrow">
+    <span style="color:oklch(0.82 0.14 165);letter-spacing:0.1em;">02 &middot; THE VEHICLE DECIDES</span>
+    <span style="color:oklch(0.82 0.14 165);">perception &middot; reasoning &middot; memory</span>
+  </div>
+  <div class="canvas" style="border:1px solid oklch(0.82 0.14 165 / 0.35);">
+    <svg viewBox="0 0 760 230" style="position:absolute;inset:0;width:100%;height:100%;">
+      <path d="M 60 165 C 180 150 280 130 380 115 C 480 100 600 75 710 60" fill="none" stroke="#2a2a30" stroke-width="1.5"></path>
+    </svg>
+    <div style="position:absolute;width:9px;height:9px;border-radius:50%;background:#f2f2ef;box-shadow:0 0 10px rgba(255,255,255,0.6);offset-path:path('M 60 165 C 180 150 280 130 380 115 C 480 100 600 75 710 60');offset-rotate:0deg;animation:travel 7s linear infinite;animation-delay:-0.9s;z-index:1;"></div>
+    <div style="position:absolute;left:330px;top:78px;width:110px;height:80px;background:#17171a;border:1px solid #2e2e33;border-radius:4px;z-index:2;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#55555c;letter-spacing:0.1em;">OCCLUSION</span>
+    </div>
+    <svg viewBox="0 0 760 230" style="position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;">
+      <path d="M 326 123 L 448 105" fill="none" stroke="oklch(0.82 0.14 165 / 0.6)" stroke-width="1.5" stroke-dasharray="5 5" style="animation:dashmarch 1.75s linear infinite;"></path>
+    </svg>
+    <div style="position:absolute;width:11px;height:11px;border-radius:50%;background:oklch(0.82 0.14 165);box-shadow:0 0 14px oklch(0.82 0.14 165);offset-path:path('M 40 205 C 170 195 300 175 400 160 C 500 148 620 115 720 95');offset-rotate:0deg;animation:travel 7s linear infinite;z-index:4;"></div>
+    <div style="position:absolute;left:340px;top:60px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:oklch(0.82 0.14 165 / 0.8);z-index:3;">TRACK HELD IN MEMORY</div>
+    <div style="position:absolute;right:14px;bottom:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:oklch(0.82 0.14 165 / 0.7);">PREDICTING &middot; REACQUIRED</div>
+  </div>
+</div>
+
+<!-- ============================ SCENE 03 ============================ -->
+<div class="cap" id="scene3">
+  <div class="labelrow">
+    <span style="color:oklch(0.82 0.14 165);letter-spacing:0.1em;">03 &middot; HETEROGENEOUS COMMS-DENIED SWARM</span>
+    <span style="color:oklch(0.82 0.14 165);">the team decides</span>
+  </div>
+  <div class="canvas" style="border:1px solid oklch(0.82 0.14 165 / 0.35);">
+    <div style="position:absolute;offset-path:path('M 30 46 L 730 46');offset-rotate:0deg;animation:travel 14s linear infinite;">
+      <span style="position:absolute;left:-19px;top:-6px;width:38px;height:12px;border-radius:6px;background:#b9b9b2;display:block;"></span>
+      <span style="position:absolute;left:-13px;top:8px;display:flex;gap:5px;animation:swDock 14s linear infinite;">
+        <span style="width:7px;height:7px;border-radius:50%;background:oklch(0.82 0.14 165);display:block;"></span>
+        <span style="width:7px;height:7px;border-radius:50%;background:oklch(0.82 0.14 165);display:block;"></span>
+        <span style="width:7px;height:7px;border-radius:50%;background:oklch(0.82 0.14 165);display:block;"></span>
+      </span>
+      <span style="position:absolute;left:-24px;top:-22px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#55555c;white-space:nowrap;">CARRIER</span>
+    </div>
+    <div style="position:absolute;width:8px;height:8px;border-radius:50%;background:oklch(0.82 0.14 165);box-shadow:0 0 10px oklch(0.82 0.14 165);offset-path:path('M 170 56 C 190 110 240 150 300 168');offset-rotate:0deg;animation:swDeploy 14s linear infinite;"></div>
+    <div style="position:absolute;width:8px;height:8px;border-radius:50%;background:oklch(0.82 0.14 165);box-shadow:0 0 10px oklch(0.82 0.14 165);offset-path:path('M 170 56 C 150 100 110 130 60 140');offset-rotate:0deg;animation:swDeploy 14s linear infinite;"></div>
+    <div style="position:absolute;width:8px;height:8px;border-radius:50%;background:oklch(0.82 0.14 165);box-shadow:0 0 10px oklch(0.82 0.14 165);offset-path:path('M 170 56 C 210 80 260 80 310 70');offset-rotate:0deg;animation:swDeploy 14s linear infinite;"></div>
+    <div style="position:absolute;left:0;top:0;animation:swTarget 14s linear infinite;">
+      <span style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:3px;background:oklch(0.78 0.14 75 / 0.25);border:1.5px solid oklch(0.78 0.14 75);transform:rotate(45deg);display:block;"></span>
+      <span style="position:absolute;left:12px;top:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:oklch(0.78 0.14 75);white-space:nowrap;">TARGET &middot; MOVING</span>
+      <span style="position:absolute;left:-34px;top:-34px;width:68px;height:68px;border-radius:50%;border:1px dashed oklch(0.82 0.14 165 / 0.5);display:block;animation:swOrbitIn 14s linear infinite;"></span>
+      <span style="position:absolute;left:-2px;top:-2px;width:4px;height:4px;display:block;animation:swOrbitIn 14s linear infinite;">
+        <span style="position:absolute;inset:0;animation:spin 3.5s linear infinite;">
+          <span style="position:absolute;left:30px;top:-3px;width:9px;height:9px;border-radius:50%;background:oklch(0.82 0.14 165);box-shadow:0 0 12px oklch(0.82 0.14 165);display:block;"></span>
+        </span>
+      </span>
+      <span style="position:absolute;left:-4px;top:-4px;width:9px;height:9px;border-radius:50%;background:oklch(0.82 0.14 165);box-shadow:0 0 12px oklch(0.82 0.14 165);display:block;animation:swConvA 14s linear infinite;"></span>
+      <span style="position:absolute;left:-4px;top:-4px;width:9px;height:9px;border-radius:50%;background:oklch(0.82 0.14 165);box-shadow:0 0 12px oklch(0.82 0.14 165);display:block;animation:swConvB 14s linear infinite;"></span>
+    </div>
+    <div style="position:absolute;left:14px;bottom:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:oklch(0.82 0.14 165 / 0.8);animation:swLbl1 14s linear infinite;">DEPLOYING &times;3</div>
+    <div style="position:absolute;left:14px;bottom:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:oklch(0.82 0.14 165 / 0.8);animation:swLbl2 14s linear infinite;">TARGET ACQUIRED &middot; ORBITING</div>
+    <div style="position:absolute;left:14px;bottom:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:oklch(0.82 0.14 165 / 0.8);animation:swLbl3 14s linear infinite;">ORBIT SEEN &middot; CONVERGING</div>
+  </div>
+</div>
+
+<script>
+// Freeze every CSS animation and expose a deterministic seek, so the capture
+// script can step the whole page to an exact time instead of racing wall clock.
+window.__seek = function (tMs) {
+  document.getAnimations().forEach(function (a) {
+    a.pause();
+    a.currentTime = tMs;
+  });
+};
+window.__ready = (async function () {
+  await document.fonts.ready;
+  // let layout + offset-path resolve, then pause everything at t=0
+  await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
+  window.__seek(0);
+  return true;
+})();
+</script>
+</body>
+</html>
