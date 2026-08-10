@@ -7,14 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0226CF272345B9DFD323A207 /* MQTTClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852D4B7A3590B029C16F8846 /* MQTTClientProtocol.swift */; };
 		057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F7EF5F138BEA331DC60973C2 /* WebRTC */; };
 		0C7CD6C64F1A964DCFDEFEA7 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 108E6D9254DA11DE44020D09 /* Foundation.framework */; };
 		108C2B667CC25044DED0793F /* DroneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */; };
 		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
 		2080601FFA5F70674A60C87A /* DroneSetupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */; };
+		2202266A5D33F3407FB64060 /* CocoaMQTTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E496565EA262A8F546E62B /* CocoaMQTTClient.swift */; };
 		2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */; };
+		2C1645D0F8DB6DA0DD08FBAB /* AWSIoTMQTTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55CCB63A64DAE5C3D1F6842 /* AWSIoTMQTTClient.swift */; };
 		3015A7361563077FBC2FAE44 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB16DB863897C31CEF2CACE /* APIClient.swift */; };
 		3037447B6B1D2DB6260AA36C /* DroneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */; };
+		3078E84B601D6023A4568296 /* CocoaMQTT in Frameworks */ = {isa = PBXBuildFile; productRef = 0994844FD00D11BAFED62C40 /* CocoaMQTT */; };
 		3B6E4A9E2F8A4F3EB7E6C5A1 /* ConfigureTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */; };
 		3B8C7D6E5F4A3B2C1D0E9F8A /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */; };
 		43521145F3770AD6CD467509 /* AWSCore in Frameworks */ = {isa = PBXBuildFile; productRef = 525C477C1B0FB5F6D2FBF0A9 /* AWSCore */; };
@@ -30,6 +34,7 @@
 		AA11BB22CC33DD44EE55FF66 /* Group.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF67 /* Group.swift */; };
 		AA11BB22CC33DD44EE55FF68 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */; };
 		AA11BB22CC33DD44EE55FF70 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */; };
+		B623500CC83A610DB774B0BA /* ControlPlaneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7A2A9A0DB8DD0DB4730849 /* ControlPlaneSettingsView.swift */; };
 		B97A51BA48BF59FE6DF221DA /* SetupDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100B1A7A36761E30F2A4500A /* SetupDroneView.swift */; };
 		CA1BD0798DEB15CFA164D9F2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */; };
 		CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */; };
@@ -37,6 +42,7 @@
 		D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E698CDF3450F25420AF98 /* DroneChatView.swift */; };
 		E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5478F74C272118CF0A0A4F37 /* Drone.swift */; };
 		ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */; };
+		EFE4D03AADB2D8BD393682F3 /* GCSSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F4D80EAA990A4DBAD204F0 /* GCSSettings.swift */; };
 		F2A7C8D9E1B24C3D9F0A1B2C /* WifiNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D2C3B4A5964788B9C0D1E2 /* WifiNetwork.swift */; };
 		FF7256D2350F95C6619AA7D3 /* AWSIoT in Frameworks */ = {isa = PBXBuildFile; productRef = 8F5B60C7D6A2D7B84AAE7C7E /* AWSIoT */; };
 /* End PBXBuildFile section */
@@ -67,15 +73,19 @@
 		6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		6E3CA67B8321CF39FF4699E1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DroneOperator.entitlements; sourceTree = "<group>"; };
+		852D4B7A3590B029C16F8846 /* MQTTClientProtocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MQTTClientProtocol.swift; sourceTree = "<group>"; };
 		85D3CDBF14C7FA275224809B /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
 		8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionService.swift; sourceTree = "<group>"; };
+		97F4D80EAA990A4DBAD204F0 /* GCSSettings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GCSSettings.swift; sourceTree = "<group>"; };
 		9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigureTabView.swift; sourceTree = "<group>"; };
 		9C7B6A5D4C3E2F1A0B9C8D7E /* Mission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mission.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF61 /* ChatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatsView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF67 /* Group.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Group.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
+		AA7A2A9A0DB8DD0DB4730849 /* ControlPlaneSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ControlPlaneSettingsView.swift; sourceTree = "<group>"; };
 		B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddDroneView.swift; sourceTree = "<group>"; };
+		B8E496565EA262A8F546E62B /* CocoaMQTTClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CocoaMQTTClient.swift; sourceTree = "<group>"; };
 		BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneSetupService.swift; sourceTree = "<group>"; };
 		C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneOperatorApp.swift; sourceTree = "<group>"; };
 		CB0EAFFDB470AFDBE1D79345 /* DroneOperatorUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DroneOperatorUITests.swift; path = DroneOperatorUITests/DroneOperatorUITests.swift; sourceTree = "<group>"; };
@@ -83,6 +93,7 @@
 		CF8B9402738790E79B8FFFD5 /* DroneDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneDetailView.swift; sourceTree = "<group>"; };
 		DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AWSConfig.swift; sourceTree = "<group>"; };
 		E1D2C3B4A5964788B9C0D1E2 /* WifiNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiNetwork.swift; sourceTree = "<group>"; };
+		E55CCB63A64DAE5C3D1F6842 /* AWSIoTMQTTClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AWSIoTMQTTClient.swift; sourceTree = "<group>"; };
 		F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		FA2F66D0AFC1F21096C2B128 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -103,6 +114,7 @@
 				057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */,
 				FF7256D2350F95C6619AA7D3 /* AWSIoT in Frameworks */,
 				43521145F3770AD6CD467509 /* AWSCore in Frameworks */,
+				3078E84B601D6023A4568296 /* CocoaMQTT in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,6 +131,9 @@
 				57BAEA30533FDEB9448F8BF6 /* Logger.swift */,
 				85D3CDBF14C7FA275224809B /* MQTTService.swift */,
 				8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */,
+				852D4B7A3590B029C16F8846 /* MQTTClientProtocol.swift */,
+				E55CCB63A64DAE5C3D1F6842 /* AWSIoTMQTTClient.swift */,
+				B8E496565EA262A8F546E62B /* CocoaMQTTClient.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -172,6 +187,15 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		7BB606F0CBD7E9BCCE3D8BAD /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				AA7A2A9A0DB8DD0DB4730849 /* ControlPlaneSettingsView.swift */,
+			);
+			name = Settings;
+			path = Settings;
+			sourceTree = "<group>";
+		};
 		7FCD37E9C1985CDAD3D540C4 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -203,6 +227,7 @@
 			isa = PBXGroup;
 			children = (
 				DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */,
+				97F4D80EAA990A4DBAD204F0 /* GCSSettings.swift */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -233,6 +258,7 @@
 			children = (
 				BE97CDCBE34B4FED709FF517 /* Auth */,
 				56A3539E966CCEAFEE52AF88 /* Drones */,
+				7BB606F0CBD7E9BCCE3D8BAD /* Settings */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -272,6 +298,7 @@
 				F7EF5F138BEA331DC60973C2 /* WebRTC */,
 				8F5B60C7D6A2D7B84AAE7C7E /* AWSIoT */,
 				525C477C1B0FB5F6D2FBF0A9 /* AWSCore */,
+				0994844FD00D11BAFED62C40 /* CocoaMQTT */,
 			);
 			productName = DroneOperator;
 			productReference = 39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */;
@@ -317,6 +344,7 @@
 			packageReferences = (
 				FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */,
 				B4DDC5DB2E3F42F7B0A8A745 /* XCRemoteSwiftPackageReference "WebRTC" */,
+				B7B93643DF34C01A9F4A408D /* XCRemoteSwiftPackageReference "CocoaMQTT" */,
 			);
 			productRefGroup = 82CED843544E37DC5152F0A9 /* Products */;
 			projectDirPath = "";
@@ -385,6 +413,11 @@
 				94D6C905AB0BBD269EB7BCE7 /* VideoStreamView.swift in Sources */,
 				2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */,
 				F2A7C8D9E1B24C3D9F0A1B2C /* WifiNetwork.swift in Sources */,
+				EFE4D03AADB2D8BD393682F3 /* GCSSettings.swift in Sources */,
+				0226CF272345B9DFD323A207 /* MQTTClientProtocol.swift in Sources */,
+				2C1645D0F8DB6DA0DD08FBAB /* AWSIoTMQTTClient.swift in Sources */,
+				2202266A5D33F3407FB64060 /* CocoaMQTTClient.swift in Sources */,
+				B623500CC83A610DB774B0BA /* ControlPlaneSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -637,6 +670,14 @@
 				minimumVersion = 125.0.0;
 			};
 		};
+		B7B93643DF34C01A9F4A408D /* XCRemoteSwiftPackageReference "CocoaMQTT" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/emqx/CocoaMQTT";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.1.6;
+			};
+		};
 		FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/aws-amplify/aws-sdk-ios-spm";
@@ -648,6 +689,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0994844FD00D11BAFED62C40 /* CocoaMQTT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B7B93643DF34C01A9F4A408D /* XCRemoteSwiftPackageReference "CocoaMQTT" */;
+			productName = CocoaMQTT;
+		};
 		525C477C1B0FB5F6D2FBF0A9 /* AWSCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = FE0852183EDEB81A18CA9CF5 /* XCRemoteSwiftPackageReference "aws-sdk-ios-spm" */;

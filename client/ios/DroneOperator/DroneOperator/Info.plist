@@ -49,6 +49,19 @@
     </array>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Drone Operator needs local network access to communicate with your drone during setup.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- GCS (Ground Control Station) mode talks to a box on the local
+             network over plain HTTP (see eco/gcs/README.md - its HTTP API
+             has no TLS option by default); ATS blocks non-HTTPS loads by
+             default. NSAllowsLocalNetworking permits cleartext specifically
+             for local/private network destinations (.local hostnames,
+             RFC 1918 ranges, link-local) without weakening ATS for the wider
+             internet - every other URL this app calls (AWSConfig.apiEndpoint,
+             Cognito) is still a hardcoded https:// literal and unaffected. -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

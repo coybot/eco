@@ -1,5 +1,5 @@
 {
-  "originHash" : "da05fc05752ade4796a484646f567a463d37bcfa3a9b1302096879ddcd26b5c3",
+  "originHash" : "3a0a7461f429e9ec586474324b5721f59a6a3047d20738f984733683448a2cdb",
   "pins" : [
     {
       "identity" : "aws-sdk-ios-spm",
@@ -8,6 +8,33 @@
       "state" : {
         "revision" : "f2e9fbed08dd14a962f8d62d7e302d73b9ecb429",
         "version" : "2.41.0"
+      }
+    },
+    {
+      "identity" : "cocoamqtt",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/emqx/CocoaMQTT",
+      "state" : {
+        "revision" : "378ecda142878b2cc414b4b7cb39f8b3e7ceb814",
+        "version" : "2.4.0"
+      }
+    },
+    {
+      "identity" : "mqttcocoaasyncsocket",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/leeway1208/MqttCocoaAsyncSocket",
+      "state" : {
+        "revision" : "ce3e18607fd01079495f86ff6195d8a3ca469f73",
+        "version" : "1.0.8"
+      }
+    },
+    {
+      "identity" : "starscream",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/daltoniam/Starscream.git",
+      "state" : {
+        "revision" : "c6bfd1af48efcc9a9ad203665db12375ba6b145a",
+        "version" : "4.0.8"
       }
     },
     {
