@@ -333,15 +333,68 @@ private class TokenStore(context: Context) {
 }
 
 // ============================================================
+// Ground Control Station settings
+// ============================================================
+// Which control plane the app talks to: AWS (cloud, the unchanged default)
+// or a local Ground Control Station (see eco/gcs/README.md) - a PC, Mac, or
+// NVIDIA Thor on the same network running its own models instead of Bedrock.
+enum class ControlPlane { CLOUD, GCS }
+
+/** Runtime-configurable GCS connection settings, persisted in their own
+ * EncryptedSharedPreferences store (same pattern as TokenStore). Cloud mode
+ * is unaffected: ApiClient keeps using API_BASE exactly as before. */
+// Not `private`, unlike TokenStore above: DroneViewModel exposes an instance
+// of this publicly (`val gcsSettings`) so Compose screens outside the
+// ApiClient/ViewModel pair (SettingsScreen, GroundControlStationCard) can
+// read it directly - Kotlin's visibility rules reject a public property of a
+// private-in-file type even within the same file.
+class GCSSettings(context: Context) {
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
+    private val prefs = EncryptedSharedPreferences.create(
+        context, "$PREFS_NAME.gcs", masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    var controlPlane: ControlPlane
+        get() = if (prefs.getString("control_plane", "cloud") == "gcs") ControlPlane.GCS else ControlPlane.CLOUD
+        set(v) = prefs.edit().putString("control_plane", if (v == ControlPlane.GCS) "gcs" else "cloud").apply()
+
+    /** The GCS box's LAN host or IP, e.g. "192.168.1.50". */
+    var host: String
+        get() = prefs.getString("host", "") ?: ""
+        set(v) = prefs.edit().putString("host", v).apply()
+
+    /** The GCS's HTTP API port (gcs/config.yaml's http.port, default 8080). */
+    var httpPort: Int
+        get() = prefs.getInt("http_port", 8080)
+        set(v) = prefs.edit().putInt("http_port", v).apply()
+
+    /** Pairing token from the GCS's console output / auth.json, used as the
+     * Bearer token for every request instead of a Cognito id token. */
+    var pairingToken: String
+        get() = prefs.getString("pairing_token", "") ?: ""
+        set(v) = prefs.edit().putString("pairing_token", v).apply()
+
+    val isGCSMode: Boolean get() = controlPlane == ControlPlane.GCS
+}
+
+// ============================================================
 // API Client
 // ============================================================
-private class ApiClient(private val tokenStore: TokenStore) {
+private class ApiClient(private val tokenStore: TokenStore, private val gcsSettings: GCSSettings) {
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     // Executes a request; on 401/403 tries one token refresh then retries.
+    // In GCS mode tokenStore.refreshToken is always blank (no Cognito
+    // session), so this already skips the refresh dance there for free - a
+    // 401/403 just means the pairing token is wrong/stale.
     private suspend fun exec(buildReq: () -> Request): Response {
         val resp = http.newCall(buildReq()).execute()
         if ((resp.code == 401 || resp.code == 403) && tokenStore.refreshToken.isNotBlank()) {
@@ -351,7 +404,24 @@ private class ApiClient(private val tokenStore: TokenStore) {
         return resp
     }
 
-    private fun authHeader() = "Bearer ${tokenStore.idToken}"
+    /** Cloud mode (default): AWS API Gateway. GCS mode: this box's own
+     * host:httpPort from GCSSettings, set on the Settings screen. */
+    private fun apiBase() = if (gcsSettings.isGCSMode) "http://${gcsSettings.host}:${gcsSettings.httpPort}" else API_BASE
+
+    private fun authHeader() =
+        if (gcsSettings.isGCSMode) "Bearer ${gcsSettings.pairingToken}" else "Bearer ${tokenStore.idToken}"
+
+    /** GET /healthz on the given host:port, with no auth - used by the
+     * Settings screen's "Test Connection" button before a pairing token is
+     * even entered. */
+    suspend fun testGCSConnection(host: String, port: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url("http://$host:$port/healthz").get().build()
+            http.newCall(req).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     // --- Cognito ---
 
@@ -417,7 +487,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun listDrones(): Result<List<Drone>> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/drones").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     val raw = resp.body?.string() ?: "{}"
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Load failed (${resp.code})"))
@@ -429,7 +499,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun registerDrone(droneId: String, name: String): Result<Drone> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(RegisterDroneRequest.serializer(), RegisterDroneRequest(droneId, name))
-            exec { Request.Builder().url("$API_BASE/drones").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) {
                         val raw = resp.body?.string() ?: ""
@@ -442,7 +512,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun deleteDrone(droneId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId").header("Authorization", authHeader()).delete().build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId").header("Authorization", authHeader()).delete().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Delete failed (${resp.code})"))
                     Result.success(Unit)
@@ -453,7 +523,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun patchDroneName(droneId: String, name: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(PatchDroneNameRequest.serializer(), PatchDroneNameRequest(name))
-            exec { Request.Builder().url("$API_BASE/drones/$droneId").header("Authorization", authHeader()).patch(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId").header("Authorization", authHeader()).patch(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Rename failed (${resp.code})"))
                     Result.success(Unit)
@@ -463,7 +533,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun getDroneStatus(droneId: String): Result<DroneStatusData> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/status").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/status").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Status ${resp.code}"))
                     val raw = resp.body?.string() ?: return@withContext Result.failure(Exception("Empty"))
@@ -478,7 +548,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
                 append("?limit=$limit")
                 if (since != null) append("&since=$since")
             }
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/logs$params").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/logs$params").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Logs failed (${resp.code})"))
                     val raw = resp.body?.string() ?: "{}"
@@ -489,7 +559,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun getDroneWifi(droneId: String): Result<List<WifiNetwork>> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/wifi").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/wifi").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("WiFi load failed (${resp.code})"))
                     val raw = resp.body?.string() ?: "{}"
@@ -501,7 +571,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun putDroneWifi(droneId: String, networks: List<WifiNetwork>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(WifiConfigRequest.serializer(), WifiConfigRequest(networks))
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/wifi").header("Authorization", authHeader()).put(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/wifi").header("Authorization", authHeader()).put(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("WiFi save failed (${resp.code})"))
                     Result.success(Unit)
@@ -511,7 +581,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun getBatteryConfig(droneId: String): Result<BatteryConfig> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/battery-config").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/battery-config").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Battery load failed (${resp.code})"))
                     val raw = resp.body?.string() ?: "{}"
@@ -523,7 +593,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun putBatteryConfig(droneId: String, config: BatteryConfig): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(BatteryConfig.serializer(), config)
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/battery-config").header("Authorization", authHeader()).put(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/battery-config").header("Authorization", authHeader()).put(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Battery save failed (${resp.code})"))
                     Result.success(Unit)
@@ -533,7 +603,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun createConversation(droneId: String): Result<String> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/conversations").header("Authorization", authHeader()).post("{}".toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/conversations").header("Authorization", authHeader()).post("{}".toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Create conversation failed (${resp.code})"))
                     val raw = resp.body?.string() ?: ""
@@ -545,7 +615,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun sendMessage(droneId: String, conversationId: String, message: String): Result<ConversationMessage?> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(SendMessageRequest.serializer(), SendMessageRequest(message))
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/conversations/$conversationId/messages").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/conversations/$conversationId/messages").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) {
                         val raw = resp.body?.string() ?: ""
@@ -560,7 +630,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun sendImageSelection(droneId: String, conversationId: String, optionId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(ImageSelectionRequest.serializer(), ImageSelectionRequest(optionId))
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/conversations/$conversationId/select").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/conversations/$conversationId/select").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Select failed (${resp.code})"))
                     Result.success(Unit)
@@ -570,7 +640,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun getMessages(droneId: String, conversationId: String): Result<List<ConversationMessage>> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/conversations/$conversationId").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/conversations/$conversationId").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Poll failed (${resp.code})"))
                     val raw = resp.body?.string() ?: ""
@@ -583,7 +653,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun listGroups(): Result<List<DroneGroup>> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/groups").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/groups").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     val raw = resp.body?.string() ?: "{}"
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Load failed (${resp.code})"))
@@ -595,7 +665,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun createGroup(name: String, members: List<String>, groupId: String? = null): Result<DroneGroup> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(CreateGroupRequest.serializer(), CreateGroupRequest(name, members, groupId))
-            exec { Request.Builder().url("$API_BASE/groups").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/groups").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     val raw = resp.body?.string() ?: ""
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Create failed (${resp.code}): $raw"))
@@ -606,7 +676,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun deleteGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/groups/$groupId").header("Authorization", authHeader()).delete().build() }
+            exec { Request.Builder().url("${apiBase()}/groups/$groupId").header("Authorization", authHeader()).delete().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Delete failed (${resp.code})"))
                     Result.success(Unit)
@@ -617,7 +687,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
     suspend fun sendGroupMessage(groupId: String, conversationId: String, message: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val body = json.encodeToString(SendMessageRequest.serializer(), SendMessageRequest(message))
-            exec { Request.Builder().url("$API_BASE/groups/$groupId/conversations/$conversationId/messages").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/groups/$groupId/conversations/$conversationId/messages").header("Authorization", authHeader()).post(body.toRequestBody(JSON_MEDIA)).build() }
                 .use { resp ->
                     if (!resp.isSuccessful) {
                         val raw = resp.body?.string() ?: ""
@@ -630,7 +700,7 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun getGroupMessages(groupId: String, conversationId: String): Result<List<ConversationMessage>> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/groups/$groupId/conversations/$conversationId").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/groups/$groupId/conversations/$conversationId").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Poll failed (${resp.code})"))
                     val raw = resp.body?.string() ?: ""
@@ -641,21 +711,21 @@ private class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun startVideoStream(droneId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/video/start").header("Authorization", authHeader()).post("{\"action\":\"start\"}".toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/video/start").header("Authorization", authHeader()).post("{\"action\":\"start\"}".toRequestBody(JSON_MEDIA)).build() }
                 .use { Result.success(Unit) }
         } catch (e: Exception) { Result.failure(e) }
     }
 
     suspend fun stopVideoStream(droneId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/video/start").header("Authorization", authHeader()).post("{\"action\":\"stop\"}".toRequestBody(JSON_MEDIA)).build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/video/start").header("Authorization", authHeader()).post("{\"action\":\"stop\"}".toRequestBody(JSON_MEDIA)).build() }
                 .use { Result.success(Unit) }
         } catch (e: Exception) { Result.failure(e) }
     }
 
     suspend fun getVideoViewer(droneId: String): Result<VideoViewerConfig> = withContext(Dispatchers.IO) {
         try {
-            exec { Request.Builder().url("$API_BASE/drones/$droneId/video/viewer").header("Authorization", authHeader()).get().build() }
+            exec { Request.Builder().url("${apiBase()}/drones/$droneId/video/viewer").header("Authorization", authHeader()).get().build() }
                 .use { resp ->
                     if (resp.code == 404) return@withContext Result.failure(Exception("not_ready"))
                     if (!resp.isSuccessful) return@withContext Result.failure(Exception("Viewer error (${resp.code})"))
@@ -724,7 +794,9 @@ private class ApiClient(private val tokenStore: TokenStore) {
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    fun isLoggedIn() = tokenStore.idToken.isNotBlank()
+    // GCS mode has no Cognito session - a saved pairing token is all that's
+    // needed, so the login screen is bypassed entirely (see DroneViewModel).
+    fun isLoggedIn() = if (gcsSettings.isGCSMode) gcsSettings.pairingToken.isNotBlank() else tokenStore.idToken.isNotBlank()
 }
 
 private fun String.encodeUrl() = java.net.URLEncoder.encode(this, "UTF-8")
@@ -832,7 +904,8 @@ data class UiState(
 // ============================================================
 class DroneViewModel(context: Context) : ViewModel() {
     private val tokenStore = TokenStore(context.applicationContext)
-    private val api = ApiClient(tokenStore)
+    val gcsSettings = GCSSettings(context.applicationContext)
+    private val api = ApiClient(tokenStore, gcsSettings)
 
     private val _state = MutableStateFlow(
         UiState(
@@ -945,6 +1018,32 @@ class DroneViewModel(context: Context) : ViewModel() {
     }
 
     fun switchMainTab(tab: MainTab) = _state.update { it.copy(mainTab = tab, error = null) }
+
+    // --- Ground Control Station ---
+
+    suspend fun testGCSConnection(host: String, port: Int): Boolean = api.testGCSConnection(host, port)
+
+    /** Persists the new control-plane settings and re-evaluates login state
+     * against them - switching to GCS with a saved pairing token goes
+     * straight to the main screen (no sign-in); switching back to cloud
+     * falls back to the login screen unless a Cognito session is still valid. */
+    fun applyGCSSettings(controlPlane: ControlPlane, host: String, httpPort: Int, pairingToken: String) {
+        gcsSettings.controlPlane = controlPlane
+        gcsSettings.host = host
+        gcsSettings.httpPort = httpPort
+        gcsSettings.pairingToken = pairingToken
+
+        pollJob?.cancel()
+        groupPollJob?.cancel()
+        statusPollJob?.cancel()
+        telemetryJob?.cancel()
+
+        _state.value = UiState(
+            screen = if (api.isLoggedIn()) Screen.Chats else Screen.Login,
+            userEmail = tokenStore.userEmail
+        )
+        if (api.isLoggedIn()) loadAll()
+    }
 
     // --- Drone list ---
 
@@ -1536,6 +1635,21 @@ fun LoginScreen(state: UiState, vm: DroneViewModel) {
                     }
                 }
             }
+
+            // Escape hatch for a GCS-only setup: Settings (where this same
+            // card also lives) is nested inside the signed-in app shell, so
+            // a fresh install with no AWS account would otherwise have no
+            // way to ever reach it. Caught by actually booting an emulator
+            // and hitting this dead end - see the equivalent fix on iOS
+            // (AuthView.swift).
+            var showGCSSetup by remember { mutableStateOf(false) }
+            Spacer(Modifier.height(24.dp))
+            TextButton(onClick = { showGCSSetup = !showGCSSetup }) {
+                Text(if (showGCSSetup) "Hide Ground Control Station setup" else "Using a Ground Control Station instead?")
+            }
+            if (showGCSSetup) {
+                GroundControlStationCard(vm)
+            }
         }
     }
 }
@@ -2102,43 +2216,167 @@ private fun AddDroneDialog(state: UiState, vm: DroneViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(state: UiState, vm: DroneViewModel) {
+    val isGCSMode = vm.gcsSettings.isGCSMode
+
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Account card
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Account", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        val initial = state.userEmail.firstOrNull()?.uppercaseChar() ?: '?'
-                        Box(
-                            modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(initial.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        }
-                        Column {
-                            Text(state.userEmail.ifBlank { "Signed in" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                            Text("Astral Drone Operator", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Account card (cloud only - GCS mode has no Cognito session)
+            if (!isGCSMode) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Account", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            val initial = state.userEmail.firstOrNull()?.uppercaseChar() ?: '?'
+                            Box(
+                                modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(initial.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                            Column {
+                                Text(state.userEmail.ifBlank { "Signed in" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                Text("Astral Drone Operator", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
             }
 
-            // Sign out
-            OutlinedButton(
-                onClick = vm::logout,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Sign Out")
+            GroundControlStationCard(vm)
+
+            // Sign out (cloud only)
+            if (!isGCSMode) {
+                OutlinedButton(
+                    onClick = vm::logout,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Sign Out")
+                }
             }
 
-            Spacer(Modifier.weight(1f))
+            // A fixed spacer, not weight(1f): this Column now scrolls (to fit
+            // the Ground Control Station card's fields), and weight() inside
+            // a scrollable Column has unbounded height to distribute against.
+            Spacer(Modifier.height(24.dp))
             Text("Astral Drone Platform", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
+        }
+    }
+}
+
+// ============================================================
+// Ground Control Station card (control-plane switch)
+// ============================================================
+// Lets the operator switch between AWS (cloud, the default) and a local
+// Ground Control Station (see eco/gcs/README.md) - a PC, Mac, or NVIDIA Thor
+// on the same network. No AWS account or internet connection needed in GCS mode.
+@Composable
+private fun GroundControlStationCard(vm: DroneViewModel) {
+    val scope = rememberCoroutineScope()
+    var controlPlane by remember { mutableStateOf(vm.gcsSettings.controlPlane) }
+    var host by remember { mutableStateOf(vm.gcsSettings.host) }
+    var httpPort by remember { mutableStateOf(vm.gcsSettings.httpPort.toString()) }
+    var pairingToken by remember { mutableStateOf(vm.gcsSettings.pairingToken) }
+    var isTesting by remember { mutableStateOf(false) }
+    var testSucceeded by remember { mutableStateOf<Boolean?>(null) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Ground Control Station", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = controlPlane == ControlPlane.CLOUD,
+                    onClick = { controlPlane = ControlPlane.CLOUD },
+                    label = { Text("Cloud (AWS)") }
+                )
+                FilterChip(
+                    selected = controlPlane == ControlPlane.GCS,
+                    onClick = { controlPlane = ControlPlane.GCS },
+                    label = { Text("Ground Control Station") }
+                )
+            }
+
+            Text(
+                if (controlPlane == ControlPlane.CLOUD)
+                    "Missions are orchestrated in AWS using Bedrock, as usual."
+                else
+                    "Missions are orchestrated locally by a Ground Control Station on your network, using its own models instead of Bedrock.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (controlPlane == ControlPlane.GCS) {
+                OutlinedTextField(
+                    value = host, onValueChange = { host = it },
+                    label = { Text("Host or IP (e.g. 192.168.1.50)") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                )
+                OutlinedTextField(
+                    value = httpPort, onValueChange = { httpPort = it.filter(Char::isDigit) },
+                    label = { Text("HTTP port") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedTextField(
+                    value = pairingToken, onValueChange = { pairingToken = it },
+                    label = { Text("Pairing token") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation()
+                )
+
+                OutlinedButton(
+                    onClick = {
+                        val port = httpPort.toIntOrNull() ?: vm.gcsSettings.httpPort
+                        isTesting = true
+                        testSucceeded = null
+                        scope.launch {
+                            testSucceeded = vm.testGCSConnection(host, port)
+                            isTesting = false
+                        }
+                    },
+                    enabled = host.isNotBlank() && httpPort.isNotBlank() && !isTesting,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isTesting) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Test Connection")
+                        testSucceeded?.let { ok ->
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                if (ok) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+                                contentDescription = if (ok) "Reachable" else "Not reachable",
+                                tint = if (ok) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = {
+                    vm.applyGCSSettings(
+                        controlPlane = controlPlane,
+                        host = host,
+                        httpPort = httpPort.toIntOrNull() ?: vm.gcsSettings.httpPort,
+                        pairingToken = pairingToken
+                    )
+                },
+                enabled = controlPlane == ControlPlane.CLOUD || (host.isNotBlank() && httpPort.isNotBlank()),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save")
+            }
         }
     }
 }
