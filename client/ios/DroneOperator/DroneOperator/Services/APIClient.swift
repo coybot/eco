@@ -10,21 +10,33 @@ final class APIClient {
     var lastError: APIError?
     
     // MARK: - Dependencies
-    
+
     private let authService: AuthService
-    private let baseURL: URL
     private let decoder: JSONDecoder
-    
+
+    /// Cloud mode: AWSConfig's compiled endpoint (unchanged). GCS mode:
+    /// this box's own host:port from GCSSettings, set on the Settings screen.
+    /// Computed per-request (not cached at init) so switching control planes
+    /// takes effect immediately without restarting the app.
+    private var baseURL: URL {
+        let settings = GCSSettings.shared
+        let urlString = settings.isGCSMode ? settings.baseURLString : AWSConfig.apiEndpoint
+        guard let url = URL(string: urlString) else {
+            // AWSConfig.apiEndpoint is a compiled, known-valid literal - this
+            // can only happen from a malformed user-entered GCS host/port,
+            // which the Settings screen's "Test connection" should catch
+            // before any real request depends on this fallback.
+            return URL(string: AWSConfig.apiEndpoint)!
+        }
+        return url
+    }
+
     // MARK: - Singleton
-    
+
     static let shared = APIClient()
-    
+
     private init(authService: AuthService = .shared) {
         self.authService = authService
-        guard let url = URL(string: AWSConfig.apiEndpoint) else {
-            fatalError("Invalid API endpoint URL in AWSConfig: \(AWSConfig.apiEndpoint)")
-        }
-        self.baseURL = url
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
     }
@@ -259,8 +271,26 @@ final class APIClient {
         )
     }
     
+    // MARK: - Ground Control Station
+
+    /// Hits `GET /healthz` on the given host:port directly, bypassing the
+    /// normal request()'s auth-token requirement (the GCS's /healthz route
+    /// takes no auth) - used by the Settings screen's "Test connection"
+    /// button, so reachability can be checked before a pairing token is even
+    /// entered.
+    func testGCSConnection(host: String, port: Int) async -> Bool {
+        guard let url = URL(string: "http://\(host):\(port)/healthz") else { return false }
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(httpResponse.statusCode)
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Private
-    
+
     private func request<T: Decodable>(
         method: String,
         path: String,
@@ -268,20 +298,30 @@ final class APIClient {
         queryItems: [URLQueryItem]? = nil,
         isRetry: Bool = false
     ) async throws -> T {
-        // Proactively refresh token if it's expiring soon (before making the request)
-        if !isRetry {
-            do {
-                try await authService.refreshTokensIfNeeded()
-            } catch {
-                // If refresh fails but we still have a token, try the request anyway
-                // The token might still be valid
+        let isGCSMode = GCSSettings.shared.isGCSMode
+        var token = ""
+
+        if isGCSMode {
+            // GCS mode: a long-lived pairing token from the Settings screen,
+            // no Cognito session and no refresh mechanism to speak of.
+            token = GCSSettings.shared.pairingToken
+            guard !token.isEmpty else { throw APIError.unauthorized }
+        } else {
+            // Proactively refresh token if it's expiring soon (before making the request)
+            if !isRetry {
+                do {
+                    try await authService.refreshTokensIfNeeded()
+                } catch {
+                    // If refresh fails but we still have a token, try the request anyway
+                    // The token might still be valid
+                }
             }
+            guard let idToken = authService.idToken else {
+                throw APIError.unauthorized
+            }
+            token = idToken
         }
-        
-        guard let token = authService.idToken else {
-            throw APIError.unauthorized
-        }
-        
+
         var url = baseURL.appendingPathComponent(path)
         if let queryItems = queryItems, !queryItems.isEmpty {
             var components = URLComponents(url: url, resolvingAgainstBaseURL: true)
@@ -321,6 +361,12 @@ final class APIClient {
                     throw error
                 }
             case 401, 403:
+                if isGCSMode {
+                    // No Cognito session to refresh or sign out of - a 401/403
+                    // here just means the pairing token the GCS's Settings
+                    // screen has is wrong/stale. Surface it directly.
+                    throw APIError.unauthorized
+                }
                 // Token may be expired - try to refresh and retry once
                 if !isRetry {
                     do {
