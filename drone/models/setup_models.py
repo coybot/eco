@@ -11,6 +11,12 @@ Usage:
   python setup_models.py --setup-device --variant <nano|nx|agx32|agx64>
 
 All VLM outputs are written as vlm.gguf and vlm_mmproj.gguf in the current directory.
+
+NOTE ON LICENSING: this script imports `ultralytics`, which is AGPL-3.0. It is a
+build-time tool only — it downloads .pt weights and exports them to ONNX. Nothing
+in the runtime perception path imports it, and it is not installed on the vehicle
+by the platform installers. Install it yourself on a build machine if you need to
+regenerate weights, or obtain equivalent .onnx files another way.
 """
 
 from __future__ import annotations

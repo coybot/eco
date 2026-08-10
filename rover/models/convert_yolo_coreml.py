@@ -15,6 +15,12 @@ see eco/rover/models/README.md "Synthetic data" for how to bootstrap one.
 
 The "person" class (id 0) is what actually matters for obstacle/person avoidance today,
 and that works out of the box with the generic COCO weights.
+
+NOTE ON LICENSING: this script imports `ultralytics`, which is AGPL-3.0. It is a
+build-time tool only — it downloads .pt weights and exports them to ONNX. Nothing
+in the runtime perception path imports it, and it is not installed on the vehicle
+by the platform installers. Install it yourself on a build machine if you need to
+regenerate weights, or obtain equivalent .onnx files another way.
 """
 from pathlib import Path
 
