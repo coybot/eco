@@ -3,7 +3,7 @@
 One place to test **quadcopter**, **rover**, **fixed-wing** (all three via the
 `DroneOperator` app) and **phrover** (the iPhone-brained WAVE ROVER, via the public
 `PhroverOperator` app + `RoverNav`/`PhroverKit`/`PhroverCloud` in the sibling `presidio-sdk`
-repo — see `../../sdk`) — runnable headlessly for CI, or from a real phone/simulator by
+repo — see `../../phroverkit`) — runnable headlessly for CI, or from a real phone/simulator by
 a human.
 
 See `scenarios.yaml` for the exact mission text and success criteria per type — the
