@@ -15,6 +15,12 @@ what actually decides in that moment.
 iOS App → API Gateway → Lambda → Claude 3.5 Sonnet → IoT Core → Drone → Motors spin
 ```
 
+**No AWS account? Start with [`docs/quickstart-gcs.md`](docs/quickstart-gcs.md)** —
+the diagram above is the cloud control plane, which is one of two backends;
+GCS mode needs no AWS account and is the app's default. See
+[`docs/README.md`](docs/README.md) for the full documentation index
+(config reference, SDK reference, API reference, simulation, and more).
+
 ## Table of Contents
 
 - [What Autonomy Actually Means](#what-autonomy-actually-means)
