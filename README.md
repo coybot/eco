@@ -220,12 +220,14 @@ See [client/ios/README.md](client/ios/README.md) for full instructions:
 4. Enable Sign in with Apple capability
 5. Run on device or simulator
 
-### 4. Install on Drone (One-Liner)
+### 4. Install on Drone
 
 Run this on any new drone (Orin, RPi, or other Linux):
 
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://presidio-drone-installer.s3.amazonaws.com/install.sh)"
+git clone https://github.com/presidio-autonomy/presidio-platform.git
+cd presidio-platform/drone/platforms/orin  # or platforms/rpi
+./install.sh --start
 ```
 
 This will:
@@ -482,9 +484,11 @@ Drones automatically get their own unique IoT certificates via AWS IoT Fleet Pro
 
 ### Claim Certificate Location
 
-The claim certificate is stored in S3 (private) and downloaded by the installer:
-- `s3://presidio-drone-installer/certs/claim-cert.pem`
-- `s3://presidio-drone-installer/certs/claim-private.key`
+There is no Presidio-hosted claim certificate — fleet provisioning is AWS-only
+and uses *your own* AWS account. Mint your own provisioning template, claim
+certificate, and policy (see `docs/certificates.md`), then place the claim
+cert/key under `drone/common/certs/` before running the installer. GCS mode
+needs none of this.
 
 ### Helper Scripts on Drone
 
@@ -686,7 +690,7 @@ The install script automatically selects the right VLM size based on detected ha
 | `drone/common/nav2_bridge.py` | Nav2 navigation bridge |
 | `drone/common/reasoning_loop.py` | Main perceive→reason→act loop |
 | `drone/models/setup_models.py` | Downloads and configures AI models |
-| `aws/src/conversations.py` | Claude prompt to generate Goals |
+| `control/conversations.py` | Claude prompt to generate Goals |
 
 ### Action Primitives
 
@@ -715,12 +719,7 @@ cd drone/platforms/orin
 
 This copies files (including the pre-built `llama-cpp-python` CUDA wheel from `drone/wheels/`), installs everything, and starts the service. With the wheel, install takes ~5 minutes instead of ~50.
 
-**Option 2: One-liner installer (new drones, downloads from S3)**
-```bash
-sudo /bin/bash -c "$(curl -fsSL https://presidio-drone-installer.s3.amazonaws.com/install.sh)"
-```
-
-**Option 3: Local install (on the Orin itself)**
+**Option 2: Local install (on the Orin itself)**
 ```bash
 cd drone/platforms/orin
 ./install.sh --start
@@ -732,7 +731,7 @@ This will:
 3. Install `llama-cpp-python` with CUDA GPU support (pre-built wheel or ~45 min build)
 4. Download appropriate AI models (~2-5 GB depending on variant)
 5. Install Python dependencies (onnxruntime, huggingface_hub)
-6. Run fleet provisioning (get device certificates)
+6. Run fleet provisioning (get device certificates, AWS mode only)
 7. Set up and start systemd service
 
 **Option 3: Manual model setup**
@@ -819,10 +818,12 @@ Files:
 
 ### Add New Drone
 
-Just run the one-liner on any Linux device:
+Just run the installer on any Linux device:
 
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://presidio-drone-installer.s3.amazonaws.com/install.sh)"
+git clone https://github.com/presidio-autonomy/presidio-platform.git
+cd presidio-platform/drone/platforms/orin  # or platforms/rpi
+./install.sh --start
 ```
 
 The drone will:
@@ -832,7 +833,7 @@ The drone will:
 
 ### Add new SDK function
 1. Add function to `drone/common/drone_sdk.py`
-2. Update SYSTEM_PROMPT in `aws/src/handler.py`
+2. Update SYSTEM_PROMPT in `control/handler.py`
 3. Deploy: `sam deploy` + scp to drone
 
 ### Add new platform
@@ -859,9 +860,9 @@ Context for future sessions working on this codebase:
 | File | Purpose |
 |------|---------|
 | `aws/template.yaml` | SAM template - API Gateway, Lambda, DynamoDB, IoT, Fleet Provisioning |
-| `aws/src/authorizer.py` | Lambda that validates Google/Apple ID tokens |
-| `aws/src/handler.py` | Command handler - calls Bedrock Claude, publishes to IoT |
-| `aws/src/drones.py` | CRUD for drone registry and status (includes factory reset via IoT) |
+| `aws/src/authorizer.py` | Lambda that validates Google/Apple ID tokens (private, cloud-only) |
+| `control/handler.py` | Command handler - calls Bedrock Claude, publishes to IoT |
+| `control/drones.py` | CRUD for drone registry and status (includes factory reset via IoT) |
 | `client/ios/.../AuthService.swift` | Google/Apple OAuth flows, stores token in Keychain |
 | `client/ios/.../APIClient.swift` | REST client, includes status polling |
 | `client/ios/.../DroneSetupService.swift` | Talks to drone during WiFi provisioning |
