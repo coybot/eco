@@ -1,7 +1,10 @@
 import json
 import os
 
-import llm
+try:
+    from . import llm  # type: ignore
+except ImportError:  # pragma: no cover - flat Lambda zip install
+    import llm  # type: ignore
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-5")

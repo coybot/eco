@@ -17,9 +17,15 @@ from datetime import datetime, timezone
 
 from boto3.dynamodb.conditions import Key
 
-import conversations as C  # reuse get_user_id, json_response, generate_code, publish_*
-import llm
-import clients
+# Dual import: packaged (control.conversations/etc.) in the repo, flat
+# (conversations/etc.) in a Lambda zip whose root is this directory's contents.
+try:
+    from . import conversations as C  # type: ignore  # reuse get_user_id, json_response, generate_code, publish_*
+    from . import llm, clients  # type: ignore
+except ImportError:  # pragma: no cover - flat Lambda zip install
+    import conversations as C  # type: ignore
+    import llm  # type: ignore
+    import clients  # type: ignore
 
 dynamodb = clients.get_dynamodb()
 GROUPS_TABLE = os.environ.get("GROUPS_TABLE", "drone-groups-dev")

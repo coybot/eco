@@ -1,6 +1,6 @@
 """
 HTTP server for the GCS: serves the same REST routes the iOS/Android apps call
-in cloud mode, by adapting each request into the Lambda `event` dict aws/src's
+in cloud mode, by adapting each request into the Lambda `event` dict control's
 handler functions already expect and calling them directly - same pattern as
 e2e/harness/live_rover_act_bridge.py, generalized to the full route table in
 aws/template.yaml.

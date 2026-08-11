@@ -1,6 +1,6 @@
 # GCS (Ground Control Station)
 
-Runs the same drone orchestration logic as the AWS Lambda stack in `aws/src/`,
+Runs the same drone orchestration logic as the AWS Lambda stack in `control/`,
 locally on a PC, Mac, or NVIDIA Thor with **no internet connection and no AWS
 account** - for use as a Ground Control Station that talks to local models
 (Ollama, vLLM, or anything else speaking the OpenAI `/v1/chat/completions`
@@ -8,29 +8,30 @@ API) instead of Bedrock.
 
 The iOS/Android apps and the drones themselves get a config switch between
 **cloud** (AWS, unchanged default) and **GCS** (this). Nothing here changes
-cloud behavior - `aws/src`'s handler modules run completely unmodified in
+cloud behavior - `control`'s handler modules run completely unmodified in
 GCS mode; only their AWS client construction is swapped out (see
-`aws/src/clients.py` and `aws/src/llm.py`).
+`control/clients.py` and `control/llm.py`).
 
 ## How it works
 
 ```
-iOS/Android app --HTTP--> gcs/http_api.py --calls unmodified--> aws/src/{handler,rover,drones,conversations,groups}.py
+iOS/Android app --HTTP--> gcs/http_api.py --calls unmodified--> control/{handler,rover,drones,conversations,groups}.py
                                                                         |
-                                                            aws/src/llm.py (LLM_PROVIDER=openai)
+                                                            control/llm.py (LLM_PROVIDER=openai)
                                                                         |
                                                           your local Ollama / vLLM server
                                                                         |
-                                                        aws/src/clients.py (LocalDynamo/LocalIoTData/LocalS3)
+                                                        control/clients.py (LocalDynamo/LocalIoTData/LocalS3)
                                                                         |
-                                                              gcs/local_aws.py + mosquitto
+                                                              control/backends/local.py + mosquitto
                                                                         |
                 drone/common/daemon.py (control_plane: gcs) <--MQTT-- mosquitto --MQTT--> app (WebSocket)
 ```
 
 `gcs/server.py` is the only thing that's GCS-specific about the request path:
-it configures `aws/src/clients.py`'s local stand-ins, then imports and calls
-the exact same Lambda handler functions the cloud deploy uses, via an
+it builds the local stand-ins and calls `control/clients.py`'s
+`select_backend()`, then imports and calls the exact same Lambda handler
+functions the cloud deploy uses, via an
 HTTP-to-Lambda-event adapter (`gcs/http_api.py`, the same pattern as
 `e2e/harness/live_rover_act_bridge.py`) and an MQTT-to-IoT-Rule adapter
 (`gcs/rules.py`).
@@ -103,7 +104,7 @@ python3 -m pytest tests/test_local_stack.py -v
   served in GCS mode - the app should hide/disable live video when connected
   to a GCS.
 - **Device Shadow features** (wifi push, battery-config push, factory-reset
-  ack) are store-only: `gcs/local_aws.py`'s `LocalIoTData.update_thing_shadow`
+  ack) are store-only: `control/backends/local.py`'s `LocalIoTData.update_thing_shadow`
   persists the desired state to `<data_dir>/shadows/<droneId>.json`, but
   nothing in GCS mode delivers it live - a drone in GCS mode currently only
   gets these via its own local config, not a live shadow push. Fine for
@@ -114,15 +115,15 @@ python3 -m pytest tests/test_local_stack.py -v
 - **Local-model tool-calling for `/rover/act`** (a forced `tool_choice`) is
   only as reliable as your model server's function-calling support. vLLM with
   `--enable-auto-tool-choice` works well; some Ollama models ignore forced
-  tool choice entirely. `aws/src/llm.py`'s `OpenAICompatProvider` includes a
+  tool choice entirely. `control/llm.py`'s `OpenAICompatProvider` includes a
   JSON-parsing fallback for exactly this case, but decision quality on small
   local models is unproven versus Claude.
-- **DynamoDB shim fidelity**: `gcs/local_aws.py`'s `LocalDynamoTable` only
+- **DynamoDB shim fidelity**: `control/backends/local.py`'s `LocalDynamoTable` only
   implements the exact `put_item`/`get_item`/`delete_item`/`update_item`/
-  `query`/`scan` call patterns found in `aws/src` today. An unrecognized
+  `query`/`scan` call patterns found in `control` today. An unrecognized
   expression raises `NotImplementedError` rather than silently doing the
-  wrong thing - if you extend `aws/src` with a new DynamoDB access pattern,
-  extend the shim's evaluator in `local_aws.py` to match.
+  wrong thing - if you extend `control` with a new DynamoDB access pattern,
+  extend the shim's evaluator in `backends/local.py` to match.
 
 ## Files
 
@@ -132,7 +133,7 @@ python3 -m pytest tests/test_local_stack.py -v
 | `config.py` / `config.yaml.example` | Config loading |
 | `auth.py` | Pairing-token auth (operators + drones), no Cognito |
 | `signing.py` | HMAC-signed local image URLs (stands in for S3 presigned URLs) |
-| `local_aws.py` | `LocalDynamo` (SQLite), `LocalIoTData` (paho-mqtt), `LocalS3` (filesystem) |
+| `backends/local.py` | `LocalDynamo` (SQLite), `LocalIoTData` (paho-mqtt), `LocalS3` (filesystem) |
 | `mqtt_client.py` | Thin paho-mqtt wrapper shared by publish (`LocalIoTData`) and subscribe (`rules.py`) |
 | `http_api.py` | REST route table + Lambda-event adapter, mirrors `aws/template.yaml` |
 | `rules.py` | MQTT subscriptions replacing AWS IoT Topic Rules |

@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
 
-import clients
+try:
+    from . import clients  # type: ignore
+except ImportError:  # pragma: no cover - flat Lambda zip install
+    import clients  # type: ignore
 
 dynamodb = clients.get_dynamodb()
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"

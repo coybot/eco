@@ -12,7 +12,7 @@ Two things are being protected here:
    directions (messages, images, tools, tool_choice, and the JSON-fallback for
    weak/no tool-calling support).
 
-Run: cd eco/aws/src && python3 -m pytest test_llm.py -v
+Run: python3 -m pytest control/test_llm.py -v
 """
 import json
 import os
@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import llm
+from control import llm
 
 
 # --- Bedrock provider: golden body tests --------------------------------------

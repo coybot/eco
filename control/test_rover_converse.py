@@ -5,12 +5,12 @@ GCS model) is configured. Does NOT touch AWS or a real LLM endpoint; it is not a
 substitute for exercising the deployed API Gateway route (see README note in this
 file's docstring below for how to do that safely before/after a real deploy).
 
-Run: cd eco/aws/src && python3 -m pytest test_rover_converse.py -v
+Run: python3 -m pytest control/test_rover_converse.py -v
 """
 import json
 from unittest.mock import patch
 
-import rover
+from control import rover
 
 
 def _event(body=None, authorized=True):
