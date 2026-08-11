@@ -9,10 +9,10 @@ layer itself is covered by test_l5_parity.
 """
 import numpy as np
 
-from eco.drone.sim.team_world import (
+from drone.sim.team_world import (
     TeamWorld, KinematicWorld, Box, reactive_goto_controller as sim_controller,
 )
-from eco.drone.common.onboard_l5 import OnboardL5Runtime, Pose, Peer
+from drone.common.onboard_l5 import OnboardL5Runtime, Pose, Peer
 
 
 class _SimTelemetry:

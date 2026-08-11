@@ -4,7 +4,7 @@ Pure matplotlib — no GPU, no Isaac required. Produces per-scenario MP4s that
 can be used as proof of fleet behavior. Pairs with scorecard.py's --record-video flag.
 
 Usage (from scorecard CLI):
-    python -m eco.drone.sim.scorecard --rover-policy policy.onnx --record-video ./videos/
+    python -m drone.sim.scorecard --rover-policy policy.onnx --record-video ./videos/
 """
 from __future__ import annotations
 

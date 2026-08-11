@@ -16,11 +16,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 # guard: skip if torch unavailable
 torch = pytest.importorskip("torch")
 
-from eco.drone.training.train_ma_rover import (
+from drone.training.train_ma_rover import (
     MultiAgentRoverEnv, build_ac, W, TEAMMATE_R, SAFE_SEP,
     COMMS_GOAL_NOISE_STD, GPS_DRIFT_RATE, DT,
 )
-from eco.drone.training.rover_contract import R_STATE_DIM, R_ACTION_DIM, LIDAR_MAX
+from drone.training.rover_contract import R_STATE_DIM, R_ACTION_DIM, LIDAR_MAX
 
 
 DEV = torch.device("cpu")

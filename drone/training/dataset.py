@@ -9,7 +9,7 @@ Goals lie along +x with lateral/vertical offset, so axis-aligned wall/window obs
 perpendicular to the path; initial heading is randomized (turn-then-go robustness). Obstacle
 modes: scattered prisms, wide over/under barriers, and walls with a window opening.
 
-Run:  python -m eco.drone.training.dataset --episodes 6000 --out ~/drone-data/bc_v4
+Run:  python -m drone.training.dataset --episodes 6000 --out ~/drone-data/bc_v4
 """
 
 from __future__ import annotations
@@ -21,13 +21,13 @@ from pathlib import Path
 
 import numpy as np
 
-from .contract import (
+from drone.common.contract import (
     STATE_DIM, ACTION_DIM, STATE_FIELDS, ACTION_FIELDS,
     VEHICLE_QUAD, VEHICLE_ROVER, build_state, wrap_pi, DEPTH_MAX,
 )
 from .expert import make_expert
 from .world3d import Box3D, depth_grid, min_dist_to_boxes, window_prisms
-from .planner3d import astar_path, PathFollower
+from drone.common.planner3d import astar_path, PathFollower
 
 
 # Deploy altitude cap (run_prompt.py --max-alt). The teacher and policy must operate within it:

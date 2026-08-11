@@ -12,7 +12,7 @@ def test_fixedwing_coordinate_conversion():
     """Test that FixedWingState correctly handles ENU->Godot coordinate conversion."""
     
     # Import the FixedWingState class
-    from eco.drone.sim.godot.scripts.fixedwing_manager import FixedWingState
+    from drone.sim.godot.scripts.fixedwing_manager import FixedWingState
     
     # Test the _from_dict method with sample data
     state = FixedWingState.new()
@@ -65,7 +65,7 @@ def test_fixedwing_coordinate_conversion():
 def test_fixedwing_state_serialization():
     """Test that FixedWingState serialization preserves coordinate integrity."""
     
-    from eco.drone.sim.godot.scripts.fixedwing_manager import FixedWingState
+    from drone.sim.godot.scripts.fixedwing_manager import FixedWingState
     
     # Create a state with specific coordinates
     state = FixedWingState.new()

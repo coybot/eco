@@ -9,19 +9,19 @@ CI instead of silently shipping unvalidated behaviour.
 import numpy as np
 import pytest
 
-from eco.drone.sim.team_world import (
+from drone.sim.team_world import (
     reactive_goto_controller as sim_controller,
     Observation as SimObservation,
     Agent as SimAgent,
 )
-from eco.drone.sim import vehicle_class as sim_vc
+from drone.sim import vehicle_class as sim_vc
 
-from eco.drone.common.l5_core import (
+from drone.common.l5_core import (
     reactive_goto_controller as core_controller,
     Observation as CoreObservation,
     Agent as CoreAgent,
 )
-from eco.drone.common import vehicle_class as core_vc
+from drone.common import vehicle_class as core_vc
 
 
 def _make_obs(cls, agent_id, body_target, goal_dist, neighbors, scan, min_clear):
@@ -86,12 +86,12 @@ def test_controller_parity(vclass_name):
 
 
 # --------------------------------------------------------------------------- smart layer
-from eco.drone.sim.smart_layer import (
+from drone.sim.smart_layer import (
     RuleBasedSmart as SimSmart,
     WorldState as SimWorldState,
     AgentSnapshot as SimSnap,
 )
-from eco.drone.common.l5_smart import (
+from drone.common.l5_smart import (
     RuleBasedSmart as CoreSmart,
     WorldState as CoreWorldState,
     AgentSnapshot as CoreSnap,

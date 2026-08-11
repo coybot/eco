@@ -26,12 +26,12 @@ Six-stage curriculum:
   5  dense+slalom, 4 agents, comms+GPS combined  (L5 gauntlet conditions)
 
 Train on hoopoe (A100, ~60 min):
-    PYTHONPATH=. python -m eco.drone.training.train_ma_rover \\
+    PYTHONPATH=. python -m drone.training.train_ma_rover \\
         --out ~/drone-data/rover/models --version ma_rover_v1 \\
         --iters 1200 --envs 512 --rollout 96
 
 Continue from checkpoint:
-    PYTHONPATH=. python -m eco.drone.training.train_ma_rover \\
+    PYTHONPATH=. python -m drone.training.train_ma_rover \\
         --ckpt ~/drone-data/rover/models/policy_ma_rover_v1_ac.pt \\
         --out ~/drone-data/rover/models --version ma_rover_v2 --iters 600 --envs 512
 

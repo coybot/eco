@@ -5,7 +5,7 @@
   <version>0.1.0</version>
   <description>Presidio drone ROS2 integration - camera bridge, MAVLink bridge, and navigation</description>
   <maintainer email="hello@presidioautonomy.com">Presidio Team</maintainer>
-  <license>Proprietary</license>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 

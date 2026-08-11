@@ -8,9 +8,9 @@ No torch/ONNX needed. Uses a Vector Field Histogram (VFH) reactive planner:
 This is the analytic baseline. The trained GRU policy will handle the same
 course with memory (doesn't get stuck in local minima, knows which way it came).
 
-    ~/.presidio-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet
-    ~/.presidio-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet --course maze
-    ~/.presidio-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet --all --svg out.svg
+    ~/.presidio-venv/bin/python -m drone.training.demo_rover_gauntlet
+    ~/.presidio-venv/bin/python -m drone.training.demo_rover_gauntlet --course maze
+    ~/.presidio-venv/bin/python -m drone.training.demo_rover_gauntlet --all --svg out.svg
 """
 from __future__ import annotations
 
