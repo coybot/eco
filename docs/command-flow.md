@@ -4,7 +4,7 @@ How a natural-language command like "fly to the chair and back" gets from the iO
 
 The NLP boundary lives in **AWS Lambda**, not on the drone. The app ships raw text; Claude (via Bedrock) turns it into a phased mission; the drone executes each phase with on-device VLM + Nav2 + MAVLink.
 
-This describes the **cloud** control plane (the default). The same flow also runs with **no AWS account or internet connection**, against a local Ground Control Station instead — same MQTT topics, same `aws/src` Lambda handlers (unmodified) running locally against a local model instead of Bedrock. See `gcs/README.md` for that path; set `control_plane: gcs` in the drone's `config.yaml` and switch to it from the app's Settings screen.
+This describes the **cloud** control plane (the default). The same flow also runs with **no AWS account or internet connection**, against a local Ground Control Station instead — same MQTT topics, same `control` Lambda handlers (unmodified) running locally against a local model instead of Bedrock. See `gcs/README.md` for that path; set `control_plane: gcs` in the drone's `config.yaml` and switch to it from the app's Settings screen.
 
 ## 1. iOS — user types text
 
@@ -22,7 +22,7 @@ The app does not publish to MQTT directly — it is pure REST through API Gatewa
 
 ## 2. AWS — Lambda interprets via Claude
 
-API Gateway routes to `message_handler` in [`aws/src/conversations.py:938`](../aws/src/conversations.py). It:
+API Gateway routes to `message_handler` in [`control/conversations.py:938`](../control/conversations.py). It:
 
 1. Auths the user against the drone (`drone_id` ownership check).
 2. Appends the user message to the DynamoDB conversation log.
@@ -49,7 +49,7 @@ Claude 4.5 Sonnet (Bedrock) returns:
 
 ## 3. AWS → drone — MQTT publish
 
-[`conversations.py:1047`](../aws/src/conversations.py) calls `publish_to_drone()` against AWS IoT Core.
+[`conversations.py:1047`](../control/conversations.py) calls `publish_to_drone()` against AWS IoT Core.
 
 - **Topic:** `drone/{droneId}/chat/{conversationId}/command`
 - **QoS:** 1 (at-least-once)
