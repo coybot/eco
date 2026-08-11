@@ -457,11 +457,13 @@ Rules:
 Output valid JSON only, no explanation.
 """
 
-    def __init__(self, hoopoe_host: str = "100.102.133.78",
-                 proxy_cmd: str = "nc -X 5 -x 127.0.0.1:1080 %h %p",
+    def __init__(self, hoopoe_host: str = "YOUR_INFERENCE_HOST",
+                 proxy_cmd: str = "",
+                 ssh_user: str = "YOUR_SSH_USER",
                  model: str = "qwen3-14b"):
         self._host = hoopoe_host
         self._proxy = proxy_cmd
+        self._ssh_user = ssh_user
         self._model = model
         self._fallback = RuleBasedSmart()
         self._directives: list[Directive] = []
@@ -516,7 +518,7 @@ Output valid JSON only, no explanation.
             "-o", f"ProxyCommand={self._proxy}",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=4",
-            f"yusuf@{self._host}",
+            f"{self._ssh_user}@{self._host}",
             remote_cmd,
         ]
         result = subprocess.run(ssh_cmd, input=payload, capture_output=True,
