@@ -56,9 +56,12 @@ The drone's pairing token comes from registering it — `POST /drones` (see
 [`api-reference.md`](api-reference.md)) — not the *operator* token from
 step 2. No certificates needed in this mode.
 
-No hardware yet? Point the simulator at it instead:
+No hardware yet? `gcs/tests/test_local_stack.py::test_full_flow_register_status_message_response`
+is a real, runnable no-hardware round trip — a plain MQTT client heartbeats
+as a drone and gets a chat response back, against a real GCS server and
+mosquitto. Read it for the exact request shapes, or run it directly:
 ```bash
-drone/sim/sim_drone_daemon.py --control-plane gcs --mqtt-host <this box's LAN IP>
+cd gcs && python3 -m pytest tests/test_local_stack.py -v
 ```
 
 ## 4. Point the app at it
