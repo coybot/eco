@@ -63,7 +63,10 @@ final class GCSSettings {
     private init() {
         let storedPlane = UserDefaults.standard.string(forKey: Keys.controlPlane)
             .flatMap(ControlPlane.init(rawValue:))
-        self.controlPlane = storedPlane ?? .cloud
+        // Default to GCS, not cloud: a fresh clone's AWSConfig.swift ships with
+        // placeholder endpoints (see Config/AWSConfig.example.swift), so .cloud
+        // would silently fail out of the box. GCS needs no AWS account at all.
+        self.controlPlane = storedPlane ?? .gcs
         self.host = UserDefaults.standard.string(forKey: Keys.host) ?? ""
         let storedHTTPPort = UserDefaults.standard.integer(forKey: Keys.httpPort)
         self.httpPort = storedHTTPPort == 0 ? 8080 : storedHTTPPort
