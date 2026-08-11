@@ -31,7 +31,7 @@ import json
 
 import numpy as np
 
-try:  # packaged (eco.drone.sim) vs flat (sim/ on path) — see conftest
+try:  # packaged (drone.sim) vs flat (sim/ on path) — see conftest
     from .scenario import Scenario, ScenarioRunner
     from .team_runtime import TeamRuntime
 except ImportError:

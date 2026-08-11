@@ -40,7 +40,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .contract import STATE_DIM, ACTION_DIM, ACTION_FIELDS
+from drone.common.contract import STATE_DIM, ACTION_DIM, ACTION_FIELDS
 
 SEQ_LEN = 16  # history window fed to the GRU (1.6 s at 10 Hz) — anticipation/memory
 

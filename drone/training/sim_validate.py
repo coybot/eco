@@ -6,7 +6,7 @@ prints a smoothness comparison: jerk RMS, yaw-rate variance, time-to-reach, and 
 trajectories as a JSON report.
 
 Usage (on hoopoe or locally, no GPU needed):
-    python -m eco.drone.training.sim_validate \
+    python -m drone.training.sim_validate \
         --models-dir eco/drone/models \
         --out /tmp/sim_validate_report.json
 

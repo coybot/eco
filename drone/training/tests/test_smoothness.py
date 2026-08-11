@@ -2,7 +2,7 @@
 the dataset is well-formed in the data_recorder schema, and windowing respects episodes.
 
 These run without torch (training/export parity is checked separately in train.py when torch
-is present). Run:  python -m pytest eco/drone/training/tests -q
+is present). Run:  python -m pytest drone/training/tests -q
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from eco.drone.training.contract import (
+from drone.common.contract import (
     STATE_DIM, ACTION_DIM, STATE_FIELDS, VEHICLE_QUAD, VEHICLE_ROVER, build_state, wrap_pi,
 )
-from eco.drone.training.expert import make_expert, ExpertLimits
-from eco.drone.training import dataset as ds
+from drone.training.expert import make_expert, ExpertLimits
+from drone.training import dataset as ds
 
 
 DT = 0.1
@@ -133,7 +133,7 @@ def test_dataset_schema_and_npz(tmp_path):
 
 
 def test_windowing_respects_episodes():
-    from eco.drone.training.train import build_windows, SEQ_LEN
+    from drone.training.train import build_windows, SEQ_LEN
     # two episodes of length 3 and 4
     X = np.arange(7 * STATE_DIM, dtype=np.float32).reshape(7, STATE_DIM)
     Y = np.zeros((7, ACTION_DIM), dtype=np.float32)
@@ -157,7 +157,7 @@ def test_build_state_bearing():
 
 def _simulate_with_boxes(boxes, gx, gy, gz=0.0, z0=2.0, ticks=900):
     """Closed-loop 3D rollout against prism obstacles, ray-casting the depth grid each tick."""
-    from eco.drone.training.world3d import depth_grid, min_dist_to_boxes
+    from drone.common.world3d import depth_grid, min_dist_to_boxes
     expert = make_expert(VEHICLE_QUAD)
     x = y = 0.0
     z = z0
@@ -200,7 +200,7 @@ def _simulate_with_boxes(boxes, gx, gy, gz=0.0, z0=2.0, ticks=900):
 ])
 def test_expert_avoids_obstacles(boxes, gx, gy, gz):
     """The expert reaches the goal AND never penetrates a prism (clears it by a margin)."""
-    from eco.drone.training.world3d import Box3D
+    from drone.common.world3d import Box3D
     bs = [Box3D(*b) for b in boxes]
     final_dist, min_clear = _simulate_with_boxes(bs, gx, gy, gz)
     assert final_dist <= 0.7, f"did not reach goal: {final_dist:.2f} m"

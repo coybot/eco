@@ -20,7 +20,7 @@ altitude-floor configured and never breached, no autonomy/perception involved.
 
 Requires a built ArduPlane SITL binary + pymavlink:
 
-    python3 -m eco.drone.training.sitl_plane \\
+    python -m drone.training.sitl_plane \\
         --sitl-bin ~/ardupilot/build/sitl/bin/arduplane \\
         --defaults ~/ardupilot/Tools/autotest/default_params/plane.parm \\
         --frame plane-elevon-throw   # "-elevon" for the Skywalker X8's flying-

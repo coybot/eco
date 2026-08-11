@@ -1,7 +1,7 @@
 """Top-level e2e runner for all 4 drone types.
 
-    python -m eco.e2e.run_e2e --type all --tier fast    # CI on every push, no AWS/sim/phone
-    python -m eco.e2e.run_e2e --type all --tier live     # nightly, against Presidio Sim + real AWS
+    python -m e2e.run_e2e --type all --tier fast    # CI on every push, no AWS/sim/phone
+    python -m e2e.run_e2e --type all --tier live     # nightly, against Presidio Sim + real AWS
 
 Fast tier = the vehicle-behavior regression gate (reusing eco/drone/training/sim_validate.py
 and the existing eco/drone/sim/tests/test_vehicle_class.py + eco/drone/common/tests/
@@ -11,7 +11,7 @@ needed). Live tier is the full-stack app-contract check against the real cloud +
 already brought up in Presidio Sim (see README.md) or on real hardware.
 
 Must be run with this package importable, i.e. from the outer repo root:
-    cd <repo-root> && python3 -m eco.e2e.run_e2e ...
+    cd <repo-root> && python -m e2e.run_e2e ...
 (the outer repo root is what test_l5_parity.py also needs on sys.path for `import eco...`).
 """
 from __future__ import annotations

@@ -9,9 +9,9 @@ nearest scan return + teammate surface distance) — asserted close, not equal.
 """
 import numpy as np
 
-from eco.drone.sim.team_world import TeamWorld, KinematicWorld, Box
-from eco.drone.common.onboard_l5 import build_observation, Pose, Peer
-from eco.drone.common.l5_core import Agent as CoreAgent, get_class as core_get_class
+from drone.sim.team_world import TeamWorld, KinematicWorld, Box
+from drone.common.onboard_l5 import build_observation, Pose, Peer
+from drone.common.l5_core import Agent as CoreAgent, get_class as core_get_class
 
 
 def _build_world():

@@ -10,11 +10,11 @@ Modules:
 - dataset:   roll out the expert over randomized scenarios -> JSONL in data_recorder format.
 - train:     behavioral-clone a small temporal (GRU) policy and export ONNX + state-norm.
 
-The rule-based reactive_planner (eco/drone/common/reactive_planner.py) remains the runtime
+The rule-based reactive_planner (drone/common/reactive_planner.py) remains the runtime
 safety fallback; this package produces the learned alternative behind a flag.
 """
 
-from .contract import (
+from drone.common.contract import (
     STATE_DIM,
     ACTION_DIM,
     STATE_FIELDS,

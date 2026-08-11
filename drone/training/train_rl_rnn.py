@@ -13,7 +13,7 @@ done boundaries — no minibatch-chunk bookkeeping. Separate actor/critic GRUs (
 collapses PPO here).
 
 Run on hoopoe:
-    PYTHONPATH=. python -m eco.drone.training.train_rl_rnn \
+    PYTHONPATH=. python -m drone.training.train_rl_rnn \
         --bc-ckpt ~/drone-data/bc_v12/models/policy_v14rnn.pt \
         --out ~/drone-data/bc_v12/models --version v16rnn_dr --iters 800 --envs 384
 """
@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .contract import STATE_DIM, ACTION_DIM
+from drone.common.contract import STATE_DIM, ACTION_DIM
 from .train_rl import BoxEnv, W, DT, MAX_SPEED
 
 

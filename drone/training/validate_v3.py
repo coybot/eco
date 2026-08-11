@@ -5,7 +5,7 @@ Runs rule (reactive_planner), BC, RL, and RL+DR (policy_v4_*) through the SAME r
 and mean time-to-goal. Obstacles are placed at varied altitudes so reaching may require
 going over/under/around.
 
-    PYTHONPATH=. python -m eco.drone.training.validate_v3 --models-dir /home/yusuf/models --n 400
+    PYTHONPATH=. python -m drone.training.validate_v3 --models-dir /home/yusuf/models --n 400
 """
 from __future__ import annotations
 

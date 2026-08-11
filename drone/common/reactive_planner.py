@@ -433,7 +433,7 @@ class HierarchicalPlanner:
             try:
                 from occupancy import OccupancyMap
             except ImportError:
-                from eco.drone.common.occupancy import OccupancyMap
+                from drone.common.occupancy import OccupancyMap
             self._occ = OccupancyMap(res=occ_res)
         self._follower = None
         self._tick = 0
@@ -459,7 +459,7 @@ class HierarchicalPlanner:
         try:
             from planner3d import PathFollower
         except ImportError:
-            from eco.drone.training.planner3d import PathFollower
+            from drone.common.planner3d import PathFollower
         if self.online_occupancy:
             from occupancy import astar_occupancy
             path = astar_occupancy(tuple(pos), tuple(goal), self._occ, inflate=self.inflate)
@@ -467,7 +467,7 @@ class HierarchicalPlanner:
             try:
                 from planner3d import astar_path
             except ImportError:
-                from eco.drone.training.planner3d import astar_path
+                from drone.common.planner3d import astar_path
             path = astar_path(tuple(pos), tuple(goal), boxes, inflate=self.inflate)
         self._follower = PathFollower(path, lookahead=self.lookahead) if path else None
 

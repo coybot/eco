@@ -29,7 +29,7 @@ import math
 
 import numpy as np
 
-try:  # packaged (eco.drone.sim) in the repo; flat (sim/ on path) for on-device-style tests
+try:  # packaged (drone.sim) in the repo; flat (sim/ on path) for on-device-style tests
     from .vehicle_class import VehicleClass, Kinematics, Sensor, get_class, Role
 except ImportError:
     from vehicle_class import VehicleClass, Kinematics, Sensor, get_class, Role

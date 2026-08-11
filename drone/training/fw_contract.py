@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import numpy as np
 
-try:  # packaged (eco.drone.training) in the repo; flat (training/ on path) for scripts like sim_validate.py
+try:  # packaged (drone.training) in the repo; flat (training/ on path) for scripts like sim_validate.py
     from .contract import (  # noqa: F401  (re-exported for callers that only need fw_contract)
         DEPTH_COLS, DEPTH_ROWS, DEPTH_RAYS, DEPTH_HFOV, DEPTH_VFOV,
         RAY_DIRS, STATE_FIELDS, DEPTH_FIELDS, ACTION_FIELDS,

@@ -7,16 +7,16 @@ The policy ONNX is consumed via a thin RoverPlanner wrapper that mirrors how Lea
 works for the drone — carry-state GRU, step-mode inference.
 
     # Validate a trained rover policy across all courses:
-    python -m eco.drone.training.local_course_rover \\
+    python -m drone.training.local_course_rover \\
         --onnx ~/drone-data/rover/models/policy_rover_v1.onnx --all
 
     # Noisy stress test (simulates real RPLidar + odometry noise):
-    python -m eco.drone.training.local_course_rover \\
+    python -m drone.training.local_course_rover \\
         --onnx ~/drone-data/rover/models/policy_rover_v1.onnx \\
         --all --trials 20 --lidar-noise 0.05 --target-noise 0.15
 
     # Single course with waypoint trace:
-    python -m eco.drone.training.local_course_rover \\
+    python -m drone.training.local_course_rover \\
         --onnx policy_rover_v1.onnx --course slalom --trace
 """
 from __future__ import annotations
