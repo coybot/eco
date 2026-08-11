@@ -3,11 +3,11 @@
 Three independent, unrelated checks — see scenarios.yaml's comment for why:
 
   dialog        -- POST /rover/converse, the open-ended small-talk fallback
-                   (aws/src/rover.py). fast tier hits harness/mock_rover_converse.py;
+                   (control/rover.py). fast tier hits harness/mock_rover_converse.py;
                    live tier hits the real deployed endpoint.
   navigate      -- on-device RoverNav planning/driving. Identical in both tiers: it's pure
-                   Swift, offline, deterministic — RoverNavTests in the public presidio-sdk
-                   repo (sibling of this repo; see ../../../sdk). NavIntegrationTests
+                   Swift, offline, deterministic — RoverNavTests in the public phroverkit
+                   repo (sibling of this repo; see ../../../phroverkit). NavIntegrationTests
                    .testDriveAroundCornerToGoalCollisionFree already asserts "plan reaches
                    the goal without violating the costmap" for a doorway-shaped gap,
                    matching the scenario's mission text. PhroverKitTests runs alongside it
@@ -15,7 +15,7 @@ Three independent, unrelated checks — see scenarios.yaml's comment for why:
                    loop (grounding, look-around, ask/answer, best-effort fallback) against
                    scripted fakes, and the unprojection math against synthetic geometry.
   mission_agent -- POST /rover/act, the vision + tool-use mission brain behind
-                   MissionAgent's CloudBrain (aws/src/rover.py's act_handler). fast tier
+                   MissionAgent's CloudBrain (control/rover.py's act_handler). fast tier
                    hits harness/mock_rover_act.py; live tier hits the real deployed
                    endpoint. Only checks the decision shape is well-formed and reachable —
                    real visual grounding needs a live camera frame, which is a hardware
@@ -42,7 +42,7 @@ from .fixtures import load_scenarios
 from .mock_rover_act import MockRoverAct
 from .mock_rover_converse import MockRoverConverse
 
-_SDK_DIR = Path(__file__).resolve().parents[3] / "sdk"
+_SDK_DIR = Path(__file__).resolve().parents[3] / "phroverkit"
 _VALID_ACTIONS = {"navigate", "explore", "lookAround", "ask", "say", "stop", "done"}
 
 
@@ -63,12 +63,12 @@ def _first_available_simulator() -> str | None:
 
 def _run_swift_tests() -> tuple[bool, str]:
     if not _SDK_DIR.exists():
-        return False, f"presidio-sdk package not found at {_SDK_DIR} (expected as a sibling of this repo)"
+        return False, f"phroverkit package not found at {_SDK_DIR} (expected as a sibling of this repo)"
     udid = _first_available_simulator()
     if not udid:
         return False, "no available iOS Simulator found (xcrun simctl list devices available)"
     proc = subprocess.run(
-        ["xcodebuild", "test", "-scheme", "presidio-sdk-Package",
+        ["xcodebuild", "test", "-scheme", "phroverkit-Package",
          "-destination", f"id={udid}",
          "-only-testing:RoverNavTests", "-only-testing:PhroverKitTests"],
         cwd=_SDK_DIR, capture_output=True, text=True, timeout=300)

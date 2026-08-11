@@ -3,16 +3,16 @@
     python -m e2e.run_e2e --type all --tier fast    # CI on every push, no AWS/sim/phone
     python -m e2e.run_e2e --type all --tier live     # nightly, against Presidio Sim + real AWS
 
-Fast tier = the vehicle-behavior regression gate (reusing eco/drone/training/sim_validate.py
-and the existing eco/drone/sim/tests/test_vehicle_class.py + eco/drone/common/tests/
+Fast tier = the vehicle-behavior regression gate (reusing drone/training/sim_validate.py
+and the existing drone/sim/tests/test_vehicle_class.py + drone/common/tests/
 test_l5_parity.py pytest suites — covers quad/rover/fixed-wing kinematics) PLUS a mocked
 app-contract check per type (harness/mock_cloud.py, harness/mock_rover_converse.py — no AWS
 needed). Live tier is the full-stack app-contract check against the real cloud + a drone
 already brought up in Presidio Sim (see README.md) or on real hardware.
 
-Must be run with this package importable, i.e. from the outer repo root:
-    cd <repo-root> && python -m e2e.run_e2e ...
-(the outer repo root is what test_l5_parity.py also needs on sys.path for `import eco...`).
+Must be run with this package importable, i.e. from the eco repo root (with `pip install
+-e .` already done, so `drone`/`control` resolve as installed packages):
+    cd eco && python -m e2e.run_e2e ...
 """
 from __future__ import annotations
 
@@ -29,7 +29,6 @@ from .harness.fixtures import ALL_TYPES, DAEMON_TYPES
 
 _E2E_DIR = Path(__file__).resolve().parent
 _ECO_DIR = _E2E_DIR.parent
-_REPO_ROOT = _ECO_DIR.parent
 
 
 def _run_behavior_gate() -> dict[str, Any]:
@@ -38,19 +37,19 @@ def _run_behavior_gate() -> dict[str, Any]:
 
     sv_out = _E2E_DIR / "_sim_validate_report.json"
     proc = subprocess.run(
-        [sys.executable, "-m", "eco.drone.training.sim_validate", "--out", str(sv_out)],
-        cwd=_REPO_ROOT, capture_output=True, text=True)
+        [sys.executable, "-m", "drone.training.sim_validate", "--out", str(sv_out)],
+        cwd=_ECO_DIR, capture_output=True, text=True)
     checks["sim_validate"] = {
         "ok": proc.returncode == 0,
         "detail": "\n".join(proc.stdout.splitlines()[-6:] + proc.stderr.splitlines()[-6:]),
     }
 
     for name, path in [
-        ("test_vehicle_class", "eco/drone/sim/tests/test_vehicle_class.py"),
-        ("test_l5_parity", "eco/drone/common/tests/test_l5_parity.py"),
+        ("test_vehicle_class", "drone/sim/tests/test_vehicle_class.py"),
+        ("test_l5_parity", "drone/common/tests/test_l5_parity.py"),
     ]:
         proc = subprocess.run([sys.executable, "-m", "pytest", path, "-q"],
-                              cwd=_REPO_ROOT, capture_output=True, text=True)
+                              cwd=_ECO_DIR, capture_output=True, text=True)
         checks[name] = {"ok": proc.returncode == 0,
                         "detail": "\n".join(proc.stdout.splitlines()[-6:])}
 

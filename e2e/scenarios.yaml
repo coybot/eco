@@ -33,12 +33,12 @@ fixedwing:
 
 # phrover has three independent checks:
 #   dialog        -- /rover/converse is ONLY the open-ended small-talk fallback (see
-#                    aws/src/rover.py docstring) — navigation intents are parsed and
+#                    control/rover.py docstring) — navigation intents are parsed and
 #                    dispatched entirely on-device by RoverNav and never reach the cloud.
 #   navigate      -- on-device RoverNav planning/driving (PhroverKit's MissionAgent
 #                    executes decisions through this; unaffected by which brain chose them).
 #   mission_agent -- /rover/act, the vision + tool-use mission brain behind MissionAgent's
-#                    CloudBrain (aws/src/rover.py's act_handler) — a sibling cloud route to
+#                    CloudBrain (control/rover.py's act_handler) — a sibling cloud route to
 #                    /rover/converse, but for actions (navigate/lookAround/ask/say/stop/
 #                    done), not talk. See CloudBrain.swift / HybridBrain.swift in the
 #                    sibling presidio-sdk repo.
