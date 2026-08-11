@@ -1,14 +1,14 @@
 """
-Local stand-ins for the boto3 surfaces aws/src actually uses: DynamoDB
+Local stand-ins for the boto3 surfaces control/*.py actually uses: DynamoDB
 (put_item/get_item/delete_item/update_item/query/scan), IoT Data
 (publish/update_thing_shadow), and S3 (generate_presigned_url/upload_file/
 put_object). These are duck-typed, not full boto3 emulations - each method
-implements exactly the call patterns observed in aws/src/{conversations,
+implements exactly the call patterns observed in control/{conversations,
 handler,drones,groups}.py. An unrecognized call pattern raises NotImplementedError
 rather than silently doing the wrong thing.
 
-Wired in via clients.configure(dynamodb=LocalDynamo(...), iot=LocalIoTData(...),
-s3=LocalS3(...)) in gcs/server.py, before aws/src's handler modules are imported.
+gcs/server.py builds LocalDynamo/LocalIoTData/LocalS3, wraps them in a
+LocalBackend (below), and hands that to control.clients.select_backend().
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - boto3 not installed on the GCS box
 # --- shared helpers ------------------------------------------------------------
 
 def _decimal_to_native(value):
-    """Recursively convert Decimal -> int/float. aws/src's _to_dynamodb_types()
+    """Recursively convert Decimal -> int/float. control's _to_dynamodb_types()
     does the reverse (float -> Decimal) before some put_item calls; we don't need
     to preserve Decimal identity in local storage, just the numeric value."""
     if isinstance(value, Decimal):
@@ -155,7 +155,7 @@ def _sort_items(items: list, expr: Optional[str], names: dict, ascending: bool):
 
 # --- LocalDynamo -----------------------------------------------------------------
 
-# The 5 tables aws/src actually uses, by their cloud DEFAULT env-var value (see
+# The 5 tables control actually uses, by their cloud DEFAULT env-var value (see
 # conversations.py/drones.py/handler.py/groups.py's `os.environ.get('X_TABLE',
 # '<default>')` calls). gcs/server.py builds the real schema map from whatever
 # table names its own config/env actually resolves to, falling back to this
@@ -178,7 +178,7 @@ class LocalDynamoTable:
 
     def put_item(self, Item: dict):
         item = _decimal_to_native(Item)
-        # Every put_item observed in aws/src writes a full item that already
+        # Every put_item observed in control writes a full item that already
         # contains its own primary key attribute(s) inline.
         key_attrs = self._key_attrs or self._store.infer_key_attrs(self._name, item)
         key = {k: item[k] for k in key_attrs if k in item}
@@ -264,7 +264,7 @@ class _SqliteStore:
         server.py's schema map. Guessing from item contents is inherently
         fragile (e.g. a sort key like "timestamp" that isn't a conventional
         id-looking name would silently collapse rows - this exact bug was
-        caught by gcs/tests/test_local_aws.py), so this path exists only for
+        caught by control/backends/test_local.py), so this path exists only for
         forwards-compat with a table this shim doesn't know about yet, and
         callers should prefer passing an explicit key_attrs tuple."""
         if table_name in self._key_attr_cache:
@@ -311,7 +311,7 @@ class _SqliteStore:
 
 class LocalDynamo:
     """Drop-in for `boto3.resource('dynamodb')` - only `.Table(name)` is used
-    anywhere in aws/src.
+    anywhere in control.
 
     `schemas` maps table_name -> primary key attribute names, e.g.
     {"drone-registry-dev": ("userId", "droneId")}. Defaults to
@@ -335,7 +335,7 @@ class LocalDynamo:
 
 class LocalIoTData:
     """Drop-in for `boto3.client('iot-data')` - only .publish() and
-    .update_thing_shadow() are used anywhere in aws/src. Publishing forwards to
+    .update_thing_shadow() are used anywhere in control. Publishing forwards to
     the local mosquitto broker; shadow updates are stored (store-only - there is
     no live shadow-subscribe delivery path to the drone in GCS mode, see
     gcs/README.md's "degraded features" section) so a later REST read can still
@@ -365,7 +365,7 @@ class LocalIoTData:
 # --- LocalS3 -----------------------------------------------------------------------
 
 class LocalS3:
-    """Drop-in for the S3 client aws/src builds - only .generate_presigned_url()
+    """Drop-in for the S3 client control builds - only .generate_presigned_url()
     is used. Presigned PUT/GET urls point back at the GCS's own HTTP server
     (see gcs/http_api.py's /images/{key} route), carrying a short-lived HMAC
     token (gcs/signing.py) instead of a real SigV4 signature."""
@@ -389,3 +389,21 @@ class LocalS3:
     # self._images_dir, this helper exists for any future direct-write caller.
     def path_for(self, key: str) -> Path:
         return self._images_dir / key
+
+
+# --- LocalBackend ------------------------------------------------------------------
+
+class LocalBackend:
+    """Adapts a LocalDynamo/LocalIoTData/LocalS3 trio to the backend interface
+    control.clients.select_backend() expects (.dynamodb, .iot, .s3,
+    .image_url_fn(key)). gcs/server.py constructs the three (they need
+    cfg-derived paths, an mqtt client, etc. that this module has no access to)
+    and wraps them in one of these."""
+
+    def __init__(self, dynamodb: LocalDynamo, iot: LocalIoTData, s3: LocalS3):
+        self.dynamodb = dynamodb
+        self.iot = iot
+        self.s3 = s3
+
+    def image_url_fn(self, key: str) -> str:
+        return self.s3.public_image_url(key)

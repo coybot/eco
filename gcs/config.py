@@ -46,7 +46,7 @@ class GCSConfig:
     llm: LlmConfig = field(default_factory=LlmConfig)
     operators: list = field(default_factory=lambda: ["operator1"])
     # Optional table-name overrides (env var name -> value), merged over
-    # aws/src's own env-var defaults (DRONE_TABLE, STATUS_TABLE, etc.) - only
+    # control's own env-var defaults (DRONE_TABLE, STATUS_TABLE, etc.) - only
     # needed if you want the local DB file to use different logical table
     # names than the cloud defaults.
     tables: dict = field(default_factory=dict)

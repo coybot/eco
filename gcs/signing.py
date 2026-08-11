@@ -1,6 +1,6 @@
 """
 HMAC-signed, time-limited tokens for GCS-local image URLs - stands in for S3
-presigned-URL signatures (LocalS3.generate_presigned_url in local_aws.py signs,
+presigned-URL signatures (LocalS3.generate_presigned_url in control/backends/local.py signs,
 http_api.py's PUT /images/{key} route verifies). One secret, generated once and
 stored alongside the pairing tokens in auth.json.
 """

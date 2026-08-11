@@ -1,8 +1,13 @@
 import json
 import os
 
-import llm
-import clients
+# Dual import: packaged (control.llm/control.clients) in the repo, flat
+# (llm/clients) in a Lambda zip whose root is this directory's contents.
+try:
+    from . import llm, clients  # type: ignore
+except ImportError:  # pragma: no cover - flat Lambda zip install
+    import llm  # type: ignore
+    import clients  # type: ignore
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
 BEDROCK_MODEL_ID = os.environ.get(

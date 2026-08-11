@@ -34,8 +34,8 @@ llm:
 operators:
   - operator1
 
-# Optional: override the DynamoDB-equivalent table names aws/src resolves via
+# Optional: override the DynamoDB-equivalent table names control resolves via
 # env vars (DRONE_TABLE, STATUS_TABLE, LOGS_TABLE, CONVERSATIONS_TABLE,
 # GROUPS_TABLE). Leave empty to use the same defaults the cloud Lambdas use -
-# gcs/local_aws.py already knows the key schema for those defaults.
+# control/backends/local.py already knows the key schema for those defaults.
 tables: {}
