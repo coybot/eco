@@ -3,15 +3,16 @@
 GCS (Ground Control Station) server entrypoint.
 
 Wires local stand-ins for AWS (SQLite "DynamoDB", mosquitto-backed "IoT",
-filesystem "S3") into aws/src's *unmodified* production Lambda handler
+filesystem "S3") into control/'s *unmodified* production Lambda handler
 modules, then serves the same REST routes and MQTT topics the cloud stack
 does - see gcs/README.md for the full picture and a quickstart.
 
-Order matters: clients.configure() MUST run before aws/src's handler modules
-are imported, since conversations.py/handler.py/drones.py/groups.py capture
-`dynamodb = clients.get_dynamodb()` etc. at their own import time.
+Backend selection (control.clients.select_backend()) is NOT import-order-
+sensitive - see control/clients.py's docstring - so it can happen any time
+before the first real request, including after handler/rover/drones/
+conversations/groups are imported, as this module does below.
 
-Run (from the eco/gcs directory, so this dir's modules are importable):
+Run (from the eco/gcs directory, so this dir's own modules are importable):
     cd eco/gcs && python3 -m server --config config.yaml
 """
 from __future__ import annotations
@@ -27,11 +28,11 @@ from config import GCSConfig, load_config
 from mqtt_client import MqttClient
 from signing import ImageUrlSigner
 
-AWS_SRC = Path(__file__).resolve().parent.parent / "aws" / "src"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Table logical identity -> (env var aws/src reads, its cloud default, the
+# Table logical identity -> (env var control reads, its cloud default, the
 # local shim's key schema). Any config.yaml `tables:` override is honored by
-# setting the same env var before aws/src is imported, so both sides agree on
+# setting the same env var before control is imported, so both sides agree on
 # the table name - and the schema map below always matches whichever name
 # ends up in effect.
 _TABLE_SPECS = {
@@ -44,7 +45,7 @@ _TABLE_SPECS = {
 
 
 def _apply_table_env(cfg: GCSConfig) -> dict:
-    """Sets DRONE_TABLE/STATUS_TABLE/etc. in os.environ (so aws/src resolves
+    """Sets DRONE_TABLE/STATUS_TABLE/etc. in os.environ (so control resolves
     the same table names this process's LocalDynamo schema map uses), and
     returns {table_name: key_attrs} for LocalDynamo(schemas=...)."""
     schemas = {}
@@ -109,26 +110,20 @@ def start(cfg: GCSConfig) -> GCSHandle:
     print(f"[gcs] connecting to mosquitto at {cfg.mqtt.host}:{cfg.mqtt.port} ...")
     mqtt.connect()
 
-    # Import the local shims and wire them in via clients.configure() BEFORE
-    # aws/src's handler modules are imported - see module docstring.
-    import local_aws
-    dynamodb = local_aws.LocalDynamo(cfg.data_dir / "dynamo.sqlite3", schemas=schemas)
-    iot = local_aws.LocalIoTData(mqtt, cfg.data_dir / "shadows")
-    s3 = local_aws.LocalS3(
+    sys.path.insert(0, str(REPO_ROOT))
+    from control import clients
+    from control.backends.local import LocalDynamo, LocalIoTData, LocalS3, LocalBackend
+
+    dynamodb = LocalDynamo(cfg.data_dir / "dynamo.sqlite3", schemas=schemas)
+    iot = LocalIoTData(mqtt, cfg.data_dir / "shadows")
+    s3 = LocalS3(
         base_url=f"http://{cfg.http.host if cfg.http.host != '0.0.0.0' else '127.0.0.1'}:{cfg.http.port}",
         images_dir=cfg.data_dir / "images",
         sign_fn=signer.sign,
     )
+    clients.select_backend(LocalBackend(dynamodb=dynamodb, iot=iot, s3=s3))
 
-    sys.path.insert(0, str(AWS_SRC))
-    import clients
-    clients.configure(dynamodb=dynamodb, iot=iot, s3=s3, image_url_fn=s3.public_image_url)
-
-    import handler
-    import rover
-    import drones
-    import conversations
-    import groups
+    from control import handler, rover, drones, conversations, groups
 
     import rules
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="gcs-rule")

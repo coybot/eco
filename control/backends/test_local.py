@@ -1,21 +1,19 @@
 """
-Unit tests for gcs/local_aws.py's LocalDynamo/LocalIoTData/LocalS3 shims,
-exercised against the exact call patterns found in aws/src/{conversations,
+Unit tests for control/backends/local.py's LocalDynamo/LocalIoTData/LocalS3
+shims, exercised against the exact call patterns found in control/{conversations,
 handler,drones,groups}.py (see the grep inventory in the GCS implementation
 plan) - not a general DynamoDB emulation, just enough to run those modules
 unmodified against local storage.
 
-Run: cd eco/gcs && python3 -m pytest tests/test_local_aws.py -v
+Run: python3 -m pytest control/backends/test_local.py -v
 """
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 from boto3.dynamodb.conditions import Key
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from local_aws import LocalDynamo, LocalIoTData, LocalS3  # noqa: E402
+from control.backends.local import LocalDynamo, LocalIoTData, LocalS3
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ Two kinds of tokens, one store:
 - operator tokens: one per named operator in config.yaml (`operators:`). The
   iOS/Android app authenticates HTTP requests with `Authorization: Bearer
   <token>`; http_api.py maps that to a stable synthetic userId ("gcs-<name>")
-  so aws/src's existing per-user ownership checks (verify_ownership, etc.) work
+  so control's existing per-user ownership checks (verify_ownership, etc.) work
   unchanged.
 - drone tokens: one per drone id, generated on first registration. Used as the
   MQTT password for that drone's mosquitto account (see gen_mosquitto_auth.sh).
@@ -99,7 +99,7 @@ class AuthStore:
 
 def user_id_from_authorization_header(auth_store: AuthStore, header_value: Optional[str]) -> Optional[str]:
     """Parses an `Authorization: Bearer <token>` header into the synthetic
-    userId aws/src's get_user_id(event) expects to find at
+    userId control's get_user_id(event) expects to find at
     event['requestContext']['authorizer']['userId']."""
     if not header_value or not header_value.startswith("Bearer "):
         return None

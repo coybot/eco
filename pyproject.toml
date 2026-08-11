@@ -72,13 +72,17 @@ presidio-motor-test = "drone.common.motor_test:main"
 
 [tool.hatch.build.targets.wheel]
 # Multiple top-level packages in one wheel, deliberately NOT nested under a
-# single wrapper directory -- drone/, and control/ + gcs/ once task 3 adds
-# them, stay browsable at repo root rather than hidden under src/presidio/.
-packages = ["drone"]
+# single wrapper directory -- drone/ and control/ stay browsable at repo root
+# rather than hidden under src/presidio/. gcs/ is a standalone application
+# directory (flat imports, run via `cd gcs && python3 -m server`), not a
+# Python package, so it isn't listed here -- see sdist below.
+packages = ["drone", "control"]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "drone",
+    "control",
+    "gcs",
     "docs",
     "examples",
     "README.md",
@@ -88,7 +92,7 @@ include = [
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-testpaths = ["drone/common/tests", "drone/sim/tests"]
+testpaths = ["drone/common/tests", "drone/sim/tests", "control"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
