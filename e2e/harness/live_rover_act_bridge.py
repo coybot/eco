@@ -1,7 +1,7 @@
 """Local HTTP bridge that serves the REAL /rover/act handler with a REAL model.
 
 Same server shape as mock_rover_act.py, but instead of a canned reply it invokes the
-literal production Lambda handler (aws/src/rover.py act_handler) — same system prompt,
+literal production Lambda handler (control/rover.py act_handler) — same system prompt,
 same decide tool schema, same Bedrock model — with the one Lambda-ism faked locally: the
 API Gateway authorizer context (userId), which in production is set by the Cognito
 authorizer. Auth is faked HERE ONLY, on a 127.0.0.1-bound server; the deployed endpoint

@@ -1,5 +1,5 @@
 """Fast-tier stand-in for POST /rover/converse (the small-talk fallback endpoint — see
-aws/src/rover.py; navigation intents never reach the cloud at all, they're handled
+control/rover.py; navigation intents never reach the cloud at all, they're handled
 on-device by RoverNav, so they are NOT covered by this mock — see harness/phrover.py).
 """
 from __future__ import annotations

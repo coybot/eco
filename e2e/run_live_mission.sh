@@ -11,14 +11,14 @@
 set -euo pipefail
 
 ECO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SDK_DIR="$(cd "$ECO_DIR/../sdk" && pwd)"
+SDK_DIR="$(cd "$ECO_DIR/../phroverkit" && pwd)"
 LOG="$(mktemp /tmp/live_mission_XXXX.log)"
 export AWS_PROFILE="${AWS_PROFILE:-presidio}"
 
 echo "eco:   $ECO_DIR"
 echo "sdk:   $SDK_DIR"
 echo "log:   $LOG"
-echo "model: $(cd "$ECO_DIR" && python3 -c 'import sys; sys.path.insert(0, "aws/src"); import rover; print(rover.BEDROCK_MODEL_ID)')"
+echo "model: $(cd "$ECO_DIR" && python3 -c 'from control import rover; print(rover.BEDROCK_MODEL_ID)')"
 
 # Start the bridge on an ephemeral port; capture its URL from the first stdout line.
 BRIDGE_OUT="$(mktemp /tmp/live_bridge_XXXX.log)"
@@ -53,7 +53,7 @@ echo "simulator: $UDID"
 
 set +e
 (cd "$SDK_DIR" && TEST_RUNNER_LIVE_ROVER_ACT_URL="$URL" xcodebuild test \
-    -scheme presidio-sdk-Package \
+    -scheme phroverkit-Package \
     -destination "id=$UDID" \
     -only-testing:PhroverKitLiveProbes/CloudBrainLiveMissionTests) 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
