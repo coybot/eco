@@ -60,7 +60,9 @@ backend deployed at all.
 ## App configuration
 
 `client/ios/DroneOperator/DroneOperator/Config/AWSConfig.swift` ships with
-placeholders (see `AWSConfig.example.swift`) — fill in your own API Gateway
-endpoint, Cognito pool IDs, IoT endpoint, and S3 bucket from your deployment's
-outputs before building. The file is gitignored once filled in, so your
-values won't get committed.
+placeholders — fill in your own API Gateway endpoint, Cognito pool IDs, IoT
+endpoint, and S3 bucket from your deployment's outputs before building.
+Xcode needs this file to exist to build at all, so it's tracked (not
+gitignored) — be careful not to commit your real values back if you're
+contributing changes upstream. `client/android/.../MainActivity.kt`'s
+top-of-file constants work the same way.
