@@ -50,12 +50,12 @@ Sideload it: `adb install app/build/outputs/apk/debug/app-debug.apk`
 ## Config values (top of MainActivity.kt)
 
 ```kotlin
-private const val API_BASE    = "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod"
-private const val COGNITO_REGION    = "us-west-2"
-private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
+private const val API_BASE    = "https://YOUR_API_ID.execute-api.YOUR_AWS_REGION.amazonaws.com/prod"
+private const val COGNITO_REGION    = "YOUR_AWS_REGION"
+private const val COGNITO_CLIENT_ID = "YOUR_COGNITO_CLIENT_ID"
 ```
 
-These are read from the CloudFormation stack outputs. If you redeploy the stack, update these three constants.
+These are read from your own deployed stack's outputs — see `docs/quickstart-aws.md`. If you redeploy the stack, update these three constants.
 
 ## Creating a new user
 
