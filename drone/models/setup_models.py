@@ -137,11 +137,16 @@ def qwen3_vl_32b(models_dir: Path) -> None:
     print("Qwen3-VL 30B ready: vlm.gguf, vlm_mmproj.gguf")
 
 
-DOMAIN_DETECTOR_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx"
+# These four point at Presidio's own private S3 bucket - proprietary fine-tuned
+# weights (not on the shipped install path; only reachable via the opt-in
+# --domain-detector/--vlm-drone/--reactive-policy/--depth-model flags, never
+# called by drone/platforms/orin/install.sh's default variant-based flow).
+# Point these at your own bucket if you have equivalent weights to serve.
+DOMAIN_DETECTOR_URL = "https://YOUR_MODELS_BUCKET.s3.YOUR_AWS_REGION.amazonaws.com/models/yolov8n_domain_v3.onnx"
 
-POLICY_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models"
-DEPTH_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/depth_v1.onnx"
-VLM_DRONE_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models"
+POLICY_BASE_URL = "https://YOUR_MODELS_BUCKET.s3.YOUR_AWS_REGION.amazonaws.com/models"
+DEPTH_URL = "https://YOUR_MODELS_BUCKET.s3.YOUR_AWS_REGION.amazonaws.com/models/depth_v1.onnx"
+VLM_DRONE_BASE_URL = "https://YOUR_MODELS_BUCKET.s3.YOUR_AWS_REGION.amazonaws.com/models"
 
 
 def domain_detector(models_dir: Path) -> None:
