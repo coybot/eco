@@ -32,7 +32,6 @@ sst-env.d.ts
 # Secrets and per-device drone files (never commit)
 drone/common/config.yaml
 drone/common/config.stack-dev.yaml
-client/ios/DroneOperator/DroneOperator/Config/AWSConfig.swift
 drone/common/certs/*.pem
 drone/common/certs/*.key
 drone/common/certs/*.crt

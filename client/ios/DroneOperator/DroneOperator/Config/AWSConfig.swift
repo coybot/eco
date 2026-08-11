@@ -2,10 +2,11 @@ import Foundation
 
 /// AWS and auth endpoints for the DroneOperator app.
 /// Fill these in from your own deployed `drone-api` SAM stack's outputs
-/// (`sam deploy` prints them, or `aws cloudformation describe-stacks`) — see
-/// Config/AWSConfig.example.swift for the same file with placeholders and
-/// docs/quickstart-aws.md for where each value comes from. This file is
-/// gitignored once filled in with real values; only the example ships.
+/// (`sam deploy` prints them, or `aws cloudformation describe-stacks`) —
+/// see docs/quickstart-aws.md for where each value comes from. Xcode needs
+/// this file to exist to build at all, so (unlike config.yaml.example) it
+/// ships tracked with placeholders rather than gitignored — edit it
+/// in place with your own values; there's no separate .example file.
 ///
 /// If you don't need the cloud control plane at all, use GCS mode instead
 /// (see gcs/README.md) - no AWS account or endpoints required, and none of
