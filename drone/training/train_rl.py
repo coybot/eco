@@ -15,7 +15,7 @@ vectorized in torch on the GPU. The exported artifact is the SAME policy_v3.onnx
 the mean (deterministic) network — so the Orin deploy path is unchanged.
 
 Run on hoopoe:
-    PYTHONPATH=. python -m eco.drone.training.train_rl \
+    PYTHONPATH=. python -m drone.training.train_rl \
         --bc-ckpt ~/drone-data/bc_v3/models/policy_v3.pt \
         --out ~/drone-data/bc_v3/models --version v3 \
         --iters 300 --envs 512 --k-coll 25 --k-time 0.05 --k-prog 1.5
@@ -29,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .contract import (STATE_DIM, ACTION_DIM, DEPTH_RAYS, RAY_DIRS, DEPTH_MAX,
+from drone.common.contract import (STATE_DIM, ACTION_DIM, DEPTH_RAYS, RAY_DIRS, DEPTH_MAX,
                        ACTION_FIELDS)
 from .dynamics import DynamicsDR
 

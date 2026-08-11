@@ -12,7 +12,7 @@ come from ArduPilot. Scores reach / collision / time against the scenario geomet
 
 Requires a built SITL binary (ArduCopter for quads, ArduRover for rovers) + pymavlink.
 
-    ~/isaac-sim-env/bin/python3 -m eco.drone.training.sitl_l5 \
+    ~/isaac-sim-env/bin/python -m drone.sim.sitl_l5 \
         --scenario eco/drone/sim/scenarios/dense_urban.yaml --agent quad_0 \
         --sitl-bin ~/ardupilot/build/sitl/bin/arducopter \
         --defaults ~/ardupilot/Tools/autotest/default_params/copter.parm
@@ -32,10 +32,10 @@ import numpy as np
 _repo = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_repo))
 
-from eco.drone.sim.team_world import TeamWorld, KinematicWorld, Box  # noqa: E402
-from eco.drone.sim.team_world import reactive_goto_controller           # noqa: E402
-from eco.drone.sim.vehicle_class import Kinematics                      # noqa: E402
-from eco.drone.sim.scenario import Scenario                             # noqa: E402
+from drone.sim.team_world import TeamWorld, KinematicWorld, Box  # noqa: E402
+from drone.sim.team_world import reactive_goto_controller           # noqa: E402
+from drone.sim.vehicle_class import Kinematics                      # noqa: E402
+from drone.sim.scenario import Scenario                             # noqa: E402
 
 DT = 0.1
 REACH = 1.5            # m (SITL position tracking is looser than kinematic)
@@ -192,7 +192,7 @@ def main():
 
     if args.rover_fd:
         import dataclasses
-        from eco.drone.sim import vehicle_class as _VC
+        from drone.sim import vehicle_class as _VC
         _VC.register_class(dataclasses.replace(
             _VC.ROVER, sensor=_VC.Sensor.FORWARD_DEPTH, state_dim=56), "rover")
 

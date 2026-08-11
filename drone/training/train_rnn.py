@@ -12,7 +12,7 @@ so deploy carries h tick-to-tick (reset to zeros at episode start). State contra
 mean/std normalization are unchanged, so the depth-grid input is identical to the window policy.
 
 Run on hoopoe:
-    PYTHONPATH=. python -m eco.drone.training.train_rnn \
+    PYTHONPATH=. python -m drone.training.train_rnn \
         --data ~/drone-data/bc_v12/dataset.npz --out ~/drone-data/bc_v12/models \
         --version v14rnn --epochs 35 --hidden 128
 """
@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .contract import STATE_DIM, ACTION_DIM, ACTION_FIELDS
+from drone.common.contract import STATE_DIM, ACTION_DIM, ACTION_FIELDS
 
 
 def _require_torch():

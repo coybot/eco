@@ -18,7 +18,7 @@ Same STATE_DIM/ACTION_DIM (56 -> 4) and network shape as the quad (train_rl.py),
     poor, a BC warm-start stage (mirroring train.py + expert.py for quad) is the natural next step.
 
 Run on hoopoe:
-    PYTHONPATH=. python -m eco.drone.training.train_rl_fixedwing \
+    PYTHONPATH=. python -m drone.training.train_rl_fixedwing \
         --out ~/drone-data/fw_v1/models --version fw_v1 --iters 800 --envs 512
 """
 from __future__ import annotations

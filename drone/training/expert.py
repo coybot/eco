@@ -17,7 +17,7 @@ import math
 
 import numpy as np
 
-from .contract import (
+from drone.common.contract import (
     State, ACTION_DIM, VEHICLE_ROVER, wrap_pi,
     RAY_DIRS, DEPTH_MAX, DEPTH_COLS, DEPTH_ROWS,
 )

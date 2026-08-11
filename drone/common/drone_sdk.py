@@ -118,9 +118,24 @@ _s3_client = None
 _s3_bucket = None
 _s3_credentials_expiry = None
 
-# Config, certs, and logs live alongside this file (repo: drone/common/; on-device: ~/drone-api/).
+# Config, certs, and logs live alongside this file by default (repo:
+# drone/common/; on-device flat deploy: ~/drone-api/). Override with
+# PRESIDIO_SDK_CONFIG_DIR or set_config_path() when running as an installed
+# package with config living elsewhere (e.g. examples/, a customer's own
+# project layout).
 _script_dir = Path(__file__).parent.absolute()
-DRONE_DIR = _script_dir
+DRONE_DIR = Path(os.environ.get("PRESIDIO_SDK_CONFIG_DIR", _script_dir)).absolute()
+
+
+def set_config_path(path):
+    """Override the directory where config.yaml, certs/, and logs live.
+
+    Defaults to this file's own directory (or $PRESIDIO_SDK_CONFIG_DIR), which
+    matches flat on-device deployment. Call this when running the SDK as an
+    installed package pointed at a different config directory.
+    """
+    global DRONE_DIR
+    DRONE_DIR = Path(path).absolute()
 
 
 def _connect():

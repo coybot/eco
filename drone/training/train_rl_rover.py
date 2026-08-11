@@ -20,12 +20,12 @@ Deploy (Jetson rover):
     A higher-level goal sequencer (or a human operator) supplies successive waypoints.
 
 Train on hoopoe (no BC warm-start needed, trains from scratch in ~30 min on A100):
-    PYTHONPATH=. python -m eco.drone.training.train_rl_rover \\
+    PYTHONPATH=. python -m drone.training.train_rl_rover \\
         --out ~/drone-data/rover/models --version rover_v1 \\
         --iters 800 --envs 512 --rollout 96
 
 Continue from a checkpoint:
-    PYTHONPATH=. python -m eco.drone.training.train_rl_rover \\
+    PYTHONPATH=. python -m drone.training.train_rl_rover \\
         --ckpt ~/drone-data/rover/models/policy_rover_v1_ac.pt \\
         --out ~/drone-data/rover/models --version rover_v2 --iters 400 --envs 512
 """

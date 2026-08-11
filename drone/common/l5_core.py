@@ -29,7 +29,7 @@ import math
 
 import numpy as np
 
-# Dual import: packaged (eco.drone.common.l5_core) in the repo, flat (l5_core)
+# Dual import: packaged (drone.common.l5_core) in the repo, flat (l5_core)
 # on the device where common/*.py is installed flat into ~/drone-api/.
 try:
     from .vehicle_class import (  # type: ignore
@@ -46,7 +46,7 @@ except ImportError:  # pragma: no cover - device flat-install path
 class Agent:
     """Minimal agent state the controller + directives read.
 
-    Mirrors the fields ``eco.drone.sim.team_world.Agent`` exposes to the controller
+    Mirrors the fields ``drone.sim.team_world.Agent`` exposes to the controller
     (id, vclass, pos, yaw, vel, goal, alive). The sim's Agent is richer (roster
     bookkeeping); this is the lean shape the flight code populates each tick.
     """

@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "presidio-platform"
+version = "0.1.0"
+description = "Open drone autonomy platform: on-device flight stack, ground control station, and control-plane logic."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [
+    { name = "Presidio Autonomy, Inc." },
+]
+keywords = ["drone", "mavlink", "ardupilot", "robotics", "uav", "autonomy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    # AWS IoT Core client -- a dependency even in control_plane: gcs, since
+    # daemon.py imports awscrt/awsiot at module load; the GCS control plane
+    # swaps the connection target, not the import.
+    "awsiotsdk>=1.27.0",
+    "boto3>=1.42.0",
+    "paho-mqtt>=2.0",
+    "pymavlink>=2.4.49",
+    "pyserial>=3.5",
+    "opencv-python-headless>=4.10.0",
+    "numpy>=2.0.0",
+    "PyYAML>=6.0.0",
+    "requests>=2.32.0",
+    "huggingface_hub>=0.20.0",
+]
+
+[project.optional-dependencies]
+camera-oak = ["depthai>=3.0.0"]
+camera-realsense = ["pyrealsense2>=2.56.0"]
+# Kinesis Video Streams WebRTC -- cloud-only (control_plane: aws). Not needed
+# for GCS mode; see docs/control-plane.md for what's degraded without it.
+video = ["aiortc>=1.14.0", "websockets>=15.0.0", "av>=16.0.0"]
+all = [
+    "depthai>=3.0.0",
+    "pyrealsense2>=2.56.0",
+    "aiortc>=1.14.0",
+    "websockets>=15.0.0",
+    "av>=16.0.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "Pillow>=10.0",  # drone/sim/tests/test_pixel_axis.py
+]
+
+[project.urls]
+Repository = "https://github.com/presidio-autonomy/presidio-platform"
+Issues = "https://github.com/presidio-autonomy/presidio-platform/issues"
+
+[project.scripts]
+presidio-arm-disarm = "drone.common.arm_disarm:main"
+presidio-motor-test = "drone.common.motor_test:main"
+
+[tool.hatch.build.targets.wheel]
+# Multiple top-level packages in one wheel, deliberately NOT nested under a
+# single wrapper directory -- drone/, and control/ + gcs/ once task 3 adds
+# them, stay browsable at repo root rather than hidden under src/presidio/.
+packages = ["drone"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "drone",
+    "docs",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["drone/common/tests", "drone/sim/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]

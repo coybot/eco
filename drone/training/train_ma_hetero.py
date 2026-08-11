@@ -17,12 +17,12 @@ Six-stage curriculum:
   5  3q+3r, full gauntlet         (all stressors)
 
 Train on hoopoe (A100, ~4–6h):
-    PYTHONPATH=. python -m eco.drone.training.train_ma_hetero \\
+    PYTHONPATH=. python -m drone.training.train_ma_hetero \\
         --iters 4000 --envs 512 --version hetero_v1 \\
         --out ~/drone-data/rover/models
 
 Continue from checkpoint:
-    PYTHONPATH=. python -m eco.drone.training.train_ma_hetero \\
+    PYTHONPATH=. python -m drone.training.train_ma_hetero \\
         --ckpt ~/drone-data/rover/models/policy_hetero_v1_ac.pt \\
         --iters 2000 --envs 512 --version hetero_v2
 """
@@ -38,7 +38,7 @@ import numpy as np
 from .rover_contract import (
     R_STATE_DIM, LIDAR_RAYS, LIDAR_MAX, LIDAR_ANGLES, R_STATE_MEAN, R_STATE_STD,
 )
-from .contract import (
+from drone.common.contract import (
     STATE_DIM as Q_STATE_DIM, DEPTH_RAYS, DEPTH_MAX, DEPTH_COLS,
     YAW_OFFSETS,
 )

@@ -6,7 +6,7 @@
 """
 import numpy as np
 
-from eco.drone.sim.team_world import TeamWorld, KinematicWorld, Box, Sensor
+from drone.sim.team_world import TeamWorld, KinematicWorld, Box, Sensor
 
 
 def test_realistic_clearance_is_sensor_derived_not_oracle():
@@ -29,8 +29,8 @@ def test_realistic_sensing_achieves_L5():
     """Regression lock: after Stages 1+3, the suite is L5 under BOTH sensing models
     (with the RuleBasedSmart advisor) — 0 interventions, 0 collisions, 100% success,
     no attributed failures. This is the 'L5 under realistic sensing' milestone."""
-    from eco.drone.sim.scorecard import score_suite
-    from eco.drone.sim.smart_layer import RuleBasedSmart
+    from drone.sim.scorecard import score_suite
+    from drone.sim.smart_layer import RuleBasedSmart
     import pathlib
     scn = str(pathlib.Path(__file__).resolve().parents[2] / "sim" / "scenarios")
 
@@ -44,7 +44,7 @@ def test_scorecard_attribution_is_wellformed():
     """The per-agent attribution plumbing produces well-formed records. Forced by
     running the raw reactive layer (no smart advisor) under realistic sensing, which
     is the pre-Stage-1 baseline and does fail — exercising the attribution path."""
-    from eco.drone.sim.scorecard import score_suite
+    from drone.sim.scorecard import score_suite
     import pathlib
     scn = str(pathlib.Path(__file__).resolve().parents[2] / "sim" / "scenarios")
 
