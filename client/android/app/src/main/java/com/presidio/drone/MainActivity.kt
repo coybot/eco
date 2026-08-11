@@ -68,12 +68,18 @@ import androidx.core.net.toUri
 
 // ============================================================
 // Constants
+//
+// Fill these in from your own deployed AWS stack's outputs - see
+// docs/quickstart-aws.md and the iOS app's Config/AWSConfig.example.swift
+// for where each value comes from. If you don't need the cloud control
+// plane at all, use GCS mode instead (docs/quickstart-gcs.md) - no AWS
+// account or endpoints required.
 // ============================================================
-private const val API_BASE = "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod"
-private const val COGNITO_REGION = "us-west-2"
-private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
+private const val API_BASE = "https://YOUR_API_ID.execute-api.YOUR_AWS_REGION.amazonaws.com/prod"
+private const val COGNITO_REGION = "YOUR_AWS_REGION"
+private const val COGNITO_CLIENT_ID = "YOUR_COGNITO_CLIENT_ID"
 private const val COGNITO_URL = "https://cognito-idp.$COGNITO_REGION.amazonaws.com/"
-private const val COGNITO_HOSTED_UI = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"
+private const val COGNITO_HOSTED_UI = "https://YOUR_COGNITO_DOMAIN.auth.YOUR_AWS_REGION.amazoncognito.com"
 private const val OAUTH_REDIRECT_URI = "com.presidio.drone://callback"
 private const val PREFS_NAME = "presidio_drone_prefs"
 
