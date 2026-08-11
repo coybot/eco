@@ -1,10 +1,12 @@
-# Backend URLs for the deployed SAM stack (drone-api, us-west-2, prod stage).
+# Backend URLs for your deployed SAM stack (aws/template.yaml).
+# Copy to config.stack-dev.yaml (gitignored) and fill in with your own stack's
+# outputs (`sam deploy` prints these, or `aws cloudformation describe-stacks`).
 # Merged into ~/drone-api/config.yaml on install when MERGE_STACK_CONFIG is not 0.
 # Per-drone fields (drone_id, user_id, serial_port, battery) stay in your existing config.yaml.
 
-iot_endpoint: "a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com"
+iot_endpoint: "YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com"
 region: "us-west-2"
-video_role_alias: "drone-video-role-alias-dev"
-credentials_endpoint: "c25b2ibtm4r28z.credentials.iot.us-west-2.amazonaws.com"
-s3_role_alias: "drone-s3-access-role-alias-dev"
-images_bucket: "drone-images-dev-us-west-2-041686205727"
+video_role_alias: "YOUR_VIDEO_ROLE_ALIAS"
+credentials_endpoint: "YOUR_CREDENTIALS_ENDPOINT.credentials.iot.us-west-2.amazonaws.com"
+s3_role_alias: "YOUR_S3_ROLE_ALIAS"
+images_bucket: "YOUR_IMAGES_BUCKET"
