@@ -15,7 +15,10 @@ const PROP_H := 0.008
 
 # Dark carbon-fibre body material.
 var _mat_body: StandardMaterial3D
-# Bright prop material.
+# Prop material. Dark, like a real propeller and like the fixed-wing's own prop
+# disc (fixedwing_visuals.gd uses 0.15). This was near-white (0.85), which over the
+# depot's pale ground rendered the four prop discs as glaring white blobs bigger
+# than the airframe — read as a rendering fault rather than as propellers.
 var _mat_prop: StandardMaterial3D
 
 
@@ -27,7 +30,7 @@ func _ready() -> void:
 	_mat_body.metallic_specular = 0.8
 
 	_mat_prop = StandardMaterial3D.new()
-	_mat_prop.albedo_color = Color(0.85, 0.85, 0.85)
+	_mat_prop.albedo_color = Color(0.16, 0.16, 0.19)
 	_mat_prop.metallic = 0.2
 	_mat_prop.roughness = 0.5
 
