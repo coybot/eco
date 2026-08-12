@@ -24,6 +24,7 @@ GCS mode needs no AWS account and is the app's default. See
 ## Table of Contents
 
 - [What Autonomy Actually Means](#what-autonomy-actually-means)
+- [Simulation](#simulation)
 - [Architecture](#architecture)
 - [Components](#components)
 - [Supported Platforms](#supported-platforms)
@@ -120,6 +121,37 @@ argument, the benchmark numbers, and the metric gap that sinks vision-language m
 closed-loop flight.
 
 > autonomy = the transfer of decision-making — not the absence of a human
+
+## Simulation
+
+![A fixed-wing sweeps a depot, hands off a candidate hazard to a quadcopter, and the
+ground rover closes in and confirms the spill](docs/media/sim-demo/sim-demo.gif)
+
+That's a real run of `drone/sim` — the same engine behind the [L5 benchmark
+results](docs/l5-benchmark.md), not a staged animation. A fixed-wing does a wide-area
+sweep, tasks a quadcopter to investigate a candidate object, and Phrover (the ground
+rover) drives in and confirms the hazard — one mission, three vehicle classes, no human
+re-tasking anything in between.
+
+We didn't build this instead of Gazebo or Isaac Sim — we use it for a different job.
+Gazebo and Isaac give you physics and photoreal rendering; that's exactly what you need
+to validate perception and low-level control against something resembling reality, and
+neither is going away here (see [Isaac Sim guide](docs/isaac-sim.md)). But physics
+fidelity is expensive: Isaac Sim wants an RTX GPU and ~50 GB of disk, and a photoreal
+frame costs orders of magnitude more than a kinematic tick. That's the wrong trade when
+what you're actually testing is **decision logic** — does the fleet re-task correctly
+under comms denial, does the potential-field controller clear an obstacle, does the
+rover's confidence threshold trigger a false positive — not whether a shadow renders
+correctly.
+
+`drone/sim` is a lightweight kinematic sim purpose-built for that: no GPU, runs in
+plain Python + NumPy, and is fast enough to run the L5 benchmark's 16 scenarios × 50
+noise seeds (800 runs) in seconds, not hours. That's what made it possible to report a
+*distribution* (99.5% collision-free under sensor noise) instead of a single cherry-picked
+run — the kind of statistical honesty that's impractical to get out of a simulator where
+each run costs real GPU-minutes. Use `drone/sim` to iterate on mission logic and
+multi-vehicle coordination fast; use Isaac Sim once you need to know if your perception
+model survives contact with a real camera.
 
 ## Architecture
 
