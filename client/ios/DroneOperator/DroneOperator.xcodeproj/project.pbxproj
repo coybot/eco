@@ -40,6 +40,8 @@
 		CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */; };
 		D025012D892BA99D526B1A60 /* AddDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */; };
 		D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E698CDF3450F25420AF98 /* DroneChatView.swift */; };
+		FEED0001C0DE0001BEEF0001 /* StoryboardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0002C0DE0002BEEF0001 /* StoryboardController.swift */; };
+		FEED0001C0DE0001BEEF0002 /* MissionStoryboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0002C0DE0002BEEF0002 /* MissionStoryboardView.swift */; };
 		E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5478F74C272118CF0A0A4F37 /* Drone.swift */; };
 		ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */; };
 		EFE4D03AADB2D8BD393682F3 /* GCSSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F4D80EAA990A4DBAD204F0 /* GCSSettings.swift */; };
@@ -62,6 +64,8 @@
 		108E6D9254DA11DE44020D09 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		24F92BA31E0CFB629DD79C76 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		2B3E698CDF3450F25420AF98 /* DroneChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneChatView.swift; sourceTree = "<group>"; };
+		FEED0002C0DE0002BEEF0001 /* StoryboardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryboardController.swift; sourceTree = "<group>"; };
+		FEED0002C0DE0002BEEF0002 /* MissionStoryboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionStoryboardView.swift; sourceTree = "<group>"; };
 		2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStreamView.swift; sourceTree = "<group>"; };
 		39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DroneOperator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -196,6 +200,15 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		FEED0003C0DE0003BEEF0001 /* Storyboard */ = {
+			isa = PBXGroup;
+			children = (
+				FEED0002C0DE0002BEEF0001 /* StoryboardController.swift */,
+				FEED0002C0DE0002BEEF0002 /* MissionStoryboardView.swift */,
+			);
+			path = Storyboard;
+			sourceTree = "<group>";
+		};
 		7FCD37E9C1985CDAD3D540C4 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -259,6 +272,7 @@
 				BE97CDCBE34B4FED709FF517 /* Auth */,
 				56A3539E966CCEAFEE52AF88 /* Drones */,
 				7BB606F0CBD7E9BCCE3D8BAD /* Settings */,
+				FEED0003C0DE0003BEEF0001 /* Storyboard */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -400,6 +414,8 @@
 				ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */,
 				E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */,
 				D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */,
+				FEED0001C0DE0001BEEF0001 /* StoryboardController.swift in Sources */,
+				FEED0001C0DE0001BEEF0002 /* MissionStoryboardView.swift in Sources */,
 				3037447B6B1D2DB6260AA36C /* DroneDetailView.swift in Sources */,
 				108C2B667CC25044DED0793F /* DroneListView.swift in Sources */,
 				CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */,
@@ -448,7 +464,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = us.presidio.drone;
+				PRODUCT_BUNDLE_IDENTIFIER = com.presidio.drone;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -623,7 +639,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = us.presidio.drone;
+				PRODUCT_BUNDLE_IDENTIFIER = com.presidio.drone;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

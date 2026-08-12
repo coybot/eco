@@ -96,9 +96,14 @@ struct ContentView: View {
 struct MainTabView: View {
     var body: some View {
         TabView {
+            MissionStoryboardView()
+                .tabItem {
+                    Label("Mission", systemImage: "scope")
+                }
+
             ChatsView()
                 .tabItem {
-                    Label("Missions", systemImage: "paperplane")
+                    Label("Drones", systemImage: "paperplane")
                 }
 
             SettingsView()

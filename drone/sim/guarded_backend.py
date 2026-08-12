@@ -231,9 +231,21 @@ class EnvelopeGuardedSimBackend(SimBackend):
                 return True
         return False
 
+    # Horizontal geofence — the sim world (fixedwing_manager.gd occupancy grid:
+    # origin (-50,-150), 600x300). A model that hallucinates a target, or a
+    # GPS-frame transit that converts to nonsense in this local-metre sandbox,
+    # would otherwise fly the fixed-wing thousands of metres off into empty space
+    # (observed live drifting past east=22000) and never come back — the mission
+    # looks "stuck". Every leg passes through goto(), so clamping the target here
+    # keeps the aircraft in the world no matter what asked for the leg.
+    _FENCE_E = (-40.0, 540.0)
+    _FENCE_N = (-140.0, 140.0)
+
     def goto(self, north_m: float, east_m: float, alt_m: float,
              timeout_s: float = 60.0, tol_m: float = 5.0) -> bool:
-        """Decline any straight leg that would pass through structure.
+        """Decline any straight leg that would pass through structure, and clamp
+        the target into the sim world so a bad request can't fly the aircraft
+        out of bounds.
 
         The check lives here rather than in individual action handlers because
         it is a property of the VEHICLE, not of the reason for flying. Checking
@@ -243,6 +255,12 @@ class EnvelopeGuardedSimBackend(SimBackend):
         did, while the envelope guard shoved at it. One rule at the one place
         every leg passes through.
         """
+        ce = min(max(east_m, self._FENCE_E[0]), self._FENCE_E[1])
+        cn = min(max(north_m, self._FENCE_N[0]), self._FENCE_N[1])
+        if ce != east_m or cn != north_m:
+            self.log_event("geofence_clamp", {
+                "requested": [east_m, north_m], "clamped": [ce, cn]})
+            east_m, north_m = ce, cn
         if self.path_blocked((east_m, north_m), alt_m):
             self.legs_refused += 1
             self.log_event("leg_refused", {

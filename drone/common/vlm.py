@@ -268,7 +268,20 @@ class VLMService:
         """
         self.model_path = model_path or VLM_MODEL_PATH
         self.mmproj_path = mmproj_path or VLM_MMPROJ_PATH
-        
+
+        # Inference backend. Default is local llama.cpp with the Qwen3-VL GGUF
+        # (the on-aircraft configuration). Set VLM_BASE_URL to route the SAME
+        # perception prompts to an OpenAI-compatible vision endpoint instead
+        # (e.g. Ollama serving qwen2.5vl / llava) — used where the GGUF/llama.cpp
+        # isn't installed but a real vision MODEL is still wanted in the loop.
+        # decide()'s messages are already OpenAI-shaped (system + image_url +
+        # text), so only the transport changes; every decision is still the
+        # model's.
+        self._base_url = (os.environ.get("VLM_BASE_URL") or "").rstrip("/")
+        self._backend = "openai" if self._base_url else "llama"
+        self._model = os.environ.get("VLM_MODEL", "")
+        self._api_key = os.environ.get("VLM_API_KEY")
+
         self._llm = None
         self._available = False
         # Serialises inference. Two aircraft fly concurrently in the two-drone
@@ -287,10 +300,42 @@ class VLMService:
         """The single serialised entry point to the model. Every inference call
         in this class goes through here so no site can forget the lock."""
         with self._lock:
+            if self._backend == "openai":
+                return self._chat_openai(**kwargs)
             return self._llm.create_chat_completion(**kwargs)
-    
+
+    def _chat_openai(self, *, messages, max_tokens=500, temperature=0.1, **_ignored):
+        """Route the perception call to an OpenAI-compatible vision endpoint
+        (Ollama/vLLM). Returns the same {'choices':[{'message':{'content':...}}]}
+        shape create_chat_completion gives, so decide()'s parsing is unchanged.
+        `logit_bias` (a llama.cpp EOS workaround) is dropped — not portable."""
+        import urllib.request
+        body = json.dumps({
+            "model": self._model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }).encode()
+        req = urllib.request.Request(self._base_url + "/chat/completions",
+                                     data=body,
+                                     headers={"Content-Type": "application/json"})
+        if self._api_key:
+            req.add_header("Authorization", f"Bearer {self._api_key}")
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.load(r)
+
     def _init_model(self):
         """Initialize the VLM model."""
+        if self._backend == "openai":
+            # No local weights to load — the model lives behind an HTTP endpoint.
+            if not self._model:
+                print("VLM_BASE_URL set but VLM_MODEL is empty; set the served "
+                      "vision model name.")
+                self._available = False
+                return
+            print(f"VLM via OpenAI endpoint: {self._model} @ {self._base_url}")
+            self._available = True
+            return
         if not self.model_path.exists():
             print(f"VLM model not found at {self.model_path}")
             print("Run setup_models.py to download Qwen3-VL")
@@ -351,17 +396,26 @@ class VLMService:
         Returns:
             Base64 data URI string
         """
-        import cv2
-        
         if image_array is not None:
-            # Convert numpy array to JPEG bytes
-            if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-                # RGB -> BGR for cv2
-                bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-            else:
-                bgr = image_array
-            _, buffer = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            image_bytes = buffer.tobytes()
+            # Convert numpy array to JPEG bytes. cv2 is imported LAZILY here
+            # (not at function top): the sim/hardware capture paths hand us JPEG
+            # bytes directly and never reach this branch, so a box without
+            # opencv-python (e.g. this dev laptop) must still encode those bytes.
+            # Falls back to Pillow when cv2 is absent.
+            try:
+                import cv2
+                if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+                    bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)  # RGB->BGR
+                else:
+                    bgr = image_array
+                _, buffer = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                image_bytes = buffer.tobytes()
+            except ImportError:
+                import io
+                from PIL import Image
+                image_bytes = io.BytesIO()
+                Image.fromarray(image_array).save(image_bytes, format="JPEG", quality=85)
+                image_bytes = image_bytes.getvalue()
         elif image_path:
             with open(image_path, 'rb') as f:
                 image_bytes = f.read()
@@ -456,10 +510,13 @@ class VLMService:
             # attempt on, so the common (non-degenerate) case is untouched.
             content = ""
             attempts = 3
-            eos_id = self._llm.token_eos()
+            # The EOS-ban retry is a llama.cpp-specific workaround (see note
+            # above) and needs a loaded local model to resolve the token id; the
+            # OpenAI/Ollama backend has no such handle, so skip it there.
+            eos_id = self._llm.token_eos() if self._backend == "llama" else None
             for attempt in range(attempts):
                 kwargs = dict(messages=messages, max_tokens=500, temperature=0.1)
-                if attempt > 0:
+                if attempt > 0 and eos_id is not None:
                     kwargs["logit_bias"] = {eos_id: -100.0}
                 response = self._chat(**kwargs)
                 content = response['choices'][0]['message']['content'] or ""

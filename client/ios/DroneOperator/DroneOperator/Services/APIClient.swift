@@ -193,6 +193,30 @@ final class APIClient {
         )
     }
     
+    // MARK: - Mission storyboard (multi-option planner)
+
+    /// Storyboard step 4: send the NL tasking plus the drawn operating area and
+    /// no-fly zones, get back 2-3 ranked fleet plans (one recommended). Nothing
+    /// is flown yet.
+    func requestMissionPlans(droneId: String, conversationId: String,
+                             request req: MissionPlanRequest) async throws -> MissionPlansResponse {
+        return try await request(
+            method: "POST",
+            path: "/drones/\(droneId)/conversations/\(conversationId)/plan",
+            body: req
+        )
+    }
+
+    /// Storyboard step 5 ("go"): dispatch the chosen plan to the fleet.
+    func selectMissionPlan(droneId: String, conversationId: String,
+                           planId: String) async throws -> PlanSelectResponse {
+        return try await request(
+            method: "POST",
+            path: "/drones/\(droneId)/conversations/\(conversationId)/plan/select",
+            body: PlanSelectRequest(planId: planId)
+        )
+    }
+
     /// Get a pre-signed URL for uploading an image
     func getUploadUrl(droneId: String, conversationId: String, filename: String) async throws -> UploadUrlResponse {
         return try await request(
@@ -428,6 +452,106 @@ private struct RegisterDroneRequest: Encodable {
 
 private struct PatchDroneRequest: Encodable {
     let name: String
+}
+
+// MARK: - Mission storyboard types
+
+/// A lat/lon vertex. Encodes to {"lat":..,"lon":..} — the frame the GCS
+/// planner (control/planning.py) reasons in.
+struct GeoCoordinate: Codable, Equatable, Hashable {
+    let lat: Double
+    let lon: Double
+}
+
+/// Body for POST .../plan. Keys are snake_case to match the server (the shared
+/// JSONEncoder here does no key conversion).
+struct MissionPlanRequest: Encodable {
+    let message: String
+    let operatingArea: [GeoCoordinate]
+    let noFlyZones: [[GeoCoordinate]]
+    let droneIds: [String]?
+    let home: GeoCoordinate?
+    let cruiseMps: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case message
+        case operatingArea = "operating_area"
+        case noFlyZones = "no_fly_zones"
+        case droneIds = "drone_ids"
+        case home
+        case cruiseMps = "cruise_mps"
+    }
+}
+
+/// One phase of a per-drone plan — decoded only for a human-readable preview,
+/// so just the discriminating fields.
+struct PlanPhase: Codable, Equatable {
+    let type: String?
+    let objective: String?
+    let description: String?
+
+    var label: String { type ?? objective ?? description ?? "phase" }
+}
+
+struct PerDronePlan: Codable, Equatable, Identifiable {
+    let droneId: String
+    let phases: [PlanPhase]
+    var id: String { droneId }
+
+    enum CodingKeys: String, CodingKey {
+        case droneId = "drone_id"
+        case phases
+    }
+}
+
+struct MissionPlanOption: Codable, Equatable, Identifiable {
+    let planId: String
+    let label: String
+    let rationale: String
+    let estMinutes: Double
+    let nfzClear: Bool
+    let nfzViolations: Int
+    let recommended: Bool
+    let perDrone: [PerDronePlan]
+
+    var id: String { planId }
+
+    enum CodingKeys: String, CodingKey {
+        case planId = "plan_id"
+        case label, rationale, recommended
+        case estMinutes = "est_minutes"
+        case nfzClear = "nfz_clear"
+        case nfzViolations = "nfz_violations"
+        case perDrone = "per_drone"
+    }
+}
+
+struct MissionPlansResponse: Decodable {
+    let status: String            // "ok" | "ask" | "error"
+    let plans: [MissionPlanOption]
+    let recommendedPlanId: String?
+    let question: String?         // present when status == "ask"
+
+    enum CodingKeys: String, CodingKey {
+        case status, plans, question
+        case recommendedPlanId = "recommended_plan_id"
+    }
+}
+
+struct PlanSelectRequest: Encodable {
+    let planId: String
+    enum CodingKeys: String, CodingKey { case planId = "plan_id" }
+}
+
+struct PlanSelectResponse: Decodable {
+    let status: String
+    let dispatched: [String]
+    let planId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case status, dispatched
+        case planId = "plan_id"
+    }
 }
 
 struct DroneUpdateResponse: Decodable {
