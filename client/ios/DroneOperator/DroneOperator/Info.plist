@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>Drone Operator</string>
+    <string>Presidio</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -49,6 +49,15 @@
     </array>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Drone Operator needs local network access to communicate with your drone during setup.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Drone Operator uses your location to center the mission map on the operating area you draw.</string>
+    <!-- Reserved for the voice-directed mission input (currently a typed
+         stand-in): dictating the mission and saying "go". Present now so the
+         later SFSpeechRecognizer layer needs no plist change. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Drone Operator uses the microphone so you can describe a mission by voice.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Drone Operator transcribes your spoken mission description and commands on device.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <!-- GCS (Ground Control Station) mode talks to a box on the local

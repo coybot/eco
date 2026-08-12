@@ -173,7 +173,8 @@ VLM_CAPABILITIES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 PHASE_WORDING_RULES: list = [
     'Write objectives using the detector\'s own plain nouns — "person", '
-    '"water bottle", "car", "aircraft" — even when adding descriptive detail. '
+    '"water bottle", "car", "pickup truck", "aircraft" — even when adding '
+    'descriptive detail. '
     '"Find the person in the red jacket" works; "find the individual in '
     'crimson outerwear" does not, because no detected label appears in it.',
     "Keep the distinguishing attribute in the text as well as the noun, so the "

@@ -148,6 +148,20 @@ def _phase_wants_delivery(phase: Dict[str, Any]) -> bool:
     return wants and what
 
 
+def _parse_local_coord(text: str):
+    """Extract an explicit local-frame point from objective text, e.g.
+    "east=400, north=0" -> (400.0, 0.0). Tolerant of spacing and of the
+    "east_m"/"north_m" spellings. Returns (x_east, y_north) or None. Used to
+    pin a SEARCH_AREA to a fixed centre instead of the drone's drifting pose."""
+    if not text:
+        return None
+    m_e = re.search(r'east(?:_m)?\s*=\s*(-?\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    m_n = re.search(r'north(?:_m)?\s*=\s*(-?\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m_e and m_n:
+        return (float(m_e.group(1)), float(m_n.group(1)))
+    return None
+
+
 DRONE_SDK_AVAILABLE = False
 try:
     import drone_sdk as _drone_sdk
@@ -1441,8 +1455,20 @@ class MissionLoop:
                 if need_new_plan:
                     landmark = self.memory.nearest(target) if action.target_object else None
                     pose = backend.get_pose()
+                    # An explicit local coordinate in the phase objective
+                    # ("east=400, north=0") pins the search to a FIXED point.
+                    # Without this the centre defaults to the drone's current
+                    # pose, and a fixed-wing (which cannot hover) then flies the
+                    # orbit forward, re-centres on the advanced pose next replan,
+                    # and drifts away indefinitely instead of covering the named
+                    # area — observed live drifting to east>2500. A remembered
+                    # sighting still wins (we've actually seen the thing); the
+                    # objective coordinate beats a bare pose fallback.
+                    obj_center = _parse_local_coord(phase.get("objective", ""))
                     if landmark is not None:
                         center = (landmark.x, landmark.y)
+                    elif obj_center is not None:
+                        center = obj_center
                     elif pose is not None:
                         center = (pose[0], pose[1])
                     else:

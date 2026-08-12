@@ -919,6 +919,92 @@ Resources:
             Path: /drones/{droneId}/conversations/{conversationId}/select
             Method: POST
 
+  # Mission Planner (storyboard: NL + drawn area/NFZ -> 2-3 ranked fleet plans)
+  MissionPlanFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-mission-plan-${Environment}
+      CodeUri: src/
+      Handler: conversations.plan_handler
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          STATUS_TABLE: !Ref DroneStatusTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt DroneTable.Arn
+                - !GetAtt ConversationsTable.Arn
+                - !GetAtt DroneStatusTable.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+      Events:
+        Plan:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/plan
+            Method: POST
+
+  # Mission Plan Select (storyboard "go": dispatch chosen plan to the fleet)
+  MissionPlanSelectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-mission-plan-select-${Environment}
+      CodeUri: src/
+      Handler: conversations.plan_select_handler
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          STATUS_TABLE: !Ref DroneStatusTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt DroneTable.Arn
+                - !GetAtt ConversationsTable.Arn
+                - !GetAtt DroneStatusTable.Arn
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+      Events:
+        PlanSelect:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/plan/select
+            Method: POST
+
   # Get Upload URL for Images
   GetUploadUrlFunction:
     Type: AWS::Serverless::Function

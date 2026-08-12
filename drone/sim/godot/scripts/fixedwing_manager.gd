@@ -40,6 +40,15 @@ const DETECT_RANGE_BY_LABEL := {
 	"wall": 400.0,
 	"aircraft": 300.0,
 	"water_bottle": 40.0,
+	# Ground vehicles: bigger and higher-contrast than a person, so picked up
+	# from farther than the 80 m person default, but still well inside cruise
+	# range — the aircraft must still fly out and close in to localize/confirm,
+	# it can't call a truck from the launch point. All three spellings the
+	# detector/tasking might use map to the same range (see mission_vocab's
+	# vehicle nouns).
+	"pickup truck": 150.0,
+	"truck": 150.0,
+	"car": 150.0,
 }
 const PEER_DETECT_RANGE := 300.0  # m — see the peer pass in detect()
 # The sensing cone MUST be the camera's cone. detect() decides what the mission
@@ -165,6 +174,12 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	mesh.set_script(load("res://scripts/fixedwing_visuals.gd"))
 	body.add_child(mesh)
 
+	# Engine buzz, positional: an AudioStreamPlayer3D on the airframe attenuates
+	# with distance to the active camera (the main window's camera is the audio
+	# listener), so the drone gets louder as it flies toward the viewer and
+	# quieter as it heads away. Looping so it's continuous while airborne.
+	_attach_engine_audio(body)
+
 	# Forward-facing camera for fw_grab_frame — same SubViewport+Camera3D pattern
 	# as fleet_manager.gd's per-vehicle quad/rover cameras (own_world_3d=false so
 	# it sees the real scene). SubViewport doesn't inherit Node3D transforms even
@@ -206,6 +221,51 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	_fw[id] = st
 	_apply_pose(st)
 	print("[FixedWingManager] spawned %s at ENU %v" % [id, pos])
+
+
+## A synthesized, seamlessly-looping propeller/engine buzz. Built in code rather
+## than loaded from a .wav so it needs no Godot import step (running from the
+## binary, not the editor, there is no importer to turn a raw .wav into an
+## AudioStreamWAV — load() returns null).
+static func _make_engine_stream() -> AudioStreamWAV:
+	var sr := 22050
+	var n := int(sr * 2.0)               # 2 s loop
+	var f0 := 95.0                        # fundamental
+	var data := PackedByteArray()
+	data.resize(n * 2)                    # 16-bit mono
+	var harmonics := [[1, 1.0], [2, 0.5], [3, 0.32], [4, 0.18], [6, 0.10]]
+	for i in n:
+		var t := float(i) / sr
+		var am := 0.6 + 0.4 * sin(TAU * 11.0 * t)   # blade-pass warble (integer cycles => seamless)
+		var s := 0.0
+		for h in harmonics:
+			s += float(h[1]) * sin(TAU * f0 * float(h[0]) * t)
+		s *= am / 2.1
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 22000.0))
+	var st := AudioStreamWAV.new()
+	st.format = AudioStreamWAV.FORMAT_16_BITS
+	st.mix_rate = sr
+	st.stereo = false
+	st.data = data
+	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	st.loop_begin = 0
+	st.loop_end = n
+	return st
+
+
+## Attach a looping, distance-attenuated engine buzz to an airframe body.
+func _attach_engine_audio(body: Node3D) -> void:
+	var stream := _make_engine_stream()
+	var player := AudioStreamPlayer3D.new()
+	player.name = "engine_audio"
+	player.stream = stream
+	player.autoplay = true
+	player.unit_size = 45.0          # full volume within ~45 m, rolls off beyond
+	player.max_distance = 900.0
+	player.volume_db = 4.0
+	player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	body.add_child(player)
+	player.play()
 
 
 func despawn(id: String) -> void:

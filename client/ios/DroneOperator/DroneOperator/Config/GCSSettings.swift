@@ -67,7 +67,10 @@ final class GCSSettings {
         // placeholder endpoints (see Config/AWSConfig.example.swift), so .cloud
         // would silently fail out of the box. GCS needs no AWS account at all.
         self.controlPlane = storedPlane ?? .gcs
-        self.host = UserDefaults.standard.string(forKey: Keys.host) ?? ""
+        // Demo build: pre-filled to the local GCS stand-in on the Mac so the
+        // app is usable out of the box with no Settings entry (still editable
+        // on the Settings screen; overridden by GCS_TEST_* env below).
+        self.host = UserDefaults.standard.string(forKey: Keys.host) ?? "10.10.10.38"
         let storedHTTPPort = UserDefaults.standard.integer(forKey: Keys.httpPort)
         self.httpPort = storedHTTPPort == 0 ? 8080 : storedHTTPPort
         let storedMQTTPort = UserDefaults.standard.integer(forKey: Keys.mqttPort)
@@ -76,7 +79,21 @@ final class GCSSettings {
            let token = String(data: data, encoding: .utf8) {
             self.pairingToken = token
         } else {
-            self.pairingToken = ""
+            self.pairingToken = "${GCS_PAIRING_TOKEN}"
+        }
+
+        // Test hook: allow a launch environment to pre-configure GCS mode so an
+        // automated end-to-end run (e.g. the simulator) can point at a local GCS
+        // without driving the Settings UI. Inert in production — these env vars
+        // are never set by a normal launch. (SIMCTL_CHILD_GCS_TEST_* on the
+        // simctl launch command surfaces here as GCS_TEST_*.)
+        let env = ProcessInfo.processInfo.environment
+        if let h = env["GCS_TEST_HOST"], !h.isEmpty {
+            self.controlPlane = .gcs
+            self.host = h
+            if let p = env["GCS_TEST_HTTP_PORT"], let n = Int(p) { self.httpPort = n }
+            if let p = env["GCS_TEST_MQTT_PORT"], let n = Int(p) { self.mqttPort = n }
+            if let t = env["GCS_TEST_TOKEN"], !t.isEmpty { self.pairingToken = t }
         }
     }
 }
