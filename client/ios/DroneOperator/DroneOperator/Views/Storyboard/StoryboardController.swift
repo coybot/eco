@@ -19,7 +19,8 @@ final class StoryboardController {
     // One entry in the chat transcript.
     enum Item: Identifiable {
         case user(String)
-        case drone(String)                                   // system/drone text
+        case drone(String)                                   // system text, no particular drone
+        case droneSays(drone: String, text: String)          // a specific drone's line — tappable
         case mapPrompt                                       // "mark the area" button
         case plans([MissionPlanOption], recommended: String?)
         case progress(drone: String, MessageContent.MissionProgress)
@@ -29,6 +30,7 @@ final class StoryboardController {
             switch self {
             case .user(let t): return "u-\(t.hashValue)-\(abs(t.count))"
             case .drone(let t): return "d-\(t.hashValue)"
+            case .droneSays(let d, let t): return "ds-\(d)-\(t.hashValue)"
             case .mapPrompt: return "map"
             case .plans(let p, _): return "plans-" + p.map(\.planId).joined()
             case .progress(let d, _): return "prog-\(d)"       // one live row per drone
@@ -37,6 +39,41 @@ final class StoryboardController {
             }
         }
     }
+
+    /// Chat | Map — the top-level screen switch (task 3/4). Both screens share
+    /// the same drone chip bar and the same right sidebar selection.
+    enum MissionScreen { case chat, map }
+    var screen: MissionScreen = .chat
+
+    /// What the right sidebar (task 3/4) is showing — a drone's live video +
+    /// telemetry, or a sighted object's photo + location. Nothing selected
+    /// means no sidebar at all (the PiP-replacement default).
+    enum SidebarSelection: Hashable { case drone(String); case object(String) }
+    var selection: SidebarSelection?
+
+    /// One physical thing the fleet has reported seeing this session — the
+    /// target AND any non-target landmarks (e.g. the decoy car), merged in
+    /// from every mission response's `landmarks` (see
+    /// control/conversations.py's landmarks_payload / _build_mission_record).
+    /// Keyed by label: repeat sightings across missions update the same entry
+    /// in place rather than appending duplicates, so the map/sidebar always
+    /// shows the latest fix.
+    struct SightedObject: Identifiable, Hashable {
+        var id: String { label }
+        let label: String
+        var lat: Double?
+        var lon: Double?
+        var eastM: Double?
+        var northM: Double?
+        var score: Double?
+        var hits: Int?
+        var imageURL: URL?
+    }
+    var objects: [SightedObject] = []
+
+    func select(drone id: String) { selection = .drone(id) }
+    func select(object label: String) { selection = .object(label) }
+    func clearSelection() { selection = nil }
 
     var phase: Phase = .awaitingMission
     var chat: [Item] = []
@@ -59,6 +96,9 @@ final class StoryboardController {
     var droneIds: [String] = []
     var conversationId: String = ""
     var leadDroneId: String { droneIds.first ?? "" }
+    /// Drones that have posted a final /response for the current mission; the
+    /// mission is only "done" once this covers every tasked aircraft.
+    private var respondedDrones: Set<String> = []
 
     var targetLocation: TargetFix?
 
@@ -104,6 +144,12 @@ final class StoryboardController {
     private let api = APIClient.shared
     private let mqtt = MQTTService.shared
     private var subscribedTopics: [String] = []
+    /// drone/{id}/status subscriptions — separate from subscribedTopics
+    /// (progress/response) because they're set up once the fleet is known in
+    /// begin(), not gated behind selecting a mission plan like
+    /// subscribeToStatus()'s guard assumes. Feeds MQTTService.droneStatuses,
+    /// the shared cache the map/sidebar telemetry reads from.
+    private var telemetryTopics: [String] = []
 
     struct TargetFix: Equatable {
         let label: String
@@ -127,8 +173,30 @@ final class StoryboardController {
                 return
             }
             conversationId = try await api.startConversation(droneId: lead).conversationId
+            subscribeToTelemetry()
         } catch {
             say("I couldn't reach the ground control station: \(error.localizedDescription)")
+        }
+    }
+
+    /// Live drone/{id}/status for every known drone, independent of mission
+    /// state — the map/sidebar want a drone's position and battery whether or
+    /// not a mission is currently flying. Same decode + shared-cache pattern
+    /// as DroneListView.subscribeToStatusTopics; feeding the same
+    /// MQTTService.droneStatuses cache means DroneDetailView and this screen
+    /// never disagree about a drone's last-known state.
+    private func subscribeToTelemetry() {
+        guard telemetryTopics.isEmpty else { return }
+        for did in droneIds {
+            let topic = "drone/\(did)/status"
+            mqtt.subscribe(to: topic) { [weak self] data in
+                guard let status = try? JSONDecoder().decode(DroneStatus.self, from: data)
+                else { return }
+                Task { @MainActor in
+                    self?.mqtt.updateDroneStatus(droneId: did, status: status)
+                }
+            }
+            telemetryTopics.append(topic)
         }
     }
 
@@ -151,7 +219,45 @@ final class StoryboardController {
         case .awaitingArea:
             say("Tap \u{201C}Mark area\u{201D} above to draw the operating area on the map.")
         case .executing, .done:
-            say("The mission is already underway — I'll keep posting updates here.")
+            // A follow-up query ("did you also see a car?", "fly back to the
+            // truck and take more angle shots") once a mission has launched
+            // or finished — see sendFollowUp.
+            Task { await sendFollowUp(text) }
+        }
+    }
+
+    /// Task 2: operator follow-ups after a mission has launched or completed.
+    /// Routes through the same /messages endpoint every other chat turn uses
+    /// — control/conversations.py's message_handler now injects the
+    /// conversation's recent mission records into the model's context, so a
+    /// sighting question gets answered from real data ("respond"), and a
+    /// fly-back request comes back as a fresh action:"mission" dispatched to
+    /// the same command topic the original plan used. Either way the
+    /// existing progress/response MQTT subscriptions on this conversation
+    /// just keep working — no new topics needed.
+    private func sendFollowUp(_ text: String) async {
+        guard !conversationId.isEmpty else { return }
+        isBusy = true; defer { isBusy = false }
+        do {
+            let resp = try await api.sendChatMessage(
+                droneId: leadDroneId, conversationId: conversationId, message: text)
+            guard let immediate = resp.immediateResponse else { return }
+            switch immediate.content {
+            case .text(let t), .error(let t):
+                say(t)
+            case .loading(let t):
+                // message_handler's 'mission' branch saves a 'loading'
+                // message when it dispatches a fresh mission — reset
+                // per-mission state so "mission complete" fires again once
+                // every drone reports in, exactly like the first launch.
+                respondedDrones = []
+                phase = .executing
+                say(t)
+            default:
+                break
+            }
+        } catch {
+            say("Couldn't reach the ground control station: \(error.localizedDescription)")
         }
     }
 
@@ -268,6 +374,7 @@ final class StoryboardController {
 
     private func subscribeToStatus() {
         guard subscribedTopics.isEmpty else { return }
+        respondedDrones = []
         for did in droneIds {
             let progress = "drone/\(did)/chat/\(conversationId)/progress"
             let response = "drone/\(did)/chat/\(conversationId)/response"
@@ -292,7 +399,7 @@ final class StoryboardController {
         guard let payload = try? JSONDecoder().decode(DroneMessagePayload.self, from: data),
               let msg = payload.toChatMessage() else { return }
         if case .missionProgress(let p) = msg.content { upsertProgress(drone: drone, p) }
-        else if case .text(let t) = msg.content { say("\(drone): \(t)") }
+        else if case .text(let t) = msg.content { sayFromDrone(drone, t) }
     }
 
     private func onResponse(_ data: Data, drone: String) {
@@ -308,7 +415,26 @@ final class StoryboardController {
                 chat.append(.target(fix, imageURL: url))
             }
         }
-        if let s = r.summary, !s.isEmpty { chat.append(.summary(s)) }
+        // Everything the fleet has actually seen (target AND non-target
+        // landmarks, e.g. the decoy car) — what backs the map screen and the
+        // "did you also see a car?" follow-up query. See
+        // control/conversations.py's landmarks_payload for the source shape.
+        mergeLandmarks(r.landmarks)
+        // Each aircraft reports as it finishes; label it by drone so the first
+        // one home doesn't read as the whole mission completing.
+        if let s = r.summary, !s.isEmpty { sayFromDrone(drone, s) }
+        respondedDrones.insert(drone)
+
+        // Only declare the mission complete once EVERY tasked aircraft has
+        // reported in (and, per the daemon, returned to base). Otherwise the
+        // first drone to finish ended the mission while the others were still
+        // flying — which is what looked like a premature "mission completed".
+        let expected = Set(droneIds)
+        guard !expected.isEmpty, respondedDrones.isSuperset(of: expected) else { return }
+        let n = expected.count
+        chat.append(.summary(n > 1
+            ? "All \(n) aircraft have finished and returned to base."
+            : "Mission complete — the aircraft has returned to base."))
         phase = .done
     }
 
@@ -320,18 +446,45 @@ final class StoryboardController {
         chat = []; missionText = ""; input = ""
         operatingArea = []; noFlyZones = []; draftPolygon = []
         targetLocation = nil
+        objects = []; selection = nil; screen = .chat
         Task { await begin() }
     }
 
     func teardown() {
         for t in subscribedTopics { mqtt.unsubscribe(from: t) }
         subscribedTopics = []
+        for t in telemetryTopics { mqtt.unsubscribe(from: t) }
+        telemetryTopics = []
     }
 
     private func say(_ text: String) { chat.append(.drone(text)) }
+    private func sayFromDrone(_ drone: String, _ text: String) {
+        chat.append(.droneSays(drone: drone, text: text))
+    }
+
+    /// Upsert this response's landmarks into `objects`, keyed by label — a
+    /// second mission that re-sights "car" updates that entry's fix rather
+    /// than appending a duplicate pin.
+    private func mergeLandmarks(_ landmarks: [LandmarkPayload]?) {
+        guard let landmarks, !landmarks.isEmpty else { return }
+        for lm in landmarks {
+            guard let label = lm.label else { continue }
+            let obj = SightedObject(label: label, lat: lm.lat, lon: lm.lon,
+                                    eastM: lm.eastM, northM: lm.northM,
+                                    score: lm.score, hits: lm.hits,
+                                    imageURL: lm.imageUrl.flatMap(URL.init(string:)))
+            if let i = objects.firstIndex(where: { $0.label == label }) {
+                objects[i] = obj
+            } else {
+                objects.append(obj)
+            }
+        }
+    }
 }
 
-/// Minimal decode of the drone's /response payload — target + summary only.
+/// Decode of the drone's /response payload — target + summary + everything
+/// else the mission sighted (task 2/3's landmarks, for follow-up queries and
+/// the map screen).
 struct MissionResponsePayload: Decodable {
     let droneId: String?
     let conversationId: String?
@@ -349,9 +502,20 @@ struct MissionResponsePayload: Decodable {
         let success: Bool?
         let summary: String?
         let targetLocation: TargetLocation?
+        // All-optional and defaulted to [] on missing key: an older daemon
+        // that hasn't been rebuilt with the landmarks field yet must decode
+        // fine — this is additive, not a wire-format break.
+        let landmarks: [LandmarkPayload]?
         enum CodingKeys: String, CodingKey {
-            case success, summary
+            case success, summary, landmarks
             case targetLocation = "target_location"
+        }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            success = try c.decodeIfPresent(Bool.self, forKey: .success)
+            summary = try c.decodeIfPresent(String.self, forKey: .summary)
+            targetLocation = try c.decodeIfPresent(TargetLocation.self, forKey: .targetLocation)
+            landmarks = try c.decodeIfPresent([LandmarkPayload].self, forKey: .landmarks) ?? []
         }
     }
     struct TargetLocation: Decodable {
@@ -361,5 +525,28 @@ struct MissionResponsePayload: Decodable {
             case label, lat, lon
             case eastM = "east_m"; case northM = "north_m"
         }
+    }
+}
+
+/// One object the fleet has sighted, from control/conversations.py's
+/// landmarks_payload — the target AND any non-target objects (e.g. a decoy
+/// car). Every field but `label` is optional: a hardware daemon that hasn't
+/// picked up a lat/lon datum, or a landmark that never got a first-sighting
+/// photo, still decodes cleanly.
+struct LandmarkPayload: Decodable {
+    let label: String?
+    let eastM: Double?
+    let northM: Double?
+    let altM: Double?
+    let score: Double?
+    let hits: Int?
+    let lat: Double?
+    let lon: Double?
+    let imageUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case label, score, hits, lat, lon
+        case eastM = "east_m"; case northM = "north_m"; case altM = "alt_m"
+        case imageUrl = "image_url"
     }
 }

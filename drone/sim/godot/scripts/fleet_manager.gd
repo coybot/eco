@@ -163,6 +163,18 @@ func _add_main_vantage() -> void:
 		main_cam.position = mc_pos
 		main_cam.look_at(mc_look, Vector3.UP)
 	main_cam.current = true
+	# Explicit audio listener at the window camera. Without this, 3D audio picks
+	# a "current" Camera3D as the listener — but every drone's forward camera is
+	# also current (in a SubViewport sharing this world), and one of those, being
+	# bolted to the aircraft, wins. The engine buzz then plays at a fixed ~3 m
+	# listener distance forever, so it never gets louder/quieter as a drone nears
+	# or leaves this view. An AudioListener3D takes priority over cameras and
+	# pins the listener here, restoring distance attenuation. (See
+	# fixedwing_manager._attach_engine_audio.)
+	var listener := AudioListener3D.new()
+	listener.name = "MainAudioListener"
+	main_cam.add_child(listener)
+	listener.make_current()
 	_main_cam = main_cam
 
 

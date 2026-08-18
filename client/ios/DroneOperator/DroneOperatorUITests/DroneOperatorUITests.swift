@@ -7,6 +7,43 @@ final class DroneOperatorUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Capture-only: launches the app pointed at the local GCS + video bridge,
+    /// selects the first drone chip so the right sidebar opens with its live
+    /// video + telemetry, and saves a full-screen screenshot as a test
+    /// attachment. Run on the physical iPad to visually confirm the
+    /// selection-driven video feed renders on-device (the always-on floating
+    /// PiP this replaced needed no selection step — this one does):
+    ///   xcodebuild test -only-testing:DroneOperatorUITests/DroneOperatorUITests/testCapture_missionLiveFeeds ...
+    func testCapture_missionLiveFeeds() throws {
+        let app = XCUIApplication()
+        // Deterministic GCS target (matches drone/sim/run_local_demo.sh on this
+        // Mac + the demo operator token baked into GCSSettings).
+        app.launchEnvironment["GCS_TEST_HOST"] = "10.10.10.38"
+        app.launchEnvironment["GCS_TEST_HTTP_PORT"] = "8080"
+        app.launchEnvironment["GCS_TEST_MQTT_PORT"] = "1883"
+        app.launchEnvironment["GCS_TEST_VIDEO_PORT"] = "8091"
+        app.launchEnvironment["GCS_TEST_TOKEN"] = "${GCS_PAIRING_TOKEN}"
+        app.launch()
+
+        // The bottom tab bar defaults to Mission; tap it if present to be sure.
+        let mission = app.buttons["Mission"]
+        if mission.waitForExistence(timeout: 15) { mission.tap() }
+
+        // Select the first drone chip once the fleet has loaded — this is
+        // what opens the sidebar (no more always-on PiP to just wait for).
+        let firstChip = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'mission_drone_chip_'"))
+            .firstMatch
+        if firstChip.waitForExistence(timeout: 15) { firstChip.tap() }
+        Thread.sleep(forTimeInterval: 12)  // let the selected feed connect and stream
+
+        let shot = XCUIScreen.main.screenshot()
+        let att = XCTAttachment(screenshot: shot)
+        att.name = "mission_sidebar_live_feed"
+        att.lifetime = .keepAlways
+        add(att)
+    }
+
     func testLaunch_showsAuthOrFleet() throws {
         let app = XCUIApplication()
         app.launch()

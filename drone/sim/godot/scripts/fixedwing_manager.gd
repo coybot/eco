@@ -260,7 +260,10 @@ func _attach_engine_audio(body: Node3D) -> void:
 	player.name = "engine_audio"
 	player.stream = stream
 	player.autoplay = true
-	player.unit_size = 45.0          # full volume within ~45 m, rolls off beyond
+	player.unit_size = 25.0          # full volume within ~25 m, rolls off beyond;
+	                                 # small enough that the near/far swing across
+	                                 # this scene (~100-450 m to the window camera)
+	                                 # is clearly audible (~13 dB)
 	player.max_distance = 900.0
 	player.volume_db = 4.0
 	player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
@@ -384,8 +387,14 @@ func _apply_pose(st: FixedWingState) -> void:
 	# Godot: x=right(east), y=up, z=-forward(-north)
 	st.node.position = Vector3(st.position.x, st.position.z, -st.position.y)
 
-	# Rotation in YXZ Euler (pitch around x, yaw around y, roll around z)
-	var rotation_degrees = Vector3(rad_to_deg(st.pitch), -rad_to_deg(st.yaw) + 90.0, rad_to_deg(st.roll))
+	# Rotation in YXZ Euler (pitch around x, yaw around y, roll around z).
+	# The mesh's nose is local +Z (fixedwing_visuals.gd). Under a Godot +Y
+	# rotation φ, local +Z points to world (sinφ, 0, cosφ); to make the nose
+	# follow the ENU heading (cos yaw, sin yaw) — i.e. Godot (cos yaw, 0,
+	# -sin yaw) — we need φ = yaw + 90°, NOT -yaw + 90° (that reflected the north
+	# component, so the nose pointed the right way only for due-east/west travel
+	# and backwards for north/south).
+	var rotation_degrees = Vector3(rad_to_deg(st.pitch), rad_to_deg(st.yaw) + 90.0, rad_to_deg(st.roll))
 	st.node.rotation_degrees = rotation_degrees
 	_sync_camera(st)
 

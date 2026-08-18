@@ -979,11 +979,21 @@ def _extract_last_json_action(text: str):
     return None
 
 
-def call_mission_agent(conversation_history, user_message, pending_images=None):
+def call_mission_agent(conversation_history, user_message, pending_images=None,
+                       mission_context=None):
     """
     Call the AI agent for mission planning (AGX drones with VLM).
-    
+
     This uses the mission-based approach for drones with on-device VLM.
+
+    mission_context: optional pre-rendered block (see _render_mission_context)
+    describing what past missions in this conversation actually found —
+    appended to the system prompt, not folded into conversation_history/
+    messages, so it survives regardless of how much chat history is in play
+    and so the model sees it as authoritative platform context rather than
+    something either party "said". Lets the model answer sighting follow-ups
+    ("did you also see a car?") and emit fly-back missions anchored on a
+    previously-localized object's coordinates.
     """
     messages = []
     
@@ -1014,8 +1024,12 @@ def call_mission_agent(conversation_history, user_message, pending_images=None):
     
     messages.append({'role': 'user', 'content': user_content})
     
+    system = MISSION_SYSTEM_PROMPT
+    if mission_context:
+        system = f"{system}\n\n{mission_context}"
+
     try:
-        result = llm.invoke(MISSION_SYSTEM_PROMPT, messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
+        result = llm.invoke(system, messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
         response_text = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -1309,6 +1323,127 @@ def _load_plan_options(drone_id, conversation_id):
         return []
 
 
+def _mission_records_key(drone_id, conversation_id):
+    return {'PK': f'CONV#{drone_id}#{conversation_id}', 'SK': 'MISSIONS'}
+
+
+def _build_mission_record(payload, result):
+    """Slim, structured record of one completed mission — the durable
+    counterpart to the prose summary save_message() stores, and what makes an
+    operator follow-up ("did you also see a car?") answerable at all: the
+    drone's raw `result` (findings/landmarks/photos) is otherwise gone the
+    moment summarize_mission() finishes with it (see response_handler).
+
+    `payload` is the drone's full /response payload (build_response_payload
+    in fw_gcs_daemon.py); `result` is payload['result']. Caps mirror
+    _render_mission_context's own budget so a record built here never grows
+    unboundedly even if a future caller renders it without re-capping."""
+    summary = (result.get('summary') or '')[:300]
+    landmarks = result.get('landmarks') or []
+    return {
+        'mission_id': payload.get('mission_id') or result.get('mission_id'),
+        'completed_at': payload.get('timestamp') or datetime.now(timezone.utc).isoformat(),
+        'success': bool(result.get('success')),
+        'summary': summary,
+        'target_location': result.get('target_location'),
+        'landmarks': landmarks[:15],
+        'photos': (payload.get('image_urls') or result.get('photos') or [])[:5],
+    }
+
+
+def _append_mission_record(drone_id, conversation_id, record, keep=3):
+    """Append one mission record, keeping only the most recent `keep` (newest
+    last) — same single-item/JSON-string/TTL shape as _store_plan_options, so
+    the local Dynamo shim needs no new indexing to support this."""
+    table = dynamodb.Table(CONVERSATIONS_TABLE)
+    key = _mission_records_key(drone_id, conversation_id)
+    try:
+        resp = table.get_item(Key=key)
+        existing = json.loads(resp.get('Item', {}).get('missions', '[]'))
+    except Exception as e:
+        print(f"⚠️ Failed to load prior mission records: {e}")
+        existing = []
+    existing.append(record)
+    existing = existing[-keep:]
+    item = dict(key)
+    item.update({
+        'missions': json.dumps(existing),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'ttl': int(datetime.now(timezone.utc).timestamp()) + (7 * 24 * 60 * 60),
+    })
+    table.put_item(Item=item)
+
+
+def _load_mission_records(drone_id, conversation_id):
+    table = dynamodb.Table(CONVERSATIONS_TABLE)
+    try:
+        resp = table.get_item(Key=_mission_records_key(drone_id, conversation_id))
+        item = resp.get('Item')
+        if not item:
+            return []
+        return json.loads(item.get('missions', '[]'))
+    except Exception as e:
+        print(f"⚠️ Failed to load mission records: {e}")
+        return []
+
+
+def _render_mission_context(records, max_chars=4000):
+    """Render persisted mission records into a MISSION_SYSTEM_PROMPT addendum
+    telling the model how to use them. Hard-budgeted: this rides on top of an
+    already-substantial system prompt into a local 7B model served through
+    Ollama's OpenAI-compatible endpoint with no explicit num_ctx set, so an
+    unbounded dump risks silently truncating the FRONT of the prompt (the
+    phase vocabulary) rather than erroring. Oldest records are dropped first
+    if still over budget after the per-record caps already applied in
+    _build_mission_record.
+
+    The "forbid go_to_gps" rule matters even though these records carry
+    lat/lon: go_to_gps is unflyable in the sim's self-contained ENU sandbox
+    (MISSION_SYSTEM_PROMPT already documents this as a real failure mode), so
+    a fly-back phase must be anchored in the exact "east=X, north=Y (metres,
+    local frame)" wording _anchor_phases_to_sim's explicit-coordinate gate
+    looks for — otherwise the daemon's own search-area anchor would silently
+    overwrite whatever the model wrote.
+    """
+    if not records:
+        return None
+    lines = ["COMPLETED MISSION DATA (authoritative, most recent last):"]
+    rendered = []
+    for rec in records:
+        line = json.dumps(rec, default=str)
+        rendered.append(line)
+    # Drop oldest first if over budget (records list is oldest-first already).
+    while rendered and sum(len(l) for l in rendered) > max_chars:
+        rendered.pop(0)
+    lines.extend(rendered)
+    lines.append("")
+    lines.append(
+        "Using this data:\n"
+        "- Questions about what was seen (\"did you see a car?\", \"how many "
+        "trucks?\", \"where was X?\"): answer with action \"respond\", strictly "
+        "from the landmarks above. Coordinates are local frame (east/north "
+        "metres) plus lat/lon. If a label is not in the landmarks, it was not "
+        "seen — say so plainly. If a landmark has an image_url, include the "
+        "URL in your message.\n"
+        "- Requests to fly back to / re-photograph a listed object: emit "
+        "action \"mission\" with a fresh phase plan. The objective text MUST "
+        "name the stored coordinates in the exact wording \"east=<E>, "
+        "north=<N> (metres, local frame)\". Do NOT use go_to_gps for these — "
+        "it cannot be flown in this environment; do not invent coordinates.\n"
+        "  Example for \"get more angles of the car\":\n"
+        "  {\"action\": \"mission\", \"mission\": {\"phases\": [\n"
+        "    {\"type\": \"arm_and_takeoff\", \"altitude_m\": 35},\n"
+        "    {\"objective\": \"Fly to the car at east=388, north=13 (metres, "
+        "local frame) and photograph it from multiple angles\",\n"
+        "     \"success\": \"car at east=388, north=13 photographed from "
+        "multiple angles\"},\n"
+        "    {\"type\": \"return_home\", \"alt_m\": 35},\n"
+        "    {\"type\": \"land\"}\n"
+        "  ]}, \"message\": \"Returning to the car for more angle shots.\"}"
+    )
+    return "\n".join(lines)
+
+
 def summarize_mission(history, drone_id, result, image_urls=None):
     """Produce a short natural-language mission summary from the final
     MissionResult (+ any target localization it carried), via the same local/
@@ -1320,11 +1455,22 @@ def summarize_mission(history, drone_id, result, image_urls=None):
     if isinstance(target, dict) and target.get('lat') is not None:
         target_line = (f"\nTarget localized at lat {target['lat']:.6f}, "
                        f"lon {target['lon']:.6f}.")
+    # Dump a slimmed copy for the prompt, not `result` verbatim: `landmarks`
+    # can run to 15 entries of coordinates/scores/image URLs, which would
+    # dominate the [:1500] slice below and crowd out the fields (success,
+    # phases, findings) this summary is actually about. The full landmark set
+    # still reaches durable storage via _build_mission_record/
+    # _append_mission_record in response_handler — this only trims what goes
+    # INTO the summarization prompt.
+    landmarks = result.get('landmarks') or []
+    slim = {k: v for k, v in result.items() if k not in ('landmarks', 'photos')}
+    objects_line = f"\nDistinct objects mapped: {len(landmarks)}." if landmarks else ''
     prompt = (
         "Summarize the completed drone surveillance mission for the operator in "
         "2-4 sentences: what was accomplished, whether the target was found and "
         "where, and anything notable. Be concrete and brief.\n\n"
-        f"Mission result: {json.dumps(result, default=str)[:1500]}{target_line}")
+        f"Mission result: {json.dumps(slim, default=str)[:1500]}"
+        f"{objects_line}{target_line}")
     try:
         resp = llm.invoke(
             "You write brief, factual post-mission summaries for a drone operator.",
@@ -1583,8 +1729,14 @@ def message_handler(event, context):
     
     # Call appropriate agent based on drone capabilities
     if has_vlm:
-        # AGX drone with VLM - use mission-based approach
-        agent_response = call_mission_agent(history, message)
+        # AGX drone with VLM - use mission-based approach. Give it what past
+        # missions in this conversation actually found (last 2 — see
+        # _render_mission_context's budget note) so sighting follow-ups and
+        # fly-back requests have something to answer from.
+        records = _load_mission_records(drone_id, conversation_id)
+        mission_context = _render_mission_context(records[-2:]) if records else None
+        agent_response = call_mission_agent(history, message,
+                                            mission_context=mission_context)
     else:
         # Legacy drone (Nano/NX) - use goal-based approach
         agent_response = call_agent(history, message)
@@ -2105,10 +2257,26 @@ def response_handler(event, context):
     image_urls = payload.get('image_urls', [])
     original_message = payload.get('original_message', '')
     follow_up = payload.get('follow_up', False)
-    
+
     print(f"📋 Processing: drone={drone_id}, conv={conversation_id}, images={len(image_urls)}, follow_up={follow_up}")
     print(f"📋 Result: success={result.get('success')}, stdout={result.get('stdout', '')[:200]}")
-    
+
+    # Persist a structured record BEFORE anything below touches `result` —
+    # this is what a later operator follow-up ("did you also see a car?")
+    # gets answered from (see _build_mission_record's docstring). Checked
+    # here, once, up front (rather than only inside the plain-text branch
+    # below) so a mission that also happened to capture an explicit
+    # operator-requested photo — which routes through the image_urls branches
+    # instead — still gets its landmarks/target recorded.
+    is_mission_result = any(k in result for k in
+                            ('phases_completed', 'phasesCompleted', 'mission_id'))
+    if is_mission_result:
+        try:
+            _append_mission_record(drone_id, conversation_id,
+                                   _build_mission_record(payload, result))
+        except Exception as e:
+            print(f"⚠️ failed to persist mission record: {e}")
+
     # Get conversation history
     history = get_conversation_history(drone_id, conversation_id)
     
@@ -2185,10 +2353,9 @@ Describe what you see in the image and respond to the user's request."""
     else:
         # No images, just execution result. A completed multi-phase MISSION
         # (storyboard step 8/10) gets an operator-facing summary; a plain code
-        # execution keeps the terse Done/issue message.
-        is_mission = any(k in result for k in
-                         ('phases_completed', 'phasesCompleted', 'mission_id'))
-        if is_mission:
+        # execution keeps the terse Done/issue message. (is_mission_result was
+        # already computed above, before the record was persisted.)
+        if is_mission_result:
             msg = summarize_mission(history, drone_id, result, image_urls)
         elif result.get('success'):
             msg = f"Done! {result.get('stdout', '')}"

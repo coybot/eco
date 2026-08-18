@@ -2,18 +2,47 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
-/// Natural-language mission, as a chat. The operator types a mission; plans,
-/// clarifying questions, live status and the summary all stream back into the
-/// same thread. Reuses APIClient + MQTTService through StoryboardController.
+/// Natural-language mission, driven from two screens under a shared drone
+/// chip bar: Chat (typed tasking, live status, follow-up queries) and Map
+/// (drone positions + everything sighted). Selecting a drone or a sighted
+/// object — from the chip bar, a chat bubble, or a map pin — opens the right
+/// sidebar with that drone's live video/telemetry or that object's photo/
+/// location. Reuses APIClient + MQTTService through StoryboardController.
+///
+/// Replaces the earlier always-on floating PiP video overlay: video is now
+/// selection-driven, one feed at a time, in the sidebar.
 struct MissionStoryboardView: View {
     @State private var controller = StoryboardController()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// iPad landscape gets a persistent side-by-side sidebar; anything
+    /// narrower (iPhone, iPad split-view/Slide Over) gets the sidebar as a
+    /// sheet instead, since 340pt permanently taken from a compact width
+    /// would crush the chat/map content.
+    private var isRegular: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                transcript
+                DroneChipBar(controller: controller)
+                Picker("Screen", selection: screenBinding) {
+                    Text("Chat").tag(StoryboardController.MissionScreen.chat)
+                    Text("Map").tag(StoryboardController.MissionScreen.map)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.bottom, 6)
                 Divider()
-                inputBar
+                HStack(spacing: 0) {
+                    screenContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if isRegular, controller.selection != nil {
+                        Divider()
+                        MissionSidebarView(controller: controller)
+                            .frame(width: 340)
+                            .transition(.move(edge: .trailing))
+                    }
+                }
             }
             .navigationTitle("Mission")
             .navigationBarTitleDisplayMode(.inline)
@@ -28,9 +57,32 @@ struct MissionStoryboardView: View {
                                         set: { controller.showMap = $0 })) {
                 AreaMapSheet(controller: controller)
             }
+            .sheet(isPresented: Binding(
+                get: { !isRegular && controller.selection != nil },
+                set: { if !$0 { controller.clearSelection() } })) {
+                MissionSidebarView(controller: controller)
+            }
+            .animation(.default, value: controller.selection)
         }
         .task { await controller.begin() }
         .onDisappear { controller.teardown() }
+    }
+
+    @ViewBuilder private var screenContent: some View {
+        switch controller.screen {
+        case .chat:
+            VStack(spacing: 0) {
+                transcript
+                Divider()
+                inputBar
+            }
+        case .map:
+            MissionMapView(controller: controller)
+        }
+    }
+
+    private var screenBinding: Binding<StoryboardController.MissionScreen> {
+        Binding(get: { controller.screen }, set: { controller.screen = $0 })
     }
 
     private var transcript: some View {
@@ -79,6 +131,53 @@ struct MissionStoryboardView: View {
     }
 }
 
+// MARK: - Drone chip bar (shared by both screens)
+
+/// One row of tappable drone chips above the Chat|Map switch — the other way
+/// (besides tapping a chat bubble or a map pin) to select a drone for the
+/// sidebar. Hidden until the fleet is known.
+private struct DroneChipBar: View {
+    let controller: StoryboardController
+
+    var body: some View {
+        if !controller.droneIds.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(controller.droneIds, id: \.self) { did in
+                        DroneChip(
+                            droneId: did,
+                            isOnline: MQTTService.shared.isDroneOnline(droneId: did),
+                            isSelected: controller.selection == .drone(did)
+                        )
+                        .onTapGesture { controller.select(drone: did) }
+                        .accessibilityIdentifier("mission_drone_chip_\(did)")
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+        }
+    }
+}
+
+private struct DroneChip: View {
+    let droneId: String
+    let isOnline: Bool
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(isOnline ? Color.green : Color.gray).frame(width: 6, height: 6)
+            Text(droneId.uppercased()).font(.caption.bold())
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(isSelected ? Color.accentColor.opacity(0.18)
+                                : Color(.secondarySystemBackground), in: Capsule())
+        .overlay(Capsule().strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 1.5))
+        .foregroundStyle(isSelected ? Color.accentColor : .primary)
+    }
+}
+
 // MARK: - Chat rows
 
 private struct MissionChatRow: View {
@@ -91,6 +190,18 @@ private struct MissionChatRow: View {
             Bubble(text: t, mine: true)
         case .drone(let t):
             Bubble(text: t, mine: false)
+        case .droneSays(let drone, let t):
+            // A specific drone's line — tap it to open that drone's video +
+            // telemetry in the sidebar (task 4's "select by tapping something
+            // it said" requirement).
+            VStack(alignment: .leading, spacing: 2) {
+                Text(drone.uppercased())
+                    .font(.caption2.bold()).foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+                Bubble(text: t, mine: false)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { controller.select(drone: drone) }
         case .mapPrompt:
             Button {
                 controller.drawMode = .operatingArea
@@ -109,8 +220,10 @@ private struct MissionChatRow: View {
             }
         case .progress(let drone, let p):
             DroneStatusCard(droneId: drone, progress: p)
+                .onTapGesture { controller.select(drone: drone) }
         case .target(let fix, let url):
             TargetFoundCard(target: fix, imageURL: url)
+                .onTapGesture { controller.select(object: fix.label) }
         case .summary(let s):
             VStack(alignment: .leading, spacing: 10) {
                 Label("Mission summary", systemImage: "checkmark.seal.fill")
