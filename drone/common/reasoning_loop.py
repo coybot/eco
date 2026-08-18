@@ -218,10 +218,16 @@ class MissionResult:
     total_phases: int
     findings: List[str] = field(default_factory=list)
     photos: List[str] = field(default_factory=list)
+    # Structured counterpart to the prose "memory: <label> at (...)" lines
+    # _memory_finding_strings() already appends to `findings` — one dict per
+    # distinct object seen this mission (see MissionLoop._landmarks_out).
+    # Population is ENU-only here; the daemon (fw_gcs_daemon.landmarks_payload)
+    # is what knows the mission's lat/lon datum and enriches this on the way out.
+    landmarks: List[Dict[str, Any]] = field(default_factory=list)
     duration_seconds: float = 0.0
     actions_taken: int = 0
     failure_reason: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'success': self.success,
@@ -230,6 +236,7 @@ class MissionResult:
             'total_phases': self.total_phases,
             'findings': self.findings,
             'photos': self.photos,
+            'landmarks': self.landmarks,
             'duration_seconds': self.duration_seconds,
             'actions_taken': self.actions_taken,
             'failure_reason': self.failure_reason,
@@ -272,6 +279,10 @@ class MissionLoop:
     # trusting a count as either "definitely zero" or "the final tally"
     # until the search has covered enough ground to back that claim.
     MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT = 0.5
+    # Cap on per-mission landmark photo uploads (see _maybe_photo_landmark) — a
+    # mission that stumbles into a field of near-identical objects shouldn't
+    # fire off dozens of synchronous PUTs.
+    MAX_LANDMARK_PHOTOS_PER_MISSION = 8
 
     def __init__(
         self,
@@ -323,6 +334,13 @@ class MissionLoop:
         self._history: List[str] = []
         self._findings: List[str] = []
         self._photos: List[str] = []
+        # Same shared-reference trick as _findings: every MissionResult
+        # construction site passes landmarks=self._landmarks_out, and the
+        # `finally` block below extends the SAME list right before returning —
+        # so whichever result the caller already built comes back populated
+        # without a second return path to keep in sync.
+        self._landmarks_out: List[Dict[str, Any]] = []
+        self._landmark_photos_taken: int = 0
         self._home_lat: Optional[float] = None
         self._home_lon: Optional[float] = None
         self._home_alt: Optional[float] = None
@@ -421,6 +439,8 @@ class MissionLoop:
         self._history = []
         self._findings = []
         self._photos = []
+        self._landmarks_out = []
+        self._landmark_photos_taken = 0
         self._home_lat = None
         self._home_lon = None
         self._home_alt = None
@@ -508,6 +528,7 @@ class MissionLoop:
                             total_phases=len(mission.phases),
                             findings=self._findings,
                             photos=self._photos,
+                            landmarks=self._landmarks_out,
                             duration_seconds=time.time() - mission.start_time,
                             actions_taken=actions_taken,
                             failure_reason=reason,
@@ -526,6 +547,7 @@ class MissionLoop:
                         total_phases=len(mission.phases),
                         findings=self._findings,
                         photos=self._photos,
+                        landmarks=self._landmarks_out,
                         duration_seconds=elapsed,
                         actions_taken=actions_taken,
                         failure_reason=f"Exceeded time limit ({self.MAX_DURATION_SECONDS}s)",
@@ -539,6 +561,7 @@ class MissionLoop:
                         total_phases=len(mission.phases),
                         findings=self._findings,
                         photos=self._photos,
+                        landmarks=self._landmarks_out,
                         duration_seconds=elapsed,
                         actions_taken=actions_taken,
                         failure_reason=f"Exceeded action limit ({self.MAX_ACTIONS})",
@@ -555,6 +578,7 @@ class MissionLoop:
                 total_phases=len(mission.phases),
                 findings=self._findings,
                 photos=self._photos,
+                landmarks=self._landmarks_out,
                 duration_seconds=time.time() - mission.start_time,
                 actions_taken=actions_taken,
             )
@@ -570,6 +594,7 @@ class MissionLoop:
                 total_phases=len(mission.phases),
                 findings=self._findings,
                 photos=self._photos,
+                landmarks=self._landmarks_out,
                 duration_seconds=time.time() - mission.start_time,
                 actions_taken=actions_taken,
                 failure_reason=str(e),
@@ -587,6 +612,7 @@ class MissionLoop:
             # that always runs, makes memory inspectable post-flight without
             # duplicating this at every return statement.
             self._findings.extend(self._memory_finding_strings())
+            self._landmarks_out.extend(self._landmark_dicts())
             self._cleanup()
     
     # Phase-type -> executor-method-name. Keys MUST match mission_vocab.
@@ -768,10 +794,16 @@ class MissionLoop:
     def _exec_look_around(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         directions = phase.get('directions', 4)
         self._report_progress(f"Looking around ({directions} directions)")
-        if not DRONE_SDK_AVAILABLE:
+        # Same hardware-first precedence as _get_backend(): the real module-level
+        # _drone_sdk wins when it's actually importable (on-aircraft), otherwise
+        # fall back to whatever was passed into the constructor — which is how
+        # the sim daemon's GcsPhotoUploader shim (duck-typing capture_photo/
+        # look_around) gets to answer typed photo phases at all.
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        if sdk is None:
             return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
         try:
-            urls = _drone_sdk.look_around(directions=directions)
+            urls = sdk.look_around(directions=directions)
             if urls:
                 self._photos.extend(urls)
             return {'success': True, 'actions': 1}
@@ -780,10 +812,11 @@ class MissionLoop:
 
     def _exec_capture_photo(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         self._report_progress("Capturing photo")
-        if not DRONE_SDK_AVAILABLE:
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        if sdk is None:
             return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
         try:
-            url = _drone_sdk.capture_photo(upload=True)
+            url = sdk.capture_photo(upload=True)
             if url:
                 self._photos.append(url)
             return {'success': True, 'actions': 1}
@@ -937,6 +970,7 @@ class MissionLoop:
                         backend.log_event("memory_landmark", {
                             "label": lm.label, "x": lm.x, "y": lm.y, "z": lm.z, "score": lm.score,
                         })
+                        self._maybe_photo_landmark(lm, frame)
 
             # 3. Get drone state
             drone_state = self._get_drone_state()
@@ -1447,8 +1481,21 @@ class MissionLoop:
                     target = self._search_target
                 else:
                     target = "target"
+                # Fuzzy, not exact: normalize_label alone doesn't catch the
+                # model saying "the pickup truck" one decision and "pickup
+                # truck" the next — normalize_label("the pickup truck") !=
+                # normalize_label("pickup truck"), so an exact-equality check
+                # here treated ordinary phrasing drift as a brand-new target
+                # and threw away the entire in-progress expanding-orbit plan
+                # (back to leg 0) on almost every decision. Confirmed live:
+                # a search that should converge within its first ~6-leg lap
+                # instead restarted repeatedly and never got there. labels_match
+                # is the same permissive substring/equality test SpatialMemory
+                # already uses for this exact class of phrasing variance.
+                same_target = (self._search_target is not None
+                              and labels_match(self._search_target, target))
                 need_new_plan = (
-                    self._search_target != target
+                    not same_target
                     or not self._search_plan
                     or self._search_idx >= len(self._search_plan)
                 )
@@ -2076,6 +2123,55 @@ class MissionLoop:
             f"memory: {lm.label} at ({lm.x:.1f}, {lm.y:.1f}, {lm.z:.1f}) "
             f"score={lm.score:.2f} hits={lm.hits}"
             for lm in self.memory.all()
+        ]
+
+    def _maybe_photo_landmark(self, lm, frame) -> None:
+        """Capture one photo of a landmark the instant it's first seen (called
+        from the perception block only when lm.hits == 1 — never on a re-merge,
+        so each distinct object gets at most one shot).
+
+        `self.drone_sdk` here is the daemon's photo shim (fw_gcs_daemon.
+        GcsPhotoUploader) when the sim wires one in — it duck-types capture_photo/
+        look_around (used by the typed phase executors below) plus this extra
+        upload_frame() method. Real on-aircraft `drone_sdk` has no such method,
+        so getattr(..., 'upload_frame', None) is None there and this is a
+        guaranteed no-op on hardware — no config flag needed to keep the two
+        environments apart.
+        """
+        if frame is None or self._landmark_photos_taken >= self.MAX_LANDMARK_PHOTOS_PER_MISSION:
+            return
+        upload = getattr(self.drone_sdk, "upload_frame", None)
+        if upload is None:
+            return
+        try:
+            url = upload(frame, f"landmark_{normalize_label(lm.label)}")
+        except Exception as e:
+            print(f"landmark photo upload failed: {e}")
+            return
+        if url:
+            lm.image_url = url
+            self._landmark_photos_taken += 1
+
+    # Structured sibling of _memory_finding_strings() above, for
+    # MissionResult.landmarks — everything an operator-facing map/query needs
+    # per distinct object, in ENU (this class doesn't know a lat/lon datum;
+    # fw_gcs_daemon.landmarks_payload adds lat/lon and applies the cap/sort
+    # once it has one). "teammate" is excluded: it's a pinned peer-aircraft
+    # position, not a sighted object, and would otherwise show up on a map as
+    # a bogus ground target.
+    def _landmark_dicts(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "label": lm.label,
+                "east_m": round(lm.x, 1),
+                "north_m": round(lm.y, 1),
+                "alt_m": round(lm.z, 1),
+                "score": round(lm.score, 3),
+                "hits": lm.hits,
+                "image_url": lm.image_url,
+            }
+            for lm in self.memory.all()
+            if normalize_label(lm.label) != "teammate"
         ]
 
     def _cleanup(self):

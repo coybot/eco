@@ -42,6 +42,9 @@
 		D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E698CDF3450F25420AF98 /* DroneChatView.swift */; };
 		FEED0001C0DE0001BEEF0001 /* StoryboardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0002C0DE0002BEEF0001 /* StoryboardController.swift */; };
 		FEED0001C0DE0001BEEF0002 /* MissionStoryboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0002C0DE0002BEEF0002 /* MissionStoryboardView.swift */; };
+		FEED0001C0DE0001BEEF0003 /* DroneVideoStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0002C0DE0002BEEF0003 /* DroneVideoStream.swift */; };
+		FEED0001C0DE0001BEEF0005 /* MissionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0002C0DE0002BEEF0005 /* MissionMapView.swift */; };
+		FEED0001C0DE0001BEEF0006 /* MissionSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0002C0DE0002BEEF0006 /* MissionSidebarView.swift */; };
 		E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5478F74C272118CF0A0A4F37 /* Drone.swift */; };
 		ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */; };
 		EFE4D03AADB2D8BD393682F3 /* GCSSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F4D80EAA990A4DBAD204F0 /* GCSSettings.swift */; };
@@ -66,6 +69,9 @@
 		2B3E698CDF3450F25420AF98 /* DroneChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneChatView.swift; sourceTree = "<group>"; };
 		FEED0002C0DE0002BEEF0001 /* StoryboardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryboardController.swift; sourceTree = "<group>"; };
 		FEED0002C0DE0002BEEF0002 /* MissionStoryboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionStoryboardView.swift; sourceTree = "<group>"; };
+		FEED0002C0DE0002BEEF0003 /* DroneVideoStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneVideoStream.swift; sourceTree = "<group>"; };
+		FEED0002C0DE0002BEEF0005 /* MissionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionMapView.swift; sourceTree = "<group>"; };
+		FEED0002C0DE0002BEEF0006 /* MissionSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionSidebarView.swift; sourceTree = "<group>"; };
 		2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStreamView.swift; sourceTree = "<group>"; };
 		39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DroneOperator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -205,6 +211,9 @@
 			children = (
 				FEED0002C0DE0002BEEF0001 /* StoryboardController.swift */,
 				FEED0002C0DE0002BEEF0002 /* MissionStoryboardView.swift */,
+				FEED0002C0DE0002BEEF0003 /* DroneVideoStream.swift */,
+				FEED0002C0DE0002BEEF0005 /* MissionMapView.swift */,
+				FEED0002C0DE0002BEEF0006 /* MissionSidebarView.swift */,
 			);
 			path = Storyboard;
 			sourceTree = "<group>";
@@ -416,6 +425,9 @@
 				D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */,
 				FEED0001C0DE0001BEEF0001 /* StoryboardController.swift in Sources */,
 				FEED0001C0DE0001BEEF0002 /* MissionStoryboardView.swift in Sources */,
+				FEED0001C0DE0001BEEF0003 /* DroneVideoStream.swift in Sources */,
+				FEED0001C0DE0001BEEF0005 /* MissionMapView.swift in Sources */,
+				FEED0001C0DE0001BEEF0006 /* MissionSidebarView.swift in Sources */,
 				3037447B6B1D2DB6260AA36C /* DroneDetailView.swift in Sources */,
 				108C2B667CC25044DED0793F /* DroneListView.swift in Sources */,
 				CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */,
@@ -522,7 +534,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = C8JM33MCJS;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -586,7 +598,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = C8JM33MCJS;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;

@@ -22,6 +22,7 @@ final class GCSSettings {
         static let host = "gcs.host"
         static let httpPort = "gcs.httpPort"
         static let mqttPort = "gcs.mqttPort"
+        static let videoPort = "gcs.videoPort"
         static let pairingTokenKeychainKey = "gcs.pairingToken"
     }
 
@@ -38,6 +39,11 @@ final class GCSSettings {
     /// The GCS's mosquitto broker port (gcs/config.yaml's mqtt.port, default 1883).
     var mqttPort: Int {
         didSet { UserDefaults.standard.set(mqttPort, forKey: Keys.mqttPort) }
+    }
+    /// The live-video MJPEG bridge port (drone/sim/video_bridge.py, default 8091).
+    /// Only used in GCS mode; cloud mode streams via KVS WebRTC instead.
+    var videoPort: Int {
+        didSet { UserDefaults.standard.set(videoPort, forKey: Keys.videoPort) }
     }
     var pairingToken: String {
         didSet {
@@ -60,6 +66,13 @@ final class GCSSettings {
         }
     }
 
+    /// Base URL of the local MJPEG video bridge (GCS mode only). Returns nil in
+    /// cloud mode, where live video comes from KVS WebRTC per-drone instead.
+    var videoBaseURLString: String? {
+        guard controlPlane == .gcs else { return nil }
+        return "http://\(host):\(videoPort)"
+    }
+
     private init() {
         let storedPlane = UserDefaults.standard.string(forKey: Keys.controlPlane)
             .flatMap(ControlPlane.init(rawValue:))
@@ -75,6 +88,8 @@ final class GCSSettings {
         self.httpPort = storedHTTPPort == 0 ? 8080 : storedHTTPPort
         let storedMQTTPort = UserDefaults.standard.integer(forKey: Keys.mqttPort)
         self.mqttPort = storedMQTTPort == 0 ? 1883 : storedMQTTPort
+        let storedVideoPort = UserDefaults.standard.integer(forKey: Keys.videoPort)
+        self.videoPort = storedVideoPort == 0 ? 8091 : storedVideoPort
         if let data = KeychainHelper.load(forKey: Keys.pairingTokenKeychainKey),
            let token = String(data: data, encoding: .utf8) {
             self.pairingToken = token
@@ -93,6 +108,7 @@ final class GCSSettings {
             self.host = h
             if let p = env["GCS_TEST_HTTP_PORT"], let n = Int(p) { self.httpPort = n }
             if let p = env["GCS_TEST_MQTT_PORT"], let n = Int(p) { self.mqttPort = n }
+            if let p = env["GCS_TEST_VIDEO_PORT"], let n = Int(p) { self.videoPort = n }
             if let t = env["GCS_TEST_TOKEN"], !t.isEmpty { self.pairingToken = t }
         }
     }

@@ -38,9 +38,11 @@ import argparse
 import json
 import math
 import queue
+import re
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -140,6 +142,171 @@ def _label_matches(detected: str, targets) -> bool:
     return any(t.lower() in d or d in t.lower() for t in targets if t)
 
 
+def landmarks_payload(memory, datum=None, limit=15):
+    """Everything the mission actually saw, for the operator-facing result —
+    the structured sibling of extract_target_location() above, which
+    deliberately reports only the single configured --target-label. `memory`
+    is a SpatialMemory (duck-typed: .all() -> list[Landmark]).
+
+    "teammate" is excluded (a pinned peer-aircraft position, not a sighted
+    object). Sorted by hits descending so the cap keeps the most-confirmed
+    objects, not just whichever were seen last. lat/lon is added only when a
+    datum is given — same convention as extract_target_location."""
+    out = []
+    for lm in memory.all():
+        if (lm.label or "").strip().lower() == "teammate":
+            continue
+        entry = {
+            "label": lm.label,
+            "east_m": round(lm.x, 1),
+            "north_m": round(lm.y, 1),
+            "alt_m": round(lm.z, 1),
+            "score": round(getattr(lm, "score", 0.0), 3),
+            "hits": lm.hits,
+            "image_url": getattr(lm, "image_url", None),
+        }
+        if datum:
+            entry.update(enu_to_latlon(datum, lm.x, lm.y))
+        out.append(entry)
+    out.sort(key=lambda e: -e["hits"])
+    return out[:limit]
+
+
+def build_heartbeat(drone_id, armed, state, datum=None):
+    """The drone/{id}/status wire shape. `state` is a DepotClient.fw_state()
+    result ({'ok':..., 'position':[east,north,alt], 'yaw':..., 'airspeed':...})
+    or None if the Godot call failed/wasn't attempted — position/heading/
+    airspeed are simply omitted then, same as if this were a real aircraft
+    between GPS fixes.
+
+    position.{latitude,longitude,altitude} deliberately matches the key names
+    control/conversations.py._drone_home() and the iOS DroneStatus.Position
+    decoder already expect, so this alone (no server change) makes both work
+    for sim drones. position_enu is the same fix in the sim's own local frame,
+    for a map that has no reason to round-trip through lat/lon.
+
+    heading_deg converts the sim's yaw (radians, CCW from +x/east — see
+    depot_client.py's docstring and fixedwing_manager.gd's _apply_pose, which
+    this project's rotation math is built around) to a compass bearing
+    (degrees, CW from north): heading = (90 - degrees(yaw)) % 360.
+    """
+    hb = {
+        "droneId": drone_id, "status": "online",
+        "lastUpdate": int(time.time() * 1000), "ttl": int(time.time()) + 30,
+        "armed": armed, "battery": 100, "variant": "agx64",
+        "capabilities": {"variant": "agx64", "vlm_available": True,
+                         "nav2_available": True, "vehicle_type": "fixedwing"},
+    }
+    if state and state.get("ok") and state.get("position") is not None:
+        east_m, north_m, alt_m = state["position"]
+        hb["position_enu"] = {"east_m": east_m, "north_m": north_m, "alt_m": alt_m}
+        if datum:
+            latlon = enu_to_latlon(datum, east_m, north_m)
+            hb["position"] = {"latitude": latlon["lat"], "longitude": latlon["lon"],
+                              "altitude": alt_m}
+        yaw = state.get("yaw")
+        if yaw is not None:
+            hb["heading_deg"] = round((90.0 - math.degrees(yaw)) % 360.0, 1)
+        airspeed = state.get("airspeed")
+        if airspeed is not None:
+            hb["airspeed_mps"] = round(float(airspeed), 1)
+    return hb
+
+
+class GcsPhotoUploader:
+    """The slice of drone_sdk that MissionLoop's typed photo executors
+    (_exec_capture_photo/_exec_look_around) and the landmark first-sighting
+    hook (_maybe_photo_landmark) need — duck-typed so the sim path can pass
+    this in as `drone_sdk=` and light up photo capture with zero MissionLoop
+    changes beyond the sdk-precedence fix those executors already needed.
+
+    Backed by backend.capture_frame() (the same forward-camera JPEG the VLM
+    already reasons over — see backends.py's SimBackend.capture_frame) and
+    the GCS's real presigned-upload-URL flow — control/conversations.py's
+    upload_url_handler (POST .../upload-url) + PUT to the returned URL — the
+    same two-step flow the app itself would use, NOT drone_sdk's direct
+    Bearer-token PUT to /images/{key}. That direct-PUT auth path needs a
+    genuine per-drone token from AuthStore.ensure_drone_token(), which
+    nothing in this GCS actually calls anywhere (confirmed: it's dead code) —
+    the sim daemon has no such token to send and a direct PUT 403s. What the
+    daemon DOES have is the fleet's own operator pairing token (the same
+    value passed as --alpha-token/--bravo-token, reused here as the MQTT
+    password), which upload_url_handler already accepts and validates via
+    verify_ownership — exactly the authority this daemon is meant to have.
+    Never raises — a failed upload just means no photo, not a crashed
+    mission.
+    """
+
+    def __init__(self, backend, drone_id, conversation_id, images_base_url,
+                 auth_token, http_post_json=None, http_put_bytes=None):
+        self.backend = backend
+        self.drone_id = drone_id
+        self.conversation_id = conversation_id
+        self.images_base_url = images_base_url.rstrip("/")
+        self.auth_token = auth_token
+        # Injectable for tests; production defaults do real HTTP.
+        self._http_post_json = http_post_json or self._default_post_json
+        self._http_put_bytes = http_put_bytes or self._default_put_bytes
+
+    def _default_post_json(self, url, headers, body):
+        import urllib.request
+        data = json.dumps(body).encode()
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        for k, v in headers.items():
+            req.add_header(k, v)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+
+    def _default_put_bytes(self, url, data):
+        import urllib.request
+        req = urllib.request.Request(url, data=data, method="PUT")
+        req.add_header("Content-Type", "image/jpeg")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status
+
+    def upload_frame(self, jpeg_bytes, tag="photo"):
+        if not jpeg_bytes:
+            return None
+        # uuid suffix: several landmarks (or several look-around directions)
+        # can be captured within the same wall-clock second; upload_url_handler
+        # itself prepends the server-side timestamp onto this filename.
+        filename = f"{tag}_{uuid.uuid4().hex[:6]}.jpg"
+        endpoint = (f"{self.images_base_url}/drones/{self.drone_id}/conversations/"
+                   f"{self.conversation_id}/upload-url")
+        try:
+            status, resp = self._http_post_json(
+                endpoint, {"Authorization": f"Bearer {self.auth_token}"},
+                {"filename": filename})
+        except Exception as e:
+            print(f"[{self.drone_id}] presigned upload-url request failed: {e}", flush=True)
+            return None
+        if status != 200 or not resp.get("upload_url") or not resp.get("image_url"):
+            print(f"[{self.drone_id}] presigned upload-url request HTTP {status}", flush=True)
+            return None
+        try:
+            put_status = self._http_put_bytes(resp["upload_url"], jpeg_bytes)
+        except Exception as e:
+            print(f"[{self.drone_id}] photo upload failed: {e}", flush=True)
+            return None
+        if put_status != 200:
+            print(f"[{self.drone_id}] photo upload HTTP {put_status}", flush=True)
+            return None
+        return resp["image_url"]
+
+    def capture_photo(self, upload=True):
+        frame = self.backend.capture_frame()
+        if frame is None:
+            return None
+        return self.upload_frame(frame, "photo")
+
+    def look_around(self, directions=4):
+        # One forward camera in the sim — an honest single frame rather than
+        # a fabricated multi-angle set.
+        url = self.capture_photo()
+        return [url] if url else []
+
+
 class OracleBrain:
     """A deterministic, VLM-free executor for the fixed-wing sim, used where the
     on-device Qwen3-VL isn't available (e.g. a laptop with no GPU/model).
@@ -155,13 +322,17 @@ class OracleBrain:
     whole iOS -> GCS -> drone pipeline end to end without the GPU box."""
 
     def __init__(self, backend, client, agent_id, vehicle_class, target_labels,
-                 on_progress):
+                 on_progress, photo=None):
         self.backend = backend
         self.client = client
         self.id = agent_id
         self.vc = vehicle_class
         self.targets = target_labels
         self.on_progress = on_progress
+        # Optional GcsPhotoUploader — mirrors the VLM MissionLoop path's
+        # drone_sdk shim so the oracle brain can put a photo on its target
+        # landmark too, not just the real perception path.
+        self.photo = photo
         from spatial_memory import SpatialMemory
         self.memory = SpatialMemory(
             merge_radius=1.5 * max(1.0, vehicle_class.sense_range_m / 10.0))
@@ -184,10 +355,24 @@ class OracleBrain:
         return 400.0, 0.0
 
     def _scan_for_target(self):
+        """Look for the configured target — but also record every OTHER
+        detected object into memory along the way (decoy parity with the real
+        VLM MissionLoop's perception block, reasoning_loop.py's `for d in
+        detections: memory.update(...)`), so a query like "did you also see a
+        car?" gets a real answer under --brain oracle too, not just --brain
+        vlm. Without this, the oracle path silently never populates
+        MissionResult.landmarks for anything but the target itself."""
+        target = None
         for d in self.backend.detect():
-            if _label_matches(d.label, self.targets) and d.world_xyz:
-                return d
-        return None
+            if not d.world_xyz or d.label == "aircraft":  # teammate, not a sighting
+                continue
+            if _label_matches(d.label, self.targets):
+                if target is None:
+                    target = d
+                continue
+            self.memory.update(d.label, d.world_xyz[0], d.world_xyz[1],
+                               d.world_xyz[2], d.score)
+        return target
 
     def run(self, mission):
         """Execute `mission.phases` and return a MissionResult-shaped dict."""
@@ -228,7 +413,14 @@ class OracleBrain:
                         det = self._scan_for_target()
                         if det:
                             x, y, z = det.world_xyz
-                            self.memory.pin(det.label, x, y, z, det.score)
+                            lm = self.memory.pin(det.label, x, y, z, det.score)
+                            if self.photo is not None:
+                                frame = self.backend.capture_frame()
+                                if frame:
+                                    url = self.photo.upload_frame(
+                                        frame, f"target_{det.label}")
+                                    if url:
+                                        lm.image_url = url
                             found = det
                             self._p(f"Target found: {det.label} at "
                                     f"east {x:.0f} m, north {y:.0f} m")
@@ -266,6 +458,10 @@ class FwGcsDaemon:
         self.spawn_alt = args.spawn_alt
         self.target_labels = [t.strip() for t in args.target_label.split(",") if t.strip()]
         self.brain = getattr(args, "brain", "vlm")
+        # None (default) disables photo capture entirely — no config beyond
+        # this flag needed to keep the sim's photo shim off in any context
+        # that hasn't opted in (e.g. a unit test building a bare daemon).
+        self.images_base_url = getattr(args, "images_base_url", None)
         self._backend = None
         self.datum = None
         if args.datum_lat is not None and args.datum_lon is not None:
@@ -378,21 +574,49 @@ class FwGcsDaemon:
         backend = self._backend
         vc = get_class("fixedwing")
         self._armed = True
+
+        # Photo capture is opt-in (--images-base-url) and needs the drone's own
+        # pairing token to authenticate the PUT — both must be present, or the
+        # sim behaves exactly as it did before this feature existed (photos
+        # always empty, per drone_sdk being None).
+        photo = None
+        if self.images_base_url and self.mqtt_password:
+            photo = GcsPhotoUploader(backend, self.id, conv,
+                                     self.images_base_url, self.mqtt_password)
+
         if self.brain == "oracle":
             brain = OracleBrain(backend, self.brain_client, self.id, vc,
-                                self.target_labels,
+                                self.target_labels, photo=photo,
                                 on_progress=lambda m: self._on_progress(conv, mission, m))
             result = brain.run(mission)
             memory = brain.memory
         else:
             loop = MissionLoop(backend=backend, vehicle_class=vc,
-                               conversation_id=conv,
+                               conversation_id=conv, drone_sdk=photo,
                                on_progress=lambda m: self._on_progress(conv, mission, m))
             result = loop.run(mission)
             memory = loop.memory
         self._armed = False
 
+        # Leave station before reporting done: fly back to the home orbit so, on
+        # "mission complete", the operator sees both aircraft depart the search
+        # area instead of continuing to circle through it. A fixed-wing can't
+        # hover, so the idle watchdog then loiters them at home (off to the side
+        # of the action), where they stay until the next tasking. Bounded so a
+        # blocked/timed-out return can't wedge the worker.
+        try:
+            home_e, home_n = self.home_enu  # (east, north)
+            backend.goto(north_m=home_n, east_m=home_e, alt_m=self.spawn_alt,
+                         timeout_s=45.0)
+        except Exception:
+            pass
+
         result_dict = result.to_dict() if hasattr(result, "to_dict") else dict(result)
+        # Overwrite/enrich rather than trust MissionResult.landmarks verbatim:
+        # this is the one place that knows the mission's lat/lon datum (the
+        # OracleBrain path returns a plain dict with no landmarks key at all
+        # yet, so this also unifies both brains onto one result shape).
+        result_dict["landmarks"] = landmarks_payload(memory, self.datum)
         target = extract_target_location(memory, self.target_labels, self.datum)
         if target:
             print(f"[{self.id}] target localized: {target}", flush=True)
@@ -431,7 +655,12 @@ class FwGcsDaemon:
         for ph in phases:
             ph = dict(ph)
             is_objective = not ph.get("type") and ph.get("objective")
-            if is_objective and "east=" not in ph["objective"]:
+            # Case/space-insensitive: a fly-back objective the mission agent
+            # writes from persisted landmark data (control/conversations.py's
+            # mission-context addendum) may render "East= 388" or similar —
+            # still an explicit coordinate that must NOT be clobbered by the
+            # generic search-area anchor below.
+            if is_objective and not re.search(r"(?i)east\s*=", ph["objective"]):
                 ph["objective"] = (
                     f"{ph['objective'].rstrip('.')}, around local coordinates "
                     f"east={cx:.0f}, north={cy:.0f} (metres, local frame), "
@@ -448,15 +677,23 @@ class FwGcsDaemon:
                       build_progress_payload(self.id, conv, mission, text))
 
     def _heartbeat_loop(self):
+        # 2s, not the faster 1s a live map would ideally want: each beat now
+        # also does a Godot IPC round-trip (fw_state) over the same
+        # lock-serialized DepotClient socket the mission thread uses for frame
+        # grabs, and store_status_handler's SQLite put runs synchronously on
+        # paho's single network thread (not the response executor) — 2s halves
+        # both contention points for a cost the map UI won't notice.
         while self._running:
-            self._publish(f"drone/{self.id}/status", {
-                "droneId": self.id, "status": "online",
-                "lastUpdate": int(time.time() * 1000), "ttl": int(time.time()) + 30,
-                "armed": self._armed, "battery": 100, "variant": "agx64",
-                "capabilities": {"variant": "agx64", "vlm_available": True,
-                                 "nav2_available": True, "vehicle_type": "fixedwing"},
-            }, qos=0)
-            time.sleep(5)
+            state = None
+            try:
+                if self.brain_client is not None:
+                    state = self.brain_client.fw_state(self.id)
+            except Exception:
+                pass  # heartbeat still goes out; position/heading just omitted
+            self._publish(f"drone/{self.id}/status",
+                          build_heartbeat(self.id, self._armed, state, self.datum),
+                          qos=0)
+            time.sleep(2)
 
     def _publish(self, topic, payload, qos=1):
         if self.client is None:
@@ -490,6 +727,10 @@ def main():
     ap.add_argument("--datum-lat", type=float, default=None,
                     help="lat of ENU origin, to report the target in lat/lon too")
     ap.add_argument("--datum-lon", type=float, default=None)
+    ap.add_argument("--images-base-url", default=None,
+                    help="GCS base URL (e.g. http://127.0.0.1:8080) to enable "
+                         "photo capture (GcsPhotoUploader). Omit to disable "
+                         "photos entirely — default, backward compatible.")
     args = ap.parse_args()
 
     daemon = FwGcsDaemon(args)

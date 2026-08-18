@@ -111,3 +111,41 @@ def test_planner_surfaces_clarifying_question():
             drone_ids=["alpha"], home=HOME)
     assert result["plans"] == []
     assert result["ask"] == "What should I look for?"
+
+
+# --- _render_mission_context caps/budget ------------------------------------
+
+def _record(mission_id, landmarks=None):
+    return {"mission_id": mission_id, "completed_at": "2026-08-18T00:00:00Z",
+            "success": True, "summary": "found it", "target_location": None,
+            "landmarks": landmarks or [], "photos": []}
+
+
+def test_render_mission_context_none_when_no_records():
+    assert conversations._render_mission_context([]) is None
+
+
+def test_render_mission_context_includes_landmark_data_and_rules():
+    landmarks = [{"label": "car", "east_m": 388.0, "north_m": 13.0, "hits": 4}]
+    ctx = conversations._render_mission_context([_record("m1", landmarks)])
+    assert "COMPLETED MISSION DATA" in ctx
+    assert '"east_m": 388.0' in ctx
+    assert "go_to_gps" in ctx  # the prohibition rule is present
+    assert "east=<E>, north=<N> (metres, local frame)" in ctx
+
+
+def test_render_mission_context_drops_oldest_when_over_budget():
+    # Two records, each ~210 chars serialized — a budget that fits exactly one
+    # must keep the NEWEST (last in the oldest-first input list) and drop the
+    # oldest, not the reverse.
+    old = _record("old-mission", [{"label": "x", "east_m": 1.0, "north_m": 1.0}])
+    new = _record("new-mission", [{"label": "y", "east_m": 2.0, "north_m": 2.0}])
+    ctx = conversations._render_mission_context([old, new], max_chars=300)
+    assert "new-mission" in ctx
+    assert "old-mission" not in ctx
+
+
+def test_render_mission_context_keeps_everything_under_generous_budget():
+    records = [_record(f"m{i}") for i in range(2)]
+    ctx = conversations._render_mission_context(records, max_chars=4000)
+    assert "m0" in ctx and "m1" in ctx

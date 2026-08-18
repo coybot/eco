@@ -49,8 +49,11 @@ from fw_gcs_daemon import FwGcsDaemon          # noqa: E402
 
 # Same home pads as env_surveil_truck / env_sar.
 DRONES = {
-    "alpha": {"home_enu": (-20.0, 10.0)},
-    "bravo": {"home_enu": (-20.0, -10.0)},
+    # Must match env_surveil_truck.gd's HOME_A/HOME_B exactly — the daemon
+    # spawns/RTBs its aircraft here independently of whatever the Godot scene
+    # thinks home is, so the two are two copies of one fact, not two facts.
+    "alpha": {"home_enu": (320.0, 15.0)},
+    "bravo": {"home_enu": (320.0, -15.0)},
 }
 
 
@@ -70,6 +73,7 @@ def _daemon_args(drone_id, home_enu, args):
         datum_lat=args.datum_lat,
         datum_lon=args.datum_lon,
         brain=args.brain,
+        images_base_url=args.images_base_url,
     )
 
 
@@ -92,6 +96,9 @@ def main():
     ap.add_argument("--datum-lat", type=float, default=None,
                     help="lat of the ENU origin, so the truck is reported in lat/lon")
     ap.add_argument("--datum-lon", type=float, default=None)
+    ap.add_argument("--images-base-url", default=None,
+                    help="GCS base URL to enable landmark/mission photo capture "
+                         "(FwGcsDaemon.GcsPhotoUploader). Omit to disable.")
     ap.add_argument("--drones", type=int, default=2, choices=(1, 2))
     args = ap.parse_args()
 

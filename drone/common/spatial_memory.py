@@ -35,6 +35,12 @@ class Landmark:
     z: float  # meters (down-positive or range; we treat as forward distance)
     score: float
     hits: int = 1
+    # Set once, on first sighting, by the caller that captures a photo of a
+    # newly-created landmark (see reasoning_loop.MissionLoop._maybe_photo_landmark).
+    # update()'s EMA merge only touches x/y/z/score/hits, so this survives every
+    # later merge untouched; pin() explicitly carries it forward below since pin
+    # replaces the Landmark object outright rather than mutating it in place.
+    image_url: Optional[str] = None
 
 
 class SpatialMemory:
@@ -77,6 +83,7 @@ class SpatialMemory:
         prior = self._store.get(key)
         if prior:
             lm.hits = prior[0].hits + 1
+            lm.image_url = prior[0].image_url
         self._store[key] = [lm]
         return lm
 
