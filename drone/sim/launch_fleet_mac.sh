@@ -36,7 +36,7 @@ LOGDIR="${LOGDIR:-${TMPDIR:-/tmp}}"
 stop() {
   echo "Stopping Godot + sim daemons…"
   pkill -f "[s]im_drone_daemon.py" 2>/dev/null || true
-  pkill -f "[A]stralEcoSim" 2>/dev/null || true
+  pkill -f "[P]residioEcoSim" 2>/dev/null || true
   pkill -f "godot .*${GODOT_PROJECT##*/}" 2>/dev/null || true
   echo "stopped."
 }
