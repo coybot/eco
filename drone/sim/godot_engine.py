@@ -61,12 +61,22 @@ def _find_godot(hint: str | None) -> str:
 
 def _build_godot_args(godot_bin: str, fleet: str, env_name: str,
                       tcp_port: int, headless: bool,
-                      rendering_driver: str | None = None) -> list[str]:
+                      rendering_driver: str | None = None,
+                      gpu_index: int | None = None) -> list[str]:
     args = [godot_bin, "--path", str(GODOT_PROJECT)]
     if headless:
         args += ["--headless"]
     if rendering_driver:
         args += ["--rendering-driver", rendering_driver]
+    if gpu_index is not None:
+        # Pin Vulkan device selection away from whichever GPU a concurrent
+        # training/serving job is saturating -- this host is multi-GPU and a
+        # capture run sharing a GPU with an active training job can starve the
+        # per-vehicle SubViewports (each grab_jpeg() is a real render), which
+        # looks identical to a GT-projection bug (boxes vs. stale rendered
+        # frames) unless controlled for. See godot_dataset_recorder.py's
+        # --gpu-index for the caller-facing flag.
+        args += ["--gpu-index", str(gpu_index)]
     # Pass fleet/env/port as scene-agnostic launch args (parsed by autoload).
     args += [
         "--",
@@ -141,6 +151,9 @@ def main():
                     help="Force a Godot rendering driver (e.g. opengl3 for CPU instances)")
     ap.add_argument("--photoreal", action="store_true",
                     help="Pass --photoreal to Godot scene (higher quality assets)")
+    ap.add_argument("--gpu-index", type=int, default=None,
+                    help="Pin Godot's Vulkan device (see --verbose device list); "
+                         "use to avoid a GPU a concurrent training job is saturating")
     args = ap.parse_args()
 
     godot_bin = _find_godot(args.godot)
@@ -153,7 +166,7 @@ def main():
           f"godot={godot_bin} headless={headless} driver={args.rendering_driver}", flush=True)
 
     cmd = _build_godot_args(godot_bin, fleet_arg, args.env, args.tcp_port, headless,
-                            rendering_driver=args.rendering_driver)
+                            rendering_driver=args.rendering_driver, gpu_index=args.gpu_index)
     print(f"[godot-engine] launching: {' '.join(cmd)}", flush=True)
 
     proc = subprocess.Popen(

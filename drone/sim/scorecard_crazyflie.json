@@ -1,0 +1,186 @@
+{
+  "autonomy_level": 4,
+  "rationale": "mean 0.12 interventions/scenario, 100% success",
+  "n_scenarios": 8,
+  "mission_success_rate": 1.0,
+  "total_interventions": 1,
+  "mean_interventions": 0.12,
+  "scenarios": [
+    {
+      "scenario": "cf_apartment_search",
+      "mission_complete": true,
+      "targets_found": 2,
+      "targets_total": 2,
+      "t_end": 11.8,
+      "interventions": 1,
+      "intervention_breakdown": {
+        "collision": 1,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 1,
+      "min_separation": null,
+      "comms_delivery_rate": 0.08333333333333333,
+      "mean_loc_error": 0.44,
+      "mean_confidence": 0.8,
+      "failures": [
+        [
+          9.7,
+          "collision",
+          "cf_0",
+          "crazyflie",
+          "obstacle"
+        ]
+      ]
+    },
+    {
+      "scenario": "cf_doorway",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 6.4,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": null,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.32,
+      "mean_confidence": 0.85,
+      "failures": []
+    },
+    {
+      "scenario": "cf_flow_drift",
+      "mission_complete": true,
+      "targets_found": 2,
+      "targets_total": 2,
+      "t_end": 9.0,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": null,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.34,
+      "mean_confidence": 0.84,
+      "failures": []
+    },
+    {
+      "scenario": "cf_furniture_slalom",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 5.6,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": null,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.29,
+      "mean_confidence": 0.86,
+      "failures": []
+    },
+    {
+      "scenario": "cf_hover_room",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 3.4,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": null,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.16,
+      "mean_confidence": 0.92,
+      "failures": []
+    },
+    {
+      "scenario": "cf_low_beam",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 5.4,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": null,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.28,
+      "mean_confidence": 0.86,
+      "failures": []
+    },
+    {
+      "scenario": "cf_texture_blackout",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 5.0,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": null,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.27,
+      "mean_confidence": 0.87,
+      "failures": []
+    },
+    {
+      "scenario": "cf_two_cf_corridor",
+      "mission_complete": true,
+      "targets_found": 0,
+      "targets_total": 0,
+      "t_end": 6.8,
+      "interventions": 0,
+      "intervention_breakdown": {
+        "collision": 0,
+        "near_miss": 0,
+        "stall": 0,
+        "lost": 0,
+        "mission_timeout": 0
+      },
+      "collisions": 0,
+      "min_separation": 0.41,
+      "comms_delivery_rate": 1.0,
+      "mean_loc_error": 0.4,
+      "mean_confidence": 0.82,
+      "failures": []
+    }
+  ]
+}

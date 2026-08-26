@@ -1,0 +1,47 @@
+# The hard one: a 3-room 8x6 m apartment footprint, two targets, and a person walking through.
+# Boxes are hand-authored rather than imported from assets/apartment_floor_plan.glb — there is
+# no mesh->AABB path anywhere in sim/ and trimesh is not installed, so an importer would be a
+# project of its own and is not on the critical path to a score.
+#
+# Expect this to be the scenario that exposes the reactive controller's known limit: L5.md
+# already names "potential-field local minima in dense clutter", and interior doorways are
+# exactly that. A poor result here is information, not a bug to tune away.
+name: cf_apartment_search
+environment: indoor
+room: {size: [8.0, 6.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-3.4, -2.4, 1.0]}
+duration_s: 60
+goal_tol_m: 0.25
+find_radius_m: 0.4
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+mission:
+  type: area_search
+  region: [-3.5, -2.5, 3.5, 2.5]
+  targets:
+    - [3.0, 2.0, 1.0]     # far bedroom
+    - [3.0, -2.0, 1.0]    # far bathroom
+obstacles:
+  # interior wall at x=-0.5, doorway gap 0.9 m centred y=0
+  - [-0.5, -1.9, 1.2, 0.06, 1.1, 1.2]
+  - [-0.5,  1.9, 1.2, 0.06, 1.1, 1.2]
+  # interior wall at x=2.0 splitting the two far rooms, doorway gap at y=+1.2 and y=-1.2
+  - [2.0,  0.0, 1.2, 0.06, 0.7, 1.2]
+  - [2.0,  2.6, 1.2, 0.06, 0.4, 1.2]
+  - [2.0, -2.6, 1.2, 0.06, 0.4, 1.2]
+  # horizontal divider between the two far rooms
+  - [3.0,  0.0, 1.2, 1.0, 0.06, 1.2]
+  # furniture
+  - [-2.5,  1.5, 0.4, 0.5, 0.4, 0.4]   # sofa
+  - [-2.0, -1.0, 0.35, 0.4, 0.4, 0.35] # table
+  - [ 0.8,  2.0, 0.5, 0.35, 0.35, 0.5] # counter
+  - [ 0.8, -2.0, 0.45, 0.3, 0.5, 0.45] # cabinet
+  - [ 3.2,  2.4, 0.3, 0.4, 0.3, 0.3]   # bed
+injects:
+  # a person crossing the living room, modelled as a rover-sized moving obstacle
+  - {at: 6, do: spawn_dynamic, vclass: rover, speed: 0.8,
+     path: [[-3.0, 2.2, 0.0], [-1.0, -2.0, 0.0], [-3.0, 2.2, 0.0]]}
+success:
+  mission_complete: true
+  no_collisions: true

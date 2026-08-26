@@ -1,0 +1,20 @@
+# Indoor analogue of training/record_comparison COURSES["limbo"]: a soffit spanning the room
+# that must be ducked under, not climbed over. Exercises three things at once — the up-facing
+# ToF beam (ray 49), the class-scaled climb_over_clearance_m (which must NOT fire here), and
+# the new ceiling clamp. With the old unscaled 1.5 m climb-over trigger this vehicle would
+# climb into the soffit every time.
+name: cf_low_beam
+environment: indoor
+room: {size: [6.0, 3.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-2.5, 0.0, 1.3], goal: [2.5, 0.0, 1.3]}
+duration_s: 45
+goal_tol_m: 0.25
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+obstacles:
+  # soffit at x=0, spanning full room width, underside at z=1.55 (so pass below 1.55 m)
+  - [0.0, 0.0, 1.95, 0.15, 1.6, 0.4]
+success:
+  mission_complete: true
+  no_collisions: true

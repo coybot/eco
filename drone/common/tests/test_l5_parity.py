@@ -37,7 +37,7 @@ def _make_obs(cls, agent_id, body_target, goal_dist, neighbors, scan, min_clear)
     )
 
 
-@pytest.mark.parametrize("vclass_name", ["quad", "rover", "fixedwing"])
+@pytest.mark.parametrize("vclass_name", ["quad", "rover", "fixedwing", "crazyflie"])
 def test_controller_parity(vclass_name):
     rng = np.random.default_rng(1382)
     sim_ctl = sim_controller()
@@ -45,7 +45,10 @@ def test_controller_parity(vclass_name):
 
     sim_class = sim_vc.get_class(vclass_name)
     core_class = core_vc.get_class(vclass_name)
-    n_rays = 72 if vclass_name == "rover" else 45
+    # Scan length is per-modality: 72 lidar (rover), 50 hybrid (crazyflie), 45 depth grid.
+    # Read it from the class rather than hardcoding, so a new modality can't silently pass
+    # by being fed a scan of the wrong length.
+    n_rays = sim_vc.ray_table(sim_class.sensor).n_rays
 
     for _ in range(500):
         pos = rng.uniform(-10, 10, size=3).astype(np.float32)

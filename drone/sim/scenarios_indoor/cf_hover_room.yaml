@@ -1,0 +1,14 @@
+# Integration smoke test: one Crazyflie crosses an empty room.
+# If this fails, the class/sensing/scale wiring is wrong — not the autonomy.
+name: cf_hover_room
+environment: indoor
+room: {size: [4.0, 3.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-1.5, 0.0, 1.0], goal: [1.5, 0.0, 1.0]}
+duration_s: 30
+goal_tol_m: 0.25
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+success:
+  mission_complete: true
+  no_collisions: true

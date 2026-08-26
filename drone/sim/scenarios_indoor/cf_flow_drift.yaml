@@ -1,0 +1,26 @@
+# Long search with permanent dead reckoning. No gps_loss inject is needed: the Crazyflie class
+# has localization.gps_available = False, so it starts and stays GPS_DENIED — a physical fact
+# about the airframe, not a scenario event. Over 60 s the flow-deck random walk accumulates
+# ~0.7 m of error per axis, which the indoor lost_err_m of 0.75 m can actually detect.
+# find_radius_m is 0.4 m; the default 2.0 m would cover a quarter of this floor.
+name: cf_flow_drift
+environment: indoor
+room: {size: [6.0, 5.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-2.0, -1.8, 1.0]}
+duration_s: 60
+goal_tol_m: 0.25
+find_radius_m: 0.4
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+mission:
+  type: area_search
+  region: [-2.5, -2.0, 2.5, 2.0]
+  targets:
+    - [2.0, 1.5, 1.0]
+    - [-1.5, 1.6, 1.0]
+obstacles:
+  - [0.0, 0.0, 0.5, 0.35, 0.35, 0.5]
+success:
+  mission_complete: true
+  no_collisions: true

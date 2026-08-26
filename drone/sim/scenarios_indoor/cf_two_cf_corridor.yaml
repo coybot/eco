@@ -1,0 +1,21 @@
+# Two Crazyflies pass in a 1.2 m corridor. Exercises the indoor near-miss pad (0.12 m — with
+# the outdoor 0.4 m pad two 0.065 m vehicles could touch without being flagged) and the
+# proximity-scaled convoy/yield logic in team_runtime. Also the honest comms case: los_required
+# with walls means these two are frequently isolated from each other.
+name: cf_two_cf_corridor
+environment: indoor
+room: {size: [8.0, 3.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-3.0,  0.0, 1.0], goal: [3.0,  0.0, 1.0]}
+  - {id: cf_1, type: crazyflie, pos: [ 3.0,  0.0, 1.2], goal: [-3.0, 0.0, 1.2]}
+duration_s: 45
+goal_tol_m: 0.25
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+obstacles:
+  # corridor walls pinching the middle to 1.2 m wide
+  - [0.0,  1.35, 1.2, 2.0, 0.15, 1.2]
+  - [0.0, -1.35, 1.2, 2.0, 0.15, 1.2]
+success:
+  mission_complete: true
+  no_collisions: true

@@ -34,10 +34,16 @@ import numpy as np
 try:
     from .vehicle_class import (  # type: ignore
         VehicleClass, Kinematics, Sensor, Role, get_class,
+        ray_table, lidar_ray_angles,
+        _LIDAR_RAYS, _LIDAR_ANGLES, _DEPTH_COLS, _DEPTH_ROWS,
+        _DEPTH_HFOV, _DEPTH_VFOV, _DEPTH_BODY_DIRS, _DEPTH_YAW_ANGLES,
     )
 except ImportError:  # pragma: no cover - device flat-install path
     from vehicle_class import (  # type: ignore
         VehicleClass, Kinematics, Sensor, Role, get_class,
+        ray_table, lidar_ray_angles,
+        _LIDAR_RAYS, _LIDAR_ANGLES, _DEPTH_COLS, _DEPTH_ROWS,
+        _DEPTH_HFOV, _DEPTH_VFOV, _DEPTH_BODY_DIRS, _DEPTH_YAW_ANGLES,
     )
 
 
@@ -82,62 +88,42 @@ Controller = Callable[[Agent, Observation], np.ndarray]
 
 
 # --------------------------------------------------------------------------- ray tables
-# These MUST match contract.py / rover_contract.py and the sim exactly — they define
-# the geometric meaning of each element in Observation.scan.
-_LIDAR_RAYS = 72
-_LIDAR_ANGLES = tuple(2 * math.pi * i / _LIDAR_RAYS for i in range(_LIDAR_RAYS))
-
-# Forward depth grid for quads — mirrors contract.py geometry exactly.
-# 5 rows (top→bottom, ±35°) × 9 cols (left→right, ±45°) = 45 rays, row-major.
-_DEPTH_COLS = 9
-_DEPTH_ROWS = 5
-_DEPTH_HFOV = math.radians(90.0)
-_DEPTH_VFOV = math.radians(70.0)
-
-
-def _make_depth_dirs() -> tuple:
-    """Body-frame unit ray directions (fwd, left, up) for the 45-ray depth grid."""
-    dirs = []
-    for r in range(_DEPTH_ROWS):
-        pitch = _DEPTH_VFOV / 2.0 - r * _DEPTH_VFOV / (_DEPTH_ROWS - 1)
-        for c in range(_DEPTH_COLS):
-            yaw = _DEPTH_HFOV / 2.0 - c * _DEPTH_HFOV / (_DEPTH_COLS - 1)
-            ce = math.cos(pitch)
-            dirs.append((ce * math.cos(yaw), ce * math.sin(yaw), math.sin(pitch)))
-    return tuple(dirs)
-
-
-_DEPTH_BODY_DIRS = _make_depth_dirs()   # 45 × (fwd, left, up)
-# Horizontal yaw angle per ray (for 2D repulsion direction in reactive controller).
-_DEPTH_YAW_ANGLES = tuple(math.atan2(dl, df) for df, dl, _ in _DEPTH_BODY_DIRS)
-
-
-def lidar_ray_angles() -> tuple[float, ...]:
-    return _LIDAR_ANGLES
+# Ray geometry lives in vehicle_class (one definition, imported by both this module and the
+# sim copy) and is re-exported here under the historical names: onboard_l5 and the sim tests
+# import _DEPTH_BODY_DIRS / _DEPTH_COLS / _LIDAR_RAYS from here by name.
+# Resolve per-class geometry with ray_table(vc.sensor), never by assuming 45 rays.
 
 
 # --------------------------------------------------------------------------- controller
-def reactive_goto_controller(slow_radius: float = 2.0,
-                             avoid_radius: float = 3.5) -> Controller:
+def reactive_goto_controller(slow_radius: float | None = None,
+                             avoid_radius: float | None = None) -> Controller:
     """Analytic potential-field go-to-goal with reactive teammate/obstacle avoidance.
 
     Body-frame goal attraction plus inverse-distance repulsion from each sensed
     neighbour and from the nearest scan return. Emits the per-class action shape
     (2D unicycle or 4D holonomic) so the same controller drives mixed teams.
 
+    ``slow_radius`` / ``avoid_radius`` default to the *vehicle class's* length scales
+    (``vc.slow_radius_m`` / ``vc.avoid_radius_m``), which carry the historically-tuned
+    3.5/2.0 m values for the outdoor classes. Passing them explicitly still overrides,
+    as the SITL harnesses and unit tests do. Scale must be per-class because a 0.065 m
+    micro-UAV in a 2.4 m room is permanently repelled by every wall at a 3.5 m radius.
+
     This is the controller validated to L5 in the 16-scenario suite; it is kept
     byte-identical to the sim copy by the parity test.
     """
     def _avoid_radius_for(vc: VehicleClass) -> float:
-        """Effective repulsion radius: the shared default for quad/rover, turn-radius-scaled
-        for fixed-wing. A banked turn at cruise speed has physical turn radius v/max_yaw_rate
-        (~42 m at 25 m/s / 0.6 rad/s); reacting only at 30 m (a naive speed*time heuristic)
-        leaves less room than the turn itself needs, so the plane can't clear an obstacle in
-        time — it must start turning at least one turn-radius (plus margin) out."""
+        """Effective repulsion radius: the class's own scale for quad/rover/micro, then
+        turn-radius-scaled for fixed-wing. A banked turn at cruise speed has physical turn
+        radius v/max_yaw_rate (~42 m at 25 m/s / 0.6 rad/s); reacting only at 30 m (a naive
+        speed*time heuristic) leaves less room than the turn itself needs, so the plane can't
+        clear an obstacle in time — it must start turning at least one turn-radius (plus
+        margin) out."""
+        base = avoid_radius if avoid_radius is not None else vc.avoid_radius_m
         if vc.kinematics is Kinematics.COORDINATED_TURN_3D:
             turn_radius = vc.max_speed_mps / max(vc.max_yaw_rate_radps, 1e-3)
-            return max(avoid_radius, turn_radius * 1.5)
-        return avoid_radius
+            return max(base, turn_radius * 1.5)
+        return base
 
     def _repulsion_body(obs: Observation, vc: VehicleClass) -> np.ndarray:
         """Net repulsion vector in body frame (fwd,left,up)."""
@@ -146,21 +132,22 @@ def reactive_goto_controller(slow_radius: float = 2.0,
         # neighbors: push directly away from each, stronger when closer
         for _id, rel_body, _vel, ovc in obs.neighbors:
             d = float(np.linalg.norm(rel_body[:2]))
-            safe = vc.radius_m + ovc.radius_m + 0.8
+            safe = vc.radius_m + ovc.radius_m + vc.neighbor_safe_pad_m
             if d < ar and d > 1e-3:
                 mag = (ar - d) / ar * (1.0 + safe)
                 rep[:2] -= (rel_body[:2] / d) * mag
         # static obstacle: push away from the closest scan ray's direction
         if obs.scan.size and obs.min_clearance < ar:
-            ang = (lidar_ray_angles() if vc.sensor is Sensor.LIDAR_360
-                   else _DEPTH_YAW_ANGLES)
+            rt = ray_table(vc.sensor)
             k = int(np.argmin(obs.scan))
-            a = ang[k]
+            a = rt.yaw_angles[k]
             mag = (ar - obs.min_clearance) / ar
             rep[0] -= math.cos(a) * mag
             rep[1] -= math.sin(a) * mag
-            if vc.sensor is Sensor.FORWARD_DEPTH:
-                rep[2] -= _DEPTH_BODY_DIRS[k][2] * mag   # vertical repulsion for quads
+            if rt.vertical_cue:
+                # vertical repulsion where the rays carry pitch (depth grid, hybrid);
+                # a horizontal lidar ring has no vertical cue to offer.
+                rep[2] -= rt.dirs[k][2] * mag
         return rep
 
     def ctl(agent: Agent, obs: Observation) -> np.ndarray:
@@ -170,7 +157,8 @@ def reactive_goto_controller(slow_radius: float = 2.0,
         attract = np.array([tf, tl, tu], dtype=np.float32) / gnorm
         rep = _repulsion_body(obs, vc)
         cmd = attract + rep
-        gscale = (min(1.0, obs.goal_dist / slow_radius) if obs.goal_dist else 0.0)
+        sr = slow_radius if slow_radius is not None else vc.slow_radius_m
+        gscale = (min(1.0, obs.goal_dist / sr) if obs.goal_dist else 0.0)
 
         if vc.kinematics is Kinematics.UNICYCLE_2D:
             desired = math.atan2(cmd[1], cmd[0])     # body-frame desired heading
@@ -179,7 +167,7 @@ def reactive_goto_controller(slow_radius: float = 2.0,
             # slow when turning hard, near goal, or crowded
             speed = vc.max_speed_mps * max(0.0, math.cos(min(abs(desired), math.pi)))
             speed *= gscale
-            if obs.min_clearance < vc.radius_m + 1.0:
+            if obs.min_clearance < vc.radius_m + vc.clearance_slow_pad_m:
                 speed *= 0.3
             return np.array([max(0.0, speed), yaw_cmd], dtype=np.float32)
         elif vc.kinematics is Kinematics.COORDINATED_TURN_3D:
@@ -201,7 +189,7 @@ def reactive_goto_controller(slow_radius: float = 2.0,
             v[:2] *= max(gscale, 0.5 if np.linalg.norm(rep) > 0 else gscale)
             v[2] = cmd[2] * vc.max_speed_mps * gscale
             # blocked ahead with little vertical cue -> climb over
-            if obs.min_clearance < 1.5 and abs(tu) < 0.5:
+            if obs.min_clearance < vc.climb_over_clearance_m and abs(tu) < 0.5:
                 v[2] += 0.6 * vc.max_speed_mps
             return np.array([v[0], v[1], v[2], 0.0], dtype=np.float32)
     return ctl

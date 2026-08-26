@@ -34,9 +34,11 @@ import numpy as np
 try:  # packaged (eco.drone.sim) vs flat (sim/ on path) — see conftest
     from .scenario import Scenario, ScenarioRunner
     from .team_runtime import TeamRuntime
+    from .sensor_model import IMPAIRMENTS
 except ImportError:
     from scenario import Scenario, ScenarioRunner
     from team_runtime import TeamRuntime
+    from sensor_model import IMPAIRMENTS
 
 
 # thresholds
@@ -45,6 +47,54 @@ STALL_WINDOW_S = 8.0       # no progress for this long = a stall
 STALL_EPS = 0.5            # m of "best progress" improvement that resets the stall timer
 LOST_ERR_M = 5.0           # localization error a human would have to correct
 LOST_WINDOW_S = 4.0
+
+
+@dataclass(frozen=True)
+class ScoreThresholds:
+    """Intervention-detection thresholds, in absolute metres and seconds.
+
+    These are detector sensitivities, not vehicle properties, so they belong to the
+    *scenario* rather than the class: the same Crazyflie in a warehouse and in a
+    bedroom warrants different near-miss padding. Defaults are the historical outdoor
+    literals above, so an existing scenario with no ``thresholds:`` key scores identically.
+    """
+    near_miss_pad_m: float = NEAR_MISS_PAD
+    stall_window_s: float = STALL_WINDOW_S
+    stall_eps_m: float = STALL_EPS
+    lost_err_m: float = LOST_ERR_M
+    lost_window_s: float = LOST_WINDOW_S
+
+
+DEFAULT_THRESHOLDS = ScoreThresholds()
+
+# Indoor preset. A 5 m "lost" threshold cannot detect anything in an 8x6 m apartment, and a
+# 0.5 m stall epsilon is half a room. Scaled to a ~0.065 m vehicle moving at 1 m/s.
+INDOOR_THRESHOLDS = ScoreThresholds(
+    near_miss_pad_m=0.12,
+    stall_window_s=6.0,
+    stall_eps_m=0.15,
+    lost_err_m=0.75,
+    lost_window_s=3.0,
+)
+
+PRESETS: dict[str, ScoreThresholds] = {
+    "default": DEFAULT_THRESHOLDS,
+    "indoor": INDOOR_THRESHOLDS,
+}
+
+
+def get_thresholds(spec) -> ScoreThresholds:
+    """Resolve a preset name, a dict of overrides, or a ScoreThresholds to thresholds."""
+    if spec is None or spec == "":
+        return DEFAULT_THRESHOLDS
+    if isinstance(spec, ScoreThresholds):
+        return spec
+    if isinstance(spec, dict):
+        return ScoreThresholds(**{**DEFAULT_THRESHOLDS.__dict__, **spec})
+    try:
+        return PRESETS[spec]
+    except KeyError:
+        raise KeyError(f"unknown threshold preset {spec!r}; known: {sorted(PRESETS)}") from None
 
 
 @dataclass
@@ -70,8 +120,9 @@ class ScenarioScore:
 class _Detector:
     """Per-run intervention/metric accumulator, fed one tick at a time."""
 
-    def __init__(self, runner: ScenarioRunner):
+    def __init__(self, runner: ScenarioRunner, th: ScoreThresholds = DEFAULT_THRESHOLDS):
         self.r = runner
+        self.th = th
         self.counts = {"collision": 0, "near_miss": 0, "stall": 0,
                        "lost": 0, "mission_timeout": 0}
         # rising-edge latches
@@ -107,7 +158,7 @@ class _Detector:
                 tick_collision = True
                 if collision_detail is None:
                     collision_detail = (a.id, a.vclass.name, f"teammate:{b.id}")
-            elif surf < NEAR_MISS_PAD:
+            elif surf < self.th.near_miss_pad_m:
                 tick_near_miss = True
         # agent-vs-obstacle collision
         for a in team:
@@ -137,21 +188,21 @@ class _Detector:
                 prev = self._agent_best.get(a.id)
                 if prev is None or prev[0] != gkey:
                     self._agent_best[a.id] = (gkey, d)            # new goal: reset baseline
-                elif d < prev[1] - STALL_EPS:
+                elif d < prev[1] - self.th.stall_eps_m:
                     self._agent_best[a.id] = (gkey, d)
                     self._last_progress_t = w.t
                     self._stalled_latched = False
             if (not self._stalled_latched
-                    and w.t - self._last_progress_t > STALL_WINDOW_S):
+                    and w.t - self._last_progress_t > self.th.stall_window_s):
                 self.counts["stall"] += 1
                 self._stalled_latched = True
 
         # --- lost (sustained localization error) ---
         for a in team:
             err = self.r.loc.error(a)
-            if err > LOST_ERR_M:
+            if err > self.th.lost_err_m:
                 since = self._lost_since.setdefault(a.id, w.t)
-                if w.t - since > LOST_WINDOW_S:
+                if w.t - since > self.th.lost_window_s:
                     self.counts["lost"] += 1
                     self._lost_since[a.id] = w.t + 1e6   # latch off until recovery
             else:
@@ -186,7 +237,7 @@ class _Detector:
 
 
 def score_run(runner: ScenarioRunner, use_runtime: bool = True,
-              max_s: float | None = None, smart=None) -> ScenarioScore:
+              max_s: float | None = None, smart=None, thresholds=None) -> ScenarioScore:
     if smart is not None and hasattr(smart, "_reset_state"):
         smart._reset_state()  # clear per-scenario stale state (stall_ticks, recovery, etc.)
     rt = None
@@ -215,7 +266,9 @@ def score_run(runner: ScenarioRunner, use_runtime: bool = True,
             runner.controller = _smart_controller
         else:
             runner.controller = base_ctrl
-    det = _Detector(runner)
+    # The scenario's own `thresholds:` wins over the suite-level default, so an indoor
+    # YAML carries its detector sensitivity with it.
+    det = _Detector(runner, get_thresholds(runner.scenario.thresholds or thresholds))
     max_s = max_s or runner.scenario.duration_s
     ticks = int(max_s / runner.world.dt)
     for _ in range(ticks):
@@ -268,10 +321,13 @@ def autonomy_level(scores: list[ScenarioScore]) -> tuple[int, str]:
 
 
 def score_suite(scenarios_dir: str = "scenarios", use_runtime: bool = True,
-                smart=None, sensing: str = "ideal") -> dict:
+                smart=None, sensing: str | None = None, thresholds=None,
+                impairment=None, impair_seed: int | None = None) -> dict:
+    # sensing=None means "let each scenario's YAML decide, else ideal" — see ScenarioRunner.
     files = sorted(Path(scenarios_dir).glob("*.yaml"))
-    scores = [score_run(ScenarioRunner(Scenario.from_yaml(str(f)), sensing=sensing),
-                        use_runtime=use_runtime, smart=smart)
+    scores = [score_run(ScenarioRunner(Scenario.from_yaml(str(f)), sensing=sensing,
+                                       impairment=impairment, impair_seed=impair_seed),
+                        use_runtime=use_runtime, smart=smart, thresholds=thresholds)
               for f in files]
     level, rationale = autonomy_level(scores)
     return {
@@ -720,10 +776,26 @@ if __name__ == "__main__":
     ap.add_argument("--out", default=None, help="write report JSON to this path")
     ap.add_argument("--smart-layer", default=None, choices=["rule", "llm"],
                     help="enable smart layer (rule=RuleBasedSmart, llm=LLMSmart via hoopoe)")
-    ap.add_argument("--sensing", default="ideal", choices=["ideal", "realistic"],
+    # Defaults are None so "not passed" is distinguishable from "passed the default value":
+    # an explicit flag must beat the scenario YAML's own sensing block, or ablation runs
+    # silently report the YAML's config instead of the one you asked for.
+    ap.add_argument("--sensing", default=None,
+                    choices=["ideal", "realistic", "reconstructed"],
                     help="clearance sensing model: ideal=true-surface oracle (legacy L5 "
                          "baseline); realistic=nearest sensor return only (what hardware "
-                         "actually has)")
+                         "actually has); reconstructed=surface fitted from adjacent beam "
+                         "returns (implemented in team_world, previously unreachable here)")
+    ap.add_argument("--thresholds", default=None, choices=sorted(PRESETS),
+                    help="intervention-detection thresholds: default=outdoor literals; "
+                         "indoor=scaled for a room-sized world (a 5 m 'lost' threshold "
+                         "cannot detect anything in an 8x6 m apartment)")
+    ap.add_argument("--impairment", default=None, choices=sorted(IMPAIRMENTS),
+                    help="per-ray-group sensor impairment (sensor_model.py). "
+                         "crazyflie_decks = monocular-depth scale bias + latency + "
+                         "correlated frame dropout on the camera rays, metric ToF beams")
+    ap.add_argument("--impair-seed", type=int, default=None,
+                    help="seed for the impairment model; sweep it to report a distribution "
+                         "rather than one lucky run")
     args = ap.parse_args()
 
     _here = Path(__file__).resolve().parent
@@ -756,7 +828,9 @@ if __name__ == "__main__":
                                       args.quad_policy, args.record_video, renderer, smart,
                                       fw_onnx=args.fw_policy)
     else:
-        rep = score_suite(scn_dir, use_runtime=True, smart=smart, sensing=args.sensing)
+        rep = score_suite(scn_dir, use_runtime=True, smart=smart, sensing=args.sensing,
+                          thresholds=args.thresholds, impairment=args.impairment,
+                          impair_seed=args.impair_seed)
         _print_suite(rep)
         out = args.out or str(_here / "scorecard_baseline.json")
         Path(out).write_text(json.dumps(rep, indent=2))

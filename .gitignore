@@ -86,6 +86,15 @@ drone/sim/godot/assets/*
 # Kenney CC0 city kit (~500KB, CC0) is tracked directly
 !drone/sim/godot/assets/kenney_city
 
+# Godot's import cache — regenerated from the assets, never committed.
+# Godot 4 rebuilds this on `godot --import` (or first editor open); it is ~100
+# binary files for this project. Note the *.import sidecars next to the tracked
+# kenney_city assets are deliberately NOT ignored: Godot's own guidance is to
+# commit those, since scenes and map.res reference assets by the UID recorded in
+# them. Without them a fresh clone re-imports with new UIDs and the city/office
+# environments come up with their meshes missing.
+drone/sim/godot/.godot/
+
 # research media (large; demo reel is on YouTube)
 papers/videos/
 papers/*.mp4

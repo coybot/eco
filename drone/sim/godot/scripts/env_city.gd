@@ -31,9 +31,33 @@ const ASSETS_BASE := "res://assets/kenney_city/"
 
 
 func _ready() -> void:
+	_add_sky_sphere()
 	_build_city()
 	_add_sky_and_lighting()
 	print("[env_city] ready")
+
+
+func _add_sky_sphere() -> void:
+	# Large sphere rendered from inside -- all cameras see a sky background.
+	# Matches env_office.gd/env_plaza.gd's own copy of this workaround: city's
+	# WorldEnvironment/ProceduralSkyMaterial setup in _add_sky_and_lighting() alone
+	# does not render as a visible background in this project's SubViewport-based
+	# camera capture path (godot_dataset_recorder.py) -- every other environment
+	# (office, plaza, depot) independently carries this same geometry fallback;
+	# city was the one missing it, producing a pure-black sky in captured frames
+	# despite _add_sky_and_lighting()'s Environment.BG_SKY being set correctly.
+	var sphere := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 4000.0
+	sm.height = 8000.0
+	sm.flip_faces = true  # normals point inward -> inside surface is the front
+	sphere.mesh = sm
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.32, 0.52, 0.88)  # sky blue -- same color as env_office.gd
+	mat.cull_mode = BaseMaterial3D.CULL_BACK  # cull back face; with flip_faces, exterior culled
+	sphere.material_override = mat
+	add_child(sphere)
 
 
 func _build_city() -> void:
