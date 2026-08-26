@@ -256,7 +256,7 @@ struct SetupDroneView: View {
                         .font(.title2.bold())
                         .foregroundColor(.white)
                     
-                    Text("Open Settings → WiFi and connect to the network starting with \"DroneSetup-\"")
+                    Text("Open Settings → WiFi and connect to the network starting with \"Presidio-\". It is password-protected — use the drone's hotspot passphrase.")
                         .font(.body)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
@@ -268,8 +268,9 @@ struct SetupDroneView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     InstructionRow(number: "1", text: "Open iPhone Settings")
                     InstructionRow(number: "2", text: "Tap WiFi")
-                    InstructionRow(number: "3", text: "Connect to \"DroneSetup-XXXX\"")
-                    InstructionRow(number: "4", text: "Return to this app")
+                    InstructionRow(number: "3", text: "Connect to \"Presidio-...\"")
+                    InstructionRow(number: "4", text: "Enter the drone's hotspot passphrase")
+                    InstructionRow(number: "5", text: "Return to this app")
                 }
                 .padding()
                 .background(Color.white.opacity(0.05))
