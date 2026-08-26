@@ -1,101 +1,127 @@
-"""Test fixed-wing drone coordinate system conversions and positioning."""
+"""Guard the ENU <-> Godot convention that the sim scripts hand-inline everywhere.
+
+Sim state is ENU: x=east, y=north, z=up. Godot is Y-up with -Z forward, so a
+world position converts as Vector3(enu.x, enu.z, -enu.y). That expression is
+written out by hand in ~15 places across fleet_manager.gd and
+fixedwing_manager.gd rather than going through one helper, and a single
+transposed component puts one vehicle type into a mirrored world -- invisible
+until someone looks at a render, and cheap to catch here.
+
+These tests read the GDScript as text on purpose. The conversion lives in
+GDScript, which cannot be imported into Python, so the alternative is testing a
+Python re-implementation that nothing actually runs.
+"""
+
+import re
+from pathlib import Path
 
 import pytest
-from unittest.mock import Mock
-import sys
-import os
 
-# Add the project root to Python path to import modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SCRIPTS = Path(__file__).resolve().parents[1] / "godot" / "scripts"
 
-def test_fixedwing_coordinate_conversion():
-    """Test that FixedWingState correctly handles ENU->Godot coordinate conversion."""
-    
-    # Import the FixedWingState class
-    from eco.drone.sim.godot.scripts.fixedwing_manager import FixedWingState
-    
-    # Test the _from_dict method with sample data
-    state = FixedWingState.new()
-    
-    # Sample test data - ENU coordinates (x=east, y=north, z=up)
-    test_position_enu = [10.0, 20.0, 5.0]  # 10m east, 20m north, 5m up
-    test_velocity_enu = [15.0, 25.0, 3.0]  # 15m/s east, 25m/s north, 3m/s up
-    
-    # Expected Godot coordinates (x=right, y=forward, z=up)
-    # ENU: x=east, y=north, z=up -> Godot: x=east, z=north, y=-up
-    expected_position_godot = [10.0, -5.0, 20.0]  # [x, z, -y]
-    expected_velocity_godot = [15.0, -3.0, 25.0]  # [vx, vz, -vy]
-    
-    # Test data dictionary
-    test_data = {
-        "id": "test_drone",
-        "position": test_position_enu,
-        "velocity": test_velocity_enu,
-        "airspeed": 20.0,
-        "climb_rate": 2.0,
-        "pitch": 0.1,
-        "yaw": 0.2,
-        "roll": 0.05,
-        "altitude": 5.0,
-        "battery_level": 95.0,
-        "events": [],
-        "detected_objects": {},
-        "observed_grid": [],
-        "timestamp": 1000.0
-    }
-    
-    # Apply the data to state
-    state._from_dict(test_data)
-    
-    # Verify the coordinates are correctly converted
-    # ENU to Godot conversion:
-    # Position: [x, y, z] -> [x, -z, y]
-    # Velocity: [vx, vy, vz] -> [vx, -vz, vy]
-    
-    # Check position conversion
-    assert state.position.x == pytest.approx(expected_position_godot[0], abs=1e-6)
-    assert state.position.y == pytest.approx(expected_position_godot[1], abs=1e-6)
-    assert state.position.z == pytest.approx(expected_position_godot[2], abs=1e-6)
-    
-    # Check velocity conversion
-    assert state.velocity.x == pytest.approx(expected_velocity_godot[0], abs=1e-6)
-    assert state.velocity.y == pytest.approx(expected_velocity_godot[1], abs=1e-6)
-    assert state.velocity.z == pytest.approx(expected_velocity_godot[2], abs=1e-6)
+# Managers own world-space placement. fixedwing_visuals.gd is deliberately not
+# here: its _to_local() permutes axes into the *model's* frame to point the
+# mesh down its thrust axis, which is a different job with a different answer.
+WORLD_SPACE_SCRIPTS = ("fleet_manager.gd", "fixedwing_manager.gd")
 
-def test_fixedwing_state_serialization():
-    """Test that FixedWingState serialization preserves coordinate integrity."""
-    
-    from eco.drone.sim.godot.scripts.fixedwing_manager import FixedWingState
-    
-    # Create a state with specific coordinates
-    state = FixedWingState.new()
-    state.id = "test_drone"
-    state.position = [10.0, 20.0, 5.0]  # ENU coordinates
-    state.velocity = [15.0, 25.0, 3.0]  # ENU velocities
-    state.airspeed = 20.0
-    state.climb_rate = 2.0
-    state.pitch = 0.1
-    state.yaw = 0.2
-    state.roll = 0.05
-    state.altitude = 5.0
-    state.battery_level = 95.0
-    state.timestamp = 1000.0
-    
-    # Serialize to dict
-    data_dict = state._to_dict()
-    
-    # Deserialize
-    new_state = FixedWingState.new()
-    new_state._from_dict(data_dict)
-    
-    # Verify that the coordinates are preserved correctly after round trip
-    assert new_state.position.x == pytest.approx(state.position.x, abs=1e-6)
-    assert new_state.position.y == pytest.approx(state.position.y, abs=1e-6)
-    assert new_state.position.z == pytest.approx(state.position.z, abs=1e-6)
-    
-    assert new_state.velocity.x == pytest.approx(state.velocity.x, abs=1e-6)
-    assert new_state.velocity.y == pytest.approx(state.velocity.y, abs=1e-6)
-    assert new_state.velocity.z == pytest.approx(state.velocity.z, abs=1e-6)
+# Vector3 built from all three components of a single variable.
+_VEC3 = re.compile(
+    r"Vector3\(\s*(-?)\s*([\w.]+)\.([xyz])\s*,"
+    r"\s*(-?)\s*([\w.]+)\.([xyz])\s*,"
+    r"\s*(-?)\s*([\w.]+)\.([xyz])\s*\)"
+)
+
+
+_FUNC = re.compile(r"^\s*(?:static\s+)?func\s+(\w+)")
+
+
+def _conversions(filename):
+    """Yield (line_no, func_name, form, text) for each same-base Vector3."""
+    path = SCRIPTS / filename
+    assert path.exists(), f"{path} is missing; did the scripts move?"
+    func = "<module>"
+    for line_no, line in enumerate(path.read_text().splitlines(), 1):
+        declared = _FUNC.match(line)
+        if declared:
+            func = declared.group(1)
+        for m in _VEC3.finditer(line):
+            s1, b1, c1, s2, b2, c2, s3, b3, c3 = m.groups()
+            if b1 == b2 == b3:
+                yield line_no, func, (s1 + c1, s2 + c2, s3 + c3), line.strip()
+
+
+def _apply(form, vec):
+    """Evaluate a parsed form like ('x', 'z', '-y') against a dict of components."""
+    out = []
+    for token in form:
+        negate = token.startswith("-")
+        value = vec[token.lstrip("-")]
+        out.append(-value if negate else value)
+    return tuple(out)
+
+
+def test_enu_to_godot_mapping_is_uniform():
+    """Every world-space conversion is the forward mapping.
+
+    The inverse is legitimate only where a function says that is its job, i.e.
+    a name ending in _to_enu. Accepting the inverse anywhere would let the two
+    be swapped at a call site -- which mirrors the world just as thoroughly as
+    a transposed component, and is exactly as quiet.
+    """
+    forward = ("x", "z", "-y")
+    inverse = ("x", "-z", "y")
+
+    found = []
+    for filename in WORLD_SPACE_SCRIPTS:
+        for line_no, func, form, text in _conversions(filename):
+            found.append(form)
+            expected = inverse if func.endswith("_to_enu") else forward
+            direction = "Godot->ENU" if expected is inverse else "ENU->Godot"
+            assert form == expected, (
+                f"{filename}:{line_no} in {func}() converts with {form}, but a "
+                f"{direction} conversion here must be {expected}:\n    {text}"
+            )
+
+    assert found, "no conversions found at all -- the regex or the scripts changed"
+    forward_count = sum(1 for form in found if form == forward)
+    assert forward_count >= 10, (
+        "expected the forward ENU->Godot mapping to dominate; if placement was "
+        "refactored behind a helper, this test should follow it there"
+    )
+
+
+def test_scalar_helper_agrees_with_the_inlined_form():
+    """_enu_dir_to_godot() takes scalars, so the regex above cannot see it, but
+    it is the one place the conversion is centralized -- keep it in step."""
+    text = (SCRIPTS / "fixedwing_manager.gd").read_text()
+    assert "return Vector3(east, up, -north)" in text, (
+        "_enu_dir_to_godot no longer maps (east, north, up) -> (x, y, z) the same "
+        "way the inlined Vector3(v.x, v.z, -v.y) conversions do"
+    )
+
+
+def test_forward_and_inverse_round_trip():
+    """The two forms in use really are inverses, not two independent guesses."""
+    enu = {"x": 10.0, "y": 20.0, "z": 5.0}          # 10m east, 20m north, 5m up
+
+    godot = _apply(("x", "z", "-y"), enu)
+    assert godot == (10.0, 5.0, -20.0), "up must land on Godot Y, north on -Z"
+
+    back = _apply(("x", "-z", "y"), dict(zip("xyz", godot)))
+    assert back == (enu["x"], enu["y"], enu["z"])
+
+
+def test_altitude_is_the_enu_up_component():
+    """Altitude and the envelope clamp read ENU z, not the Godot axis.
+
+    The other half of the convention: state stays ENU and only the render
+    converts. Anyone 'fixing' a mirrored world by rotating the stored state
+    instead of the conversion would break this.
+    """
+    text = (SCRIPTS / "fixedwing_manager.gd").read_text()
+    assert "st.altitude = st.position.z" in text
+    assert "st.position.z = clamp(st.position.z, ALT_FLOOR_M, ALT_CEILING_M)" in text
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
