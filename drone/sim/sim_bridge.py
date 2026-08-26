@@ -10,8 +10,8 @@ One process per sim drone (Isaac loads one USD scene per world):
 
     python3 sim_bridge.py --env office --drone-id sim-quadcopter-abcd \
         --vehicle quadcopter --certs-dir ~/eco-certs \
-        --iot-endpoint a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com \
-        --credentials-endpoint c25b2ibtm4r28z.credentials.iot.us-west-2.amazonaws.com
+        --iot-endpoint "$IOT_ENDPOINT" \
+        --credentials-endpoint "$CREDENTIALS_ENDPOINT"
 
 Run on hoopoe (Isaac Sim host). No inbound reachability needed: all cloud↔sim
 traffic is outbound MQTT + outbound KVS. The optional ``--http-debug`` flag
@@ -38,6 +38,11 @@ sys.path.insert(0, str(HARNESS_DIR))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from sim_sdk import SimWorker  # noqa: E402
+
+try:  # packaged (drone.sim) in the repo; flat (sim/ on path) when run as a script
+    from .endpoints import iot_endpoint, credentials_endpoint
+except ImportError:
+    from endpoints import iot_endpoint, credentials_endpoint
 
 WORKER: SimWorker | None = None
 ENVIRONMENT = "dev"  # deploy env -> channel suffix; matches video.py get_channel_name
@@ -124,10 +129,10 @@ def main():
     ap.add_argument("--certs-dir",
                     help="dir with device.pem/private.key/root-ca.pem")
     ap.add_argument("--iot-endpoint",
-                    default="a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com",
+                    default=iot_endpoint(),
                     help="IoT data-ATS endpoint (MQTT)")
     ap.add_argument("--credentials-endpoint",
-                    default="c25b2ibtm4r28z.credentials.iot.us-west-2.amazonaws.com",
+                    default=credentials_endpoint(),
                     help="IoT credential provider endpoint")
     ap.add_argument("--video-role-alias", default="drone-video-role-alias-dev")
     ap.add_argument("--s3-role-alias", default="drone-s3-access-role-alias-dev")

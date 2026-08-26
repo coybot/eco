@@ -26,6 +26,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from fleet import parse_roster          # noqa: E402
 from fleet_worker import FleetWorker     # noqa: E402
 
+try:  # packaged (drone.sim) in the repo; flat (sim/ on path) when run as a script
+    from .endpoints import iot_endpoint, credentials_endpoint
+except ImportError:
+    from endpoints import iot_endpoint, credentials_endpoint
+
 WORKER: FleetWorker | None = None
 
 
@@ -51,9 +56,9 @@ def main():
     ap.add_argument("--certs-base", required=True,
                     help="dir containing per-drone cert folders {drone_id}/device.pem,…")
     ap.add_argument("--iot-endpoint",
-                    default="a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com")
+                    default=iot_endpoint())
     ap.add_argument("--credentials-endpoint",
-                    default="c25b2ibtm4r28z.credentials.iot.us-west-2.amazonaws.com")
+                    default=credentials_endpoint())
     ap.add_argument("--video-role-alias", default="drone-video-role-alias-dev")
     ap.add_argument("--s3-role-alias", default="drone-s3-access-role-alias-dev")
     ap.add_argument("--images-bucket",
