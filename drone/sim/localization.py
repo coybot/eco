@@ -52,6 +52,9 @@ class LocalizationFabric:
     def __init__(self, seed: int = 0):
         self._rng = np.random.default_rng(seed)
         self._st: dict[str, _EstState] = {}
+        # Agents whose class has no GPS receiver at all (indoor micro-UAV). Populated on
+        # first sight in update(); such an agent can never be "restored" to GPS_OK.
+        self._no_gps: set[str] = set()
 
     def _state(self, agent_id: str) -> _EstState:
         return self._st.setdefault(agent_id, _EstState())
@@ -74,6 +77,15 @@ class LocalizationFabric:
             self._state(agent_id).spoof_vel = np.asarray(vel, dtype=np.float64)
 
     def restore(self, agent_id: str) -> None:
+        """Return an agent to healthy GPS — unless its class never had GPS.
+
+        A class with ``localization.gps_available == False`` (indoor micro-UAV: flow-deck
+        dead reckoning only) must not be teleported into a capability it does not have. A
+        gps_spoof→restore inject sequence would otherwise silently upgrade it.
+        """
+        if agent_id in self._no_gps:
+            self.set_mode(agent_id, LocMode.GPS_DENIED)
+            return
         self.set_mode(agent_id, LocMode.GPS_OK)
 
     def set_team_mode(self, world, mode: LocMode) -> None:
@@ -85,11 +97,22 @@ class LocalizationFabric:
         dt = world.dt
         for a in world.agents.values():
             st = self._state(a.id)
+            if not a.vclass.localization.gps_available:
+                # No receiver, ever. Start and stay on dead reckoning with no inject
+                # needed: this is a physical fact about the airframe, not a scenario choice.
+                self._no_gps.add(a.id)
+                if st.mode is LocMode.GPS_OK:
+                    st.mode = LocMode.GPS_DENIED
             if st.mode is LocMode.GPS_OK:
                 # bias relaxes to zero, confidence recovers
                 st.bias *= max(0.0, 1.0 - self.CONF_RECOVER_RATE * dt)
                 st.confidence = min(1.0, st.confidence + self.CONF_RECOVER_RATE * dt)
             elif st.mode is LocMode.GPS_DENIED:
+                # Random walk, NOT a linear ramp: per-step sigma is drift*dt, so accumulated
+                # error grows as drift*sqrt(dt*t), not drift*t. At drift=0.30 m/s, dt=0.1,
+                # t=60 s that is ~0.73 m per axis — a defensible flow-deck figure over a
+                # textured floor. Kept as-is deliberately: "correcting" it to a linear ramp
+                # would move the published quad/rover suite numbers.
                 drift = a.vclass.localization.gps_denied_drift_mps
                 step = self._rng.normal(0.0, drift * dt, size=3)
                 if a.vclass.planar:

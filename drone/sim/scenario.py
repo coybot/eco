@@ -39,10 +39,12 @@ try:  # packaged (drone.sim) vs flat (sim/ on path) — see conftest
     from .team_world import TeamWorld, KinematicWorld, Box, reactive_goto_controller
     from .comms import CommsFabric, MsgType
     from .localization import LocalizationFabric, LocMode
+    from .vehicle_class import get_class
 except ImportError:
     from team_world import TeamWorld, KinematicWorld, Box, reactive_goto_controller
     from comms import CommsFabric, MsgType
     from localization import LocalizationFabric, LocMode
+    from vehicle_class import get_class
 
 
 # =========================================================================== mission
@@ -64,7 +66,13 @@ class Mission:
     """
     FIND_RADIUS = 2.0
 
-    def __init__(self, spec: dict):
+    def __init__(self, spec: dict, find_radius: float | None = None,
+                 goal_tol: float = 1.5):
+        # Both are absolute metres and must shrink for an indoor vehicle: a 2.0 m find
+        # radius in an 8x6 m apartment covers a quarter of the floor, and a 1.5 m goal
+        # tolerance is the next room over.
+        self.find_radius = float(self.FIND_RADIUS if find_radius is None else find_radius)
+        self.goal_tol = float(goal_tol)
         self.type = spec.get("type", "goto")
         self.region = spec.get("region")            # [xmin,ymin,xmax,ymax]
         self.targets = [Target(f"t{i}", np.asarray(_xy3(t), np.float32))
@@ -94,7 +102,7 @@ class Mission:
                 if tgt.found:
                     continue
                 for a in world.team_agents():
-                    if float(np.linalg.norm(a.pos - tgt.pos)) <= self.FIND_RADIUS:
+                    if float(np.linalg.norm(a.pos - tgt.pos)) <= self.find_radius:
                         tgt.found = True
                         events.append("target_found")
                         # baseline-without-runtime convenience: hop to nearest unfound.
@@ -121,7 +129,7 @@ class Mission:
         if self.type == "area_search":
             return self.all_targets_found
         if self.type == "goto":
-            return world.all_reached(tol=1.5)
+            return world.all_reached(tol=self.goal_tol)
         return False   # patrol runs until time cap
 
 
@@ -137,15 +145,32 @@ class Scenario:
     obstacles: list[list] = field(default_factory=list)  # [[cx,cy,cz,hx,hy,hz], ...]
     duration_s: float = 120.0
     seed: int = 0
+    # --- indoor / small-scale support -----------------------------------------------
+    goal_tol_m: float = 1.5          # "arrived" radius. 1.5 m is the next room over for a
+                                     # 0.065 m vehicle, so indoor scenarios override it.
+    find_radius_m: float | None = None   # None = Mission.FIND_RADIUS (2.0 m)
+    sensing: dict = field(default_factory=dict)    # {mode, impairment, impair_seed}
+    thresholds: str | dict = ""       # scorecard threshold preset name or overrides
+    room: dict = field(default_factory=dict)       # see _room_boxes
 
     @classmethod
     def from_dict(cls, d: dict) -> "Scenario":
         team = _expand_team(d.get("team", []), d.get("starts"))
+        obstacles = list(d.get("obstacles", []))
+        room = d.get("room", {}) or {}
+        if room:
+            obstacles = _room_boxes(room) + obstacles
         return cls(
             name=d["name"], environment=d.get("environment", "none"), team=team,
             mission=d.get("mission", {"type": "goto"}), injects=d.get("injects", []),
-            success=d.get("success", {}), obstacles=d.get("obstacles", []),
+            success=d.get("success", {}), obstacles=obstacles,
             duration_s=float(d.get("duration_s", 120.0)), seed=int(d.get("seed", 0)),
+            goal_tol_m=float(d.get("goal_tol_m", 1.5)),
+            find_radius_m=(None if d.get("find_radius_m") is None
+                           else float(d["find_radius_m"])),
+            sensing=d.get("sensing", {}) or {},
+            thresholds=d.get("thresholds", "") or "",
+            room=room,
         )
 
     @classmethod
@@ -176,9 +201,51 @@ def _expand_team(team_spec, starts=None) -> list[dict]:
     for i, spec in enumerate(roster):
         spec.setdefault("pos", starts.get(spec["id"],
                                           [-12.0, (i - len(roster) / 2) * 2.0,
-                                           2.0 if spec["type"].startswith("q") else 0.0]))
+                                           _default_start_alt(spec["type"])]))
         spec.setdefault("goal", [12.0, spec["pos"][1], spec["pos"][2]])
     return roster
+
+
+def _default_start_alt(vclass_name: str) -> float:
+    """Default spawn altitude for a class with no explicit start position.
+
+    Was ``2.0 if type.startswith("q") else 0.0`` — a raw string check that put any aerial
+    class not beginning with "q" on the ground ("crazyflie".startswith("q") is False, so a
+    Crazyflie spawned inside the floor). Keyed off capability instead, and capped so a
+    2.2 m-ceiling vehicle doesn't start at 91% of its ceiling.
+    """
+    try:
+        vc = get_class(vclass_name)
+    except KeyError:
+        return 0.0
+    if not vc.is_aerial:
+        return 0.0
+    return min(2.0, 0.5 * vc.ceiling_m)
+
+
+def _room_boxes(room: dict) -> list[list]:
+    """Expand a ``room:`` spec into wall (and optional ceiling) obstacle boxes.
+
+    Indoor scenarios are mostly walls, and hand-writing six AABBs per room is unreadable.
+
+        room: {size: [8.0, 6.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+
+    Centred on the origin. The ceiling box is what gives the up-facing ToF beam something
+    to measure — without it, "indoors" is just an open field with walls.
+    """
+    sx, sy = (float(v) for v in room.get("size", [6.0, 4.0]))
+    h = float(room.get("height", 2.4))
+    t = float(room.get("wall_thickness", 0.08))
+    hx, hy, hz = sx / 2.0, sy / 2.0, h / 2.0
+    boxes = [
+        [hx + t / 2.0, 0.0, hz, t / 2.0, hy + t, hz],    # +x wall
+        [-(hx + t / 2.0), 0.0, hz, t / 2.0, hy + t, hz],  # -x wall
+        [0.0, hy + t / 2.0, hz, hx + t, t / 2.0, hz],    # +y wall
+        [0.0, -(hy + t / 2.0), hz, hx + t, t / 2.0, hz],  # -y wall
+    ]
+    if room.get("ceiling", True):
+        boxes.append([0.0, 0.0, h + t / 2.0, hx + t, hy + t, t / 2.0])
+    return boxes
 
 
 def _xy3(p):
@@ -429,19 +496,34 @@ class ScenarioRunner:
     """Builds the world+fabrics from a Scenario, runs the loop, records events."""
 
     def __init__(self, scenario: Scenario, controller=None, dt: float = 0.1,
-                 sensing: str = "ideal"):
+                 sensing: str | None = None, impairment=None,
+                 impair_seed: int | None = None):
         self.scenario = scenario
         backend = KinematicWorld(static_obstacles=[
             Box(np.asarray(o[:3], np.float32), np.asarray(o[3:], np.float32))
             for o in scenario.obstacles
         ])
-        self.world = TeamWorld(backend, dt=dt, sensing=sensing)
+        # Precedence: explicit caller argument > scenario YAML > built-in default. The YAML
+        # block lets an indoor scenario carry its own sensor model so it reproduces without
+        # remembering flags; but an explicit argument must still win, or ablation is
+        # impossible (`--sensing ideal` would silently do nothing and quietly report the
+        # impaired number as if it were the oracle).
+        sens = scenario.sensing or {}
+        if sensing is None:
+            sensing = sens.get("mode", "ideal")
+        if impairment is None:
+            impairment = sens.get("impairment")
+        if impair_seed is None:
+            impair_seed = int(sens.get("impair_seed", scenario.seed))
+        self.world = TeamWorld(backend, dt=dt, sensing=sensing,
+                               impairment=impairment, impair_seed=impair_seed)
         self.world.add_roster(scenario.team)
         self.comms = CommsFabric(seed=scenario.seed)
         self.loc = LocalizationFabric(seed=scenario.seed)
         self.world.comms = self.comms
         self.world.localization = self.loc
-        self.mission = Mission(scenario.mission)
+        self.mission = Mission(scenario.mission, find_radius=scenario.find_radius_m,
+                               goal_tol=scenario.goal_tol_m)
         self.mission.assign_initial_goals(self.world)
         self.injects = InjectEngine(self, scenario.injects)
         self.controller = controller or reactive_goto_controller()

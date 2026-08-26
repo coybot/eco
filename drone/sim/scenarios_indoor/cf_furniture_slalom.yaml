@@ -1,0 +1,21 @@
+# Where the 45-ray camera fan earns its place: four staggered obstacles requiring an S-path.
+# The five ToF beams alone give one forward sample, which cannot distinguish "gap to the left"
+# from "gap to the right" — the camera fan can.
+name: cf_furniture_slalom
+environment: indoor
+room: {size: [6.0, 4.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-2.5, 0.0, 1.0], goal: [2.5, 0.0, 1.0]}
+duration_s: 45
+goal_tol_m: 0.25
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+obstacles:
+  # table / chair / shelf blocks, alternating sides, ~1.2 m apart
+  - [-1.2,  0.7, 0.4, 0.25, 0.6, 0.4]
+  - [-0.2, -0.8, 0.5, 0.25, 0.5, 0.5]
+  - [ 0.9,  0.8, 0.45, 0.3, 0.5, 0.45]
+  - [ 1.9, -0.7, 0.4, 0.25, 0.55, 0.4]
+success:
+  mission_complete: true
+  no_collisions: true

@@ -36,8 +36,50 @@ class AgentSnapshot:
     alive: bool
     sensor_ok: bool
     confidence: float
-    vclass: str
+    vclass: str                   # for logging / LLM prompt text ONLY — never branch on it
     min_scan_dist: float = 10.0   # nearest obstacle/intruder in sensor scan (m)
+    # Capabilities and length scales the rules below need. Rules must key off these, never
+    # off the vclass string (vehicle_class.py's docstring forbids it, and a string check
+    # silently denies every quad safety rule to any new aerial class). Defaults reproduce
+    # the historically-tuned literals exactly, so the outdoor classes are unaffected.
+    is_aerial: bool = True
+    ceiling_m: float = 30.0
+    scan_clear_m: float = 4.0       # "open sky" threshold for altitude separation
+    sep_m: float = 3.0              # lateral separation that triggers a climb
+    alt_sep_climb_mps: float = 6.5  # climb rate while separating
+    low_alt_m: float = 2.5          # low-altitude guard trigger
+    low_alt_climb_mps: float = 4.0  # climb rate for the low-altitude guard
+    goal_lock_m: float = 1.5        # "at goal" radius (suppresses stall detection)
+    recovery_lateral_m: float = 3.0 # sideways nudge when stalled
+    recovery_climb_m: float = 4.0   # extra altitude on a stall-recovery waypoint
+    rtl_dist_m: float = 20.0        # distance beyond which a struggling agent is recalled
+
+
+def snapshot_caps(vc) -> dict:
+    """AgentSnapshot capability/length-scale kwargs derived from a VehicleClass.
+
+    One definition, used by both the sim builder (build_world_state) and the on-device
+    builders (onboard_l5), so they cannot drift apart.
+
+    Lengths scale with the class's interaction_scale_m; climb *rates* are left at their
+    literals because the integrator already clips vz to max_speed_mps, and the meaningful
+    limit on a small vehicle is the ceiling clamp applied at the rule site.
+
+    Exact for the shipped outdoor classes: k is 3.5/3.5 == 1.0 in IEEE-754 and 1.0 * x == x,
+    so quad/rover/fixedwing get back precisely the literals these fields replaced.
+    """
+    k = vc.interaction_scale_m / 3.5
+    return dict(
+        is_aerial=vc.is_aerial,
+        ceiling_m=vc.ceiling_m,
+        scan_clear_m=k * 4.0,
+        sep_m=k * 3.0,
+        low_alt_m=k * 2.5,
+        goal_lock_m=k * 1.5,
+        recovery_lateral_m=k * 3.0,
+        recovery_climb_m=k * 4.0,
+        rtl_dist_m=k * 20.0,
+    )
 
 
 @dataclass
@@ -315,7 +357,7 @@ class RuleBasedSmart:
         self._tick += 1
         directives: list[Directive] = []
         alive = [a for a in state.agents if a.alive]
-        quads = [a for a in alive if a.vclass in ("quad", "quadcopter")]
+        quads = [a for a in alive if a.is_aerial]
 
         # --- safety rules (every tick) ---
         for a in alive:
@@ -335,7 +377,7 @@ class RuleBasedSmart:
             # Quad altitude separation: when two quads are within 3m of each other
             # AND approaching (relative velocity closing), lower-priority quad climbs.
             # Only when min_scan_dist > 4m (open sky — not in a ceiling-constrained area).
-            if a.vclass in ("quad", "quadcopter") and a.min_scan_dist > 4.0:
+            if a.is_aerial and a.min_scan_dist > a.scan_clear_m:
                 my_rank = sorted(q.id for q in quads).index(aid)
                 for b in quads:
                     if b.id == aid:
@@ -343,7 +385,7 @@ class RuleBasedSmart:
                     dx = b.pos[0] - a.pos[0]
                     dy = b.pos[1] - a.pos[1]
                     sep = math.sqrt(dx*dx + dy*dy + (b.pos[2]-a.pos[2])**2)
-                    if sep < 3.0:
+                    if sep < a.sep_m:
                         # Check closing (relative vel dot relative pos < 0)
                         rvx = b.vel[0] - a.vel[0]
                         rvy = b.vel[1] - a.vel[1]
@@ -356,21 +398,25 @@ class RuleBasedSmart:
             if aid in self._alt_sep:
                 ticks = self._alt_sep[aid]
                 if ticks > 0:
-                    directives.append(Directive(aid, "climb", 6.5))
+                    # Clamped to 60% of the ceiling: an unclamped 6.5 m/s climb command is
+                    # fine under 30 m of sky and drives a micro-UAV into a 2.4 m ceiling.
+                    directives.append(Directive(
+                        aid, "climb", min(a.alt_sep_climb_mps, 0.6 * a.ceiling_m)))
                     self._alt_sep[aid] = ticks - 1
                 else:
                     del self._alt_sep[aid]
 
             # Quad low altitude guard
-            if a.vclass in ("quad", "quadcopter") and len(a.pos) > 2 and a.pos[2] < 2.5:
+            if a.is_aerial and len(a.pos) > 2 and a.pos[2] < a.low_alt_m:
                 if len(a.vel) > 2 and a.vel[2] < -0.2:
-                    directives.append(Directive(aid, "climb", 4.0))
+                    directives.append(Directive(
+                        aid, "climb", min(a.low_alt_climb_mps, 0.6 * a.ceiling_m)))
 
             # Stall tracking (speed-based, reliable)
             if a.goal:
                 cur_dist = math.dist(a.pos, a.goal)
                 prev_dist = self._prev_goal_dist.get(aid, cur_dist)
-                if cur_dist < 1.5:
+                if cur_dist < a.goal_lock_m:
                     self._stall_ticks[aid] = 0  # at goal — not a stall
                 elif speed < self.STALL_SPEED_THRESH and abs(cur_dist - prev_dist) < 0.1:
                     self._stall_ticks[aid] = self._stall_ticks.get(aid, 0) + 1
@@ -415,14 +461,15 @@ class RuleBasedSmart:
                     px, py, pz = float(a.pos[0]), float(a.pos[1]), float(a.pos[2])
                     dx, dy = gx - px, gy - py
                     d = math.sqrt(dx*dx + dy*dy) or 1.0
-                    nx = px - dy/d * 3.0
-                    ny = py + dx/d * 3.0
-                    nz = max(gz, pz + 4.0) if a.vclass in ("quad", "quadcopter") else gz
+                    nx = px - dy/d * a.recovery_lateral_m
+                    ny = py + dx/d * a.recovery_lateral_m
+                    nz = (min(a.ceiling_m, max(gz, pz + a.recovery_climb_m))
+                          if a.is_aerial else gz)
                     self._recovery[aid] = ([nx, ny, nz], self.RECOVERY_TICKS)
                     self._stall_ticks[aid] = 0
 
                 if state.interventions >= 5 and a.goal and aid not in self._recovery:
-                    if math.dist(a.pos, a.goal) > 20.0:
+                    if math.dist(a.pos, a.goal) > a.rtl_dist_m:
                         directives.append(Directive(aid, "rtl", True))
 
         self._directives = directives
@@ -564,6 +611,7 @@ def build_world_state(runner, interventions: int) -> WorldState:
             confidence=getattr(a, "loc_confidence", 1.0),
             vclass=a.vclass.name,
             min_scan_dist=round(min_scan, 2),
+            **snapshot_caps(a.vclass),
         ))
     targets = []
     for t in runner.mission.targets:

@@ -1,0 +1,68 @@
+{
+  "alpha": {
+    "action": "mission",
+    "mission": {
+      "phases": [
+        {
+          "type": "arm_and_takeoff",
+          "altitude_m": 15
+        },
+        {
+          "objective": "Fly to the northern search area centred around east=400, north=60 (the northern half of the 120m-radius zone around east=400, north=0), routing around any obstacles in the way",
+          "success": "Aircraft is in the vicinity of east=400, north=60"
+        },
+        {
+          "objective": "Search the northern half of the area within 120m of east=400, north=0 (north of north=0) for a person in a red jacket. Fly an expanding search pattern covering the northern semicircle. The target is a person wearing a red jacket.",
+          "success": "A person in a red jacket has been sighted and their position is geo-tagged in memory"
+        },
+        {
+          "objective": "Close on the person in a red jacket that was located and confirmed in this northern search area. Approach to within safe delivery range for payload release.",
+          "success": "Person in a red jacket is visible in the current frame and the aircraft is within payload release range"
+        },
+        {
+          "objective": "Release the carried water bottle payload near the person in a red jacket. Only release once the person in a red jacket is confirmed visible in the current frame and the aircraft is within range.",
+          "success": "Water bottle payload has been released near the person in a red jacket"
+        },
+        {
+          "type": "return_home",
+          "alt_m": 15
+        },
+        {
+          "type": "land"
+        }
+      ]
+    },
+    "message": "Northern search plan generated for fixed-wing drone 1. It will transit to the northern half of the 120m search zone (north of y=0, centred on east=400 north=60), search that semicircle for a person in a red jacket, close to delivery range, drop the water bottle only on confirmed visual, then return home and land. The second drone should independently cover the southern half. No coordination between aircraft is assumed."
+  },
+  "bravo": {
+    "action": "mission",
+    "mission": {
+      "phases": [
+        {
+          "type": "arm_and_takeoff",
+          "altitude_m": 15
+        },
+        {
+          "objective": "Fly toward the search area centred at east=400, north=0 in the local frame, routing around anything in the way",
+          "success": "Arrived in the vicinity of east=400, north=0"
+        },
+        {
+          "objective": "Search the SOUTHERN half of the search area \u2014 within 120 metres of east=400, north=0 but south of north=0 (i.e. north coordinate at or below 0) \u2014 using an expanding search pattern to find a person in a red jacket. If no person is found immediately, widen the search within this southern half zone.",
+          "success": "A person in a red jacket is visible in the current frame"
+        },
+        {
+          "objective": "Close in on the person in a red jacket until within payload-drop range, confirm the person in a red jacket is visible in the current frame, then release the water bottle payload near them.",
+          "success": "Water bottle delivered near the person in a red jacket"
+        },
+        {
+          "type": "return_home",
+          "alt_m": 15
+        },
+        {
+          "type": "land"
+        }
+      ]
+    },
+    "message": "Southern-sector fixed-wing mission planned. This drone will transit to the search area around east=400, north=0, search the southern half (north \u2264 0, within 120 m radius) for a person in a red jacket, deliver its water bottle once confirmed, then return home. It operates fully autonomously with no radio link."
+  }
+}

@@ -105,12 +105,25 @@ def _gt_boxes(bridge, ego_id, intr, cam_pos, cam_R):
 
 
 def _random_goals(bridge, rng, spread=8.0):
-    """Assign each vehicle a fresh random goal to drive trajectory diversity."""
+    """Assign each vehicle a fresh random goal to drive trajectory diversity.
+
+    Also points the vehicle's heading at the new goal. IsaacVehicleBridge's
+    kinematic mover (integrate_all) moves position straight toward `goal`
+    but never touches yaw unless set_drone_yaw is called separately -- found
+    via the ADR-0005 visual alignment gate (reports/isaac_grounding_frames_finding.json):
+    without this, a vehicle's forward-facing camera does not track its own
+    direction of travel, and it was losing its target out of frame purely
+    from FOV geometry as it drifted sideways. A straight-line path to a fixed
+    goal has one constant bearing for the whole segment, so setting yaw once
+    here (rather than every tick) is sufficient -- it does not change again
+    until the next call, exactly when the goal itself next changes.
+    """
     for vid, (pos, vtype, _r) in bridge.vehicle_world_positions().items():
         gx = pos[0] + rng.uniform(-spread, spread)
         gy = pos[1] + rng.uniform(-spread, spread)
         gz = 0.0 if vtype == "rover" else rng.uniform(0.8, 3.0)
         bridge.set_drone_goal(vid, [gx, gy, gz])
+        bridge.set_drone_yaw(vid, math.atan2(gy - pos[1], gx - pos[0]))
 
 
 def main():
