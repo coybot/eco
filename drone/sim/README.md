@@ -43,7 +43,8 @@ ISHMAEL_HARNESS=$HOME/code/ishmael/swarm_eval/harness $PY \
   ~/code/ishmael/eco_sim/sim_bridge.py \
   --env office --drone-id sim-quadcopter-test --vehicle quadcopter \
   --certs-dir ~/eco-certs
-# defaults: --iot-endpoint a3c6a8oie6d6k5-ats.iot…  --credentials-endpoint c25b2ibtm4r28z.credentials.iot…
+# defaults come from IOT_ENDPOINT / CREDENTIALS_ENDPOINT, or ~/.config/presidio/secrets.env
+# (see secrets.env.example); pass --iot-endpoint / --credentials-endpoint to override
 # --vehicle rover  for the Nova Carter.  --http-debug  re-enables a local /execute server.
 ```
 Drone-id must match the app's generated id (`sim-{vehicle}-{suffix}`).
