@@ -1,0 +1,21 @@
+# The tuning test. A 0.8 m doorway against avoid_radius_m = 0.8: passing through, the
+# Crazyflie is ~0.4 m from each jamb, so BOTH jambs repel simultaneously and the lateral
+# repulsion cancels only if the approach is near-symmetric. This is the scenario that tells
+# you whether interaction_scale_m = 0.8 is right, and it is expected to be the hardest of
+# the eight for a purely reactive controller (no global planner).
+name: cf_doorway
+environment: indoor
+room: {size: [8.0, 4.0], height: 2.4, wall_thickness: 0.08, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-3.0, 0.0, 1.0], goal: [3.0, 0.0, 1.0]}
+duration_s: 45
+goal_tol_m: 0.25
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+obstacles:
+  # dividing wall at x=0 with a 0.8 m gap centred on y=0
+  - [0.0, -1.2, 1.2, 0.05, 0.8, 1.2]
+  - [0.0,  1.2, 1.2, 0.05, 0.8, 1.2]
+success:
+  mission_complete: true
+  no_collisions: true

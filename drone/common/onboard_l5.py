@@ -36,14 +36,14 @@ try:
         VehicleClass, Kinematics, Sensor,
         _LIDAR_RAYS, _DEPTH_COLS, _DEPTH_ROWS,
     )
-    from .l5_smart import RuleBasedSmart, WorldState, AgentSnapshot
+    from .l5_smart import RuleBasedSmart, WorldState, AgentSnapshot, snapshot_caps
 except ImportError:  # pragma: no cover - device flat-install path
     from l5_core import (
         Agent, Observation, reactive_goto_controller, get_class,
         VehicleClass, Kinematics, Sensor,
         _LIDAR_RAYS, _DEPTH_COLS, _DEPTH_ROWS,
     )
-    from l5_smart import RuleBasedSmart, WorldState, AgentSnapshot
+    from l5_smart import RuleBasedSmart, WorldState, AgentSnapshot, snapshot_caps
 
 SENSE_MAX = 10.0        # m, matches KinematicWorld.SENSE_MAX / DEPTH_MAX / LIDAR_MAX
 NEIGHBOR_RANGE = 12.0   # m, matches TeamWorld.NEIGHBOR_RANGE
@@ -163,6 +163,7 @@ def _agent_snapshot(agent: Agent, pose: Pose, min_scan: float) -> AgentSnapshot:
         goal=(None if agent.goal is None else [float(x) for x in agent.goal]),
         alive=True, sensor_ok=pose.sensor_ok, confidence=pose.loc_confidence,
         vclass=agent.vclass.name, min_scan_dist=min_scan,
+        **snapshot_caps(agent.vclass),
     )
 
 
@@ -172,6 +173,7 @@ def _peer_snapshot(p: Peer) -> AgentSnapshot:
         goal=None, alive=p.alive, sensor_ok=True, confidence=p.confidence,
         vclass=get_class(p.vclass_name).name,
         min_scan_dist=get_class(p.vclass_name).sense_range_m,
+        **snapshot_caps(get_class(p.vclass_name)),
     )
 
 

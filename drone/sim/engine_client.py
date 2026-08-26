@@ -56,6 +56,16 @@ class EngineClient:
         r = self._call({"op": "get_state", "id": did})
         return {"position": r.get("position", [0, 0, 0]), "yaw": r.get("yaw", 0.0)}
 
+    def camera_pose(self, did: str) -> dict:
+        """ENU camera position + forward/up unit vectors for GT-box projection
+        (godot_dataset_recorder.py). Read from the live Camera3D transform
+        server-side, not recomputed from FleetManager's per-environment offset
+        table client-side -- see fleet_manager.gd's get_camera_pose docstring."""
+        r = self._call({"op": "get_camera_pose", "id": did})
+        return {"position": r.get("position", [0, 0, 0]),
+                "forward": r.get("forward", [1, 0, 0]),
+                "up": r.get("up", [0, 0, 1])}
+
     def set_goal(self, did, xyz):
         self._call({"op": "set_goal", "id": did, "p": list(xyz)})
 

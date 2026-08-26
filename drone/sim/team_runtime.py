@@ -176,8 +176,19 @@ class TeamRuntime:
     # Convoy queuing: planar agents serialise through narrow gaps.
     # Lower-priority agent waits until the higher-priority one is _CONVOY_CLEAR m ahead,
     # measured in forward body-frame (x > 0). Timeout prevents infinite hold.
+    # Deprecated absolute defaults — these are now scaled per agent off
+    # vclass.proximity_m (3.5 m for the outdoor classes, so unchanged there). A micro-UAV
+    # in a 1.2 m corridor would otherwise be in permanent convoy hold and score as stalled.
     _CONVOY_CLOSE = 1.5    # m — within this lateral+forward distance triggers convoy
     _CONVOY_CLEAR = 3.0    # m forward before follower is released
+
+    @staticmethod
+    def _prox(vc, ref: float) -> float:
+        """Scale a proximity length tuned at 3.5 m to this vehicle class's own scale.
+
+        Exact for the shipped classes: 3.5/3.5 == 1.0 and 1.0 * ref == ref.
+        """
+        return (vc.proximity_m / 3.5) * ref
     _CONVOY_TIMEOUT = 60   # 6 s timeout — force through if leader is stuck too
 
     def _modulate(self, agent, obs, action):
@@ -207,10 +218,11 @@ class TeamRuntime:
                 fwd = float(rel_body[0])
                 lat = abs(float(rel_body[1]))
                 dist = float(np.linalg.norm(rel_body[:2]))
-                if (fwd > 0 and lat < 0.8 and dist < self._CONVOY_CLOSE
+                if (fwd > 0 and lat < self._prox(agent.vclass, 0.8)
+                        and dist < self._prox(agent.vclass, self._CONVOY_CLOSE)
                         and self._rank.get(nid, 1e9) < self._rank[agent.id]):
-                    # hold until leader is _CONVOY_CLEAR m ahead in forward direction
-                    if fwd < self._CONVOY_CLEAR:
+                    # hold until the leader is clear ahead in the forward direction
+                    if fwd < self._prox(agent.vclass, self._CONVOY_CLEAR):
                         scale *= 0.0
                         b.convoy_hold_ticks += 1
                         holding = True
@@ -227,9 +239,10 @@ class TeamRuntime:
             if len(reachable) == 0:
                 scale *= 0.3   # 30% speed when jammed — safer in tight passages
 
-        # ---- emergency brake: any teammate within 1.2m → near-zero speed ----
+        # ---- emergency brake: any teammate inside the brake radius → near-zero speed ----
+        _brake = self._prox(agent.vclass, 1.2)
         for nid, rel_body, _vel, _ovc in obs.neighbors:
-            if float(np.linalg.norm(rel_body[:3])) < 1.2:
+            if float(np.linalg.norm(rel_body[:3])) < _brake:
                 scale *= 0.05  # emergency near-stop — prevents quad-quad collision
                 break
 
@@ -237,8 +250,9 @@ class TeamRuntime:
         # Only applies when NOT already in convoy hold, preventing double-application.
         if scale > 0 and b.yield_ticks < 15:
             for nid, rel_body, _vel, _ovc in obs.neighbors:
-                ahead = float(rel_body[0]) > 0 and abs(float(rel_body[1])) < 1.5
-                close = float(np.linalg.norm(rel_body[:2])) < 2.5
+                ahead = (float(rel_body[0]) > 0
+                         and abs(float(rel_body[1])) < self._prox(agent.vclass, 1.5))
+                close = float(np.linalg.norm(rel_body[:2])) < self._prox(agent.vclass, 2.5)
                 if ahead and close and self._rank.get(nid, 1e9) < self._rank[agent.id]:
                     scale *= 0.4
                     b.yield_ticks += 1

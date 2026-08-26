@@ -1,8 +1,8 @@
 ## IPC server: listens on TCP (default :9999) and speaks newline-delimited JSON.
 ##
 ## Implements the same protocol as sim_engine.py so engine_client.py works
-## unchanged. Ops: get_state, set_goal, set_velocity, clear_velocity, set_yaw,
-## grab_frame, add_vantage, auto_overhead, grab_vantage.
+## unchanged. Ops: get_state, get_camera_pose, set_goal, set_velocity,
+## clear_velocity, set_yaw, grab_frame, add_vantage, auto_overhead, grab_vantage.
 ##
 ## Loaded as an autoload so it starts before any scene.
 extends Node
@@ -83,6 +83,13 @@ func _dispatch(line: String) -> String:
 				"position": [st.position.x, st.position.y, st.position.z],
 				"yaw": st.yaw
 			})
+
+		"get_camera_pose":
+			var cp = fm.get_camera_pose(did)
+			if cp == null:
+				return JSON.stringify({"ok": false, "error": "unknown drone " + did})
+			return JSON.stringify({"ok": true, "position": cp["position"],
+									"forward": cp["forward"], "up": cp["up"]})
 
 		"set_goal":
 			var p: Array = req.get("p", [0.0, 0.0, 0.0])

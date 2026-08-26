@@ -1,0 +1,72 @@
+# Four Crazyflies cooperatively clearing a four-room floor.
+#
+# The collaboration is real, not choreographed. Each vehicle runs its own L5 controller and
+# its own TeamRuntime; the team behaviour emerges from:
+#   * bid-based task allocation — each drone bids on unclaimed targets by distance and
+#     broadcasts the claim over the comms fabric; a better bid preempts a worse one and stale
+#     claims expire after 3 s (team_runtime._allocate)
+#   * doorway deconfliction — convoy queuing and yielding, scaled to the class's proximity_m
+#   * altitude separation — the advisor lifts the lower-priority vehicle when two converge,
+#     clamped to the 2.2 m ceiling
+#   * comms isolation — CRAZYFLIE.comms is los_required, so interior walls genuinely cut the
+#     link and the runtime has to act on stale beliefs
+#
+# All four start in a shared hall with only two doors out (y = +/-2), so they queue and split,
+# then fan out into four rooms with two targets in each. Nothing assigns a room to a drone.
+#
+# WHY 12x9 m AND NOT AN APARTMENT: avoid_radius_m is 0.8 m for this class, so anything within
+# ~0.9 m of a surface sits inside the vehicle's own repulsion field and cannot be reached. In
+# a 2.4 m-wide room that leaves a reachable core under 1 m across — too tight to place two
+# separated targets. That is a genuine limit of the reactive controller at room scale, not a
+# rendering choice; a domestic-apartment version of this demo needs a smaller
+# interaction_scale_m (see scenarios_indoor/cf_doorway.yaml, which probes exactly that).
+#
+# Lives in scenarios_demo/ so the pinned 8-scenario scorecard baseline stays untouched.
+name: cf_team_search
+environment: indoor
+room: {size: [12.0, 9.0], height: 2.4, wall_thickness: 0.1, ceiling: true}
+team:
+  - {id: cf_0, type: crazyflie, pos: [-4.6, -3.0, 0.9]}
+  - {id: cf_1, type: crazyflie, pos: [-4.6, -1.0, 1.2]}
+  - {id: cf_2, type: crazyflie, pos: [-4.6,  1.0, 1.5]}
+  - {id: cf_3, type: crazyflie, pos: [-4.6,  3.0, 1.1]}
+duration_s: 150
+goal_tol_m: 0.3
+find_radius_m: 0.4
+thresholds: indoor
+sensing: {mode: realistic, impairment: crazyflie_decks}
+mission:
+  type: area_search
+  region: [-5.5, -4.0, 5.5, 4.0]
+  # Two per room. Every target is >= ~1.2 m clear of any surface, so it is actually reachable.
+  targets:
+    - [-1.5,  3.0, 1.0]    # north-west room
+    - [ 0.3,  1.3, 1.0]
+    - [ 4.5,  3.2, 1.0]    # north-east room
+    - [ 2.9,  1.3, 1.0]
+    - [-1.5, -3.0, 1.0]    # south-west room
+    - [ 0.3, -1.3, 1.0]
+    - [ 4.5, -3.2, 1.0]    # south-east room
+    - [ 2.9, -1.3, 1.0]
+obstacles:
+  # hall wall at x=-3.0: two 1.0 m doorways centred on y=-2.0 and y=+2.0
+  - [-3.0, -3.5, 1.2, 0.07, 1.0, 1.2]
+  - [-3.0,  0.0, 1.2, 0.07, 1.5, 1.2]
+  - [-3.0,  3.5, 1.2, 0.07, 1.0, 1.2]
+  # full divider along y=0 on the right — north and south wings are separate
+  - [ 1.5,  0.0, 1.2, 4.5, 0.07, 1.2]
+  # north wing: wall at x=1.5 with a 1.0 m doorway at y=1.8..2.8
+  - [ 1.5,  0.9, 1.2, 0.07, 0.9, 1.2]
+  - [ 1.5,  3.65, 1.2, 0.07, 0.85, 1.2]
+  # south wing: mirrored
+  - [ 1.5, -0.9, 1.2, 0.07, 0.9, 1.2]
+  - [ 1.5, -3.65, 1.2, 0.07, 0.85, 1.2]
+  # furniture
+  - [-4.4,  0.0, 0.4, 0.5, 0.45, 0.4]
+  - [-0.6,  3.4, 0.45, 0.5, 0.4, 0.45]
+  - [-0.6, -3.4, 0.45, 0.5, 0.4, 0.45]
+  - [ 3.6,  2.0, 0.5, 0.45, 0.45, 0.5]
+  - [ 3.6, -2.0, 0.5, 0.45, 0.45, 0.5]
+success:
+  mission_complete: true
+  no_collisions: true
