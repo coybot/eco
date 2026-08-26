@@ -670,10 +670,20 @@ dhcp-range=192.168.4.10,192.168.4.100,255.255.255.0,12h
 
 
 if __name__ == "__main__":
-    # Test
-    logging.basicConfig(level=logging.INFO)
+    import sys
+
     wm = WiFiManager()
+
+    # --passphrase prints the setup passphrase and nothing else, so install.sh can
+    # capture it. Kept behind a flag: the default output is safe to paste into a
+    # terminal share, this line is not.
+    if "--passphrase" in sys.argv:
+        print(wm.get_hotspot_password())
+        sys.exit(0)
+
+    logging.basicConfig(level=logging.INFO)
     print(f"MAC: {wm.get_mac_address()}")
     print(f"Hotspot name: {wm.get_hotspot_name()}")
     print(f"WiFi configured: {wm.is_wifi_configured()}")
+    print("Setup passphrase: run with --passphrase (needs root)")
 

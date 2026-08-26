@@ -22,6 +22,9 @@ mkdir -p "$INSTALL_DIR/logs"
 echo "Copying common files..."
 cp "$COMMON_DIR/daemon.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/drone_sdk.py" "$INSTALL_DIR/"
+# daemon.py imports provisioning at module scope, which reaches wifi_manager
+cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/"
+cp "$COMMON_DIR/wifi_manager.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/motor_test.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/arm_disarm.py" "$INSTALL_DIR/"
 cp -r "$COMMON_DIR/certs" "$INSTALL_DIR/"
@@ -89,6 +92,21 @@ echo "========================================="
 echo "✅ Installation complete!"
 echo "========================================="
 echo ""
+
+# The setup passphrase is generated on-device and is the only way into a drone
+# with no shell access, so print it here: this is the operator's one chance to
+# write it on the airframe before the hotspot needs it.
+HOTSPOT_SSID="$(sudo python3 "$INSTALL_DIR/wifi_manager.py" 2>/dev/null | sed -n 's/^Hotspot name: //p')"
+HOTSPOT_PSK="$(sudo python3 "$INSTALL_DIR/wifi_manager.py" --passphrase 2>/dev/null)"
+if [ -n "$HOTSPOT_SSID" ] && [ -n "$HOTSPOT_PSK" ]; then
+    echo "WiFi setup network - write these on the airframe:"
+    echo "  Network:    $HOTSPOT_SSID"
+    echo "  Passphrase: $HOTSPOT_PSK"
+    echo ""
+    echo "The iOS app asks for both. The passphrase also authorizes setup, and is"
+    echo "regenerated after each successful WiFi configuration."
+    echo ""
+fi
 echo "Next steps:"
 echo "1. Edit config: nano $INSTALL_DIR/config.yaml"
 echo "2. Add certificates to: $INSTALL_DIR/certs/"

@@ -148,7 +148,11 @@ final class DroneSetupService {
     }
     
     /// Send WiFi credentials to the drone
-    func configureWiFi(ssid: String, password: String, userId: String) async throws -> String {
+    ///
+    /// `setupToken` is the drone's hotspot passphrase: the daemon uses the same
+    /// secret for the AP and for authorizing /configure, so joining the network
+    /// is not by itself proof that you are allowed to reconfigure the drone.
+    func configureWiFi(ssid: String, password: String, userId: String, setupToken: String) async throws -> String {
         guard isConnectedToDrone else {
             throw SetupError.notConnectedToDrone
         }
@@ -164,6 +168,7 @@ final class DroneSetupService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(setupToken)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 10
         
         let body: [String: String] = [
@@ -178,6 +183,10 @@ final class DroneSetupService {
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SetupError.credentialsFailed("No response")
+        }
+        
+        guard httpResponse.statusCode != 401 else {
+            throw SetupError.credentialsFailed("The drone rejected the setup passphrase. Check it against the passphrase printed on the drone.")
         }
         
         guard httpResponse.statusCode == 200 else {
