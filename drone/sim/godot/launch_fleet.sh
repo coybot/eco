@@ -9,7 +9,9 @@ SIM_DIR="$(dirname "$SCRIPT_DIR")"
 GODOT_BIN="${GODOT_BIN:-$HOME/godot4}"
 GODOT_PROJECT="${GODOT_PROJECT:-$HOME/eco-sim/godot}"
 CERTS_DIR="${CERTS_DIR:-$HOME/drone-api/certs}"
-IOT_ENDPOINT="${IOT_ENDPOINT:-a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com}"
+# shellcheck source=../secrets_env.sh
+source "$SIM_DIR/secrets_env.sh"
+IOT_ENDPOINT="${IOT_ENDPOINT:-YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com}"
 SOCK="tcp://127.0.0.1:9999"
 
 # --- 1. Kill any existing Godot instance ---

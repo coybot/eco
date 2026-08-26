@@ -25,6 +25,11 @@ import paho.mqtt.client as mqtt
 from engine_client import EngineClient
 from sim_control import run_command
 
+try:  # packaged (eco.drone.sim) in the repo; flat (sim/ on path) when run as a script
+    from .endpoints import iot_endpoint, credentials_endpoint
+except ImportError:
+    from endpoints import iot_endpoint, credentials_endpoint
+
 
 def _make_client(cid):
     try:
@@ -194,9 +199,9 @@ def main():
     ap.add_argument("--certs-dir", default=None,
                     help="required for --control-plane aws; unused for gcs")
     ap.add_argument("--iot-endpoint",
-                    default="a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com")
+                    default=iot_endpoint())
     ap.add_argument("--credentials-endpoint",
-                    default="c25b2ibtm4r28z.credentials.iot.us-west-2.amazonaws.com")
+                    default=credentials_endpoint())
     ap.add_argument("--video-role-alias", default="drone-video-role-alias-dev")
     ap.add_argument("--s3-role-alias", default="drone-s3-access-role-alias-dev")
     ap.add_argument("--images-bucket", default="drone-images-dev-us-west-2-041686205727")

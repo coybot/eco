@@ -39,8 +39,14 @@ class AppClient:
         self.out_dir = os.path.expanduser(out_dir)
         self.api_base = (api_base or os.environ.get("ISHMAEL_API_BASE", "")).rstrip("/")
         self.api_token = api_token or os.environ.get("ISHMAEL_API_TOKEN", "")
-        self.iot_endpoint = iot_endpoint or os.environ.get(
-            "ISHMAEL_IOT_ENDPOINT", "a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com")
+        # Not part of the drone/ wheel, so it reads the environment directly
+        # rather than importing drone.sim.endpoints; sourcing secrets.env sets
+        # IOT_ENDPOINT for both. See secrets.env.example.
+        self.iot_endpoint = (
+            iot_endpoint
+            or os.environ.get("ISHMAEL_IOT_ENDPOINT")
+            or os.environ.get("IOT_ENDPOINT")
+            or "YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com")
         self.certs_dir = os.path.expanduser(
             certs_dir or os.environ.get("ISHMAEL_MOBILE_CERTS", "~/eco-certs"))
         self.conn = None
