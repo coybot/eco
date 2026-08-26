@@ -267,16 +267,16 @@ New drones are set up via a local WiFi hotspot, similar to Amazon Ring devices.
 │     └── Starts HTTP server on 192.168.4.1:80                   │
 │                                                                 │
 │  2. In iOS app, tap "Add Drone" → "Set up new drone"           │
-│     └── App shows instructions to join drone's hotspot         │
-│     └── User goes to iPhone Settings → WiFi                    │
+│     └── App asks for the network + passphrase on the airframe  │
+│     └── Both are printed by the drone installer                │
 │                                                                 │
-│  3. User joins "Astral-<model>-XXXX" (WPA2/WPA3, see below)    │
+│  3. App joins "Astral-<model>-XXXX" (NEHotspotConfiguration)   │
 │     └── iPhone gets IP 192.168.4.x via DHCP from drone         │
 │                                                                 │
 │  4. iOS app detects connection (polls http://192.168.4.1/info) │
 │     └── Shows drone ID from response                           │
 │     └── User enters home WiFi SSID + password                  │
-│     └── App POSTs to http://192.168.4.1/configure              │
+│     └── App POSTs /configure, Bearer <passphrase>              │
 │                                                                 │
 │  5. Drone receives credentials                                 │
 │     └── Stops hotspot                                          │
@@ -315,7 +315,12 @@ New drones are set up via a local WiFi hotspot, similar to Amazon Ring devices.
 - Generated on first boot: `drone-{uuid[:12]}` (e.g., `drone-a1b2c3d4e5f6`)
 - Saved to `/etc/drone-id` (or `~/.drone-id` if not root)
 - Hotspot name derived from model + MAC: `Astral-{model}-{mac[-4:]}` (e.g., `Astral-NVIDIAJetson-F1A2`)
-- Hotspot is WPA2/WPA3; the passphrase is generated once and stored at `/var/lib/astral/hotspot_password` (it doubles as the provisioning Bearer token)
+- Hotspot is WPA2/WPA3; the passphrase is generated once and stored at `/var/lib/astral/hotspot_password`
+- The same passphrase authorizes `POST /configure` as a Bearer token, so joining the network is not by itself
+  permission to reconfigure the drone. The iOS app collects it once and uses it for both.
+- `drone/platforms/{orin,rpi}/install.sh` prints the network name and passphrase when the install finishes —
+  write them on the airframe. A drone with no shell access has no other way to hand them to an operator.
+  Read them again later with `sudo python3 ~/drone-api/wifi_manager.py --passphrase`
 
 ### Testing Provisioning
 

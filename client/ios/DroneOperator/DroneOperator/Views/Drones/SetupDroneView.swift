@@ -10,6 +10,9 @@ struct SetupDroneView: View {
     @State private var currentStep: SetupStep = .intro
     @State private var wifiSSID = ""
     @State private var wifiPassword = ""
+    @State private var hotspotSSID = ""
+    @State private var hotspotPassphrase = ""
+    @State private var showManualJoin = false
     @State private var droneName = ""
     @State private var isProcessing = false
     @State private var error: Error?
@@ -256,58 +259,124 @@ struct SetupDroneView: View {
                         .font(.title2.bold())
                         .foregroundColor(.white)
                     
-                    Text("Open Settings → WiFi and connect to the network starting with \"Astral-\". It is password-protected — use the drone's hotspot passphrase.")
+                    Text("Enter the setup network printed on your drone and this app will join it for you.")
                         .font(.body)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
                 }
             }
             
-            // Instructions card
+            // The drone's AP is WPA2/WPA3 and its passphrase is generated on the
+            // device, so the app cannot discover it - the operator reads it off the
+            // airframe (the installer prints it at the end of setup). The same
+            // secret authorizes /configure, so it is needed even when the phone
+            // joined the network by hand.
             if !setupService.isConnectedToDrone {
-                VStack(alignment: .leading, spacing: 16) {
-                    InstructionRow(number: "1", text: "Open iPhone Settings")
-                    InstructionRow(number: "2", text: "Tap WiFi")
-                    InstructionRow(number: "3", text: "Connect to \"Astral-...\"")
-                    InstructionRow(number: "4", text: "Enter the drone's hotspot passphrase")
-                    InstructionRow(number: "5", text: "Return to this app")
+                VStack(spacing: 20) {
+                    hotspotField
+                    passphraseField
                 }
-                .padding()
-                .background(Color.white.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                
+                primaryButton(isProcessing ? "Joining..." : "Join Drone WiFi",
+                              disabled: hotspotSSID.isEmpty || hotspotPassphrase.isEmpty || isProcessing) {
+                    joinDroneWiFi()
+                }
                 
                 Button {
-                    if let url = URL(string: "App-prefs:WIFI") {
-                        UIApplication.shared.open(url)
-                    }
+                    showManualJoin.toggle()
                 } label: {
-                    HStack {
-                        Image(systemName: "gear")
-                        Text("Open WiFi Settings")
+                    Text(showManualJoin ? "Hide manual steps" : "Join manually instead")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan)
+                }
+                
+                if showManualJoin {
+                    VStack(alignment: .leading, spacing: 16) {
+                        InstructionRow(number: "1", text: "Open iPhone Settings")
+                        InstructionRow(number: "2", text: "Tap WiFi")
+                        InstructionRow(number: "3", text: "Connect to the network above")
+                        InstructionRow(number: "4", text: "Enter the setup passphrase")
+                        InstructionRow(number: "5", text: "Return to this app")
                     }
-                    .foregroundColor(.cyan)
+                    .padding()
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    
+                    Button {
+                        if let url = URL(string: "App-prefs:WIFI") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "gear")
+                            Text("Open WiFi Settings")
+                        }
+                        .foregroundColor(.cyan)
+                    }
+                    
+                    secondaryButton("I'm connected") {
+                        setupService.checkDroneConnection()
+                    }
+                }
+            } else if hotspotPassphrase.isEmpty {
+                VStack(spacing: 20) {
+                    passphraseField
+                    
+                    Text("The drone needs its setup passphrase before it will accept new WiFi credentials.")
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
                 }
             }
             
             Spacer()
             
             if setupService.isConnectedToDrone {
-                primaryButton("Continue") {
+                primaryButton("Continue", disabled: hotspotPassphrase.isEmpty) {
                     currentStep = .enterWiFi
-                }
-            } else {
-                secondaryButton("I'm connected") {
-                    setupService.checkDroneConnection()
                 }
             }
         }
         .onChange(of: setupService.isConnectedToDrone) { _, isConnected in
-            if isConnected {
+            // Do not skip past the passphrase field if the phone was joined by hand.
+            if isConnected && !hotspotPassphrase.isEmpty {
                 // Small delay for UI feedback
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     currentStep = .enterWiFi
                 }
             }
+        }
+    }
+    
+    private var hotspotField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Drone Network (SSID)")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+            
+            TextField("Astral-...", text: $hotspotSSID)
+                .textFieldStyle(.plain)
+                .padding()
+                .background(Color.white.opacity(0.1))
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .autocapitalization(.none)
+                .autocorrectionDisabled()
+        }
+    }
+    
+    private var passphraseField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Setup Passphrase")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+            
+            SecureField("Printed on the drone", text: $hotspotPassphrase)
+                .textFieldStyle(.plain)
+                .padding()
+                .background(Color.white.opacity(0.1))
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
     
@@ -551,7 +620,8 @@ struct SetupDroneView: View {
                 let droneId = try await setupService.configureWiFi(
                     ssid: wifiSSID,
                     password: wifiPassword,
-                    userId: userId
+                    userId: userId,
+                    setupToken: hotspotPassphrase
                 )
                 
                 AppLogger.logSetup("Credentials sent, completing setup", droneId: droneId)
@@ -576,6 +646,31 @@ struct SetupDroneView: View {
                     self.error = error
                     error.logAsUIError(context: "Drone WiFi setup for SSID '\(wifiSSID)'")
                     currentStep = .enterWiFi
+                }
+            }
+        }
+    }
+    
+    private func joinDroneWiFi() {
+        isProcessing = true
+        AppLogger.logSetup("Joining drone access point", droneId: nil)
+        
+        Task {
+            do {
+                try await setupService.joinDroneAccessPoint(
+                    ssid: hotspotSSID,
+                    password: hotspotPassphrase
+                )
+                
+                await MainActor.run {
+                    isProcessing = false
+                    setupService.checkDroneConnection()
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessing = false
+                    self.error = error
+                    error.logAsUIError(context: "Joining drone access point '\(hotspotSSID)'")
                 }
             }
         }
