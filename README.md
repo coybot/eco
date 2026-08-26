@@ -262,16 +262,16 @@ New drones are set up via a local WiFi hotspot, similar to Amazon Ring devices.
 │                                                                 │
 │  1. Power on drone (no WiFi configured)                        │
 │     └── daemon.py checks: is WiFi configured?                  │
-│     └── If NO → start provisioning mode for 5 minutes          │
-│     └── Creates open hotspot: "DroneSetup-XXXX" (last 4 of MAC)│
+│     └── If NO → start provisioning mode for 60 seconds         │
+│     └── Creates WPA2/WPA3 hotspot: "Astral-<model>-XXXX"       │
 │     └── Starts HTTP server on 192.168.4.1:80                   │
 │                                                                 │
 │  2. In iOS app, tap "Add Drone" → "Set up new drone"           │
 │     └── App shows instructions to join drone's hotspot         │
 │     └── User goes to iPhone Settings → WiFi                    │
 │                                                                 │
-│  3. User joins "DroneSetup-XXXX" (open network, no password)   │
-│     └── iPhone gets IP 10.0.0.x via DHCP from drone            │
+│  3. User joins "Astral-<model>-XXXX" (WPA2/WPA3, see below)    │
+│     └── iPhone gets IP 192.168.4.x via DHCP from drone         │
 │                                                                 │
 │  4. iOS app detects connection (polls http://192.168.4.1/info) │
 │     └── Shows drone ID from response                           │
@@ -314,7 +314,8 @@ New drones are set up via a local WiFi hotspot, similar to Amazon Ring devices.
 
 - Generated on first boot: `drone-{uuid[:12]}` (e.g., `drone-a1b2c3d4e5f6`)
 - Saved to `/etc/drone-id` (or `~/.drone-id` if not root)
-- Hotspot name derived from MAC: `DroneSetup-{mac[-4:]}` (e.g., `DroneSetup-F1A2`)
+- Hotspot name derived from model + MAC: `Astral-{model}-{mac[-4:]}` (e.g., `Astral-NVIDIAJetson-F1A2`)
+- Hotspot is WPA2/WPA3; the passphrase is generated once and stored at `/var/lib/astral/hotspot_password` (it doubles as the provisioning Bearer token)
 
 ### Testing Provisioning
 
@@ -720,7 +721,7 @@ sudo /bin/bash -c "$(curl -fsSL https://astral-drone-installer.s3.amazonaws.com/
 
 The drone will:
 1. Auto-provision its IoT certificate
-2. Start a WiFi hotspot (`DroneSetup-XXXX`)
+2. Start a WiFi hotspot (`Astral-<model>-XXXX`, WPA2/WPA3 — passphrase in `/var/lib/astral/hotspot_password`)
 3. Wait for the iOS app to configure WiFi
 
 ### Add new SDK function
