@@ -1,5 +1,13 @@
 # Astral Drone Platform
 
+> **Archive. Active development moved to [presidio-autonomy/eco](https://github.com/presidio-autonomy/eco).**
+>
+> Everything here exists there under the Presidio naming, except two things deliberately kept out
+> of that line: `papers/Counter_UAS_Characterization.*` and `drone/common/config.stack-dev.yaml`
+> (live IoT/Cognito endpoint identifiers — that repo tracks a placeholder `.example` instead).
+> That repository also carries packaging, in-repo docs, runnable examples and sim work that was
+> never backported here. Open new work against presidio-autonomy/eco.
+
 Open source autonomous drone intelligence. Natural language → on-device reasoning → flight.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
