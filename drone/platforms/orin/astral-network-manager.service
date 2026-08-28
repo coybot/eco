@@ -3,11 +3,15 @@ Description=Astral Network Manager (Orin)
 After=network-online.target
 Wants=network-online.target
 
+# __INSTALL_DIR__ is substituted by platforms/orin/install.sh. These units
+# run as root but out of the installing user's home, which only the
+# installer knows -- a literal path here silently crash-loops on any box
+# whose user is not the one it was written for.
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/orin-admin/drone-api
-ExecStart=/home/orin-admin/drone-api/venv/bin/python /home/orin-admin/drone-api/network_manager.py
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/venv/bin/python __INSTALL_DIR__/network_manager.py
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
