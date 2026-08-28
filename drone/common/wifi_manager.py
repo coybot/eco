@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 WPA_SUPPLICANT_CONF = "/etc/wpa_supplicant/wpa_supplicant.conf"
 NETWORK_MANAGER_CONN_DIR = "/etc/NetworkManager/system-connections"
 HOTSPOT_CONNECTION_NAMES = {"DroneHotspot", "Hotspot"}
-HOTSPOT_CONNECTION_PREFIXES = ("DroneSetup",)
+HOTSPOT_CONNECTION_PREFIXES = ("Presidio-", "DroneSetup")
 
 
 class WiFiManager:
@@ -90,21 +90,17 @@ class WiFiManager:
             return self._wpa_has_wifi_connection()
     
     def _nm_has_wifi_connection(self) -> bool:
-        """Check NetworkManager for saved WiFi connections (excluding hotspots)."""
-        result = subprocess.run(
-            ["nmcli", "-t", "-f", "TYPE,NAME", "connection", "show"],
-            capture_output=True, text=True
-        )
-        for line in result.stdout.strip().split("\n"):
-            if line.startswith("802-11-wireless:"):
-                # Extract connection name
-                conn_name = line.split(":", 1)[1] if ":" in line else ""
-                # Skip our hotspot connections
-                if conn_name in ["DroneHotspot", "Hotspot"] or conn_name.startswith("DroneSetup"):
-                    continue
-                logger.info(f"Found WiFi connection: {conn_name}")
-                return True
-        return False
+        """Check NetworkManager for saved WiFi connections (excluding hotspots).
+
+        Delegates to _nm_list_wifi_connections rather than repeating the scan and
+        the hotspot filter: the duplicate copy here drifted, missing the
+        HOTSPOT_CONNECTION_PREFIXES entry for our own AP name, so a leftover
+        hotspot profile read as real WiFi and suppressed provisioning for good.
+        """
+        names = self._nm_list_wifi_connections()
+        if names:
+            logger.info(f"Found WiFi connection: {names[0]}")
+        return bool(names)
     
     def _wpa_has_wifi_connection(self) -> bool:
         """Check wpa_supplicant.conf for saved networks."""

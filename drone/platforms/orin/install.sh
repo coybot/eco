@@ -444,16 +444,22 @@ EOF
 
 # Create network manager service (if template exists)
 if [ -f "$DRONE_DIR/platforms/orin/presidio-network-manager.service" ]; then
-    sudo tee "/etc/systemd/system/presidio-network-manager.service" > /dev/null <<EOF
-$(cat "$DRONE_DIR/platforms/orin/presidio-network-manager.service")
-EOF
+    # Substitute, do not cat: the template's __INSTALL_DIR__ has to become
+    # this user's install dir. A heredoc around $(cat ...) does not re-expand
+    # the file's own contents, which is how the old literal path survived.
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+        "$DRONE_DIR/platforms/orin/presidio-network-manager.service" \
+        | sudo tee "/etc/systemd/system/presidio-network-manager.service" > /dev/null
 fi
 
 # Create local control API service (if template exists)
 if [ -f "$DRONE_DIR/platforms/orin/presidio-local-control.service" ]; then
-    sudo tee "/etc/systemd/system/presidio-local-control.service" > /dev/null <<EOF
-$(cat "$DRONE_DIR/platforms/orin/presidio-local-control.service")
-EOF
+    # Substitute, do not cat: the template's __INSTALL_DIR__ has to become
+    # this user's install dir. A heredoc around $(cat ...) does not re-expand
+    # the file's own contents, which is how the old literal path survived.
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+        "$DRONE_DIR/platforms/orin/presidio-local-control.service" \
+        | sudo tee "/etc/systemd/system/presidio-local-control.service" > /dev/null
 fi
 
 # Reload systemd
