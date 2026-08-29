@@ -281,6 +281,12 @@ class VLMService:
         self._backend = "openai" if self._base_url else "llama"
         self._model = os.environ.get("VLM_MODEL", "")
         self._api_key = os.environ.get("VLM_API_KEY")
+        # Qwen3-generation models reason before answering. At decide()'s 500-token
+        # budget the reasoning alone can consume the whole completion, returning
+        # empty content and stalling the mission ("VLM produced no usable output").
+        # Set to "none" against Ollama to suppress it. Only sent when set, so
+        # endpoints that reject the field are unaffected.
+        self._reasoning_effort = os.environ.get("VLM_REASONING_EFFORT")
 
         self._llm = None
         self._available = False
@@ -310,12 +316,15 @@ class VLMService:
         shape create_chat_completion gives, so decide()'s parsing is unchanged.
         `logit_bias` (a llama.cpp EOS workaround) is dropped — not portable."""
         import urllib.request
-        body = json.dumps({
+        payload = {
             "model": self._model,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
-        }).encode()
+        }
+        if self._reasoning_effort:
+            payload["reasoning_effort"] = self._reasoning_effort
+        body = json.dumps(payload).encode()
         req = urllib.request.Request(self._base_url + "/chat/completions",
                                      data=body,
                                      headers={"Content-Type": "application/json"})
