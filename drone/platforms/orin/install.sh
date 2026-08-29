@@ -192,7 +192,8 @@ mkdir -p "$INSTALL_DIR/certs"
 # Copy common files
 echo "Copying common files..."
 cp "$COMMON_DIR/daemon.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/" 2>/dev/null || true
+cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/"
+cp "$COMMON_DIR/command_id.py" "$INSTALL_DIR/" 2>/dev/null || true
 cp "$COMMON_DIR/wifi_manager.py" "$INSTALL_DIR/" 2>/dev/null || true
 cp "$COMMON_DIR/factory_reset.py" "$INSTALL_DIR/" 2>/dev/null || true
 cp "$COMMON_DIR/fleet_provisioning.py" "$INSTALL_DIR/" 2>/dev/null || true

@@ -33,6 +33,7 @@ from awscrt import io, mqtt
 from awsiot import mqtt_connection_builder
 
 from provisioning import ProvisioningService, get_or_create_drone_id
+from command_id import compute_command_id
 
 # Load configuration (may not exist on first boot)
 config_path = DRONE_DIR / 'config.yaml'
@@ -1001,10 +1002,7 @@ def on_chat_command(topic, payload, **kwargs):
         data = json.loads(payload)
         
         # Deduplicate commands - MQTT QoS 1 can redeliver messages
-        import hashlib
-        conversation_id = data.get('conversation_id', '')
-        code = data.get('code', '')
-        message_id = data.get('message_id') or hashlib.md5(f"{conversation_id}:{code}".encode()).hexdigest()
+        message_id = compute_command_id(data)
         
         with _command_dedup_lock:
             if message_id in _recent_command_ids:
