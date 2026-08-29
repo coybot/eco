@@ -43,9 +43,11 @@ if config_path.exists():
 else:
     config = {}
 
-# Drone ID - always use provisioning system's ID (authoritative source)
-# config.yaml is just for persistence, not override
-DRONE_ID = get_or_create_drone_id()
+# Drone ID - config.yaml's drone_id pins it, otherwise the persisted one is
+# reused, otherwise a new one is generated and stored. config.yaml.example,
+# drone/README.md and docs/VIDEO_STREAMING.md all document drone_id as settable,
+# and it used to be silently ignored here.
+DRONE_ID = get_or_create_drone_id(config.get('drone_id'))
 IOT_ENDPOINT = config.get('iot_endpoint')
 LOG_LEVEL = config.get('log_level', 'INFO')
 
