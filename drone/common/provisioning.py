@@ -28,31 +28,80 @@ logger = logging.getLogger(__name__)
 PROVISIONING_TIMEOUT = 300  # 5 minutes
 PROVISIONING_PORT = 80
 DRONE_ID_FILE = "/etc/drone-id"
+# Used when /etc is not writable, which is the normal case: drone-api runs as the
+# install user, not root. Kept as a module constant so it can be pointed elsewhere
+# in tests.
+DRONE_ID_FALLBACK_FILE = Path(__file__).parent / ".drone-id"
 
 # Setup token is derived from the hotspot password for authentication
 _setup_token: Optional[str] = None
 
 
-def get_or_create_drone_id() -> str:
-    """Get existing drone ID or generate a new one."""
-    if os.path.exists(DRONE_ID_FILE):
-        with open(DRONE_ID_FILE, 'r') as f:
-            return f.read().strip()
-    
-    # Generate new ID from UUID
-    drone_id = f"drone-{uuid.uuid4().hex[:12]}"
-    
-    # Try to save it (may fail if not root)
+def _read_drone_id(path) -> Optional[str]:
+    """Read a stored drone ID, treating an empty or unreadable file as absent.
+
+    An empty file previously yielded "" and was returned as the drone's identity,
+    which would have it publish to drone//... topics.
+    """
     try:
-        with open(DRONE_ID_FILE, 'w') as f:
-            f.write(drone_id)
-    except PermissionError:
-        # Save to local config instead
-        local_path = Path(__file__).parent / ".drone-id"
-        with open(local_path, 'w') as f:
-            f.write(drone_id)
-    
-    logger.info(f"Generated new drone ID: {drone_id}")
+        value = Path(path).read_text().strip()
+    except OSError:
+        return None
+    return value or None
+
+
+def get_or_create_drone_id(configured_id: Optional[str] = None) -> str:
+    """Resolve this drone's stable identity.
+
+    In order: config.yaml's drone_id, /etc/drone-id, the fallback file, then a
+    freshly generated one which is persisted to the first writable location.
+
+    The identity has to survive restarts. It is what the app registers, what the
+    IoT Thing is named, and what every MQTT topic embeds, so a drone that picks a
+    new ID on each boot orphans its registration every time and cannot be
+    controlled from the app at all.
+
+    That is what used to happen. The fallback file was written when /etc was not
+    writable -- the normal case, since the service does not run as root -- but
+    nothing ever read it back, so every restart minted a new ID.
+    """
+    if configured_id is not None:
+        configured_id = str(configured_id).strip()
+    if configured_id:
+        stored = _read_drone_id(DRONE_ID_FILE) or _read_drone_id(DRONE_ID_FALLBACK_FILE)
+        if stored and stored != configured_id:
+            # Worth shouting about: config.yaml gets copied between drones far more
+            # readily than /etc/drone-id does, and two aircraft sharing an ID share
+            # a command topic.
+            logger.warning(
+                "config.yaml drone_id %s overrides the ID stored on this device (%s). "
+                "If this config was copied from another drone, both will answer on the "
+                "same command topic.", configured_id, stored)
+        else:
+            logger.info("Drone ID %s (from config.yaml)", configured_id)
+        return configured_id
+
+    for path in (DRONE_ID_FILE, DRONE_ID_FALLBACK_FILE):
+        existing = _read_drone_id(path)
+        if existing:
+            logger.info("Drone ID %s (from %s)", existing, path)
+            return existing
+
+    drone_id = f"drone-{uuid.uuid4().hex[:12]}"
+    for path in (DRONE_ID_FILE, DRONE_ID_FALLBACK_FILE):
+        try:
+            Path(path).write_text(drone_id + "\n")
+            logger.info("Generated new drone ID %s, stored at %s", drone_id, path)
+            return drone_id
+        except OSError as exc:
+            logger.debug("Could not store drone ID at %s: %s", path, exc)
+
+    # Nowhere to persist it: say so loudly rather than churning silently, which is
+    # how this went unnoticed before.
+    logger.error(
+        "Generated drone ID %s but could not persist it to %s or %s. It will change "
+        "on the next restart and any registration made with it will be orphaned.",
+        drone_id, DRONE_ID_FILE, DRONE_ID_FALLBACK_FILE)
     return drone_id
 
 
