@@ -47,11 +47,20 @@ def test_etc_wins_over_the_fallback(id_files):
     assert provisioning.get_or_create_drone_id() == "drone-fromtheetcfile"
 
 
-def test_config_pins_the_id(id_files):
+def test_config_seeds_a_device_with_no_stored_id(id_files):
     """config.yaml's drone_id is documented in three places and used to be ignored."""
-    etc, _ = id_files
-    etc.write_text("drone-persisted\n")
     assert provisioning.get_or_create_drone_id("drone-pinned") == "drone-pinned"
+
+
+def test_a_stored_id_beats_config(id_files, caplog):
+    """check_provisioning writes drone_id into config.yaml itself, so a value
+    there may be a stale record of an earlier boot rather than a deliberate pin.
+    Letting it win would silently re-identify a working drone."""
+    etc, _ = id_files
+    etc.write_text("drone-thisdevice\n")
+    with caplog.at_level("WARNING"):
+        assert provisioning.get_or_create_drone_id("drone-stalefromconfig") == "drone-thisdevice"
+    assert any("ignored" in r.getMessage() for r in caplog.records)
 
 
 def test_blank_config_value_does_not_win(id_files):
@@ -60,15 +69,6 @@ def test_blank_config_value_does_not_win(id_files):
     etc.write_text("drone-persisted\n")
     for empty in ("", "   ", None):
         assert provisioning.get_or_create_drone_id(empty) == "drone-persisted"
-
-
-def test_config_override_of_a_different_stored_id_is_warned(id_files, caplog):
-    """A config copied from another drone puts two aircraft on one command topic."""
-    etc, _ = id_files
-    etc.write_text("drone-thisdevice\n")
-    with caplog.at_level("WARNING"):
-        provisioning.get_or_create_drone_id("drone-otherdevice")
-    assert any("same command topic" in r.getMessage() for r in caplog.records)
 
 
 def test_an_empty_id_file_is_not_an_identity(id_files):
