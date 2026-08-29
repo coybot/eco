@@ -192,7 +192,10 @@ mkdir -p "$INSTALL_DIR/certs"
 # Copy common files
 echo "Copying common files..."
 cp "$COMMON_DIR/daemon.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/" 2>/dev/null || true
+# daemon.py imports both of these at module scope, so a silent miss here is a
+# crash on boot, not a degraded feature - no "|| true" on these two.
+cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/"
+cp "$COMMON_DIR/command_id.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/wifi_manager.py" "$INSTALL_DIR/" 2>/dev/null || true
 cp "$COMMON_DIR/factory_reset.py" "$INSTALL_DIR/" 2>/dev/null || true
 cp "$COMMON_DIR/fleet_provisioning.py" "$INSTALL_DIR/" 2>/dev/null || true

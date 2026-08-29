@@ -712,7 +712,23 @@ def generate_code(instruction, conversation_id, drone_id=None, vehicle_type=None
 
 
 def publish_to_drone(drone_id, conversation_id, payload):
-    """Send command to drone via IoT Core."""
+    """Send command to drone via IoT Core.
+
+    Stamps a message_id unless the caller set one. The drone dedups on this
+    field and only falls back to hashing the payload when it is absent - and
+    that fallback used to key on conversation_id + code, so two code-less
+    commands in one conversation (action=mission, action=set_goal) hashed
+    identically and the second was dropped as a redelivery. Giving every
+    command its own id removes the ambiguity at the source.
+
+    Safe against MQTT QoS 1 redelivery: the broker replays these exact bytes,
+    id included, so a replay still dedups. These handlers are invoked
+    synchronously by API Gateway, which Lambda does not auto-retry, so one
+    user action stays one id.
+    """
+    payload = dict(payload)
+    payload.setdefault('message_id', str(uuid.uuid4()))
+
     topic = f'drone/{drone_id}/chat/{conversation_id}/command'
     print(f"📤 Publishing to drone topic: {topic}")
     print(f"📤 Payload: {json.dumps(payload)[:500]}")

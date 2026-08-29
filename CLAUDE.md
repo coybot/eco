@@ -54,6 +54,7 @@ sshpass -p "$DRONE_SSH_PASSWORD" scp \
   -o StrictHostKeyChecking=accept-new \
   eco/drone/common/daemon.py \
   eco/drone/common/drone_sdk.py \
+  eco/drone/common/command_id.py \
   "$DRONE":~/drone-api/
 
 sshpass -p "$DRONE_SSH_PASSWORD" ssh \
@@ -62,6 +63,12 @@ sshpass -p "$DRONE_SSH_PASSWORD" ssh \
   -o StrictHostKeyChecking=accept-new \
   "$DRONE" 'sudo systemctl restart drone-api'
 ```
+
+**Copy every module the changed file imports, not just the changed file.** `daemon.py`
+imports `provisioning`, `wifi_manager` and `command_id` at module scope, so shipping
+`daemon.py` alone after adding an import crashes the service on restart with an
+`ImportError` that looks nothing like the change you made. If in doubt, copy all of
+`drone/common/*.py`.
 
 See the root `CLAUDE.md` for the full SSH options (password-only, `StrictHostKeyChecking`).
 
