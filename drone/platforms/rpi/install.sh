@@ -24,6 +24,7 @@ cp "$COMMON_DIR/daemon.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/drone_sdk.py" "$INSTALL_DIR/"
 # daemon.py imports provisioning at module scope, which reaches wifi_manager
 cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/"
+cp "$COMMON_DIR/command_id.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/wifi_manager.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/motor_test.py" "$INSTALL_DIR/"
 cp "$COMMON_DIR/arm_disarm.py" "$INSTALL_DIR/"
