@@ -53,8 +53,15 @@ def _read_drone_id(path) -> Optional[str]:
 def get_or_create_drone_id(configured_id: Optional[str] = None) -> str:
     """Resolve this drone's stable identity.
 
-    In order: config.yaml's drone_id, /etc/drone-id, the fallback file, then a
+    In order: /etc/drone-id, the fallback file, config.yaml's drone_id, then a
     freshly generated one which is persisted to the first writable location.
+
+    config.yaml is deliberately last. daemon.check_provisioning() writes
+    drone_id into config.yaml itself after provisioning, so the key is a record
+    of what the ID was, not necessarily an operator's choice - letting it win
+    would resurrect a stale ID from an earlier boot and silently change the
+    identity of a working drone. It still seeds a fresh device, which is when
+    pinning is actually useful.
 
     The identity has to survive restarts. It is what the app registers, what the
     IoT Thing is named, and what every MQTT topic embeds, so a drone that picks a
@@ -67,25 +74,23 @@ def get_or_create_drone_id(configured_id: Optional[str] = None) -> str:
     """
     if configured_id is not None:
         configured_id = str(configured_id).strip()
-    if configured_id:
-        stored = _read_drone_id(DRONE_ID_FILE) or _read_drone_id(DRONE_ID_FALLBACK_FILE)
-        if stored and stored != configured_id:
-            # Worth shouting about: config.yaml gets copied between drones far more
-            # readily than /etc/drone-id does, and two aircraft sharing an ID share
-            # a command topic.
-            logger.warning(
-                "config.yaml drone_id %s overrides the ID stored on this device (%s). "
-                "If this config was copied from another drone, both will answer on the "
-                "same command topic.", configured_id, stored)
-        else:
-            logger.info("Drone ID %s (from config.yaml)", configured_id)
-        return configured_id
 
     for path in (DRONE_ID_FILE, DRONE_ID_FALLBACK_FILE):
         existing = _read_drone_id(path)
         if existing:
+            if configured_id and configured_id != existing:
+                # Say so rather than silently ignoring the operator: a stale
+                # auto-written value looks identical to a deliberate pin.
+                logger.warning(
+                    "config.yaml drone_id %s ignored; this device is %s (from %s). "
+                    "Remove %s to adopt the configured ID.",
+                    configured_id, existing, path, path)
             logger.info("Drone ID %s (from %s)", existing, path)
             return existing
+
+    if configured_id:
+        logger.info("Drone ID %s (from config.yaml)", configured_id)
+        return configured_id
 
     drone_id = f"drone-{uuid.uuid4().hex[:12]}"
     for path in (DRONE_ID_FILE, DRONE_ID_FALLBACK_FILE):

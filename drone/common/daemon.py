@@ -43,10 +43,9 @@ if config_path.exists():
 else:
     config = {}
 
-# Drone ID - config.yaml's drone_id pins it, otherwise the persisted one is
-# reused, otherwise a new one is generated and stored. config.yaml.example,
-# drone/README.md and docs/VIDEO_STREAMING.md all document drone_id as settable,
-# and it used to be silently ignored here.
+# Drone ID - the ID stored on the device wins, then config.yaml's drone_id (which
+# only seeds a device that has none, because check_provisioning writes that key
+# itself and it is therefore a record rather than a choice), then a fresh one.
 DRONE_ID = get_or_create_drone_id(config.get('drone_id'))
 IOT_ENDPOINT = config.get('iot_endpoint')
 LOG_LEVEL = config.get('log_level', 'INFO')
@@ -1394,7 +1393,12 @@ def check_provisioning():
                 config['user_id'] = result.user_id
                 with open(config_path, 'w') as f:
                     yaml.dump(config, f)
-            logger.info(f"Saved drone_id={DRONE_ID} to config.yaml")
+                logger.info(f"Saved drone_id={DRONE_ID} to config.yaml")
+            else:
+                # The dump above is what persists it; without a user_id nothing
+                # was written, and claiming otherwise sent us looking in the
+                # wrong place for where a stale drone_id came from.
+                logger.info("No user_id from provisioning; config.yaml not updated")
             return True
         else:
             logger.warning(f"Provisioning failed: {result.error}")
