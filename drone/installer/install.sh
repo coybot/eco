@@ -43,6 +43,21 @@ echo -e "${CYAN}Cleaning up old installation...${NC}"
 systemctl stop drone-api 2>/dev/null || true
 systemctl disable drone-api 2>/dev/null || true
 rm -f /etc/systemd/system/drone-api.service
+# Keep logs across reboots. Without /var/log/journal, journald stores to /run and
+# every power-off erases the flight logs.
+mkdir -p /var/log/journal
+sed -i "s/^#\?Storage=.*/Storage=persistent/; s/^#\?SystemMaxUse=.*/SystemMaxUse=500M/" /etc/systemd/journald.conf
+systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true
+systemctl restart systemd-journald
+
+# time-sync.target is only reached if something provides it. Wants= does not
+# install or enable an NTP client, so make sure one is actually running -
+# otherwise the ordering above is satisfied by nothing and the clock stays wrong.
+if ! timedatectl show -p NTP --value 2>/dev/null | grep -q yes; then
+    systemctl enable --now systemd-timesyncd 2>/dev/null || true
+    timedatectl set-ntp true 2>/dev/null || true
+fi
+
 systemctl daemon-reload 2>/dev/null || true
 sleep 1
 rm -rf "$INSTALL_DIR"
@@ -139,7 +154,9 @@ echo -e "${CYAN}Installing systemd service...${NC}"
 cat > /etc/systemd/system/drone-api.service <<EOF
 [Unit]
 Description=Drone API Daemon
-After=network-online.target
+# time-sync too: no RTC on these boards, so the clock reads 1970 until NTP
+# lands and mTLS to AWS IoT fails against a wrong clock.
+After=network-online.target time-sync.target
 Wants=network-online.target
 
 [Service]
