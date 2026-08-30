@@ -115,7 +115,8 @@ def start(cfg: GCSConfig) -> GCSHandle:
     dynamodb = local_aws.LocalDynamo(cfg.data_dir / "dynamo.sqlite3", schemas=schemas)
     iot = local_aws.LocalIoTData(mqtt, cfg.data_dir / "shadows")
     s3 = local_aws.LocalS3(
-        base_url=f"http://{cfg.http.host if cfg.http.host != '0.0.0.0' else '127.0.0.1'}:{cfg.http.port}",
+        base_url=cfg.http.public_base_url or
+                 f"http://{cfg.http.host if cfg.http.host != '0.0.0.0' else '127.0.0.1'}:{cfg.http.port}",
         images_dir=cfg.data_dir / "images",
         sign_fn=signer.sign,
     )
