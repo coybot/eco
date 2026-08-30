@@ -191,21 +191,12 @@ mkdir -p "$INSTALL_DIR/certs"
 
 # Copy common files
 echo "Copying common files..."
-cp "$COMMON_DIR/daemon.py" "$INSTALL_DIR/"
-# daemon.py imports both of these at module scope, so a silent miss here is a
-# crash on boot, not a degraded feature - no "|| true" on these two.
-cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/command_id.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/wifi_manager.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/factory_reset.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/fleet_provisioning.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/network_manager.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/local_control_api.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/mission_runner.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/drone_sdk.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/motor_test.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/arm_disarm.py" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$COMMON_DIR/video_producer.py" "$INSTALL_DIR/" 2>/dev/null || true
+# Copy every module, not a hand-maintained list. The list drifted: nine modules
+# that daemon.py and reasoning_loop.py import at module scope were never
+# installed, so on a real drone the mission path died at dispatch with
+# ModuleNotFoundError and the app just showed the mission stuck in progress.
+# All of drone/common is 772K; there is nothing to be saved by picking.
+cp "$COMMON_DIR"/*.py "$INSTALL_DIR/"
 
 # Track A local prompt pipeline (SSH / run_prompt.py — same tree as cloud daemon)
 echo "Copying Track A / local prompt modules..."
@@ -220,13 +211,9 @@ fi
 
 # Copy mission autonomy modules
 echo "Copying mission autonomy modules..."
-cp "$COMMON_DIR/perception.py" "$INSTALL_DIR/" 2>/dev/null || echo "  perception.py not found (optional)"
-cp "$COMMON_DIR/reasoning_loop.py" "$INSTALL_DIR/" 2>/dev/null || echo "  reasoning_loop.py not found (optional)"
 
 # Copy VLM and Nav2 bridge (mission autonomy on Nano and AGX)
 echo "Copying VLM and Nav2 modules (mission autonomy)..."
-cp "$COMMON_DIR/vlm.py" "$INSTALL_DIR/" 2>/dev/null || echo "  vlm.py not found (optional)"
-cp "$COMMON_DIR/nav2_bridge.py" "$INSTALL_DIR/" 2>/dev/null || echo "  nav2_bridge.py not found (optional)"
 
 # Copy models setup script
 cp "$MODELS_DIR/setup_models.py" "$INSTALL_DIR/models/" 2>/dev/null || true
