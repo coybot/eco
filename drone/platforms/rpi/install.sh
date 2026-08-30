@@ -20,14 +20,12 @@ mkdir -p "$INSTALL_DIR/logs"
 
 # Copy common files
 echo "Copying common files..."
-cp "$COMMON_DIR/daemon.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/drone_sdk.py" "$INSTALL_DIR/"
-# daemon.py imports provisioning at module scope, which reaches wifi_manager
-cp "$COMMON_DIR/provisioning.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/command_id.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/wifi_manager.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/motor_test.py" "$INSTALL_DIR/"
-cp "$COMMON_DIR/arm_disarm.py" "$INSTALL_DIR/"
+# Copy every module, not a hand-maintained list. The list drifted: nine modules
+# that daemon.py and reasoning_loop.py import at module scope were never
+# installed, so on a real drone the mission path died at dispatch with
+# ModuleNotFoundError and the app just showed the mission stuck in progress.
+# All of drone/common is 772K; there is nothing to be saved by picking.
+cp "$COMMON_DIR"/*.py "$INSTALL_DIR/"
 cp -r "$COMMON_DIR/certs" "$INSTALL_DIR/"
 
 # Copy or create config
