@@ -12,6 +12,11 @@ data_dir: ~/gcs-data
 http:
   host: 0.0.0.0     # apps on the LAN connect here
   port: 8080
+  # Address other machines use to reach this server, e.g. http://10.0.0.5:8080.
+  # Bound to 0.0.0.0 the server can't infer its own address, so presigned image
+  # URLs fall back to 127.0.0.1 - which a drone on another host resolves to
+  # itself, and its photo upload is refused. Required for remote drones/apps.
+  public_base_url: null
 
 mqtt:
   host: 127.0.0.1   # the mosquitto broker the GCS itself connects to
