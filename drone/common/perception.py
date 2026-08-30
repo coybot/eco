@@ -6,6 +6,11 @@ with fallback to ONNX Runtime for development machines.
 
 Works with either OAK-D or RealSense cameras via the camera abstraction.
 """
+# Signatures below use builtin generics (list[Detection]). Python 3.8 evaluates
+# annotations eagerly and raises "'type' object is not subscriptable" on import,
+# which takes down the whole mission path via reasoning_loop. Keep this until
+# every drone image is on 3.9+.
+from __future__ import annotations
 
 import sys
 import time
