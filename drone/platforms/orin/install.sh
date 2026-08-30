@@ -457,6 +457,13 @@ if [ -f "$DRONE_DIR/platforms/orin/presidio-local-control.service" ]; then
 fi
 
 # Reload systemd
+# time-sync.target is only reached if something provides it. Wants= does not
+# install or enable an NTP client, so make sure one is actually running.
+if ! timedatectl show -p NTP --value 2>/dev/null | grep -q yes; then
+    sudo systemctl enable --now systemd-timesyncd 2>/dev/null || true
+    sudo timedatectl set-ntp true 2>/dev/null || true
+fi
+
 # Keep logs across reboots. Without /var/log/journal, journald stores to /run
 # and every power-off erases the flight logs - on a vehicle that is the only
 # record of what it just did, and drones get power-cycled constantly.

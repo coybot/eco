@@ -1606,6 +1606,24 @@ def response_handler(event, context):
     
     print(f"📋 Processing: drone={drone_id}, conv={conversation_id}, images={len(image_urls)}, follow_up={follow_up}")
     print(f"📋 Result: success={result.get('success')}, stdout={result.get('stdout', '')[:200]}")
+
+    # Report the failure before anything else, including the history read. This is
+    # what tells the operator why the aircraft did not do what they asked, so it
+    # should not be able to fail because a DynamoDB read was slow.
+    #
+    # It also has to come before the image branches: those fire on image_urls
+    # alone, and a failed mission still carries result.photos - so a mission that
+    # failed after taking a picture used to be described to the operator as a
+    # photo, with the reason dropped entirely. Failure wins; images ride along.
+    if result and not result.get('success', False):
+        msg = f"There was an issue: {failure_message(result)}"
+        content_type = 'image' if image_urls else 'text'
+        save_message(conversation_id, drone_id, 'drone', content_type, msg,
+                     image_urls=image_urls if image_urls else None)
+        publish_to_app(drone_id, conversation_id, content_type, msg,
+                       image_urls=image_urls if image_urls else None)
+        print(f"✅ Failure reported to app: {msg[:120]}")
+        return
     
     # Get conversation history
     history = get_conversation_history(drone_id, conversation_id)

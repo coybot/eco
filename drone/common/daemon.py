@@ -1035,7 +1035,7 @@ def on_chat_command(topic, payload, **kwargs):
             # different altitude than the operator typed cannot be told apart from
             # a planner that asked for the wrong altitude in the first place.
             for _i, _phase in enumerate(phases, 1):
-                logger.info(f"  phase {_i}/{len(phases)}: {json.dumps(_phase, default=str)[:400]}")
+                logger.info(f"  phase {_i}/{len(phases)}: {json.dumps(_phase, default=str)[:2000]}")
             
             # Run mission execution in a separate thread to not block MQTT
             def execute_mission_async():
@@ -1097,12 +1097,6 @@ def on_chat_command(topic, payload, **kwargs):
                         'timestamp': datetime.now(timezone.utc).isoformat()
                     }
                     
-                    response_topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
-                    _mqtt_connection.publish(
-                        topic=response_topic,
-                        payload=json.dumps(response_payload),
-                        qos=mqtt.QoS.AT_MOST_ONCE
-                    )
                     logger.info(
                         f"Mission completed: {result.success} "
                         f"({result.phases_completed}/{result.total_phases} phases)"
@@ -1118,6 +1112,13 @@ def on_chat_command(topic, payload, **kwargs):
                             f"actions_taken={result.actions_taken}, "
                             f"duration={result.duration_seconds:.1f}s)"
                         )
+
+                    response_topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
+                    _mqtt_connection.publish(
+                        topic=response_topic,
+                        payload=json.dumps(response_payload),
+                        qos=mqtt.QoS.AT_MOST_ONCE
+                    )
                     
                 except Exception as e:
                     import traceback
