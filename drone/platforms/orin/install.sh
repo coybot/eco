@@ -416,8 +416,12 @@ SERVICE_FILE="/etc/systemd/system/drone-api.service"
 sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=Drone API Daemon
-After=network-online.target
-Wants=network-online.target
+# time-sync as well as network: these boards have no RTC, so the clock reads
+# 1970 until NTP lands. mTLS to AWS IoT fails against a wrong clock
+# (AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE), the daemon exits 1, and systemd
+# restarts it - so every single boot logged a crash before connecting.
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 
 [Service]
 Type=simple
@@ -453,6 +457,14 @@ if [ -f "$DRONE_DIR/platforms/orin/presidio-local-control.service" ]; then
 fi
 
 # Reload systemd
+# Keep logs across reboots. Without /var/log/journal, journald stores to /run
+# and every power-off erases the flight logs - on a vehicle that is the only
+# record of what it just did, and drones get power-cycled constantly.
+sudo mkdir -p /var/log/journal
+sudo sed -i "s/^#\?Storage=.*/Storage=persistent/; s/^#\?SystemMaxUse=.*/SystemMaxUse=500M/" /etc/systemd/journald.conf
+sudo systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true
+sudo systemctl restart systemd-journald
+
 sudo systemctl daemon-reload
 
 # =========================================

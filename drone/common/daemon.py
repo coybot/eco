@@ -1030,6 +1030,12 @@ def on_chat_command(topic, payload, **kwargs):
             mission_id = data.get('mission_id', 'unknown')
             phases = data.get('phases', [])
             logger.info(f"Received mission {mission_id} with {len(phases)} phases")
+            # Log the phases as dispatched. Without this there is no record of what
+            # the planner actually asked for, so an aircraft that flies to a
+            # different altitude than the operator typed cannot be told apart from
+            # a planner that asked for the wrong altitude in the first place.
+            for _i, _phase in enumerate(phases, 1):
+                logger.info(f"  phase {_i}/{len(phases)}: {json.dumps(_phase, default=str)[:400]}")
             
             # Run mission execution in a separate thread to not block MQTT
             def execute_mission_async():
@@ -1097,7 +1103,21 @@ def on_chat_command(topic, payload, **kwargs):
                         payload=json.dumps(response_payload),
                         qos=mqtt.QoS.AT_MOST_ONCE
                     )
-                    logger.info(f"Mission completed: {result.success} ({result.phases_completed}/{result.total_phases} phases)")
+                    logger.info(
+                        f"Mission completed: {result.success} "
+                        f"({result.phases_completed}/{result.total_phases} phases)"
+                    )
+                    if not result.success:
+                        # MissionResult has carried failure_reason all along and
+                        # nothing logged it, so every failure read as an anonymous
+                        # "0/N phases" here and "Unknown error" in the app.
+                        logger.error(
+                            f"Mission {mission_id} failed: "
+                            f"{result.failure_reason or 'no reason recorded'} "
+                            f"(summary: {result.summary}, "
+                            f"actions_taken={result.actions_taken}, "
+                            f"duration={result.duration_seconds:.1f}s)"
+                        )
                     
                 except Exception as e:
                     import traceback
