@@ -56,7 +56,7 @@ cd "$INSTALL_DIR"
 
 # Download scripts
 echo -e "${CYAN}Downloading drone software...${NC}"
-for script in daemon.py drone_sdk.py provisioning.py wifi_manager.py factory_reset.py motor_test.py arm_disarm.py fleet_provisioning.py video_producer.py; do
+for script in daemon.py drone_sdk.py provisioning.py wifi_manager.py factory_reset.py motor_test.py arm_disarm.py fleet_provisioning.py video_producer.py perception.py reasoning_loop.py backends.py vehicle_class.py mission_vocab.py search_patterns.py situation.py spatial_memory.py data_recorder.py; do
     echo "  → $script"
     curl -fsSL "$S3_BASE/scripts/$script" -o "$script"
 done
@@ -117,6 +117,16 @@ else
         pip install -q -r requirements.txt
     }
 fi
+
+# Verify the flat install contains the complete mission import path before the
+# service is started. The camera package is checked separately because it is
+# imported lazily by PerceptionService and would otherwise evade this import.
+echo -e "${CYAN}Verifying mission installation...${NC}"
+for script in perception.py reasoning_loop.py backends.py vehicle_class.py mission_vocab.py search_patterns.py situation.py spatial_memory.py data_recorder.py; do
+    test -f "$INSTALL_DIR/$script"
+done
+test -f "$INSTALL_DIR/camera/__init__.py"
+python3 -c "import perception, reasoning_loop; print('  Mission imports OK')"
 
 # Run fleet provisioning to get unique certificate
 echo -e "${CYAN}Running fleet provisioning...${NC}"
@@ -190,4 +200,3 @@ echo -e "  ${YELLOW}sudo systemctl status drone-api${NC}  - Check status"
 echo -e "  ${YELLOW}sudo journalctl -u drone-api -f${NC}  - View logs"
 echo -e "  ${YELLOW}cat $INSTALL_DIR/logs/drone.log${NC}  - View drone log"
 echo ""
-

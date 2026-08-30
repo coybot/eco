@@ -209,7 +209,7 @@ cp "$COMMON_DIR/video_producer.py" "$INSTALL_DIR/" 2>/dev/null || true
 
 # Track A local prompt pipeline (SSH / run_prompt.py — same tree as cloud daemon)
 echo "Copying Track A / local prompt modules..."
-for _f in run_prompt.py grounding.py spatial_memory.py reactive_planner.py target_selector.py where.py; do
+for _f in run_prompt.py grounding.py reactive_planner.py target_selector.py where.py; do
     cp "$COMMON_DIR/$_f" "$INSTALL_DIR/" 2>/dev/null || echo "  (optional) $_f not found"
 done
 
@@ -220,11 +220,11 @@ fi
 
 # Copy mission autonomy modules
 echo "Copying mission autonomy modules..."
-cp "$COMMON_DIR/perception.py" "$INSTALL_DIR/" 2>/dev/null || echo "  perception.py not found (optional)"
-cp "$COMMON_DIR/reasoning_loop.py" "$INSTALL_DIR/" 2>/dev/null || echo "  reasoning_loop.py not found (optional)"
-for _f in backends.py vehicle_class.py mission_vocab.py search_patterns.py situation.py; do
-    cp "$COMMON_DIR/$_f" "$INSTALL_DIR/" 2>/dev/null || echo "  $_f not found (optional)"
+for _f in perception.py reasoning_loop.py backends.py vehicle_class.py mission_vocab.py search_patterns.py situation.py spatial_memory.py data_recorder.py; do
+    cp "$COMMON_DIR/$_f" "$INSTALL_DIR/"
 done
+mkdir -p "$INSTALL_DIR/camera"
+cp -r "$DRONE_DIR/camera/." "$INSTALL_DIR/camera/"
 
 # Copy VLM and Nav2 bridge (mission autonomy on Nano and AGX)
 echo "Copying VLM and Nav2 modules (mission autonomy)..."
@@ -269,6 +269,14 @@ if ! pip install onnxruntime-gpu 2>/dev/null; then
         || echo "  ⚠️  onnxruntime not installed - perception may fall back to CPU or be unavailable"
 fi
 pip install opencv-python-headless numpy ultralytics huggingface_hub
+# Camera drivers are hardware-specific; keep the install usable when one
+# vendor package is unavailable on a particular Jetson image.
+if ! pip install pyrealsense2 2>/dev/null; then
+    echo "  pyrealsense2 unavailable - RealSense support will be disabled"
+fi
+if ! pip install depthai 2>/dev/null; then
+    echo "  depthai unavailable - OAK-D support will be disabled"
+fi
 
 # Grounding DINO (run_prompt.py) — torch wheel is platform-specific; install may skip on failure
 echo "Installing optional HF / Track A dependencies..."
@@ -301,6 +309,17 @@ else
     CMAKE_ARGS="-DGGML_CUDA=on" pip wheel llama-cpp-python==$(pip show llama-cpp-python 2>/dev/null | grep Version | cut -d' ' -f2) \
         --wheel-dir "$WHEEL_DIR" --no-deps 2>/dev/null || true
 fi
+
+# Verify the flat install contains the complete mission import path before the
+# service is created. The camera package is checked separately because it is
+# imported lazily by PerceptionService and would otherwise evade this import.
+echo "Verifying mission installation..."
+for _f in perception.py reasoning_loop.py backends.py vehicle_class.py mission_vocab.py search_patterns.py situation.py spatial_memory.py data_recorder.py; do
+    test -f "$INSTALL_DIR/$_f"
+done
+test -f "$INSTALL_DIR/camera/__init__.py"
+PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/venv/bin/python" \
+    -c "import perception, reasoning_loop; print('Mission imports OK')"
 
 # For AGX, install ROS 2 and Nav2 dependencies
 if [ "$IS_AGX" = true ]; then
