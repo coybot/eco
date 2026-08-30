@@ -222,6 +222,9 @@ fi
 echo "Copying mission autonomy modules..."
 cp "$COMMON_DIR/perception.py" "$INSTALL_DIR/" 2>/dev/null || echo "  perception.py not found (optional)"
 cp "$COMMON_DIR/reasoning_loop.py" "$INSTALL_DIR/" 2>/dev/null || echo "  reasoning_loop.py not found (optional)"
+for _f in backends.py vehicle_class.py mission_vocab.py search_patterns.py situation.py; do
+    cp "$COMMON_DIR/$_f" "$INSTALL_DIR/" 2>/dev/null || echo "  $_f not found (optional)"
+done
 
 # Copy VLM and Nav2 bridge (mission autonomy on Nano and AGX)
 echo "Copying VLM and Nav2 modules (mission autonomy)..."

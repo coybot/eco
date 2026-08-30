@@ -7,6 +7,8 @@ with fallback to ONNX Runtime for development machines.
 Works with either OAK-D or RealSense cameras via the camera abstraction.
 """
 
+from __future__ import annotations
+
 import sys
 import time
 import numpy as np
