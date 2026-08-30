@@ -711,6 +711,29 @@ def generate_code(instruction, conversation_id, drone_id=None, vehicle_type=None
         raise RuntimeError(f"Failed to generate code: {error_msg}") from e
 
 
+def failure_message(result):
+    """Describe a failed drone result to the operator.
+
+    Two result shapes reach the app. Code execution carries stderr/error; a
+    mission carries failure_reason/summary plus a phase count. Only the first
+    pair used to be checked, so every failed mission rendered "Unknown error" -
+    the cause was discarded at the last hop before the person who needed it,
+    and five identical flights produced five identical useless messages.
+    """
+    reason = (
+        result.get('stderr')
+        or result.get('error')
+        or result.get('failure_reason')
+        or result.get('summary')
+        or 'Unknown error'
+    )
+    reason = str(reason).strip() or 'Unknown error'
+    total_phases = result.get('total_phases')
+    if total_phases:
+        reason = f"{reason} ({result.get('phases_completed', 0)}/{total_phases} phases completed)"
+    return reason
+
+
 def publish_to_drone(drone_id, conversation_id, payload):
     """Send command to drone via IoT Core.
 
@@ -1657,7 +1680,7 @@ Describe what you see in the image and respond to the user's request."""
         if result.get('success'):
             msg = f"Done! {result.get('stdout', '')}"
         else:
-            msg = f"There was an issue: {result.get('stderr', result.get('error', 'Unknown error'))}"
+            msg = f"There was an issue: {failure_message(result)}"
         
         print(f"💬 Saving text message: {msg[:100]}")
         save_message(conversation_id, drone_id, 'drone', 'text', msg)
