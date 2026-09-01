@@ -1,0 +1,28 @@
+[Unit]
+# Obstacle avoidance + figure-8 guidance, running ON the Orin Nano.
+#
+# Needs no display, so unlike the sim this is a plain system service and comes
+# back on its own after a reboot with no login required.
+#
+# It is started independently of the sim on purpose. The client reconnects and
+# respawns its aircraft on its own (see Sim.reconnect), so it is allowed to come
+# up first and sit retrying until thor's sim appears — which is exactly what
+# happens on a cold boot of both machines.
+Description=Presidio obstacle avoidance guidance (Orin Nano)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=orin-admin
+WorkingDirectory=/home/orin-admin/eco/drone/sim
+ExecStart=/usr/bin/python3 -u fw_manhattan_figure8.py --host 192.0.2.1 --port 9978 --drone-id fig8 --alt 70 --minutes 0 --extent 0.04 --north-centre 1500 --swing 350
+Restart=always
+RestartSec=5
+# Journal, not /tmp: a reboot wipes /tmp, which is how the last run's log was
+# lost precisely when it was needed to explain why the screen was empty.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
