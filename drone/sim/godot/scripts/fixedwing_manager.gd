@@ -40,6 +40,15 @@ const DETECT_RANGE_BY_LABEL := {
 	"wall": 400.0,
 	"aircraft": 300.0,
 	"water_bottle": 40.0,
+	# Ground vehicles: bigger and higher-contrast than a person, so picked up
+	# from farther than the 80 m person default, but still well inside cruise
+	# range — the aircraft must still fly out and close in to localize/confirm,
+	# it can't call a truck from the launch point. All three spellings the
+	# detector/tasking might use map to the same range (see mission_vocab's
+	# vehicle nouns).
+	"pickup truck": 150.0,
+	"truck": 150.0,
+	"car": 150.0,
 }
 const PEER_DETECT_RANGE := 300.0  # m — see the peer pass in detect()
 # The sensing cone MUST be the camera's cone. detect() decides what the mission
@@ -58,21 +67,26 @@ var DETECT_VFOV_HALF := deg_to_rad(CAM_FOV * 0.5)
 var DETECT_HFOV_HALF := atan(tan(deg_to_rad(CAM_FOV * 0.5))
 	* float(CAM_VIEWPORT_W) / float(CAM_VIEWPORT_H))
 const DETECT_LOOK_DOWN := deg_to_rad(15.0)  # 15° downward look
-const GRID_RES := 1.0
+# Grid geometry is per-env, not global: an open-field scene wants 1 m cells over
+# a few hundred metres, a city wants coarser cells over kilometres. These are
+# `var` so register_env() can take an env's grid_config() override; the defaults
+# below are the historical values, so any env that doesn't override keeps
+# byte-identical behaviour.
+var GRID_RES := 1.0
 # Sized for the flightline env's prop spread (water_tower/silo/barn out to
 # x~320, y~-90..90 — see env_flightline.gd), not the old ~100m depot world this
 # was originally copied from. A 100x100 grid centered near the origin silently
 # excluded every fixed-wing prop from ever being "observed" (coverage metrics
 # would read ~0 regardless of actual flight coverage) — never noticed before
 # because, per the Slice 1 investigation, fixed-wing sim had never actually run.
-const GRID_ORIGIN := Vector2(-50.0, -150.0)
+var GRID_ORIGIN := Vector2(-50.0, -150.0)
 # Widened east (was 400, covering x[-50,350]) when the SAR wall moved out to
 # e=250 to give the aircraft a realistic run-in. The grid has to span every
 # structure the aircraft might fly at: _occupied() reports FALSE outside it, so
 # a wall beyond the edge is invisible to both the envelope guard and the
 # leg-crossing check, which fail open rather than closed.
-const GRID_W := 600
-const GRID_H := 300
+var GRID_W := 600
+var GRID_H := 300
 const NEAR_MISS_DIST := 2.0
 const BASE_DRAIN_IDLE := 0.01   # %/s
 const BASE_DRAIN_PER_M := 0.005   # %/m
@@ -130,6 +144,17 @@ func _ready() -> void:
 
 func register_env(env_node: Node3D) -> void:
 	_env = env_node
+	# An env may resize the world it needs covered. Envs that don't implement
+	# grid_config() keep the defaults above, so their grids are unchanged.
+	if env_node.has_method("grid_config"):
+		var g: Dictionary = env_node.grid_config()
+		GRID_RES = float(g.get("res", GRID_RES))
+		GRID_W = int(g.get("w", GRID_W))
+		GRID_H = int(g.get("h", GRID_H))
+		var o = g.get("origin", null)
+		if o != null:
+			GRID_ORIGIN = Vector2(float(o[0]), float(o[1]))
+		_occ.resize(GRID_W * GRID_H)
 	_rebuild_occ_grid()
 
 
@@ -165,6 +190,12 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	mesh.set_script(load("res://scripts/fixedwing_visuals.gd"))
 	body.add_child(mesh)
 
+	# Engine buzz, positional: an AudioStreamPlayer3D on the airframe attenuates
+	# with distance to the active camera (the main window's camera is the audio
+	# listener), so the drone gets louder as it flies toward the viewer and
+	# quieter as it heads away. Looping so it's continuous while airborne.
+	# Disabled per request — call _attach_engine_audio(body) here to re-enable.
+
 	# Forward-facing camera for fw_grab_frame — same SubViewport+Camera3D pattern
 	# as fleet_manager.gd's per-vehicle quad/rover cameras (own_world_3d=false so
 	# it sees the real scene). SubViewport doesn't inherit Node3D transforms even
@@ -176,6 +207,7 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	vp.own_world_3d = false
 	var cam := Camera3D.new()
 	cam.fov = CAM_FOV
+	cam.far = 40000.0   # see fleet_manager: 4000 m default clips a city-scale world
 	# Camera3D.current is scoped PER-VIEWPORT, not global — it does not compete
 	# with the main window's camera or other vehicles' cameras, each of which
 	# lives in its own dedicated SubViewport. Setting this false (based on a
@@ -206,6 +238,54 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	_fw[id] = st
 	_apply_pose(st)
 	print("[FixedWingManager] spawned %s at ENU %v" % [id, pos])
+
+
+## A synthesized, seamlessly-looping propeller/engine buzz. Built in code rather
+## than loaded from a .wav so it needs no Godot import step (running from the
+## binary, not the editor, there is no importer to turn a raw .wav into an
+## AudioStreamWAV — load() returns null).
+static func _make_engine_stream() -> AudioStreamWAV:
+	var sr := 22050
+	var n := int(sr * 2.0)               # 2 s loop
+	var f0 := 95.0                        # fundamental
+	var data := PackedByteArray()
+	data.resize(n * 2)                    # 16-bit mono
+	var harmonics := [[1, 1.0], [2, 0.5], [3, 0.32], [4, 0.18], [6, 0.10]]
+	for i in n:
+		var t := float(i) / sr
+		var am := 0.6 + 0.4 * sin(TAU * 11.0 * t)   # blade-pass warble (integer cycles => seamless)
+		var s := 0.0
+		for h in harmonics:
+			s += float(h[1]) * sin(TAU * f0 * float(h[0]) * t)
+		s *= am / 2.1
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 22000.0))
+	var st := AudioStreamWAV.new()
+	st.format = AudioStreamWAV.FORMAT_16_BITS
+	st.mix_rate = sr
+	st.stereo = false
+	st.data = data
+	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	st.loop_begin = 0
+	st.loop_end = n
+	return st
+
+
+## Attach a looping, distance-attenuated engine buzz to an airframe body.
+func _attach_engine_audio(body: Node3D) -> void:
+	var stream := _make_engine_stream()
+	var player := AudioStreamPlayer3D.new()
+	player.name = "engine_audio"
+	player.stream = stream
+	player.autoplay = true
+	player.unit_size = 25.0          # full volume within ~25 m, rolls off beyond;
+	                                 # small enough that the near/far swing across
+	                                 # this scene (~100-450 m to the window camera)
+	                                 # is clearly audible (~13 dB)
+	player.max_distance = 900.0
+	player.volume_db = 4.0
+	player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	body.add_child(player)
+	player.play()
 
 
 func despawn(id: String) -> void:
@@ -271,9 +351,27 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	# Pitch calculation: climb_rate / airspeed with clamping
 	st.pitch = clamp(atan2(st.climb_rate, st.airspeed), deg_to_rad(-30.0), deg_to_rad(20.0))
 	
-	# Roll calculation: banking turn rate
-	var roll_rate := st.cmd_yaw_rate * st.airspeed / 9.81  # g = 9.81 m/s^2
-	st.roll = clamp(roll_rate, -deg_to_rad(MAX_ROLL), deg_to_rad(MAX_ROLL))
+	# Bank angle for a coordinated turn: tan(phi) = v * omega / g.
+	#
+	# Two fixes over the previous form. It used the raw ratio as an angle, which
+	# is only valid for small banks — at 25 m/s and 0.6 rad/s the ratio is 1.53
+	# (88 deg), so it pinned to the 45 deg limit for any real turn. And it
+	# assigned the result straight to st.roll, so a step change in commanded yaw
+	# rate snapped the aircraft from level to fully banked in one frame. Climb
+	# rate is eased just below for exactly this reason ("a step change ... would
+	# make the chase camera jerk"); roll needs the same treatment and is far more
+	# visible, since bank is the whole visual language of a turning aircraft.
+	# Sign: the visual model's nose is local +Z and its wings run along local +-X
+	# (fixedwing_visuals.gd swizzles the source asset's length onto Z and its span
+	# onto X). With up at +Y, the RIGHT wing is therefore -X, so a positive roll
+	# about +Z lifts the LEFT wing — a right bank. A positive yaw rate is CCW in
+	# ENU, i.e. a LEFT turn. Taking the bank straight from the yaw rate therefore
+	# banked the aircraft away from its own turn; hence the leading minus.
+	var bank_target: float = -atan(st.cmd_yaw_rate * st.airspeed / 9.81)
+	bank_target = clamp(bank_target, -deg_to_rad(MAX_ROLL), deg_to_rad(MAX_ROLL))
+	# ~1.0 s to roll in or out, in the range real light aircraft manage.
+	var roll_tc := 1.0
+	st.roll += (bank_target - st.roll) * minf(1.0, dt / roll_tc)
 	
 	# Climb rate: ease toward the command, then clamp.
 	#
@@ -311,12 +409,20 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 		_log_event("envelope_protection", {"id": st.id, "limit": "alt_ceiling",
 			"alt": st.position.z, "ceiling": ALT_CEILING_M})
 	
-	# Convert to velocity vector in ENU coordinates
+	# Convert to velocity vector in ENU coordinates.
+	#
+	# The nose must point where the aircraft is going. This previously read
+	# `forward.rotated(up, st.pitch)` — a rotation of the heading about the UP
+	# axis by the PITCH angle, which is a yaw, not a pitch. Any climb or descent
+	# therefore swung the velocity sideways off the nose by the pitch angle and
+	# the aircraft visibly crabbed through climbing turns. (The `right` vector
+	# computed alongside it was never used, which is the tell.)
+	#
+	# Vertical motion is already carried by climb_rate, and st.pitch is *derived*
+	# from climb_rate above — so pitching the vector at all would double-count
+	# it. Horizontal velocity is along the nose; vertical is the climb rate.
 	var forward := Vector3(cos(st.yaw), sin(st.yaw), 0.0)
-	var up := Vector3(0.0, 0.0, 1.0)
-	var right := forward.cross(up).normalized()
-	var pitch_vector := forward.rotated(up, st.pitch)
-	st.velocity = pitch_vector * st.airspeed + Vector3(0.0, 0.0, st.climb_rate)
+	st.velocity = forward * st.airspeed + Vector3(0.0, 0.0, st.climb_rate)
 
 
 func _apply_pose(st: FixedWingState) -> void:
@@ -324,8 +430,25 @@ func _apply_pose(st: FixedWingState) -> void:
 	# Godot: x=right(east), y=up, z=-forward(-north)
 	st.node.position = Vector3(st.position.x, st.position.z, -st.position.y)
 
-	# Rotation in YXZ Euler (pitch around x, yaw around y, roll around z)
-	var rotation_degrees = Vector3(rad_to_deg(st.pitch), -rad_to_deg(st.yaw) + 90.0, rad_to_deg(st.roll))
+	# Rotation in YXZ Euler (pitch around x, yaw around y, roll around z).
+	# The mesh's nose is local +Z (fixedwing_visuals.gd). Under a Godot +Y
+	# rotation φ, local +Z points to world (sinφ, 0, cosφ); to make the nose
+	# follow the ENU heading (cos yaw, sin yaw) — i.e. Godot (cos yaw, 0,
+	# -sin yaw) — we need φ = yaw + 90°, NOT -yaw + 90° (that reflected the north
+	# component, so the nose pointed the right way only for due-east/west travel
+	# and backwards for north/south).
+	# Pitch is NEGATED here, and only here.
+	#
+	# st.pitch is atan2(climb_rate, airspeed): positive means climbing, which is
+	# the sign the sensor code wants (see the elevation calc in detect()). But the
+	# mesh's nose is local +Z, and a positive Godot rotation about X maps
+	# (0,0,1) -> (0, -sin, cos) — it drives the nose DOWN. So feeding st.pitch
+	# straight in flew the aircraft nose-down in a climb and nose-up in a dive.
+	#
+	# Negating at the render site rather than flipping st.pitch itself keeps
+	# "positive = climbing" true everywhere else in the file; the same split the
+	# roll sign already needs, for the same reason (local +X is the LEFT wing).
+	var rotation_degrees = Vector3(-rad_to_deg(st.pitch), rad_to_deg(st.yaw) + 90.0, rad_to_deg(st.roll))
 	st.node.rotation_degrees = rotation_degrees
 	_sync_camera(st)
 
@@ -445,6 +568,7 @@ func reset_camera(id: String) -> void:
 	vp.own_world_3d = false
 	var cam := Camera3D.new()
 	cam.fov = CAM_FOV
+	cam.far = 40000.0   # see fleet_manager: 4000 m default clips a city-scale world
 	cam.current = true   # per-viewport scoped — see spawn()
 	vp.add_child(cam)
 	st.node.add_child(vp)
@@ -546,6 +670,32 @@ func detect(id: String) -> Array:
 		if node.has_meta("top_z"):
 			row["top_z"] = node.get_meta("top_z")
 		out.append(row)
+
+	# --- structure pass ------------------------------------------------------
+	# Buildings are not props, and in a city that silence is dangerous.
+	#
+	# The props loop above only ever walks `_env.props`. In env_manhattan the
+	# entire city is ONE MultiMesh with no per-building node and no "label"
+	# metadata, and `props` holds just the target truck and the decoy car — so
+	# 44,958 buildings are invisible to detect(). Since detect() is the only
+	# obstacle channel the VLM has (situation.ObstacleTracker filters it for
+	# label == "wall"), a model flying Manhattan would be told the route ahead
+	# was clear while heading into midtown.
+	#
+	# An env that owns its structure analytically can therefore offer it here.
+	# Rows come back in the same shape as the props pass and are labelled "wall",
+	# which is what ObstacleTracker already understands — no change is needed
+	# anywhere upstream, and envs without the method behave exactly as before.
+	if _env.has_method("structure_detections"):
+		var sensor_yaw: float = st.yaw + st.sensor_yaw_offset
+		var cfg := {
+			"hfov_half": DETECT_HFOV_HALF,
+			"vfov_half": DETECT_VFOV_HALF,
+			"look_down": DETECT_LOOK_DOWN,
+			"range": float(DETECT_RANGE_BY_LABEL.get("wall", DETECT_RANGE)),
+		}
+		for row in _env.structure_detections(st.position, sensor_yaw, cfg):
+			out.append(row)
 
 	# --- peer pass -----------------------------------------------------------
 	# Other aircraft are sensed with the same FOV and occlusion rules as props,
@@ -833,16 +983,36 @@ func _rebuild_occ_grid() -> void:
 			var d: Array = _env.DOOR_PANELS[door_id]["rect"]
 			rects.append(Rect2(d[0], d[1], d[2], d[3]))
 	
-	# Cell-vs-rect overlap, not cell-center containment
-	for gy in range(GRID_H):
-		for gx in range(GRID_W):
-			var wx := GRID_ORIGIN.x + gx * GRID_RES
+	# Cell-vs-rect overlap, not cell-center containment.
+	#
+	# Iterates per RECT over just the cells it covers, rather than per cell over
+	# every rect. Same result, but the cost is the total footprint area instead
+	# of cells x rects — the old form was 180k x rects, which is fine for an env
+	# with a dozen walls and completely infeasible for a city with tens of
+	# thousands of buildings (it would hang on load rather than run slowly).
+	for rect in rects:
+		var r: Rect2 = rect
+		# Half-open cell range covering the rect, clamped to the grid.
+		var gx0 := int(floor((r.position.x - GRID_ORIGIN.x) / GRID_RES))
+		var gy0 := int(floor((r.position.y - GRID_ORIGIN.y) / GRID_RES))
+		var gx1 := int(ceil((r.position.x + r.size.x - GRID_ORIGIN.x) / GRID_RES))
+		var gy1 := int(ceil((r.position.y + r.size.y - GRID_ORIGIN.y) / GRID_RES))
+		gx0 = maxi(gx0, 0)
+		gy0 = maxi(gy0, 0)
+		gx1 = mini(gx1, GRID_W)
+		gy1 = mini(gy1, GRID_H)
+		# Still the exact Rect2.intersects() test, so a rect whose edge lands on
+		# a cell boundary marks the same cells it always did — only the set of
+		# cells considered has narrowed.
+		for gy in range(gy0, gy1):
+			var row := gy * GRID_W
 			var wy := GRID_ORIGIN.y + gy * GRID_RES
-			var cell := Rect2(wx, wy, GRID_RES, GRID_RES)
-			for rect in rects:
-				if rect.intersects(cell):
-					_occ[gy * GRID_W + gx] = 1
-					break
+			for gx in range(gx0, gx1):
+				if _occ[row + gx] == 1:
+					continue
+				var cell := Rect2(GRID_ORIGIN.x + gx * GRID_RES, wy, GRID_RES, GRID_RES)
+				if r.intersects(cell):
+					_occ[row + gx] = 1
 
 
 func _sweep_observed(st: FixedWingState) -> void:

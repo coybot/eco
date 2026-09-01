@@ -1,8 +1,49 @@
-[gd_scene load_steps=2 format=3 uid="uid://main"]
+[gd_scene load_steps=4 format=3 uid="uid://main"]
+
+; background_mode = 2 is BG_SKY, and it had no `sky` assigned — so the sky drew
+; nothing and every viewport fell through to project.godot's
+; environment/defaults/default_clear_color, Color(0.1, 0.1, 0.12): a black sky.
+;
+; It went unnoticed because scene_kit.gd also adds a 3000 m inward-facing blue
+; sphere, which covers the whole frame in the small envs. Manhattan is 21 km
+; long, so it has to drop that dome (the aircraft flies outside it and sees it
+; as a dark disc on the horizon) — which left the real background visible.
+;
+; NOTE: scene_kit.gd installs a SECOND WorldEnvironment. Godot allows one per
+; World3D and this one, being in the scene file, enters the tree first and wins;
+; scene_kit's is ignored. That is why this node is the one worth fixing, and it
+; is also why scene_kit's fog/tonemap settings never take effect. Left alone
+; here deliberately: making scene_kit's win would switch on its fog for every
+; env at once, and that file warns in-comment that fog changes the image the VLM
+; sees and require re-running fw_gate_vlm.py.
+[sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_1"]
+sky_top_color = Color(0.24, 0.51, 0.87, 1)
+sky_horizon_color = Color(0.72, 0.85, 0.95, 1)
+sky_curve = 0.15
+; Ground half of the sky matched to env_manhattan's water, because that is what
+; is actually behind the horizon in the one env where this sky is visible at all
+; (the others are covered by scene_kit's dome). A paler ground colour showed up
+; as a distinct band above the water where the water plane ran out.
+;
+; There is ALWAYS such a band: the water is a finite plane and the camera's far
+; plane is 40 km, so past 40 km nothing is drawn and the sky's ground half shows
+; through, right up to the eye-level horizon. Enlarging the plane cannot close
+; it. So these two are tuned to match how the distant water actually RENDERS
+; (measured off a frame, sRGB ~(109,143,189)), not to match its albedo — the
+; water is a lit, faintly specular surface and comes out far brighter than the
+; raw colour fed to it. Flat, not graded, because the far water is essentially
+; flat by the time it reaches the cut.
+ground_bottom_color = Color(0.37, 0.52, 0.7, 1)
+ground_horizon_color = Color(0.37, 0.52, 0.7, 1)
+sun_angle_max = 8.0
+sun_curve = 0.08
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("SkyMaterial_1")
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 2
-sky_horizon_color = Color(0.6, 0.7, 0.9, 1)
+sky = SubResource("Sky_1")
 ambient_light_source = 2
 ambient_light_color = Color(0.4, 0.4, 0.5, 1)
 ambient_light_energy = 0.5

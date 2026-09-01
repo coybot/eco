@@ -73,6 +73,13 @@ CAM_VIEWPORT_H = 480
 # real target classes are added (see change D).
 POSSIBLY_MOVING_LABELS = {"person", "people", "pedestrian", "human", "animal", "dog", "cat"}
 
+# Camera-driven avoidance manoeuvre (ActionType.AVOID). A moderate turn rate
+# rather than the airframe's 0.6 rad/s limit: the point is a deliberate,
+# readable break, and the handler flies it for a measured number of seconds and
+# then levels off, so a bigger rate would only make the timing twitchier.
+AVOID_YAW_RATE = 0.35    # rad/s
+AVOID_CLIMB_M = 25.0     # metres of height to gain on an "over" decision
+
 
 def _compass_name(yaw_rad: float) -> str:
     """Heading as a compass point plus degrees, in the sim's ENU convention
@@ -148,6 +155,20 @@ def _phase_wants_delivery(phase: Dict[str, Any]) -> bool:
     return wants and what
 
 
+def _parse_local_coord(text: str):
+    """Extract an explicit local-frame point from objective text, e.g.
+    "east=400, north=0" -> (400.0, 0.0). Tolerant of spacing and of the
+    "east_m"/"north_m" spellings. Returns (x_east, y_north) or None. Used to
+    pin a SEARCH_AREA to a fixed centre instead of the drone's drifting pose."""
+    if not text:
+        return None
+    m_e = re.search(r'east(?:_m)?\s*=\s*(-?\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    m_n = re.search(r'north(?:_m)?\s*=\s*(-?\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m_e and m_n:
+        return (float(m_e.group(1)), float(m_n.group(1)))
+    return None
+
+
 DRONE_SDK_AVAILABLE = False
 try:
     import drone_sdk as _drone_sdk
@@ -204,10 +225,16 @@ class MissionResult:
     total_phases: int
     findings: List[str] = field(default_factory=list)
     photos: List[str] = field(default_factory=list)
+    # Structured counterpart to the prose "memory: <label> at (...)" lines
+    # _memory_finding_strings() already appends to `findings` — one dict per
+    # distinct object seen this mission (see MissionLoop._landmarks_out).
+    # Population is ENU-only here; the daemon (fw_gcs_daemon.landmarks_payload)
+    # is what knows the mission's lat/lon datum and enriches this on the way out.
+    landmarks: List[Dict[str, Any]] = field(default_factory=list)
     duration_seconds: float = 0.0
     actions_taken: int = 0
     failure_reason: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'success': self.success,
@@ -216,6 +243,7 @@ class MissionResult:
             'total_phases': self.total_phases,
             'findings': self.findings,
             'photos': self.photos,
+            'landmarks': self.landmarks,
             'duration_seconds': self.duration_seconds,
             'actions_taken': self.actions_taken,
             'failure_reason': self.failure_reason,
@@ -258,6 +286,10 @@ class MissionLoop:
     # trusting a count as either "definitely zero" or "the final tally"
     # until the search has covered enough ground to back that claim.
     MIN_SEARCH_COVERAGE_BEFORE_ZERO_COUNT = 0.5
+    # Cap on per-mission landmark photo uploads (see _maybe_photo_landmark) — a
+    # mission that stumbles into a field of near-identical objects shouldn't
+    # fire off dozens of synchronous PUTs.
+    MAX_LANDMARK_PHOTOS_PER_MISSION = 8
 
     def __init__(
         self,
@@ -309,6 +341,13 @@ class MissionLoop:
         self._history: List[str] = []
         self._findings: List[str] = []
         self._photos: List[str] = []
+        # Same shared-reference trick as _findings: every MissionResult
+        # construction site passes landmarks=self._landmarks_out, and the
+        # `finally` block below extends the SAME list right before returning —
+        # so whichever result the caller already built comes back populated
+        # without a second return path to keep in sync.
+        self._landmarks_out: List[Dict[str, Any]] = []
+        self._landmark_photos_taken: int = 0
         self._home_lat: Optional[float] = None
         self._home_lon: Optional[float] = None
         self._home_alt: Optional[float] = None
@@ -329,6 +368,10 @@ class MissionLoop:
         self.obstacles = ObstacleTracker()
         self.payload_remaining: int = 0
         self.payload_capacity: int = 0
+        # Feed the model the ground-truth OBSTACLES AHEAD block? Set False for
+        # genuinely camera-driven avoidance — see _situation_blocks. Default True
+        # so existing missions and recorded gate numbers are unchanged.
+        self.obstacles_from_truth: bool = True
         # Optional hook: (frame_bytes, detections, action, wall_clock) for each
         # decision, so a harness can record exactly what the model saw.
         self.on_tick: Optional[Callable] = None
@@ -407,6 +450,8 @@ class MissionLoop:
         self._history = []
         self._findings = []
         self._photos = []
+        self._landmarks_out = []
+        self._landmark_photos_taken = 0
         self._home_lat = None
         self._home_lon = None
         self._home_alt = None
@@ -494,6 +539,7 @@ class MissionLoop:
                             total_phases=len(mission.phases),
                             findings=self._findings,
                             photos=self._photos,
+                            landmarks=self._landmarks_out,
                             duration_seconds=time.time() - mission.start_time,
                             actions_taken=actions_taken,
                             failure_reason=reason,
@@ -512,6 +558,7 @@ class MissionLoop:
                         total_phases=len(mission.phases),
                         findings=self._findings,
                         photos=self._photos,
+                        landmarks=self._landmarks_out,
                         duration_seconds=elapsed,
                         actions_taken=actions_taken,
                         failure_reason=f"Exceeded time limit ({self.MAX_DURATION_SECONDS}s)",
@@ -525,6 +572,7 @@ class MissionLoop:
                         total_phases=len(mission.phases),
                         findings=self._findings,
                         photos=self._photos,
+                        landmarks=self._landmarks_out,
                         duration_seconds=elapsed,
                         actions_taken=actions_taken,
                         failure_reason=f"Exceeded action limit ({self.MAX_ACTIONS})",
@@ -541,6 +589,7 @@ class MissionLoop:
                 total_phases=len(mission.phases),
                 findings=self._findings,
                 photos=self._photos,
+                landmarks=self._landmarks_out,
                 duration_seconds=time.time() - mission.start_time,
                 actions_taken=actions_taken,
             )
@@ -556,6 +605,7 @@ class MissionLoop:
                 total_phases=len(mission.phases),
                 findings=self._findings,
                 photos=self._photos,
+                landmarks=self._landmarks_out,
                 duration_seconds=time.time() - mission.start_time,
                 actions_taken=actions_taken,
                 failure_reason=str(e),
@@ -573,6 +623,7 @@ class MissionLoop:
             # that always runs, makes memory inspectable post-flight without
             # duplicating this at every return statement.
             self._findings.extend(self._memory_finding_strings())
+            self._landmarks_out.extend(self._landmark_dicts())
             self._cleanup()
     
     # Phase-type -> executor-method-name. Keys MUST match mission_vocab.
@@ -754,10 +805,16 @@ class MissionLoop:
     def _exec_look_around(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         directions = phase.get('directions', 4)
         self._report_progress(f"Looking around ({directions} directions)")
-        if not DRONE_SDK_AVAILABLE:
+        # Same hardware-first precedence as _get_backend(): the real module-level
+        # _drone_sdk wins when it's actually importable (on-aircraft), otherwise
+        # fall back to whatever was passed into the constructor — which is how
+        # the sim daemon's GcsPhotoUploader shim (duck-typing capture_photo/
+        # look_around) gets to answer typed photo phases at all.
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        if sdk is None:
             return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
         try:
-            urls = _drone_sdk.look_around(directions=directions)
+            urls = sdk.look_around(directions=directions)
             if urls:
                 self._photos.extend(urls)
             return {'success': True, 'actions': 1}
@@ -766,10 +823,11 @@ class MissionLoop:
 
     def _exec_capture_photo(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         self._report_progress("Capturing photo")
-        if not DRONE_SDK_AVAILABLE:
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        if sdk is None:
             return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
         try:
-            url = _drone_sdk.capture_photo(upload=True)
+            url = sdk.capture_photo(upload=True)
             if url:
                 self._photos.append(url)
             return {'success': True, 'actions': 1}
@@ -923,6 +981,7 @@ class MissionLoop:
                         backend.log_event("memory_landmark", {
                             "label": lm.label, "x": lm.x, "y": lm.y, "z": lm.z, "score": lm.score,
                         })
+                        self._maybe_photo_landmark(lm, frame)
 
             # 3. Get drone state
             drone_state = self._get_drone_state()
@@ -1433,16 +1492,41 @@ class MissionLoop:
                     target = self._search_target
                 else:
                     target = "target"
+                # Fuzzy, not exact: normalize_label alone doesn't catch the
+                # model saying "the pickup truck" one decision and "pickup
+                # truck" the next — normalize_label("the pickup truck") !=
+                # normalize_label("pickup truck"), so an exact-equality check
+                # here treated ordinary phrasing drift as a brand-new target
+                # and threw away the entire in-progress expanding-orbit plan
+                # (back to leg 0) on almost every decision. Confirmed live:
+                # a search that should converge within its first ~6-leg lap
+                # instead restarted repeatedly and never got there. labels_match
+                # is the same permissive substring/equality test SpatialMemory
+                # already uses for this exact class of phrasing variance.
+                same_target = (self._search_target is not None
+                              and labels_match(self._search_target, target))
                 need_new_plan = (
-                    self._search_target != target
+                    not same_target
                     or not self._search_plan
                     or self._search_idx >= len(self._search_plan)
                 )
                 if need_new_plan:
                     landmark = self.memory.nearest(target) if action.target_object else None
                     pose = backend.get_pose()
+                    # An explicit local coordinate in the phase objective
+                    # ("east=400, north=0") pins the search to a FIXED point.
+                    # Without this the centre defaults to the drone's current
+                    # pose, and a fixed-wing (which cannot hover) then flies the
+                    # orbit forward, re-centres on the advanced pose next replan,
+                    # and drifts away indefinitely instead of covering the named
+                    # area — observed live drifting to east>2500. A remembered
+                    # sighting still wins (we've actually seen the thing); the
+                    # objective coordinate beats a bare pose fallback.
+                    obj_center = _parse_local_coord(phase.get("objective", ""))
                     if landmark is not None:
                         center = (landmark.x, landmark.y)
+                    elif obj_center is not None:
+                        center = obj_center
                     elif pose is not None:
                         center = (pose[0], pose[1])
                     else:
@@ -1520,6 +1604,67 @@ class MissionLoop:
                             f"is in view now.")
                 else:
                     self._history.append(f"Search pattern exhausted for {target}")
+
+            elif action.action_type == ActionType.AVOID:
+                # Camera-driven obstacle avoidance: a RELATIVE manoeuvre, held for
+                # one decision interval.
+                #
+                # Every other spatial action here is expressed in world
+                # coordinates, and those coordinates exist only because the sim
+                # supplied them (detect() is a ground-truth oracle, and
+                # navigate_to_point resolves a pixel with a sim raycast). So none
+                # of them can support a claim that the aircraft avoided something
+                # using its camera. This one can: it carries no coordinates, and
+                # the model's only inputs for it are the image and the mission.
+                #
+                # Rate-based, because that is what the airframe takes and because
+                # a turn rate is the honest expression of "break left" — the model
+                # is not being asked where the far side of the building is, only
+                # which way to go and whether it can climb.
+                pose = backend.get_pose()
+                direction = (action.direction or "").strip().lower()
+                mag = float(action.magnitude_deg or 35.0)
+                mag = max(10.0, min(90.0, mag))
+                if direction not in ("left", "right", "over"):
+                    self._history.append(
+                        f"avoid ignored: direction {action.direction!r} is not "
+                        f"left/right/over")
+                else:
+                    cruise = getattr(backend, "CRUISE_MS", 20.0)
+                    # TIME-BOUNDED, and that is essential rather than tidy. The
+                    # sim holds the last drive command until the next one, and a
+                    # decision here takes ~11 s on the Orin's 2B model. A bare
+                    # 0.23 rad/s turn rate left standing for 11 s is a 145 deg
+                    # turn — the aircraft would spin past the gap it was aiming
+                    # for and keep going. So the manoeuvre is flown for exactly
+                    # as long as it needs and then levelled off, and the aircraft
+                    # coasts straight while the model thinks about the next one.
+                    if direction == "over":
+                        climb_rate = 5.0
+                        secs = min(5.0, AVOID_CLIMB_M / climb_rate)
+                        alt_now = f"{pose[2]:.0f} m" if pose is not None else "?"
+                        self._report_progress(
+                            f"Avoiding: climbing over it (from {alt_now}, "
+                            f"+{AVOID_CLIMB_M:.0f} m)")
+                        backend.drive(airspeed=cruise, yaw_rate=0.0,
+                                      climb=climb_rate)
+                    else:
+                        # Positive yaw_rate is a LEFT (counter-clockwise) turn in
+                        # this sim's ENU convention — see fixedwing_manager's bank
+                        # sign note — so "left" is positive.
+                        rate = AVOID_YAW_RATE * (1.0 if direction == "left" else -1.0)
+                        secs = min(6.0, math.radians(mag) / AVOID_YAW_RATE)
+                        self._report_progress(
+                            f"Avoiding: breaking {direction} {mag:.0f} deg")
+                        backend.drive(airspeed=cruise, yaw_rate=rate, climb=0.0)
+                    time.sleep(secs)
+                    # Level off. Without this the turn or climb stands until the
+                    # next decision and the manoeuvre becomes unbounded again.
+                    backend.drive(airspeed=cruise, yaw_rate=0.0, climb=0.0)
+                    self._history.append(
+                        f"avoid: {direction}"
+                        + ("" if direction == "over" else f" {mag:.0f} deg")
+                        + f" ({secs:.1f} s)")
 
             elif action.action_type == ActionType.ORBIT_POINT:
                 # Circle a point and keep watching it. One lap per decision, so
@@ -1810,9 +1955,45 @@ class MissionLoop:
             blocks["PEER OBSERVATIONS (teammates you have SEEN — there is no radio link)"] = (
                 peer_text)
 
-        obstacle_text = self.obstacles.summarize(own, pose[3], detections)
-        if obstacle_text:
-            blocks["OBSTACLES AHEAD"] = obstacle_text
+        # OBSTACLES AHEAD is ground truth, and that is the whole reason it can be
+        # switched off here.
+        #
+        # ObstacleTracker is fed from backend.detect(), which in the sim is an
+        # oracle over the scene graph — exact distance, exact span, exact roof
+        # height. A model handed that block is not avoiding obstacles from its
+        # camera, it is reading coordinates off a list while a JPEG happens to be
+        # attached. So "camera avoidance" mode withholds the block: the image and
+        # the mission are then genuinely the only things describing what is in the
+        # way, and ActionType.AVOID is the only action that can act on it.
+        #
+        # Default stays ON. Every mission and gate number recorded to date was
+        # measured with this block present, and silently removing it would
+        # invalidate all of them.
+        if self.obstacles_from_truth:
+            obstacle_text = self.obstacles.summarize(own, pose[3], detections)
+            if obstacle_text:
+                blocks["OBSTACLES AHEAD"] = obstacle_text
+        else:
+            # Withholding the block is not enough on its own. Observed live: with
+            # no OBSTACLES AHEAD present the model still answered
+            # navigate_to_world for a building filling its camera — and its
+            # reasoning was correct ("looking directly into the side of a
+            # building, which blocks forward progress"), so it saw the obstacle
+            # and simply reached for the wrong action. There are a dozen action
+            # types and the prompt talks up navigate_to_world, including for
+            # "the end of an obstacle listed in OBSTACLES AHEAD" — advice that
+            # makes no sense when there is no such list. So say plainly which
+            # action applies and why the coordinate-based one cannot.
+            blocks["OBSTACLE POLICY (CAMERA ONLY)"] = (
+                "- You have NO obstacle list this mission. What is in your way is "
+                "whatever you can SEE in the image.\n"
+                "- If something solid is close and ahead of you, you MUST reply "
+                "with the `avoid` action and a `direction` of \"left\", \"right\" "
+                "or \"over\". Do NOT use navigate_to_world or navigate_to_point to "
+                "get around it: you have no coordinates for it and no pixel can "
+                "name the far side of a building.\n"
+                "- Choose \"over\" if you can see the TOP EDGE of it with sky "
+                "above; otherwise choose whichever side shows more open sky.")
 
         if self.payload_capacity:
             blocks["PAYLOAD"] = payload_block(self.payload_remaining, self.payload_capacity)
@@ -2050,6 +2231,55 @@ class MissionLoop:
             f"memory: {lm.label} at ({lm.x:.1f}, {lm.y:.1f}, {lm.z:.1f}) "
             f"score={lm.score:.2f} hits={lm.hits}"
             for lm in self.memory.all()
+        ]
+
+    def _maybe_photo_landmark(self, lm, frame) -> None:
+        """Capture one photo of a landmark the instant it's first seen (called
+        from the perception block only when lm.hits == 1 — never on a re-merge,
+        so each distinct object gets at most one shot).
+
+        `self.drone_sdk` here is the daemon's photo shim (fw_gcs_daemon.
+        GcsPhotoUploader) when the sim wires one in — it duck-types capture_photo/
+        look_around (used by the typed phase executors below) plus this extra
+        upload_frame() method. Real on-aircraft `drone_sdk` has no such method,
+        so getattr(..., 'upload_frame', None) is None there and this is a
+        guaranteed no-op on hardware — no config flag needed to keep the two
+        environments apart.
+        """
+        if frame is None or self._landmark_photos_taken >= self.MAX_LANDMARK_PHOTOS_PER_MISSION:
+            return
+        upload = getattr(self.drone_sdk, "upload_frame", None)
+        if upload is None:
+            return
+        try:
+            url = upload(frame, f"landmark_{normalize_label(lm.label)}")
+        except Exception as e:
+            print(f"landmark photo upload failed: {e}")
+            return
+        if url:
+            lm.image_url = url
+            self._landmark_photos_taken += 1
+
+    # Structured sibling of _memory_finding_strings() above, for
+    # MissionResult.landmarks — everything an operator-facing map/query needs
+    # per distinct object, in ENU (this class doesn't know a lat/lon datum;
+    # fw_gcs_daemon.landmarks_payload adds lat/lon and applies the cap/sort
+    # once it has one). "teammate" is excluded: it's a pinned peer-aircraft
+    # position, not a sighted object, and would otherwise show up on a map as
+    # a bogus ground target.
+    def _landmark_dicts(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "label": lm.label,
+                "east_m": round(lm.x, 1),
+                "north_m": round(lm.y, 1),
+                "alt_m": round(lm.z, 1),
+                "score": round(lm.score, 3),
+                "hits": lm.hits,
+                "image_url": lm.image_url,
+            }
+            for lm in self.memory.all()
+            if normalize_label(lm.label) != "teammate"
         ]
 
     def _cleanup(self):
