@@ -38,6 +38,10 @@ static func _add_sky(parent: Node3D) -> void:
 	sm.height = SKY_RADIUS * 2.0
 	sm.flip_faces = true
 	sphere.mesh = sm
+	# Named so a large env can drop it: this dome is finite (SKY_RADIUS), so a
+	# world bigger than it lets the camera fly outside and see it as a dark ball
+	# on the horizon. The WorldEnvironment sky below is infinite and needs no mesh.
+	sphere.name = "sky_dome"
 	var smat := StandardMaterial3D.new()
 	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	smat.albedo_color = Color(0.34, 0.54, 0.88)
@@ -178,35 +182,49 @@ static func _add_scenery(parent: Node3D, seed_val: int) -> void:
 	canopy_mat.vertex_color_use_as_albedo = true
 	canopy.material = canopy_mat
 
+	# Generate each tree's placement ONCE (position, scale, yaw, tint), then
+	# stamp BOTH the trunk and the canopy from that same spec. Previously the
+	# trunk pass and the canopy pass each pulled their own fresh random draws
+	# from `rng`, so the two meshes landed at different x/z with different
+	# per-instance scale — the canopies ended up as spheres floating near, but
+	# not on, unrelated trunks. Sharing one spec keeps every canopy seated on
+	# its own trunk.
+	var trees: Array = []
+	var guard := 0
+	while trees.size() < 220 and guard < 4000:
+		guard += 1
+		var x := rng.randf_range(-120.0, 340.0)
+		var z := rng.randf_range(-150.0, 150.0)
+		# Keep clear of the corridors the aircraft actually fly and of the
+		# search area, so scenery never crowds a beat or blocks a sightline.
+		if absf(z) < 95.0 and x > -60.0 and x < 320.0:
+			continue
+		var s_xz := rng.randf_range(0.7, 1.6)
+		var s_y := s_xz * rng.randf_range(0.8, 1.3)
+		var g := rng.randf_range(0.22, 0.42)
+		trees.append({
+			"x": x, "z": z, "s_xz": s_xz, "s_y": s_y,
+			"yaw": rng.randf_range(0.0, TAU),
+			"col": Color(g * rng.randf_range(0.45, 0.75), g,
+						 g * rng.randf_range(0.35, 0.6)),
+		})
+
 	for spec in [[trunk, 3.0], [canopy, 7.5]]:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
 		mm.mesh = spec[0]
-		var placed: Array = []
-		mm.instance_count = 220
-		var i := 0
-		var guard := 0
-		while i < mm.instance_count and guard < 4000:
-			guard += 1
-			var x := rng.randf_range(-120.0, 340.0)
-			var z := rng.randf_range(-150.0, 150.0)
-			# Keep clear of the corridors the aircraft actually fly and of the
-			# search area, so scenery never crowds a beat or blocks a sightline.
-			if absf(z) < 95.0 and x > -60.0 and x < 320.0:
-				continue
-			placed.append(Vector2(x, z))
-			# Non-uniform scale and a yaw, so no two are the same silhouette.
-			var s_xz := rng.randf_range(0.7, 1.6)
-			var s_y := s_xz * rng.randf_range(0.8, 1.3)
-			var basis := Basis.from_euler(Vector3(0.0, rng.randf_range(0.0, TAU), 0.0))
-			basis = basis.scaled(Vector3(s_xz, s_y, s_xz))
-			mm.set_instance_transform(i, Transform3D(basis, Vector3(x, float(spec[1]) * s_y, -z)))
-			var g := rng.randf_range(0.22, 0.42)
-			mm.set_instance_color(i, Color(g * rng.randf_range(0.45, 0.75), g,
-										   g * rng.randf_range(0.35, 0.6)))
-			i += 1
-		mm.instance_count = i
+		mm.instance_count = trees.size()
+		for i in trees.size():
+			var t: Dictionary = trees[i]
+			var basis := Basis.from_euler(Vector3(0.0, t["yaw"], 0.0))
+			basis = basis.scaled(Vector3(t["s_xz"], t["s_y"], t["s_xz"]))
+			# Both meshes share x/z and s_y, so the canopy's vertical offset
+			# (7.5) lands it atop the trunk (centre 3.0, height 6) — seated, not
+			# floating — and scales with the same tree.
+			mm.set_instance_transform(i, Transform3D(
+				basis, Vector3(t["x"], float(spec[1]) * t["s_y"], -t["z"])))
+			mm.set_instance_color(i, t["col"])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.name = "scenery_%s" % ("trunks" if spec[0] == trunk else "canopies")

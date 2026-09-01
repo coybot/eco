@@ -1,0 +1,32 @@
+[Unit]
+# Godot sim, fullscreen on thor's own monitor.
+#
+# A USER unit bound to graphical-session.target, not a system service, because
+# this renders to a real display: it needs the seat's X session, its DISPLAY and
+# its Xauthority, none of which exist before someone is logged in. A system unit
+# would have to invent a virtual display (Xvfb), and then nothing appears on the
+# monitor at all, which is the opposite of what this is for.
+#
+# Consequence worth knowing: after a reboot this starts when the operator's desktop
+# session starts. If the box boots to a GDM login screen and nobody logs in there
+# is no graphical session and the sim will not run. Enabling GDM autologin would
+# close that gap, but it means thor boots straight to a desktop with no password
+# — a security decision for the machine's owner, not a deployment detail.
+Description=Presidio Manhattan sim (fullscreen)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=DISPLAY=:1
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
+# Screen blanking is fatal here, not just ugly: when the compositor stops
+# presenting frames Godot throttles its main loop and the IPC server stops
+# answering the drone. That killed a good 7-lap flight once already.
+ExecStartPre=-/bin/sh -c "xset s off; xset s noblank; xset -dpms; xset dpms force on"
+ExecStart=/home/<user>/godot/godot --path /home/<user>/eco/drone/sim/godot --resolution 3840x2160 --fullscreen -- --fleet= --env=manhattan --chase=fig8 --ipc-port=9978 --seed=0
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

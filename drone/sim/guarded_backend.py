@@ -173,12 +173,45 @@ class EnvelopeGuardedSimBackend(SimBackend):
     # for a perfectly good answer to "get past this obstacle". A single
     # scene-wide height is a deliberate simplification of a 2.5D problem; it is
     # safe because it over-estimates (nothing here is taller than the wall).
+    #
+    # That last clause is the catch, and it stops being true the moment the scene
+    # is a city. env_manhattan's tallest building is 472 m, so a hardcoded 50 m
+    # made `_blocked_ahead` return None for ANY cruise above 60 m — the guard
+    # quietly turned itself off over exactly the scene that needs it most, and
+    # would have reported a clean run with zero interventions while flying
+    # through midtown. So it is now taken from the env when the env knows, and
+    # the constant is only the fallback for scenes that do not report it.
     STRUCTURE_TOP_M = 50.0
     OVERFLY_MARGIN_M = 10.0
 
+    def _structure_top(self) -> float:
+        """Scene-wide structure ceiling, from the env if it reports one."""
+        cached = getattr(self, "_structure_top_m", None)
+        if cached is not None:
+            return cached
+        top = self.STRUCTURE_TOP_M
+        try:
+            env = self._client.fw_env_state() or {}
+            # depot_client.fw_env_state() already unwraps the "env" envelope, and
+            # inside it "env" is the scene NAME ("manhattan") — a string. Only
+            # unwrap again if it really is a nested dict, or this reads .get on a
+            # str, throws, and falls back to 50 m without a word.
+            inner = env.get("env")
+            if isinstance(inner, dict):
+                env = inner
+            reported = env.get("tallest")
+            if reported is not None and float(reported) > 0.0:
+                top = float(reported)
+        except Exception:
+            # A guard that fails closed is the right call here: keep the
+            # conservative constant rather than assuming the sky is clear.
+            pass
+        self._structure_top_m = top
+        return top
+
     def _blocked_ahead(self, x, y, yaw, z: float = 0.0):
         """Distance to structure along the current heading, or None if clear."""
-        if z > self.STRUCTURE_TOP_M + self.OVERFLY_MARGIN_M:
+        if z > self._structure_top() + self.OVERFLY_MARGIN_M:
             return None
         d = self.STEP_M
         while d <= self.LOOKAHEAD_M:
@@ -231,9 +264,21 @@ class EnvelopeGuardedSimBackend(SimBackend):
                 return True
         return False
 
+    # Horizontal geofence — the sim world (fixedwing_manager.gd occupancy grid:
+    # origin (-50,-150), 600x300). A model that hallucinates a target, or a
+    # GPS-frame transit that converts to nonsense in this local-metre sandbox,
+    # would otherwise fly the fixed-wing thousands of metres off into empty space
+    # (observed live drifting past east=22000) and never come back — the mission
+    # looks "stuck". Every leg passes through goto(), so clamping the target here
+    # keeps the aircraft in the world no matter what asked for the leg.
+    _FENCE_E = (-40.0, 540.0)
+    _FENCE_N = (-140.0, 140.0)
+
     def goto(self, north_m: float, east_m: float, alt_m: float,
              timeout_s: float = 60.0, tol_m: float = 5.0) -> bool:
-        """Decline any straight leg that would pass through structure.
+        """Decline any straight leg that would pass through structure, and clamp
+        the target into the sim world so a bad request can't fly the aircraft
+        out of bounds.
 
         The check lives here rather than in individual action handlers because
         it is a property of the VEHICLE, not of the reason for flying. Checking
@@ -243,6 +288,12 @@ class EnvelopeGuardedSimBackend(SimBackend):
         did, while the envelope guard shoved at it. One rule at the one place
         every leg passes through.
         """
+        ce = min(max(east_m, self._FENCE_E[0]), self._FENCE_E[1])
+        cn = min(max(north_m, self._FENCE_N[0]), self._FENCE_N[1])
+        if ce != east_m or cn != north_m:
+            self.log_event("geofence_clamp", {
+                "requested": [east_m, north_m], "clamped": [ce, cn]})
+            east_m, north_m = ce, cn
         if self.path_blocked((east_m, north_m), alt_m):
             self.legs_refused += 1
             self.log_event("leg_refused", {

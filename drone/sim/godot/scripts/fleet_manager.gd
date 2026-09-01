@@ -22,28 +22,8 @@ const MAX_LIN_ROVER := 1.5    # m/s
 const MAX_LIN_FW := 25.0      # m/s — fixed-wing cruise (vehicle_class.py FIXEDWING)
 const MAX_YAW_RAD := 1.5708   # rad/s  (~90 deg/s), quad/rover
 const MAX_YAW_RAD_FW := 0.6   # rad/s — bank-limited turn (FIXEDWING.max_yaw_rate_radps)
-const MAX_ROLL_RAD_FW := 0.7854  # rad (45 deg) — bank limit the yaw cap above implies
-const ROLL_RATE_FW := 2.5     # 1/s — how quickly the bank eases toward its target
 const PHYSICS_DT := 1.0 / 60.0
 const FW_TYPES := ["fixedwing", "fw", "plane"]
-
-## Camera3D.far for every camera created below. Godot's own default (4000.0)
-## exactly equals the radius of the geometry-based sky sphere every env_*.gd
-## script adds (_add_sky_sphere()/_add_sky_and_ground(), radius=4000.0) --
-## since cameras sit at a real ENU offset from that sphere's world-origin
-## center (spawn ranges up to ~150m in office alone), the far side of the
-## sphere is up to ~150m FARTHER than 4000.0 from certain camera positions/
-## headings, and gets clipped entirely: nothing renders there, so Godot's
-## default clear color (black) shows through as a dome-shaped hole in the
-## sky. Looked exactly like a missing-material bug on a building mesh until
-## an exhaustive per-mesh material_override sweep (all 12 meshes in the office
-## GLTF, tested one by one with unmissable diagnostic colors) left the hole
-## unchanged -- it was never a mesh problem. Confirmed directly: setting this
-## higher (6000.0, comfortable margin over 4000+any spawn offset this project
-## currently uses) makes the hole disappear in the exact frame/heading that
-## reproduced it. Cheap, one-line, fixes it for every environment that shares
-## this file's camera-creation code, not just the one it was first noticed in.
-const FAR_CLIP := 6000.0
 
 # Per-vehicle runtime state (Dictionary, keyed by drone_id).
 var _vehicles: Dictionary = {}   # id → VehicleState
@@ -59,6 +39,10 @@ var _env_name: String = "office"
 var _env_node: Node = null
 # Main-scene vantage camera (re-created on env swap).
 var _main_cam: Camera3D = null
+var _chase_arg := "auto"
+var _chase_pos := Vector3.ZERO      # smoothed camera position (Godot space)
+var _chase_look := Vector3.ZERO     # smoothed aim point (Godot space)
+var _chase_ready := false
 
 
 # ------------------------------------------------------------------
@@ -70,7 +54,6 @@ class VehicleState:
 	var node: Node3D             # mesh root
 	var position: Vector3        # ENU metres
 	var yaw: float               # radians, ENU CCW
-	var roll: float              # radians, bank angle; fixed-wing only, 0 for quad/rover
 	var goal: Vector3            # ENU; null-sentinel = Vector3.INF
 	var goal_yaw: float          # NAN = none
 	var velocity_cmd: Vector3    # ENU; zero = not active
@@ -87,7 +70,6 @@ class VehicleState:
 		node = n
 		position = spawn
 		yaw = 0.0
-		roll = 0.0
 		goal = Vector3.INF
 		goal_yaw = NAN
 		velocity_cmd = Vector3.ZERO
@@ -167,7 +149,9 @@ func _add_main_vantage() -> void:
 	var main_cam := Camera3D.new()
 	main_cam.name = "MainVantageCamera"
 	main_cam.fov = 65.0
-	main_cam.far = FAR_CLIP
+	# Godot's default far plane is 4000 m. Manhattan is 21 km long, so the far
+	# half of the island was being clipped away mid-air.
+	main_cam.far = 40000.0
 	_scene_root.add_child(main_cam)  # look_at() below requires the node be in the tree
 	if _env_name == "plaza":
 		# Overlook chair cluster from the north-east, elevated.
@@ -186,6 +170,24 @@ func _add_main_vantage() -> void:
 		main_cam.position = mc_pos
 		main_cam.look_at(mc_look, Vector3.UP)
 	main_cam.current = true
+	# Chase mode is on unless a fixed vantage was asked for. A static camera is
+	# right for the small scripted scenes, where the whole scenario fits in one
+	# frame; over a city the aircraft leaves the shot in seconds and the window
+	# shows an empty street forever. `--chase=off` restores the fixed vantage,
+	# `--chase=<drone id>` pins it to one aircraft.
+	_chase_arg = IpcServer._get_launch_arg("--chase", "auto")
+	# Explicit audio listener at the window camera. Without this, 3D audio picks
+	# a "current" Camera3D as the listener — but every drone's forward camera is
+	# also current (in a SubViewport sharing this world), and one of those, being
+	# bolted to the aircraft, wins. The engine buzz then plays at a fixed ~3 m
+	# listener distance forever, so it never gets louder/quieter as a drone nears
+	# or leaves this view. An AudioListener3D takes priority over cameras and
+	# pins the listener here, restoring distance attenuation. (See
+	# fixedwing_manager._attach_engine_audio.)
+	var listener := AudioListener3D.new()
+	listener.name = "MainAudioListener"
+	main_cam.add_child(listener)
+	listener.make_current()
 	_main_cam = main_cam
 
 
@@ -206,6 +208,8 @@ func _load_environment(env_name: String) -> void:
 		"countdemo":     "res://scenes/environments/countdemo.tscn",
 		"gate":          "res://scenes/environments/gate.tscn",
 		"sar":           "res://scenes/environments/sar.tscn",
+		"surveil_truck": "res://scenes/environments/surveil_truck.tscn",
+		"manhattan":     "res://scenes/environments/manhattan.tscn",
 	}
 	var path: String = env_map.get(env_name, "res://scenes/environments/office.tscn")
 	if not ResourceLoader.exists(path):
@@ -269,7 +273,6 @@ func _spawn_vehicle(drone_id: String, vtype: String,
 
 	var cam := Camera3D.new()
 	cam.fov = 70.0
-	cam.far = FAR_CLIP  # see FAR_CLIP's own comment -- must exceed the sky sphere's radius
 	var spawn_godot := Vector3(spawn_enu.x, spawn_enu.z, -spawn_enu.y)
 	var params := _cam_params(vtype)
 	cam.position = spawn_godot + params[0]
@@ -340,34 +343,15 @@ func _integrate(st: VehicleState, dt: float) -> void:
 		st.position.z = 0.0
 
 	# Yaw integration.
-	var yaw_rate := 0.0
 	if not is_nan(st.goal_yaw):
 		var dy := wrapf(st.goal_yaw - st.yaw, -PI, PI)
 		var step: float = sign(dy) * min(st.max_yaw * dt, abs(dy))
 		st.yaw += step
-		yaw_rate = step / dt if dt > 0.0 else 0.0
 		if abs(dy) < deg_to_rad(1.0):
 			st.yaw = st.goal_yaw
 			st.goal_yaw = NAN
 
-	# Fixed-wing bank angle. An aircraft turns BY banking — it rolls, and the
-	# horizontal component of lift pulls it round. Yawing a wings-level aeroplane
-	# through a turn (what this did before, since roll was hardcoded to 0) reads
-	# to any viewer as the aircraft skidding sideways through the air.
-	# Coordinated turn: tan(roll) = v * yaw_rate / g.
-	# Roll is about the model's local +Z (its forward axis, see *_visuals.gd), and
-	# Godot's default YXZ euler order applies that Z rotation in the body frame
-	# before the Y yaw, so it banks about the fuselage rather than shearing the
-	# whole aircraft. Positive local-Z rotation lifts local +X, which is the LEFT
-	# wing, i.e. banks right — matching a right (increasing-bearing) turn.
-	if st.vtype in FW_TYPES:
-		var speed: float = st.velocity_cmd.length() if st.velocity_active else st.max_lin
-		var target_roll: float = clampf(atan(speed * yaw_rate / 9.81),
-										-MAX_ROLL_RAD_FW, MAX_ROLL_RAD_FW)
-		# Ease toward it so rolling in/out of a turn takes a beat, as it does in a
-		# real aircraft, instead of snapping the moment the yaw command changes.
-		st.roll = lerpf(st.roll, target_roll, clampf(dt * ROLL_RATE_FW, 0.0, 1.0))
-	_apply_pose_enu(st.node, st.position, st.yaw, st.roll)
+	_apply_pose_enu(st.node, st.position, st.yaw)
 
 	# Sync SubViewport camera to vehicle world position.
 	var godot_pos := Vector3(st.position.x, st.position.z, -st.position.y)
@@ -404,13 +388,11 @@ func _cam_params(vtype: String) -> Array:
 
 
 # ENU → Godot coordinate conversion and pose application.
-static func _apply_pose_enu(node: Node3D, pos_enu: Vector3, yaw_enu: float,
-							roll: float = 0.0) -> void:
+static func _apply_pose_enu(node: Node3D, pos_enu: Vector3, yaw_enu: float) -> void:
 	# ENU: x=east, y=north, z=up
 	# Godot: x=right(east), y=up, z=-forward(-north)
-	# roll defaults to 0 so existing callers (spawn, quads, rovers) are unchanged.
 	node.position = Vector3(pos_enu.x, pos_enu.z, -pos_enu.y)
-	node.rotation_degrees = Vector3(0.0, -rad_to_deg(yaw_enu), rad_to_deg(roll))
+	node.rotation_degrees = Vector3(0.0, -rad_to_deg(yaw_enu), 0.0)
 
 
 # ------------------------------------------------------------------
@@ -421,33 +403,6 @@ func get_state(drone_id: String):
 	if st == null:
 		return null
 	return {"position": st.position, "yaw": st.yaw}
-
-
-## Ground-truth camera pose for GT-box projection (trunk/godot_dataset_recorder.py).
-## Deliberately reads the live Camera3D's OWN global transform rather than
-## recomputing it from _cam_params()'s offset table -- that table's offset is
-## added in raw Godot-frame coordinates without being rotated by the vehicle's own
-## yaw (see _integrate()), so re-deriving it client-side would reproduce that same
-## small mounting-offset quirk instead of matching what the camera actually renders.
-##
-## Returns position + forward/up as ENU unit vectors (not yaw/pitch angles) --
-## deliberately sidesteps needing to invert this scene's yaw-sign/180-offset/Euler-
-## order conventions correctly by hand (rotation_degrees = Vector3(tilt, yaw_deg+180,
-## 0) in _integrate()); reading Camera3D's actual -Z (forward) and +Y (up) basis
-## vectors is convention-proof by construction; the caller only needs to know the
-## Godot->ENU axis permutation (x=x, y=-z, z=y), which is the one already used
-## throughout this file for position (_apply_pose_enu et al).
-func get_camera_pose(drone_id: String):
-	var st: VehicleState = _vehicles.get(drone_id)
-	if st == null:
-		return null
-	var t := st.camera.global_transform
-	var gp := t.origin
-	var g_fwd := -t.basis.z    # Camera3D looks down local -Z
-	var g_up := t.basis.y
-	var to_enu = func(v: Vector3) -> Array:
-		return [v.x, -v.z, v.y]   # Godot(x,y,z) -> ENU(x=x, y=-z, z=y)
-	return {"position": to_enu.call(gp), "forward": to_enu.call(g_fwd), "up": to_enu.call(g_up)}
 
 
 func set_goal(drone_id: String, pos_enu: Vector3) -> void:
@@ -581,7 +536,10 @@ func add_vantage(name: String, pos_enu: Vector3, look_enu: Vector3,
 
 	var cam := Camera3D.new()
 	cam.fov = 60.0
-	cam.far = FAR_CLIP
+	# Same far plane as the chase and onboard cameras. The default 4 km is fine
+	# for an office courtyard but silently cuts a 21 km city in half, and a
+	# vantage is precisely the camera used for wide establishing shots.
+	cam.far = 40000.0
 	vp.add_child(cam)
 
 	# SubViewport goes in a Node3D holder so the scene tree is tidy.
@@ -716,3 +674,69 @@ static func _grid(n: int, spacing: float = 3.0) -> Array:
 		var c: int = i % cols
 		out.append([float(c) * spacing, float(r) * spacing])
 	return out
+
+
+# ------------------------------------------------------------------
+# Chase camera
+# ------------------------------------------------------------------
+## Follow an aircraft with the window camera.
+##
+## Trails it by CHASE_BACK metres along its own heading and CHASE_UP above,
+## aiming slightly ahead of the nose so the shot leads the turn rather than
+## lagging it. Both the eye and the aim point are exponentially smoothed, or
+## every yaw command snaps the camera and the footage is unwatchable.
+# Close enough that the airframe is the subject and the city is the backdrop.
+# At 55 m back the aircraft was a speck against 400 m towers; at 14 m it fills a
+# useful part of the frame and the bank is readable.
+const CHASE_BACK := 14.0
+const CHASE_UP := 4.5
+# Aim just ahead of the nose, not far out: a long lead flattens the apparent
+# turn because the aim point barely moves relative to the aircraft.
+const CHASE_AHEAD := 12.0
+const CHASE_LAG := 2.5     # higher = snappier follow, lower = looser trail
+
+func _process(delta: float) -> void:
+	if _chase_arg == "off" or not is_instance_valid(_main_cam):
+		return
+	var states: Array = FixedWingManager.all_states()
+	if states.is_empty():
+		return
+	var st: Dictionary = states[0]
+	if _chase_arg != "auto":
+		var found := false
+		for s in states:
+			if s["id"] == _chase_arg:
+				st = s
+				found = true
+				break
+		if not found:
+			return
+
+	var p: Array = st["position"]           # ENU
+	var yaw: float = float(st["yaw"])
+	var fwd := Vector2(cos(yaw), sin(yaw))  # ENU heading
+
+	var eye_enu := Vector3(float(p[0]) - fwd.x * CHASE_BACK,
+						   float(p[1]) - fwd.y * CHASE_BACK,
+						   float(p[2]) + CHASE_UP)
+	var aim_enu := Vector3(float(p[0]) + fwd.x * CHASE_AHEAD,
+						   float(p[1]) + fwd.y * CHASE_AHEAD,
+						   float(p[2]))
+	# ENU (e, n, u) -> Godot (e, u, -n)
+	var eye := Vector3(eye_enu.x, eye_enu.z, -eye_enu.y)
+	var aim := Vector3(aim_enu.x, aim_enu.z, -aim_enu.y)
+
+	if not _chase_ready:
+		_chase_pos = eye
+		_chase_look = aim
+		_chase_ready = true
+	else:
+		var t: float = clampf(delta * CHASE_LAG, 0.0, 1.0)
+		_chase_pos = _chase_pos.lerp(eye, t)
+		_chase_look = _chase_look.lerp(aim, t)
+
+	_main_cam.position = _chase_pos
+	# Degenerate when the smoothed eye and aim coincide (first frames after a
+	# respawn); look_at() would error out and spam the log.
+	if _chase_pos.distance_to(_chase_look) > 0.5:
+		_main_cam.look_at(_chase_look, Vector3.UP)
