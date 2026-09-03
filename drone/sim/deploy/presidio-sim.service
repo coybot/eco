@@ -1,32 +1,34 @@
 [Unit]
 # Godot sim, fullscreen on thor's own monitor.
 #
-# A USER unit bound to graphical-session.target, not a system service, because
-# this renders to a real display: it needs the seat's X session, its DISPLAY and
-# its Xauthority, none of which exist before someone is logged in. A system unit
-# would have to invent a virtual display (Xvfb), and then nothing appears on the
-# monitor at all, which is the opposite of what this is for.
+# A USER unit, not a system service, because this renders to a real display: it
+# needs the seat's X session, its DISPLAY and its Xauthority, none of which exist
+# for a system unit. A system unit would have to invent a virtual display, and
+# then nothing appears on the monitor at all, which is the opposite of the point.
 #
-# Consequence worth knowing: after a reboot this starts when the operator's desktop
-# session starts. If the box boots to a GDM login screen and nobody logs in there
-# is no graphical session and the sim will not run. Enabling GDM autologin would
-# close that gap, but it means thor boots straight to a desktop with no password
-# — a security decision for the machine's owner, not a deployment detail.
+# Deliberately NOT WantedBy=graphical-session.target, which is the obvious thing
+# and does not work here: on this box GNOME does not drive the systemd --user
+# targets, so `systemctl --user is-active graphical-session.target` reports
+# inactive even with a live desktop session. A unit hung off it is enabled, never
+# starts, and leaves no journal entries at all — which is exactly how this failed
+# after one reboot.
+#
+# DISPLAY is discovered by run-sim.sh, not set here. Hardcoding it is what broke
+# this the second time: the number moved from :1 to :0 when autologin was enabled
+# (no greeter session to hold :0 any more) and the unit retried for four hours
+# against a socket that was never going to appear. Same empty screen, different
+# cause. See run-sim.sh.
 Description=Presidio Manhattan sim (fullscreen)
-PartOf=graphical-session.target
-After=graphical-session.target
+After=default.target
 
 [Service]
 Type=simple
-Environment=DISPLAY=:1
-Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
-# Screen blanking is fatal here, not just ugly: when the compositor stops
-# presenting frames Godot throttles its main loop and the IPC server stops
-# answering the drone. That killed a good 7-lap flight once already.
-ExecStartPre=-/bin/sh -c "xset s off; xset s noblank; xset -dpms; xset dpms force on"
-ExecStart=/home/<user>/godot/godot --path /home/<user>/eco/drone/sim/godot --resolution 3840x2160 --fullscreen -- --fleet= --env=manhattan --chase=fig8 --ipc-port=9978 --seed=0
+ExecStart=/home/<user>/eco/drone/sim/deploy/run-sim.sh
 Restart=always
-RestartSec=5
+# 30 s, not 5: while nobody is logged in this unit cannot possibly succeed, and a
+# 5 s loop just fills the journal with identical failures.
+RestartSec=30
+TimeoutStartSec=60
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=default.target
