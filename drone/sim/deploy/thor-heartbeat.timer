@@ -1,0 +1,9 @@
+[Unit]
+Description=Machine-state heartbeat every 30s
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=30
+AccuracySec=5
+Unit=thor-heartbeat.service
+[Install]
+WantedBy=timers.target

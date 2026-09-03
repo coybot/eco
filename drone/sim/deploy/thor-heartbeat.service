@@ -1,0 +1,5 @@
+[Unit]
+Description=Append machine state for post-reboot forensics
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/thor-heartbeat.sh
