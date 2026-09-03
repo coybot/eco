@@ -321,6 +321,8 @@ func _make_placeholder(vtype: String) -> Node3D:
 func _physics_process(delta: float) -> void:
 	for st in _vehicles.values():
 		_integrate(st, delta)
+	# Chase camera shares this clock deliberately — see _update_chase.
+	_update_chase(delta)
 
 
 func _integrate(st: VehicleState, dt: float) -> void:
@@ -695,7 +697,23 @@ const CHASE_UP := 4.5
 const CHASE_AHEAD := 12.0
 const CHASE_LAG := 2.5     # higher = snappier follow, lower = looser trail
 
-func _process(delta: float) -> void:
+## Chase camera runs on the PHYSICS clock, not the render clock.
+##
+## This was _process(), and that is what made the aircraft visibly jerk forward
+## about once a second. The aircraft's pose is applied in
+## FixedWingManager._physics_process at a fixed 60 Hz, while _process runs once
+## per rendered frame — measured at 59.17 fps on thor at 4K. Two clocks at 60 and
+## 59.17 beat at 0.83 Hz, so roughly once a second the aircraft advances an extra
+## physics step that the camera did not account for, and the subject appears to
+## hop ahead. Nothing was wrong with either rate on its own: frame deltas were a
+## clean 16.9 ms with no hitch above 100 ms, and sim_t tracked wall time to 1.7%.
+##
+## Sharing the clock makes the aircraft's position RELATIVE to the camera exact,
+## which is what the eye actually tracks. The background now beats against the
+## render rate instead, which is far less noticeable than the subject moving.
+## Preferred over Godot's physics_interpolation, which would have to reconcile
+## with the manual pose writes in _apply_pose.
+func _update_chase(delta: float) -> void:
 	if _chase_arg == "off" or not is_instance_valid(_main_cam):
 		return
 	var states: Array = FixedWingManager.all_states()
