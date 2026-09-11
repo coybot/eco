@@ -1,0 +1,44 @@
+[package]
+name = "presidio-bevy-sim"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+description = "Headless Bevy backend for the Presidio drone simulator; speaks the same newline-JSON IPC protocol as the Godot sim."
+
+[dependencies]
+# No bevy_winit / x11 / wayland: this binary must run with no display server at
+# all (that is the whole point of the port). bevy_window still comes in
+# transitively via bevy_camera, so DefaultPlugins includes WindowPlugin and we
+# configure it with primary_window: None plus an explicit ScheduleRunnerPlugin,
+# exactly as bevy's own examples/app/headless_renderer.rs does.
+# No bevy_audio (needs alsa) and no bevy_gilrs (needs libudev): neither dev
+# package is installed on the Linux GPU host and that session cannot sudo.
+bevy = { version = "0.19.1", default-features = false, features = [
+    "std",
+    "multi_threaded",
+    "bevy_log",
+    "bevy_asset",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "tonemapping_luts",
+    "zstd_rust",
+    "png",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+base64 = "0.22"
+crossbeam-channel = "0.5"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.release]
+opt-level = 3
+# Keep the whole-island load and 45k-instance build fast in release without
+# paying a slow link on every iteration.
+lto = false
+codegen-units = 16
+
+[profile.dev]
+opt-level = 1

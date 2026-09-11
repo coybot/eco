@@ -39,6 +39,10 @@ var _env_name: String = "office"
 var _env_node: Node = null
 # Main-scene vantage camera (re-created on env swap).
 var _main_cam: Camera3D = null
+var _chase_arg := "auto"
+var _chase_pos := Vector3.ZERO      # smoothed camera position (Godot space)
+var _chase_look := Vector3.ZERO     # smoothed aim point (Godot space)
+var _chase_ready := false
 
 
 # ------------------------------------------------------------------
@@ -145,6 +149,9 @@ func _add_main_vantage() -> void:
 	var main_cam := Camera3D.new()
 	main_cam.name = "MainVantageCamera"
 	main_cam.fov = 65.0
+	# Godot's default far plane is 4000 m. Manhattan is 21 km long, so the far
+	# half of the island was being clipped away mid-air.
+	main_cam.far = 40000.0
 	_scene_root.add_child(main_cam)  # look_at() below requires the node be in the tree
 	if _env_name == "plaza":
 		# Overlook chair cluster from the north-east, elevated.
@@ -163,6 +170,12 @@ func _add_main_vantage() -> void:
 		main_cam.position = mc_pos
 		main_cam.look_at(mc_look, Vector3.UP)
 	main_cam.current = true
+	# Chase mode is on unless a fixed vantage was asked for. A static camera is
+	# right for the small scripted scenes, where the whole scenario fits in one
+	# frame; over a city the aircraft leaves the shot in seconds and the window
+	# shows an empty street forever. `--chase=off` restores the fixed vantage,
+	# `--chase=<drone id>` pins it to one aircraft.
+	_chase_arg = IpcServer._get_launch_arg("--chase", "auto")
 	# Explicit audio listener at the window camera. Without this, 3D audio picks
 	# a "current" Camera3D as the listener — but every drone's forward camera is
 	# also current (in a SubViewport sharing this world), and one of those, being
@@ -195,6 +208,8 @@ func _load_environment(env_name: String) -> void:
 		"countdemo":     "res://scenes/environments/countdemo.tscn",
 		"gate":          "res://scenes/environments/gate.tscn",
 		"sar":           "res://scenes/environments/sar.tscn",
+		"surveil_truck": "res://scenes/environments/surveil_truck.tscn",
+		"manhattan":     "res://scenes/environments/manhattan.tscn",
 	}
 	var path: String = env_map.get(env_name, "res://scenes/environments/office.tscn")
 	if not ResourceLoader.exists(path):
@@ -306,6 +321,8 @@ func _make_placeholder(vtype: String) -> Node3D:
 func _physics_process(delta: float) -> void:
 	for st in _vehicles.values():
 		_integrate(st, delta)
+	# Chase camera shares this clock deliberately — see _update_chase.
+	_update_chase(delta)
 
 
 func _integrate(st: VehicleState, dt: float) -> void:
@@ -521,6 +538,10 @@ func add_vantage(name: String, pos_enu: Vector3, look_enu: Vector3,
 
 	var cam := Camera3D.new()
 	cam.fov = 60.0
+	# Same far plane as the chase and onboard cameras. The default 4 km is fine
+	# for an office courtyard but silently cuts a 21 km city in half, and a
+	# vantage is precisely the camera used for wide establishing shots.
+	cam.far = 40000.0
 	vp.add_child(cam)
 
 	# SubViewport goes in a Node3D holder so the scene tree is tidy.
@@ -655,3 +676,85 @@ static func _grid(n: int, spacing: float = 3.0) -> Array:
 		var c: int = i % cols
 		out.append([float(c) * spacing, float(r) * spacing])
 	return out
+
+
+# ------------------------------------------------------------------
+# Chase camera
+# ------------------------------------------------------------------
+## Follow an aircraft with the window camera.
+##
+## Trails it by CHASE_BACK metres along its own heading and CHASE_UP above,
+## aiming slightly ahead of the nose so the shot leads the turn rather than
+## lagging it. Both the eye and the aim point are exponentially smoothed, or
+## every yaw command snaps the camera and the footage is unwatchable.
+# Close enough that the airframe is the subject and the city is the backdrop.
+# At 55 m back the aircraft was a speck against 400 m towers; at 14 m it fills a
+# useful part of the frame and the bank is readable.
+const CHASE_BACK := 14.0
+const CHASE_UP := 4.5
+# Aim just ahead of the nose, not far out: a long lead flattens the apparent
+# turn because the aim point barely moves relative to the aircraft.
+const CHASE_AHEAD := 12.0
+const CHASE_LAG := 2.5     # higher = snappier follow, lower = looser trail
+
+## Chase camera runs on the PHYSICS clock, not the render clock.
+##
+## This was _process(), and that is what made the aircraft visibly jerk forward
+## about once a second. The aircraft's pose is applied in
+## FixedWingManager._physics_process at a fixed 60 Hz, while _process runs once
+## per rendered frame — measured at 59.17 fps on thor at 4K. Two clocks at 60 and
+## 59.17 beat at 0.83 Hz, so roughly once a second the aircraft advances an extra
+## physics step that the camera did not account for, and the subject appears to
+## hop ahead. Nothing was wrong with either rate on its own: frame deltas were a
+## clean 16.9 ms with no hitch above 100 ms, and sim_t tracked wall time to 1.7%.
+##
+## Sharing the clock makes the aircraft's position RELATIVE to the camera exact,
+## which is what the eye actually tracks. The background now beats against the
+## render rate instead, which is far less noticeable than the subject moving.
+## Preferred over Godot's physics_interpolation, which would have to reconcile
+## with the manual pose writes in _apply_pose.
+func _update_chase(delta: float) -> void:
+	if _chase_arg == "off" or not is_instance_valid(_main_cam):
+		return
+	var states: Array = FixedWingManager.all_states()
+	if states.is_empty():
+		return
+	var st: Dictionary = states[0]
+	if _chase_arg != "auto":
+		var found := false
+		for s in states:
+			if s["id"] == _chase_arg:
+				st = s
+				found = true
+				break
+		if not found:
+			return
+
+	var p: Array = st["position"]           # ENU
+	var yaw: float = float(st["yaw"])
+	var fwd := Vector2(cos(yaw), sin(yaw))  # ENU heading
+
+	var eye_enu := Vector3(float(p[0]) - fwd.x * CHASE_BACK,
+						   float(p[1]) - fwd.y * CHASE_BACK,
+						   float(p[2]) + CHASE_UP)
+	var aim_enu := Vector3(float(p[0]) + fwd.x * CHASE_AHEAD,
+						   float(p[1]) + fwd.y * CHASE_AHEAD,
+						   float(p[2]))
+	# ENU (e, n, u) -> Godot (e, u, -n)
+	var eye := Vector3(eye_enu.x, eye_enu.z, -eye_enu.y)
+	var aim := Vector3(aim_enu.x, aim_enu.z, -aim_enu.y)
+
+	if not _chase_ready:
+		_chase_pos = eye
+		_chase_look = aim
+		_chase_ready = true
+	else:
+		var t: float = clampf(delta * CHASE_LAG, 0.0, 1.0)
+		_chase_pos = _chase_pos.lerp(eye, t)
+		_chase_look = _chase_look.lerp(aim, t)
+
+	_main_cam.position = _chase_pos
+	# Degenerate when the smoothed eye and aim coincide (first frames after a
+	# respawn); look_at() would error out and spam the log.
+	if _chase_pos.distance_to(_chase_look) > 0.5:
+		_main_cam.look_at(_chase_look, Vector3.UP)

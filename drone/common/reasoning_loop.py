@@ -73,6 +73,13 @@ CAM_VIEWPORT_H = 480
 # real target classes are added (see change D).
 POSSIBLY_MOVING_LABELS = {"person", "people", "pedestrian", "human", "animal", "dog", "cat"}
 
+# Camera-driven avoidance manoeuvre (ActionType.AVOID). A moderate turn rate
+# rather than the airframe's 0.6 rad/s limit: the point is a deliberate,
+# readable break, and the handler flies it for a measured number of seconds and
+# then levels off, so a bigger rate would only make the timing twitchier.
+AVOID_YAW_RATE = 0.35    # rad/s
+AVOID_CLIMB_M = 25.0     # metres of height to gain on an "over" decision
+
 
 def _compass_name(yaw_rad: float) -> str:
     """Heading as a compass point plus degrees, in the sim's ENU convention
@@ -361,6 +368,10 @@ class MissionLoop:
         self.obstacles = ObstacleTracker()
         self.payload_remaining: int = 0
         self.payload_capacity: int = 0
+        # Feed the model the ground-truth OBSTACLES AHEAD block? Set False for
+        # genuinely camera-driven avoidance — see _situation_blocks. Default True
+        # so existing missions and recorded gate numbers are unchanged.
+        self.obstacles_from_truth: bool = True
         # Optional hook: (frame_bytes, detections, action, wall_clock) for each
         # decision, so a harness can record exactly what the model saw.
         self.on_tick: Optional[Callable] = None
@@ -1594,6 +1605,67 @@ class MissionLoop:
                 else:
                     self._history.append(f"Search pattern exhausted for {target}")
 
+            elif action.action_type == ActionType.AVOID:
+                # Camera-driven obstacle avoidance: a RELATIVE manoeuvre, held for
+                # one decision interval.
+                #
+                # Every other spatial action here is expressed in world
+                # coordinates, and those coordinates exist only because the sim
+                # supplied them (detect() is a ground-truth oracle, and
+                # navigate_to_point resolves a pixel with a sim raycast). So none
+                # of them can support a claim that the aircraft avoided something
+                # using its camera. This one can: it carries no coordinates, and
+                # the model's only inputs for it are the image and the mission.
+                #
+                # Rate-based, because that is what the airframe takes and because
+                # a turn rate is the honest expression of "break left" — the model
+                # is not being asked where the far side of the building is, only
+                # which way to go and whether it can climb.
+                pose = backend.get_pose()
+                direction = (action.direction or "").strip().lower()
+                mag = float(action.magnitude_deg or 35.0)
+                mag = max(10.0, min(90.0, mag))
+                if direction not in ("left", "right", "over"):
+                    self._history.append(
+                        f"avoid ignored: direction {action.direction!r} is not "
+                        f"left/right/over")
+                else:
+                    cruise = getattr(backend, "CRUISE_MS", 20.0)
+                    # TIME-BOUNDED, and that is essential rather than tidy. The
+                    # sim holds the last drive command until the next one, and a
+                    # decision here takes ~11 s on the Orin's 2B model. A bare
+                    # 0.23 rad/s turn rate left standing for 11 s is a 145 deg
+                    # turn — the aircraft would spin past the gap it was aiming
+                    # for and keep going. So the manoeuvre is flown for exactly
+                    # as long as it needs and then levelled off, and the aircraft
+                    # coasts straight while the model thinks about the next one.
+                    if direction == "over":
+                        climb_rate = 5.0
+                        secs = min(5.0, AVOID_CLIMB_M / climb_rate)
+                        alt_now = f"{pose[2]:.0f} m" if pose is not None else "?"
+                        self._report_progress(
+                            f"Avoiding: climbing over it (from {alt_now}, "
+                            f"+{AVOID_CLIMB_M:.0f} m)")
+                        backend.drive(airspeed=cruise, yaw_rate=0.0,
+                                      climb=climb_rate)
+                    else:
+                        # Positive yaw_rate is a LEFT (counter-clockwise) turn in
+                        # this sim's ENU convention — see fixedwing_manager's bank
+                        # sign note — so "left" is positive.
+                        rate = AVOID_YAW_RATE * (1.0 if direction == "left" else -1.0)
+                        secs = min(6.0, math.radians(mag) / AVOID_YAW_RATE)
+                        self._report_progress(
+                            f"Avoiding: breaking {direction} {mag:.0f} deg")
+                        backend.drive(airspeed=cruise, yaw_rate=rate, climb=0.0)
+                    time.sleep(secs)
+                    # Level off. Without this the turn or climb stands until the
+                    # next decision and the manoeuvre becomes unbounded again.
+                    backend.drive(airspeed=cruise, yaw_rate=0.0, climb=0.0)
+                    self._history.append(
+                        f"avoid: {direction}"
+                        + ("" if direction == "over" else f" {mag:.0f} deg")
+                        + f" ({secs:.1f} s)")
+
             elif action.action_type == ActionType.ORBIT_POINT:
                 # Circle a point and keep watching it. One lap per decision, so
                 # the model re-evaluates every lap and can break off the moment
@@ -1883,9 +1955,45 @@ class MissionLoop:
             blocks["PEER OBSERVATIONS (teammates you have SEEN — there is no radio link)"] = (
                 peer_text)
 
-        obstacle_text = self.obstacles.summarize(own, pose[3], detections)
-        if obstacle_text:
-            blocks["OBSTACLES AHEAD"] = obstacle_text
+        # OBSTACLES AHEAD is ground truth, and that is the whole reason it can be
+        # switched off here.
+        #
+        # ObstacleTracker is fed from backend.detect(), which in the sim is an
+        # oracle over the scene graph — exact distance, exact span, exact roof
+        # height. A model handed that block is not avoiding obstacles from its
+        # camera, it is reading coordinates off a list while a JPEG happens to be
+        # attached. So "camera avoidance" mode withholds the block: the image and
+        # the mission are then genuinely the only things describing what is in the
+        # way, and ActionType.AVOID is the only action that can act on it.
+        #
+        # Default stays ON. Every mission and gate number recorded to date was
+        # measured with this block present, and silently removing it would
+        # invalidate all of them.
+        if self.obstacles_from_truth:
+            obstacle_text = self.obstacles.summarize(own, pose[3], detections)
+            if obstacle_text:
+                blocks["OBSTACLES AHEAD"] = obstacle_text
+        else:
+            # Withholding the block is not enough on its own. Observed live: with
+            # no OBSTACLES AHEAD present the model still answered
+            # navigate_to_world for a building filling its camera — and its
+            # reasoning was correct ("looking directly into the side of a
+            # building, which blocks forward progress"), so it saw the obstacle
+            # and simply reached for the wrong action. There are a dozen action
+            # types and the prompt talks up navigate_to_world, including for
+            # "the end of an obstacle listed in OBSTACLES AHEAD" — advice that
+            # makes no sense when there is no such list. So say plainly which
+            # action applies and why the coordinate-based one cannot.
+            blocks["OBSTACLE POLICY (CAMERA ONLY)"] = (
+                "- You have NO obstacle list this mission. What is in your way is "
+                "whatever you can SEE in the image.\n"
+                "- If something solid is close and ahead of you, you MUST reply "
+                "with the `avoid` action and a `direction` of \"left\", \"right\" "
+                "or \"over\". Do NOT use navigate_to_world or navigate_to_point to "
+                "get around it: you have no coordinates for it and no pixel can "
+                "name the far side of a building.\n"
+                "- Choose \"over\" if you can see the TOP EDGE of it with sky "
+                "above; otherwise choose whichever side shows more open sky.")
 
         if self.payload_capacity:
             blocks["PAYLOAD"] = payload_block(self.payload_remaining, self.payload_capacity)

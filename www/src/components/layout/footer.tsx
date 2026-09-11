@@ -3,25 +3,20 @@ import { Separator } from "@/components/ui/separator";
 import { SITE } from "@/lib/site";
 
 const footerLinks: Record<string, { name: string; href: string; external?: boolean }[]> = {
-  Products: [
-    { name: "Quadcopter", href: "/products/quadcopter" },
-    { name: "Rover", href: "/products/rover" },
-    { name: "Fixed-Wing", href: "/products/fixed-wing" },
-    { name: "Phrover", href: "/products/phrover" },
-    { name: "Compare", href: "/compare" },
-    { name: "Pricing", href: "/pricing" },
-  ],
-  Developers: [
-    { name: "Documentation", href: "/docs" },
-    { name: "Run in Simulation", href: "/docs/simulation" },
-    { name: "Yonder Dataset", href: "/datasets/yonder" },
-    { name: "Research", href: "/research" },
+  Learn: [
+    { name: "What is autonomy?", href: "/autonomy" },
+    { name: "Get Started", href: "/get-started" },
     { name: "Blog", href: "/blog" },
-    { name: "GitHub", href: SITE.githubOrg, external: true },
+    { name: "About", href: "/about" },
   ],
-  Legal: [
-    { name: "Privacy Policy", href: "/privacy" },
-    { name: "Terms of Service", href: "/terms" },
+  "Open Source": [
+    { name: "presidio-sdk", href: SITE.presidioSdk, external: true },
+    { name: "eco (sim + benchmark)", href: SITE.eco, external: true },
+    { name: "presidio-docs", href: SITE.presidioDocs, external: true },
+  ],
+  Contact: [
+    { name: "hello@presidioautonomy.com", href: `mailto:${SITE.email}` },
+    { name: "GitHub", href: SITE.githubOrg, external: true },
   ],
 };
 
@@ -30,18 +25,17 @@ export function Footer() {
     <footer className="border-t border-border bg-card" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="container mx-auto px-4 py-12">
         {/* Main Footer Content */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Brand Column */}
-          <div className="col-span-2 md:col-span-3 lg:col-span-1">
+          <div className="col-span-2 md:col-span-1">
             <Link href="/" className="inline-block">
-              <img 
-                src="/logo-white.png" 
-                alt="Presidio" 
-                className="h-6 w-auto"
-              />
+              <span className="text-lg font-bold tracking-tight text-foreground">
+                PRESIDIO<span className="text-amber-500">AUTONOMY</span>
+              </span>
             </Link>
             <p className="mt-4 text-sm text-muted-foreground">
-              The Autonomous Drone Platform. Built on Open Source.
+              Open-source autonomy for teams that know aerospace, hardware, embedded, or AI —
+              and are ready to learn the part in between.
             </p>
           </div>
 
@@ -81,14 +75,9 @@ export function Footer() {
         {/* Bottom Bar */}
         <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Presidio. All rights reserved.
+            © {new Date().getFullYear()} Presidio Autonomy. Code is MIT/Apache-2.0 per repo — see
+            each repo's LICENSE file.
           </p>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-muted-foreground flex items-center">
-              <span className="inline-block w-2 h-2 bg-success rounded-full mr-2"></span>
-              All systems operational
-            </span>
-          </div>
         </div>
       </div>
     </footer>

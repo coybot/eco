@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Header, Footer } from "@/components/layout";
+import { SITE } from "@/lib/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,50 +24,50 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_BASE_URL ?? "https://astral.us"
+    process.env.NEXT_PUBLIC_BASE_URL ?? "https://presidioautonomy.com"
   ),
   title: {
-    default: "Presidio - Open Autonomy Stack for Drones & Rovers",
-    template: "%s | Presidio",
+    default: "Presidio Autonomy - Open-Source Drone Autonomy Stack",
+    template: "%s | Presidio Autonomy",
   },
   description:
-    "Presidio builds the open autonomy stack for uncrewed systems. In 10,200 closed-loop trials, most vision-language models couldn't beat a hovering drone — our modular stack reached 1.04 m. Open SDK, simulation, datasets, and NDAA-compliant hardware.",
+    "Waypoint following isn't autonomy. Presidio Autonomy is an open-source stack — and an honest benchmark — for what actually happens when GPS drops, comms die, and the mission changes mid-flight.",
   keywords: [
-    "autonomous drones",
-    "drone autonomy stack",
-    "AI drone navigation",
-    "NDAA compliant drones",
-    "drone SDK",
-    "GPS-denied drone",
-    "drone fleet management",
-    "vision-language model drone",
-    "Isaac Sim drone",
-    "Jetson Orin drone",
+    "drone autonomy",
+    "autonomous drone software",
+    "GPS-denied navigation",
+    "open source drone SDK",
+    "ArduPilot SDK",
+    "drone autonomy levels",
+    "vision language model drone",
+    "drone simulation benchmark",
+    "ROS 2 drone",
+    "autonomy stack",
   ],
-  authors: [{ name: "Presidio" }],
-  creator: "Presidio",
+  authors: [{ name: "Presidio Autonomy" }],
+  creator: "Presidio Autonomy",
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://astral.us",
-    siteName: "Presidio",
-    title: "Presidio - The Autonomous Drone Fleet Platform",
+    url: SITE.origin,
+    siteName: "Presidio Autonomy",
+    title: "Presidio Autonomy - Open-Source Drone Autonomy Stack",
     description:
-      "Empowering Developers, Enterprises, and Innovators with Agentic, Agile Unmanned Systems.",
+      "Waypoint following isn't autonomy. An open-source stack — and an honest benchmark — for what happens when GPS drops and the mission changes mid-flight.",
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Presidio - Autonomous Drone Platform",
+        alt: "Presidio Autonomy",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Presidio - The Autonomous Drone Fleet Platform",
+    title: "Presidio Autonomy - Open-Source Drone Autonomy Stack",
     description:
-      "Empowering Developers, Enterprises, and Innovators with Agentic, Agile Unmanned Systems.",
+      "Waypoint following isn't autonomy. An open-source stack — and an honest benchmark — for real drone autonomy.",
     images: ["/og-image.png"],
   },
   robots: {
@@ -90,7 +92,11 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          {children}
+          <div className="min-h-screen flex flex-col">
+            <Header />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </div>
         </ThemeProvider>
       </body>
     </html>

@@ -7,17 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SITE } from "@/lib/site";
 
-// Flat, crawlable nav. Every entry is a real <a href> to an index page that
-// exists and is rendered in the server HTML — no JS-only dropdowns. Sub-pages
-// (Quadcopter/Rover/Fixed-Wing/Phrover/Compare, SDK/API/Simulation, etc.) are reachable from these index
-// pages, the footer, and the sitemap.
+// Flat, crawlable nav. Every entry is a real <a href> to a page that exists
+// and is rendered in the server HTML — no JS-only dropdowns.
 const navLinks = [
-  { title: "Products", href: "/products" },
-  { title: "Benchmark", href: "/benchmark" },
-  { title: "Docs", href: "/docs" },
-  { title: "Research", href: "/research" },
-  { title: "Pricing", href: "/pricing" },
-  { title: "Enterprise", href: "/enterprise" },
+  { title: "Autonomy", href: "/autonomy" },
+  { title: "Stack", href: "/stack" },
+  { title: "Blog", href: "/blog" },
+  { title: "About", href: "/about" },
 ];
 
 export function Header() {
@@ -28,11 +24,9 @@ export function Header() {
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         {/* Logo */}
         <Link href="/" className="flex items-center">
-          <img
-            src="/logo-white.png"
-            alt="Presidio"
-            className="h-6 w-auto"
-          />
+          <span className="text-lg font-bold tracking-tight text-foreground">
+            PRESIDIO<span className="text-amber-500">AUTONOMY</span>
+          </span>
         </Link>
 
         {/* Desktop Navigation — plain anchors */}
@@ -55,7 +49,7 @@ export function Header() {
               <Github className="h-5 w-5" />
             </Button>
           </a>
-          <Link href="/docs">
+          <Link href="/get-started">
             <Button>Get Started</Button>
           </Link>
         </div>
@@ -81,7 +75,7 @@ export function Header() {
                   </Link>
                 ))}
                 <div className="pt-4 border-t border-border space-y-2">
-                  <Link href="/docs" onClick={() => setMobileOpen(false)}>
+                  <Link href="/get-started" onClick={() => setMobileOpen(false)}>
                     <Button className="w-full">Get Started</Button>
                   </Link>
                   <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)}>

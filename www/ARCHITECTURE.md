@@ -1,13 +1,14 @@
-# astral.us — Architecture Overview
+# presidioautonomy.com — Architecture Overview
 
 ## One repo, one source of truth
 
-The live website at **https://astral.us** is built entirely from this directory (`eco/www/`).
-It is a Next.js 16 App Router site deployed to AWS via SST (CloudFront + Lambda).
+The live website at **https://presidioautonomy.com** is built entirely from this directory
+(`eco/www/`). It's a Next.js 16 App Router site deployed to AWS via SST (CloudFront + Lambda).
 GitHub repo: `presidio-autonomy/eco`, path `www/`.
 
-There is no separate CMS, no headless WordPress, no Sanity, no external blog platform.
-All content lives as TypeScript files in `src/`.
+No CMS, no headless WordPress, no Sanity (an earlier scaffold existed and was removed —
+half-wired dependencies are worse than none). All content lives as TypeScript/MDX files
+under `src/`.
 
 ---
 
@@ -15,52 +16,35 @@ All content lives as TypeScript files in `src/`.
 
 | Content | File |
 |---|---|
-| Blog post metadata (title, date, slug, category) | `src/lib/blog-data.ts` |
-| Blog post full bodies | `src/app/blog/post-bodies.tsx` |
-| Research paper metadata (title, venue, dates, TL;DR, stats) | `src/lib/research-data.ts` |
-| Research paper full bodies | `src/app/research/paper-bodies.tsx` |
-| Product specs | `src/lib/products.ts` |
-| Site-wide constants (URLs, org links) | `src/lib/site.ts` |
+| Blog post metadata (title, date, slug) | `src/lib/blog-data.ts` |
+| Blog post bodies | `src/app/blog/post-bodies.tsx` |
+| Site-wide constants (URLs, org links, email) | `src/lib/site.ts` |
+| Nav links | `src/components/layout/header.tsx`, `footer.tsx` |
 
 ## Routes
 
-| URL | Source file |
+| URL | Purpose |
 |---|---|
-| `/research` | `src/app/research/page.tsx` — lists all 12 items (7 papers + 5 blog-only posts), sorted by date |
-| `/blog` | `src/app/blog/page.tsx` |
-| `/blog/[slug]` | `src/app/blog/[slug]/page.tsx` — renders body from `post-bodies.tsx`; if a companion paper exists, renders the full paper inline at `#paper` |
-| `/research/[slug]` | 301 redirects to `/blog/[companionPostSlug]#paper` (see `next.config.ts`) |
-| `/benchmark` | `src/app/benchmark/page.tsx` |
-| `/datasets/yonder` | `src/app/datasets/yonder/page.tsx` |
+| `/` | Home — the "waypoints ≠ autonomy" pitch |
+| `/autonomy` | Flagship explainer: levels, the metric gap, the separation principle, sim-first evaluation, FAQ |
+| `/stack` | The open-source stack — presidio-sdk, eco, presidio-docs, with real GitHub links |
+| `/get-started` | Sim-first quickstart (SDK / SITL / Isaac Sim) |
+| `/blog`, `/blog/[slug]` | 2 seed posts, adapted from `eco/papers/` |
+| `/about` | Why the project exists, contact |
 
-## The 12 items on /research
+There is deliberately no `/products`, `/pricing`, `/research`, `/operator`, `/docs`, `/privacy`,
+or `/terms` — this is not the old astral.us site. Hardware docs / SDK docs live in the
+`presidio-docs` repo, not this site.
 
-Seven have both a paper and a blog write-up (blog post is canonical, paper embedded at `#paper`):
+## What this repo is NOT
 
-| Paper slug | Companion blog slug |
-|---|---|
-| `yonder` | `yonder-drone-navigation-dataset` |
-| `metric-gap` | `metric-gap-vision-language-drone-navigation` |
-| `engineering-separation` | `engineering-drone-autonomy-18-iterations` |
-| `scaling-separation` | `drone-swarm-sensing-1000-drones` |
-| `gemma4-pilot` | `why-vlm-drones-cant-beat-hovering` |
-| `counter-uas` | `counter-uas-drone-attack-defense-simulation` |
-| `droneport-atc` | `droneport-atc-tower-vs-selforg` |
+- **`eco/papers/`** — raw markdown source files that some blog posts are adapted from. Not
+  wired into the website directly; the website has its own hand-written post bodies.
+- **`presidio-autonomy/presidio-docs`** — SDK/API documentation (Mintlify). No blog, no
+  marketing content, no shared components with this site.
 
-Five are blog-only posts (no companion paper):
+## Datasets
 
-- `four-models-drone-autonomy`
-- `domain-detector-aerial-autonomy`
-- `domain-detector-aerial-autonomy-paper`
-- `human-in-loop-drone-autonomy-94-percent`
-- `how-to-make-autonomous-drones-smarter`
-
-## Other repos — what they are NOT
-
-- **`eco/papers/`** — raw markdown source files, not wired into the website. Pre-dates the current site. Not published anywhere automatically.
-- **`presidio-autonomy/presidio-docs`** — API/SDK documentation only, served at `docs.astral.us`. No blog, no research section.
-
-## Models
-
-Drone inference models are hosted at `https://huggingface.co/astralhf/astral-drone-models`.
-Blog posts that reference models link there (not to S3). Constant defined in `src/lib/site.ts` as `SITE.droneModels`.
+The Yonder dataset is hosted on HuggingFace under a legacy namespace
+(`https://huggingface.co/datasets/astralhf/yonder`) — see `SITE.yonderDataset` in
+`src/lib/site.ts`. Not renamed; a real HuggingFace org migration hasn't happened.

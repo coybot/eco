@@ -116,3 +116,6 @@ drone/sim/takes/
 videos_hetero_v1/
 videos_hetero_v2/
 videos_decomposed/
+
+# Xcode device build output (956 MB of artifacts, never a source input).
+client/ios/DroneOperator/build_device/

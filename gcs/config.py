@@ -17,6 +17,12 @@ import yaml
 class HttpConfig:
     host: str = "0.0.0.0"
     port: int = 8080
+    # Address other machines should use to reach this server, e.g.
+    # "http://192.0.2.1:8080". Bound to 0.0.0.0 the server cannot infer its own
+    # reachable address, so presigned image URLs fall back to 127.0.0.1 — which a
+    # remote drone resolves to itself, and its photo upload is refused. Set this
+    # whenever a drone or app runs on another host.
+    public_base_url: Optional[str] = None
 
 
 @dataclass
@@ -64,6 +70,7 @@ def load_config(path: Optional[str] = None) -> GCSConfig:
     cfg.http = HttpConfig(
         host=http_raw.get("host", cfg.http.host),
         port=int(http_raw.get("port", cfg.http.port)),
+        public_base_url=http_raw.get("public_base_url", cfg.http.public_base_url),
     )
 
     mqtt_raw = raw.get("mqtt") or {}
