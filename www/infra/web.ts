@@ -2,17 +2,17 @@ import { bucket, rateLimitTable } from "./storage";
 import * as aws from "@pulumi/aws";
 
 const isProd = $app.stage === "prod";
-const domainName = isProd ? "astral.us" : `${$app.stage}.astral.us`;
+const domainName = isProd ? "presidioautonomy.com" : `${$app.stage}.presidioautonomy.com`;
 
 // Next.js website deployed to AWS via OpenNext
-export const web = new sst.aws.Nextjs("AstralWebsite", {
+export const web = new sst.aws.Nextjs("PresidioWebsite", {
   path: ".",
 
   link: [bucket],
 
   domain: {
     name: domainName,
-    redirects: isProd ? ["www.astral.us"] : [],
+    redirects: isProd ? ["www.presidioautonomy.com"] : [],
   },
 
   environment: {
@@ -20,7 +20,7 @@ export const web = new sst.aws.Nextjs("AstralWebsite", {
     RATE_LIMIT_TABLE: rateLimitTable.name,
   },
 
-  warm: isProd ? 5 : 1,
+  warm: 1,
 
   memory: "1024 MB",
 
@@ -31,22 +31,15 @@ export const web = new sst.aws.Nextjs("AstralWebsite", {
   },
 });
 
-// Grant the SSR Lambda role permission to invoke Bedrock models and use the rate-limit table
-const lambdaPolicy = new aws.iam.RolePolicy("AstralWebsiteLambdaPolicy", {
+// Grant the SSR Lambda role permission to invoke Bedrock models (for the
+// plan-mission natural-language simulation demo) and use the rate-limit table
+const lambdaPolicy = new aws.iam.RolePolicy("PresidioWebsiteLambdaPolicy", {
   role: web.nodes.server.nodes.role.name,
   policy: $jsonStringify({
     Version: "2012-10-17",
     Statement: [
-      {
-        Effect: "Allow",
-        Action: ["bedrock:InvokeModel"],
-        Resource: "*",
-      },
-      {
-        Effect: "Allow",
-        Action: ["dynamodb:UpdateItem", "dynamodb:GetItem"],
-        Resource: rateLimitTable.arn,
-      },
+      { Effect: "Allow", Action: ["bedrock:InvokeModel"], Resource: "*" },
+      { Effect: "Allow", Action: ["dynamodb:UpdateItem", "dynamodb:GetItem"], Resource: rateLimitTable.arn },
     ],
   }),
 });

@@ -1,5 +1,5 @@
 {
-  "name": "astral-website",
+  "name": "presidio-website",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -16,7 +16,6 @@
     "sst:secret": "sst secret"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.102.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1063.0",
     "@aws-sdk/client-dynamodb": "^3.1068.0",
     "@aws-sdk/credential-providers": "^3.1063.0",
@@ -30,31 +29,25 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
-    "@sanity/image-url": "^2.0.3",
     "@types/three": "^0.184.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.29.2",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
-    "next-sanity": "^12.0.14",
     "next-themes": "^0.4.6",
     "onnxruntime-web": "^1.27.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "sanity": "^5.7.0",
     "tailwind-merge": "^3.4.0",
     "three": "^0.184.0",
     "three-mesh-bvh": "^0.9.13"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "aws-cdk-lib": "^2.236.0",
-    "constructs": "^10.4.5",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "sst": "^3.17.38",

@@ -458,6 +458,7 @@ class FwGcsDaemon:
         self.spawn_alt = args.spawn_alt
         self.target_labels = [t.strip() for t in args.target_label.split(",") if t.strip()]
         self.brain = getattr(args, "brain", "vlm")
+        self.camera_avoidance = bool(getattr(args, "camera_avoidance", False))
         # None (default) disables photo capture entirely — no config beyond
         # this flag needed to keep the sim's photo shim off in any context
         # that hasn't opted in (e.g. a unit test building a bare daemon).
@@ -594,6 +595,10 @@ class FwGcsDaemon:
             loop = MissionLoop(backend=backend, vehicle_class=vc,
                                conversation_id=conv, drone_sdk=photo,
                                on_progress=lambda m: self._on_progress(conv, mission, m))
+            # Camera-driven avoidance withholds the ground-truth OBSTACLES AHEAD
+            # block, so the only thing telling the model what is in the way is the
+            # image. See MissionLoop._situation_blocks.
+            loop.obstacles_from_truth = not self.camera_avoidance
             result = loop.run(mission)
             memory = loop.memory
         self._armed = False
@@ -721,6 +726,12 @@ def main():
     ap.add_argument("--mqtt-password", default=None)
     ap.add_argument("--target-label", default="pickup truck",
                     help="comma-separated detector labels to report as the target")
+    ap.add_argument("--camera-avoidance", action="store_true",
+                    help="obstacle avoidance from the CAMERA only: withholds the "
+                         "ground-truth OBSTACLES AHEAD block so the model must "
+                         "judge what is in the way, and whether it can be "
+                         "overflown, from the image. Off by default because "
+                         "every mission measured to date had that block.")
     ap.add_argument("--brain", default="vlm", choices=["vlm", "oracle"],
                     help="vlm = real on-device Qwen3-VL (needs the model); "
                          "oracle = deterministic sim-truth executor (no VLM)")

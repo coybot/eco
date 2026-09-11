@@ -38,6 +38,10 @@ static func _add_sky(parent: Node3D) -> void:
 	sm.height = SKY_RADIUS * 2.0
 	sm.flip_faces = true
 	sphere.mesh = sm
+	# Named so a large env can drop it: this dome is finite (SKY_RADIUS), so a
+	# world bigger than it lets the camera fly outside and see it as a dark ball
+	# on the horizon. The WorldEnvironment sky below is infinite and needs no mesh.
+	sphere.name = "sky_dome"
 	var smat := StandardMaterial3D.new()
 	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	smat.albedo_color = Color(0.34, 0.54, 0.88)

@@ -20,3 +20,13 @@ lint:
 # Install dependencies only
 install:
     npm install
+
+# Deploy to dev.presidioautonomy.com — requires the Route53 hosted zone to
+# already exist and be delegated (see ../scripts/create-hosted-zone.sh).
+deploy-dev:
+    AWS_PROFILE=presidio npx sst deploy --stage dev
+
+# Deploy to presidioautonomy.com (apex + www redirect). Same prerequisites
+# as deploy-dev, run that stage first.
+deploy-prod:
+    AWS_PROFILE=presidio npx sst deploy --stage prod

@@ -32,15 +32,15 @@ export function BlogPreviewSection() {
           transition={{ duration: 0.5 }}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold">Blog & Research</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold">From the blog</h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Technical deep-dives, published papers, and lessons learned from
-            10,200+ closed-loop flight trials.
+            What we tried, what broke, and what we learned running thousands of
+            closed-loop trials.
           </p>
         </motion.div>
 
         {/* Blog Grid */}
-        <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
           {previewPosts.map((post, index) => (
             <motion.div
               key={post.slug}

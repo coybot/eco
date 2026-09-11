@@ -1,11 +1,7 @@
 export { HeroSection } from "./hero";
-export { ResearchTeaserSection } from "./research-teaser";
-export { BenchmarkTeaserSection } from "./benchmark-teaser";
-export { ProductsSection } from "./products";
-export { SolutionsSection } from "./solutions";
-export { DeveloperSection } from "./developer";
-export { AppShowcaseSection } from "./app-showcase";
+export { PlazaSimSection } from "./plaza-sim";
+export { EvidenceSection } from "./evidence";
+export { StackCardsSection } from "./stack-cards";
+export { AudienceSection } from "./audience";
 export { BlogPreviewSection } from "./blog-preview";
 export { CTASection } from "./cta";
-export { PlazaSimSection } from "./plaza-sim";
-export { VideoDemoSection } from "./video-demo";

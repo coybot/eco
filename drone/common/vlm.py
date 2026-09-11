@@ -49,6 +49,12 @@ class ActionType(str, Enum):
                                   # watching — for when something you care about is
                                   # temporarily hidden and may reappear
     DROP_PAYLOAD = "drop_payload"  # Release the carried payload near a confirmed target
+    AVOID = "avoid"  # Obstruction filling the camera: break left/right, or climb OVER it.
+                      # Deliberately RELATIVE (no coordinates), because it is the one
+                      # action meant to be answerable from the image alone — every other
+                      # spatial action here is phrased in world coordinates that only
+                      # exist because the sim handed them over. See reasoning_loop's
+                      # AVOID handler and the "over or around" cue in SYSTEM_PROMPT.
     CAPTURE_PHOTO = "capture_photo"
     REPORT = "report"  # Send message to user
     PHASE_COMPLETE = "phase_complete"
@@ -72,6 +78,10 @@ class VLMAction:
     world_y: Optional[float] = None
     radius_m: Optional[float] = None
     alt_m: Optional[float] = None
+
+    # For avoid: which way to break. "left" / "right" / "over".
+    direction: Optional[str] = None
+    magnitude_deg: Optional[float] = None
 
     # For report/complete actions
     message: Optional[str] = None
@@ -99,6 +109,8 @@ class VLMAction:
             "world_y": self.world_y,
             "radius_m": self.radius_m,
             "alt_m": self.alt_m,
+            "direction": self.direction,
+            "magnitude_deg": self.magnitude_deg,
             "message": self.message,
             "reasoning": self.reasoning,
             "confidence": self.confidence,
@@ -116,6 +128,8 @@ class VLMAction:
             world_y=data.get("world_y"),
             radius_m=data.get("radius_m"),
             alt_m=data.get("alt_m"),
+            direction=data.get("direction"),
+            magnitude_deg=data.get("magnitude_deg"),
             message=data.get("message"),
             reasoning=data.get("reasoning"),
             confidence=data.get("confidence", 1.0),
@@ -156,6 +170,17 @@ ACTION TYPES:
   the end of an obstacle listed in OBSTACLES AHEAD, or a place you were told
   about in the objective. navigate_to_point can only aim at what is currently
   on camera, so it cannot take you around something that is in your way.
+- avoid: Something solid is in your way and close. Break "left" or "right", or go
+  "over" it, in the "direction" field. This action takes NO coordinates on
+  purpose — it is the one action you are meant to answer from the picture alone,
+  so decide it from what you see and nothing else.
+  HOW TO CHOOSE OVER OR AROUND, from the image: if you can see the TOP EDGE of
+  the obstruction with sky or open air above it, you can out-climb it — answer
+  "over". If it rises past the top of the frame, you cannot climb over it in
+  time; pick "left" or "right", whichever side shows more open space or sky.
+  When both sides look equally blocked, still choose one — holding course into it
+  is the one answer that is certainly wrong. Optional "magnitude_deg" sets how
+  hard to break (default 35).
 - navigate_to_object: Navigate toward a detected object by name
 - return_to_landmark: Fly back to a REMEMBERED LANDMARK by label (see MEMORY below) —
   use this when a target you've already seen is no longer visible (out of range/FOV,
@@ -281,6 +306,12 @@ class VLMService:
         self._backend = "openai" if self._base_url else "llama"
         self._model = os.environ.get("VLM_MODEL", "")
         self._api_key = os.environ.get("VLM_API_KEY")
+        # Qwen3-generation models reason before answering. At decide()'s 500-token
+        # budget the reasoning alone can consume the whole completion, returning
+        # empty content and stalling the mission ("VLM produced no usable output").
+        # Set to "none" against Ollama to suppress it. Only sent when set, so
+        # endpoints that reject the field are unaffected.
+        self._reasoning_effort = os.environ.get("VLM_REASONING_EFFORT")
 
         self._llm = None
         self._available = False
@@ -310,12 +341,15 @@ class VLMService:
         shape create_chat_completion gives, so decide()'s parsing is unchanged.
         `logit_bias` (a llama.cpp EOS workaround) is dropped — not portable."""
         import urllib.request
-        body = json.dumps({
+        payload = {
             "model": self._model,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
-        }).encode()
+        }
+        if self._reasoning_effort:
+            payload["reasoning_effort"] = self._reasoning_effort
+        body = json.dumps(payload).encode()
         req = urllib.request.Request(self._base_url + "/chat/completions",
                                      data=body,
                                      headers={"Content-Type": "application/json"})
@@ -426,6 +460,92 @@ class VLMService:
         b64 = base64.b64encode(image_bytes).decode('utf-8')
         return f"data:image/jpeg;base64,{b64}"
     
+    # Width the avoidance frame is downscaled to before it is sent.
+    #
+    # This is the single biggest latency win available and it costs nothing in
+    # accuracy. Measured on an Orin Nano running qwen3.5:4b over an 18-frame
+    # labelled set: native 640x480 took 23.4 s per call, 320 px took 1.0 s — 23x
+    # faster — and scored marginally BETTER (9/18 vs 7/18). Nearly all the time
+    # was the vision encoder chewing image tokens, not the language model.
+    #
+    # 23 s is not a latency, it is a different flight. At the 12 m/s minimum
+    # airspeed the aircraft covers 280 m between decisions, further than the
+    # 200 m it can see ahead; at 1.0 s it covers 12 m.
+    AVOID_FRAME_PX = 320
+
+    def check_path(self, image_bytes: bytes) -> Optional[str]:
+        """Fast camera-only look ahead: "clear", "over", "around", or None.
+
+        A single narrow question with a tiny token budget, deliberately separate
+        from decide(). decide() carries the full mission prompt with a dozen
+        action types and takes ~20 s; obstacle avoidance cannot run on a 20 s
+        loop, and it does not need any of that context.
+
+        MEASURED ACCURACY, so nobody has to guess: 9/18 on a labelled Manhattan
+        set (chance is 6/18 for three classes), and the errors are not spread
+        evenly — the model answers "over" for 13 of 18 frames regardless of what
+        is in them, scoring 6/6 on over, 2/6 on clear and 1/6 on around. It is
+        close to a constant function. Treat the result as ADVISORY ONLY and keep
+        a geometric check authoritative for anything that must not hit a
+        building. See drone/sim/guarded_backend.py.
+        """
+        try:
+            payload_img = self._downscale(image_bytes, self.AVOID_FRAME_PX)
+        except Exception:
+            payload_img = image_bytes           # Pillow missing: send as-is
+        prompt = (
+            "You are the forward camera of a drone flying straight ahead through "
+            "a city. Answer with ONE word only.\n"
+            "CLEAR  - nothing blocks the way straight ahead.\n"
+            "OVER   - a building blocks the way ahead, and you can see its ROOF "
+            "with sky above it, so you could climb above it.\n"
+            "AROUND - a building blocks the way ahead and rises past the TOP of "
+            "the picture, so you cannot climb above it.\n"
+            "Look only at the MIDDLE of the picture. Answer CLEAR, OVER or AROUND.")
+        try:
+            text = self._ask_raw(prompt, payload_img, max_tokens=6)
+        except Exception as e:
+            # Returning None rather than raising is deliberate: the Orin's vision
+            # encoder crashes intermittently (HTTP 500, "encoding mtmd batch" in
+            # the ollama log), and a look-ahead that occasionally cannot answer
+            # must not take the flight down with it. The caller treats None as
+            # "no opinion" and the geometric guard carries on regardless.
+            print(f"[vlm] check_path failed: {e}")
+            return None
+        up = (text or "").strip().upper()
+        for word in ("AROUND", "OVER", "CLEAR"):
+            if word in up:
+                return word.lower()
+        return None
+
+    @staticmethod
+    def _downscale(image_bytes: bytes, width: int) -> bytes:
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(image_bytes))
+        if im.width <= width:
+            return image_bytes
+        im.thumbnail((width, width))
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, format="JPEG", quality=82)
+        return buf.getvalue()
+
+    def _ask_raw(self, prompt: str, image_bytes: bytes, max_tokens: int = 16) -> str:
+        """One image question, one short answer. No mission context, no history.
+
+        Goes through _chat() like every other inference in this class, so it
+        takes the same lock and inherits the API key and reasoning_effort
+        handling — reasoning_effort in particular is load-bearing: without it the
+        model spends the whole token budget thinking and returns an empty string.
+        """
+        messages = [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url",
+             "image_url": {"url": self._encode_image(image_bytes=image_bytes)}},
+        ]}]
+        out = self._chat(messages=messages, max_tokens=max_tokens, temperature=0.0)
+        return (out["choices"][0]["message"].get("content") or "")
+
     def decide(
         self,
         image,  # Can be path, bytes, or numpy array

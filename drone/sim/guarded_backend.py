@@ -173,12 +173,45 @@ class EnvelopeGuardedSimBackend(SimBackend):
     # for a perfectly good answer to "get past this obstacle". A single
     # scene-wide height is a deliberate simplification of a 2.5D problem; it is
     # safe because it over-estimates (nothing here is taller than the wall).
+    #
+    # That last clause is the catch, and it stops being true the moment the scene
+    # is a city. env_manhattan's tallest building is 472 m, so a hardcoded 50 m
+    # made `_blocked_ahead` return None for ANY cruise above 60 m — the guard
+    # quietly turned itself off over exactly the scene that needs it most, and
+    # would have reported a clean run with zero interventions while flying
+    # through midtown. So it is now taken from the env when the env knows, and
+    # the constant is only the fallback for scenes that do not report it.
     STRUCTURE_TOP_M = 50.0
     OVERFLY_MARGIN_M = 10.0
 
+    def _structure_top(self) -> float:
+        """Scene-wide structure ceiling, from the env if it reports one."""
+        cached = getattr(self, "_structure_top_m", None)
+        if cached is not None:
+            return cached
+        top = self.STRUCTURE_TOP_M
+        try:
+            env = self._client.fw_env_state() or {}
+            # depot_client.fw_env_state() already unwraps the "env" envelope, and
+            # inside it "env" is the scene NAME ("manhattan") — a string. Only
+            # unwrap again if it really is a nested dict, or this reads .get on a
+            # str, throws, and falls back to 50 m without a word.
+            inner = env.get("env")
+            if isinstance(inner, dict):
+                env = inner
+            reported = env.get("tallest")
+            if reported is not None and float(reported) > 0.0:
+                top = float(reported)
+        except Exception:
+            # A guard that fails closed is the right call here: keep the
+            # conservative constant rather than assuming the sky is clear.
+            pass
+        self._structure_top_m = top
+        return top
+
     def _blocked_ahead(self, x, y, yaw, z: float = 0.0):
         """Distance to structure along the current heading, or None if clear."""
-        if z > self.STRUCTURE_TOP_M + self.OVERFLY_MARGIN_M:
+        if z > self._structure_top() + self.OVERFLY_MARGIN_M:
             return None
         d = self.STEP_M
         while d <= self.LOOKAHEAD_M:

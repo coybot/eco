@@ -6,7 +6,7 @@ import type { MissionPlan, EnvironmentType } from '@/lib/mission-types';
 import { ENV_CONFIG } from '@/lib/mission-types';
 
 const credentials = process.env.NODE_ENV === 'development'
-  ? fromIni({ profile: 'astral' })
+  ? fromIni({ profile: 'presidio' })
   : undefined;
 
 const client = new BedrockRuntimeClient({ region: 'us-west-2', credentials });

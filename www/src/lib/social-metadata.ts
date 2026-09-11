@@ -42,7 +42,7 @@ export function socialMeta(
       title: ogTitle,
       description,
       url: canonical,
-      siteName: "Presidio",
+      siteName: "Presidio Autonomy",
       locale: "en_US",
       type,
       images,
