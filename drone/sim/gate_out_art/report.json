@@ -2,8 +2,8 @@
   "gate": "M1_red_jacket_discrimination",
   "model": {
     "available": true,
-    "model_path": "/Users/jsaib/code/ys/a/eco/drone/models/vlm.gguf",
-    "mmproj_path": "/Users/jsaib/code/ys/a/eco/drone/models/vlm_mmproj.gguf"
+    "model_path": "~/code/ys/coybot/eco/drone/models/vlm.gguf",
+    "mmproj_path": "~/code/ys/coybot/eco/drone/models/vlm_mmproj.gguf"
   },
   "pass_bar": ">=80% correct on single-subject trials at measured slant <=26 m",
   "passed": true,

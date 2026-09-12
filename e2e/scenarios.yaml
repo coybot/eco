@@ -4,8 +4,8 @@
 #
 # app          — which phone app owns this vehicle type
 # transport    — how the mission reaches the vehicle
-# sim          — sim engine used for the live tier (astral_sim = Godot, see
-#                eco/drone/sim/godot/project.godot "AstralEcoSim"; isaac = optional
+# sim          — sim engine used for the live tier (coybot_sim = Godot, see
+#                eco/drone/sim/godot/project.godot "CoybotEcoSim"; isaac = optional
 #                photoreal alternative on hoopoe, not required for e2e)
 # mission      — natural-language command sent exactly as a phone user would type it
 # expect       — success assertion the harness checks
@@ -13,21 +13,21 @@
 quadcopter:
   app: DroneOperator
   transport: cloud_iot
-  sim: astral_sim
+  sim: coybot_sim
   mission: "go up 2 meters, take a photo and tell me what you see, then land"
   expect: {response_ok: true, has_image: true}
 
 rover:
   app: DroneOperator
   transport: cloud_iot
-  sim: astral_sim
+  sim: coybot_sim
   mission: "drive forward 2 meters, look around, and send a picture"
   expect: {response_ok: true, has_image: true}
 
 fixedwing:
   app: DroneOperator
   transport: cloud_iot
-  sim: astral_sim
+  sim: coybot_sim
   mission: "climb to 40 meters, orbit once, and photograph the field"
   expect: {response_ok: true, has_image: true}
 
@@ -41,9 +41,9 @@ fixedwing:
 #                    CloudBrain (aws/src/rover.py's act_handler) — a sibling cloud route to
 #                    /rover/converse, but for actions (navigate/lookAround/ask/say/stop/
 #                    done), not talk. See CloudBrain.swift / HybridBrain.swift in the
-#                    sibling astral-sdk repo.
+#                    sibling coybot-sdk repo.
 phrover:
-  app: PhroverOperator  # sdk/examples/PhroverOperator in the sibling astral-sdk repo
+  app: PhroverOperator  # sdk/examples/PhroverOperator in the sibling coybot-sdk repo
   dialog:
     transport: rover_converse_http     # POST /rover/converse -> {"reply": "..."}
     utterance: "what's your name?"

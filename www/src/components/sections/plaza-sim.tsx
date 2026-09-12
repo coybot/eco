@@ -507,7 +507,7 @@ export function PlazaSimSection() {
                   className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-10"
                 >
                   <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                  <p className="text-white/60 text-sm font-mono">Astral is planning the mission…</p>
+                  <p className="text-white/60 text-sm font-mono">Coybot is planning the mission…</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -633,7 +633,7 @@ export function PlazaSimSection() {
         >
           Our simulator is open source and{" "}
           <a
-            href="https://github.com/astral-us/eco/tree/main/drone/sim/godot"
+            href="https://github.com/coybot/eco/tree/main/drone/sim/godot"
             target="_blank"
             rel="noopener noreferrer"
             className="text-white/50 hover:text-white/80 underline underline-offset-2 transition-colors"

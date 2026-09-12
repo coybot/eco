@@ -13,16 +13,16 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: "Drone AI Benchmark",
   description: DESCRIPTION,
-  ...socialMeta("/benchmark", "Drone AI Benchmark | Astral", DESCRIPTION),
+  ...socialMeta("/benchmark", "Drone AI Benchmark | Coybot", DESCRIPTION),
 };
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Dataset",
-  name: "Astral Closed-Loop Drone AI Navigation Benchmark",
+  name: "Coybot Closed-Loop Drone AI Navigation Benchmark",
   description: DESCRIPTION,
-  url: "https://astral.us/benchmark",
-  creator: { "@type": "Organization", name: "Astral", url: "https://astral.us" },
+  url: "https://coy.bot/benchmark",
+  creator: { "@type": "Organization", name: "Coybot", url: "https://coy.bot" },
   license: "https://creativecommons.org/licenses/by/4.0/",
   measurementTechnique: "Closed-loop Isaac Sim flight trials with collision and position-error scoring",
   variableMeasured: "Mean position error (m), collision rate (%), directional accuracy, step-1 prediction error",
@@ -43,9 +43,9 @@ const jsonLd = {
 const results = [
   {
     rank: 1,
-    system: "Astral Track A (modular)",
+    system: "Coybot Track A (modular)",
     type: "Modular stack",
-    org: "Astral",
+    org: "Coybot",
     meanError: "1.04 m",
     meanErrorVal: 1.04,
     collisionRate: "0%",
@@ -56,9 +56,9 @@ const results = [
   },
   {
     rank: 2,
-    system: "Astral Track A (full benchmark)",
+    system: "Coybot Track A (full benchmark)",
     type: "Modular stack",
-    org: "Astral",
+    org: "Coybot",
     meanError: "9.98 m",
     meanErrorVal: 9.98,
     collisionRate: "0%",
@@ -182,7 +182,7 @@ export default function BenchmarkPage() {
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild size="lg">
-                <a href="mailto:hello@astral.us">
+                <a href="mailto:hello@coy.bot">
                   Submit a result
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </a>
@@ -266,7 +266,7 @@ export default function BenchmarkPage() {
                         )}
                         {r.highlight && (
                           <span className="ml-2 text-xs bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-normal">
-                            Astral
+                            Coybot
                           </span>
                         )}
                       </td>
@@ -285,7 +285,7 @@ export default function BenchmarkPage() {
                     <td className="py-3 pr-4 text-muted-foreground/40">—</td>
                     <td className="py-3 pr-4" colSpan={5}>
                       <a
-                        href="mailto:hello@astral.us"
+                        href="mailto:hello@coy.bot"
                         className="text-amber-500 hover:underline text-sm"
                       >
                         + Submit your system
@@ -360,7 +360,7 @@ export default function BenchmarkPage() {
                 it at all.
               </p>
               <p>
-                We report hover as rank 3 rather than rank 1 because the Astral modular stack and the
+                We report hover as rank 3 rather than rank 1 because the Coybot modular stack and the
                 Gemma 4 modular result both beat it. Hover is not the goal — it is the floor.
               </p>
             </div>
@@ -385,7 +385,7 @@ export default function BenchmarkPage() {
           <div className="container mx-auto px-4 max-w-4xl">
             <h2 className="text-2xl font-bold mb-2">Run it yourself</h2>
             <p className="text-muted-foreground mb-8">
-              The benchmark is fully reproducible. You need Isaac Sim, the Astral SDK, and the Yonder
+              The benchmark is fully reproducible. You need Isaac Sim, the Coybot SDK, and the Yonder
               evaluation split. Everything else is open source.
             </p>
 
@@ -407,15 +407,15 @@ export default function BenchmarkPage() {
                     .
                   </li>
                   <li>
-                    <strong className="text-foreground">Astral SDK</strong> — the evaluation harness,
+                    <strong className="text-foreground">Coybot SDK</strong> — the evaluation harness,
                     task definitions, and scoring scripts.{" "}
                     <a
-                      href={SITE.astralSdk}
+                      href={SITE.coybotSdk}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-amber-500 underline"
                     >
-                      github.com/astral-us/astral-sdk
+                      github.com/coybot/coybot-sdk
                     </a>
                     .
                   </li>
@@ -428,7 +428,7 @@ export default function BenchmarkPage() {
                       rel="noopener noreferrer"
                       className="text-amber-500 underline"
                     >
-                      astralhf/yonder on Hugging Face
+                      coybothf/yonder on Hugging Face
                     </a>
                     .
                   </li>
@@ -442,7 +442,7 @@ export default function BenchmarkPage() {
                 <h3 className="text-lg font-semibold mb-3">2. Install</h3>
                 <div className="bg-card rounded-lg border border-border p-4 font-mono text-sm space-y-1 text-muted-foreground overflow-x-auto">
                   <div><span className="text-muted-foreground/50"># Clone the SDK</span></div>
-                  <div>git clone https://github.com/astral-us/astral-sdk.git && cd astral-sdk</div>
+                  <div>git clone https://github.com/coybot/coybot-sdk.git && cd coybot-sdk</div>
                   <div className="mt-2"><span className="text-muted-foreground/50"># Install dependencies</span></div>
                   <div>pip install -e ".[benchmark]"</div>
                   <div className="mt-2"><span className="text-muted-foreground/50"># Download Yonder eval split (~2 GB)</span></div>
@@ -458,8 +458,8 @@ export default function BenchmarkPage() {
                 <div className="bg-card rounded-lg border border-border p-4 font-mono text-sm space-y-1 text-muted-foreground overflow-x-auto">
                   <div><span className="text-muted-foreground/50"># Hover baseline (should give ~9.50 m mean error)</span></div>
                   <div>python benchmark/run.py --policy hover --trials 153 --output results/hover.json</div>
-                  <div className="mt-2"><span className="text-muted-foreground/50"># Astral Track A modular stack</span></div>
-                  <div>python benchmark/run.py --policy astral_track_a --trials 153 --output results/track_a.json</div>
+                  <div className="mt-2"><span className="text-muted-foreground/50"># Coybot Track A modular stack</span></div>
+                  <div>python benchmark/run.py --policy coybot_track_a --trials 153 --output results/track_a.json</div>
                   <div className="mt-2"><span className="text-muted-foreground/50"># Score and compare</span></div>
                   <div>python benchmark/score.py results/hover.json results/track_a.json</div>
                 </div>
@@ -474,7 +474,7 @@ export default function BenchmarkPage() {
                 </p>
                 <div className="bg-card rounded-lg border border-border p-4 font-mono text-sm text-muted-foreground overflow-x-auto">
                   <div><span className="text-muted-foreground/50"># benchmark/policies/my_policy.py</span></div>
-                  <div className="mt-1">from astral.benchmark import DronePolicy, Observation</div>
+                  <div className="mt-1">from coybot.benchmark import DronePolicy, Observation</div>
                   <div>import numpy as np</div>
                   <div className="mt-2">class MyPolicy(DronePolicy):</div>
                   <div>&nbsp;&nbsp;&nbsp;&nbsp;def predict(self, obs: Observation) -&gt; np.ndarray:</div>
@@ -563,8 +563,8 @@ export default function BenchmarkPage() {
 
             <div className="flex flex-wrap gap-3">
               <Button asChild size="lg">
-                <a href="mailto:hello@astral.us">
-                  Email hello@astral.us
+                <a href="mailto:hello@coy.bot">
+                  Email hello@coy.bot
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </a>
               </Button>
@@ -592,24 +592,24 @@ export default function BenchmarkPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Benchmark</h3>
-                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@misc{astral2025benchmark,
+                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@misc{coybot2025benchmark,
   title  = {Closing the Metric Gap: A Closed-Loop Benchmark for
              Vision-Language Drone Navigation},
-  author = {Astral},
+  author = {Coybot},
   year   = {2025},
-  url    = {https://astral.us/benchmark},
+  url    = {https://coy.bot/benchmark},
   note   = {25 VLMs, 10{,}200 closed-loop Isaac Sim flight trials}
 }`}</pre>
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Yonder dataset</h3>
-                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@dataset{astral2026yonder,
+                <pre className="bg-card rounded-lg border border-border p-4 text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">{`@dataset{coybot2026yonder,
   title     = {Yonder: A 4.65M-Frame Drone-Perspective Indoor
                Navigation Dataset},
-  author    = {Astral},
+  author    = {Coybot},
   year      = {2026},
   publisher = {Hugging Face},
-  url       = {https://huggingface.co/datasets/astralhf/yonder},
+  url       = {https://huggingface.co/datasets/coybothf/yonder},
   license   = {CC-BY-NC-4.0}
 }`}</pre>
               </div>

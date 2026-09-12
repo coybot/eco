@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 WPA_SUPPLICANT_CONF = "/etc/wpa_supplicant/wpa_supplicant.conf"
 NETWORK_MANAGER_CONN_DIR = "/etc/NetworkManager/system-connections"
 HOTSPOT_CONNECTION_NAMES = {"DroneHotspot", "Hotspot"}
-HOTSPOT_CONNECTION_PREFIXES = ("Astral-", "DroneSetup")
+HOTSPOT_CONNECTION_PREFIXES = ("Coybot-", "DroneSetup")
 
 
 class WiFiManager:
@@ -132,7 +132,7 @@ class WiFiManager:
         """Generate hotspot name from model and MAC address."""
         mac = self.get_mac_address().replace(":", "")
         model = self._get_model_name()
-        return f"Astral-{model}-{mac[-4:].upper()}"
+        return f"Coybot-{model}-{mac[-4:].upper()}"
 
     def get_hotspot_password(self) -> str:
         """
@@ -141,7 +141,7 @@ class WiFiManager:
         Password is regenerated after each successful WiFi configuration.
         """
         import secrets
-        password_file = Path("/var/lib/astral/hotspot_password")
+        password_file = Path("/var/lib/coybot/hotspot_password")
         
         # Try to read existing password
         try:
@@ -174,7 +174,7 @@ class WiFiManager:
     
     def regenerate_hotspot_password(self) -> str:
         """Force regeneration of hotspot password (call after successful WiFi setup)."""
-        password_file = Path("/var/lib/astral/hotspot_password")
+        password_file = Path("/var/lib/coybot/hotspot_password")
         try:
             if password_file.exists():
                 password_file.unlink()

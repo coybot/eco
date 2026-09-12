@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   description: PAGE_DESCRIPTION,
   ...socialMeta(
     "/datasets/yonder",
-    "Yonder dataset | Astral",
+    "Yonder dataset | Coybot",
     PAGE_DESCRIPTION
   ),
 };
@@ -28,7 +28,7 @@ export default function YonderDatasetPage() {
     description: PAGE_DESCRIPTION,
     url: SITE.yonderDataset,
     license: "https://creativecommons.org/licenses/by-nc/4.0/",
-    creator: { "@type": "Organization", name: "Astral", url: SITE.origin },
+    creator: { "@type": "Organization", name: "Coybot", url: SITE.origin },
     isAccessibleForFree: true,
     distribution: {
       "@type": "DataDownload",
@@ -146,7 +146,7 @@ export default function YonderDatasetPage() {
                     className="text-amber-500 underline"
                     href={SITE.yonderSample}
                   >
-                    astralhf/yonder-sample
+                    coybothf/yonder-sample
                   </a>
                   .
                 </p>
@@ -154,7 +154,7 @@ export default function YonderDatasetPage() {
 {`from huggingface_hub import snapshot_download
 
 path = snapshot_download(
-    repo_id="astralhf/yonder",
+    repo_id="coybothf/yonder",
     repo_type="dataset",
     allow_patterns="indoor/drone-data/augmented/hssd-102343992/*.npz",
 )`}

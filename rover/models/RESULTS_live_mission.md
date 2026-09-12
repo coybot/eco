@@ -1,7 +1,7 @@
 # Live mission-cognition results — real model, real production loop, sim world
 
 **Date**: 2026-07-08 · **Model**: `us.anthropic.claude-sonnet-4-6` (Bedrock, us-west-2)
-**Runner**: `eco/e2e/run_live_mission.sh` → `CloudBrainLiveMissionTests` (astral-sdk,
+**Runner**: `eco/e2e/run_live_mission.sh` → `CloudBrainLiveMissionTests` (coybot-sdk,
 `PhroverKitLiveProbes` target)
 **Result**: **2/2 tests passed** (`testLiveGreenChairMission` 24.7s,
 `testLiveAsksWhenGoalIsUnknowable` 24.1s) — **15 real model decisions, zero scripted**.
@@ -52,7 +52,7 @@ anywhere — the model chose every action.
   unsupported there), Mac Catalyst (the AWS SDK xcframework ships no Catalyst slice), and
   a physical-device destination (several Apple-Intelligence-capable iPads are registered
   with this Mac but all were offline). **The moment a registered iPad/iPhone is plugged
-  in**: `xcodebuild test -scheme astral-sdk-Package -destination 'platform=iOS,id=<udid>'
+  in**: `xcodebuild test -scheme coybot-sdk-Package -destination 'platform=iOS,id=<udid>'
   -only-testing:PhroverKitLiveProbes` runs the real on-device probe as-is. See
   PHROVER_SETUP.md — assigned for real-device verification.
 - Cost: ~15 Bedrock calls per full run. This suite is env-gated
@@ -62,5 +62,5 @@ anywhere — the model chose every action.
 ## Reproduce
 
 ```bash
-AWS_PROFILE=astral bash eco/e2e/run_live_mission.sh
+AWS_PROFILE=coybot bash eco/e2e/run_live_mission.sh
 ```

@@ -51,7 +51,7 @@ demo renders (`drone/training/render_fixedwing_demo.py` etc).
 | `policy_fw.onnx` | Fixed-wing |
 
 Public, no auth required, hosted on the Hugging Face Hub at
-[astralhf/eco-drone-policies](https://huggingface.co/astralhf/eco-drone-policies):
+[coybothf/eco-drone-policies](https://huggingface.co/coybothf/eco-drone-policies):
 
 ```bash
 python setup_models.py --nav-policies                       # all three vehicles

@@ -2,11 +2,11 @@ name: ui-sim
 
 # Build-and-boot smoke check for the phone apps, on every PR that touches a client app.
 # Deliberately does NOT run the gated onboarding/mission tests (testOnboard_*,
-# testDrive_forwardCommand_*) — those need a live drone/Astral-Sim fleet and real Cognito
+# testDrive_forwardCommand_*) — those need a live drone/Coybot-Sim fleet and real Cognito
 # creds, which hosted runners don't have. That full check runs nightly in e2e-live.yml on
 # a self-hosted macOS runner. This job only proves each app still builds and launches.
 #
-# PhroverOperator moved to the public astral-sdk repo (sdk/examples/PhroverOperator) — its
+# PhroverOperator moved to the public coybot-sdk repo (sdk/examples/PhroverOperator) — its
 # build-and-boot smoke check lives in that repo's own CI, not here.
 on:
   pull_request:

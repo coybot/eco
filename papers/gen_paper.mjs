@@ -273,7 +273,7 @@ const doc = new Document({
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 0, after: 60 },
-        children: [new TextRun({ text: "Yusuf Saib  ·  Astral", size: 20, font: "Arial", italic: true })],
+        children: [new TextRun({ text: "Yusuf Saib  ·  Coybot", size: 20, font: "Arial", italic: true })],
       }),
       hr(),
 
@@ -420,6 +420,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then(buf => {
-  fs.writeFileSync("/Users/jsaib/code/ys/a/papers/rover_nav_paper.docx", buf);
+  fs.writeFileSync("~/code/ys/coybot/papers/rover_nav_paper.docx", buf);
   console.log("Written: rover_nav_paper.docx");
 });

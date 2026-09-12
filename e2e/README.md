@@ -2,7 +2,7 @@
 
 One place to test **quadcopter**, **rover**, **fixed-wing** (all three via the
 `DroneOperator` app) and **phrover** (the iPhone-brained WAVE ROVER, via the public
-`PhroverOperator` app + `RoverNav`/`PhroverKit`/`PhroverCloud` in the sibling `astral-sdk`
+`PhroverOperator` app + `RoverNav`/`PhroverKit`/`PhroverCloud` in the sibling `coybot-sdk`
 repo — see `../../sdk`) — runnable headlessly for CI, or from a real phone/simulator by
 a human.
 
@@ -22,15 +22,15 @@ This runs:
 - a **mocked app-contract check** per type (`harness/mock_cloud.py`,
   `harness/mock_rover_converse.py`) — proves the harness sends the right mission and
   interprets the response correctly, without touching AWS.
-- for phrover, `RoverNavTests` in the sibling `astral-sdk` repo (on-device navigation,
+- for phrover, `RoverNavTests` in the sibling `coybot-sdk` repo (on-device navigation,
   offline) — run via `xcodebuild test` against an iOS Simulator, since RoverNav now
   shares a package with ARKit-dependent code that can't build on plain macOS.
 
 Writes `scorecard.json` next to this file (gitignored — CI uploads it as an artifact).
 
-### Live tier — against a real drone (Astral Sim or hardware) + the real AWS dev stack
+### Live tier — against a real drone (Coybot Sim or hardware) + the real AWS dev stack
 
-Bring a sim vehicle Online first (Astral Sim = the project's Godot engine, see
+Bring a sim vehicle Online first (Coybot Sim = the project's Godot engine, see
 `eco/drone/sim/BRINGUP_MAC.md`; works on Linux or macOS, Godot itself is cross-platform):
 
 ```bash
@@ -66,7 +66,7 @@ screenshots each milestone, and asserts the mission's response arrives — see
 
 1. Bring a sim vehicle Online (see the live-tier steps above), or use real hardware.
 2. Build/install the right app — DroneOperator for quad/rover/fixed-wing, PhroverOperator
-   (in the sibling `astral-sdk` repo, `sdk/examples/PhroverOperator`) for phrover — and
+   (in the sibling `coybot-sdk` repo, `sdk/examples/PhroverOperator`) for phrover — and
    sign in as the user that owns the drone.
 3. Open the drone, send the mission from `scenarios.yaml`, confirm the photo/response
    arrives.
@@ -80,4 +80,4 @@ screenshots each milestone, and asserts the mission's response arrives — see
 - `ui-sim.yml` — `run_phone.sh` against an iOS Simulator + Android emulator, on PRs
   touching the client apps.
 - `e2e-live.yml` — the live tier, nightly + manual dispatch, on a self-hosted macOS
-  runner (needs a Mac for Astral Sim / the iOS Simulator).
+  runner (needs a Mac for Coybot Sim / the iOS Simulator).

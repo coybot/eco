@@ -1,7 +1,7 @@
 """Fake WAVE ROVER ESP32 base for hardware-free phrover testing.
 
 Speaks just enough of the Waveshare JSON command protocol that PhroverKit's
-`RoverSDK/RoverControl.swift` (in the sibling astral-sdk repo) gets a real 2xx round trip:
+`RoverSDK/RoverControl.swift` (in the sibling coybot-sdk repo) gets a real 2xx round trip:
 
     GET /js?json={"T":1,"L":<m/s>,"R":<m/s>}   -- speed control
     GET /js?json={"T":0}                        -- emergency stop

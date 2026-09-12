@@ -7,18 +7,18 @@ API Gateway authorizer context (userId), which in production is set by the Cogni
 authorizer. Auth is faked HERE ONLY, on a 127.0.0.1-bound server; the deployed endpoint
 is untouched.
 
-This is what lets the Swift sim (CloudBrainLiveMissionTests in the sibling astral-sdk
+This is what lets the Swift sim (CloudBrainLiveMissionTests in the sibling coybot-sdk
 repo) drive the real MissionAgent + real CloudBrain wire path against a real model:
 
     Swift MissionAgent -> CloudBrain -> http://127.0.0.1:<port>/rover/act
         -> rover.act_handler -> bedrock.invoke_model -> real Claude
 
 Makes real, billed Bedrock calls — NEVER wire this into the fast e2e gate. Needs AWS
-credentials (AWS_PROFILE=astral).
+credentials (AWS_PROFILE=coybot).
 
 Run standalone:
     cd <repo-root>/eco
-    AWS_PROFILE=astral python3 -m e2e.harness.live_rover_act_bridge
+    AWS_PROFILE=coybot python3 -m e2e.harness.live_rover_act_bridge
 prints the URL it is serving on, then serves until killed.
 """
 from __future__ import annotations

@@ -2,17 +2,17 @@ import { bucket, rateLimitTable } from "./storage";
 import * as aws from "@pulumi/aws";
 
 const isProd = $app.stage === "prod";
-const domainName = isProd ? "astral.us" : `${$app.stage}.astral.us`;
+const domainName = isProd ? "coy.bot" : `${$app.stage}.coy.bot`;
 
 // Next.js website deployed to AWS via OpenNext
-export const web = new sst.aws.Nextjs("AstralWebsite", {
+export const web = new sst.aws.Nextjs("CoybotWebsite", {
   path: ".",
 
   link: [bucket],
 
   domain: {
     name: domainName,
-    redirects: isProd ? ["www.astral.us"] : [],
+    redirects: isProd ? ["www.coy.bot"] : [],
   },
 
   environment: {
@@ -26,13 +26,13 @@ export const web = new sst.aws.Nextjs("AstralWebsite", {
 
   transform: {
     cdn: (args) => {
-      args.comment = `Astral Website - ${$app.stage}`;
+      args.comment = `Coybot Website - ${$app.stage}`;
     },
   },
 });
 
 // Grant the SSR Lambda role permission to invoke Bedrock models and use the rate-limit table
-const lambdaPolicy = new aws.iam.RolePolicy("AstralWebsiteLambdaPolicy", {
+const lambdaPolicy = new aws.iam.RolePolicy("CoybotWebsiteLambdaPolicy", {
   role: web.nodes.server.nodes.role.name,
   policy: $jsonStringify({
     Version: "2012-10-17",

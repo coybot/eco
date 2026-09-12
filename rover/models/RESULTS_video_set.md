@@ -1,6 +1,6 @@
 # Video set — capability-by-capability, real CloudBrain, no scripted brain
 
-**Runner**: `eco/rover/sim/run_live_beats.py` -> `LiveCapstoneBeats` (astral-sdk,
+**Runner**: `eco/rover/sim/run_live_beats.py` -> `LiveCapstoneBeats` (coybot-sdk,
 `PhroverSimTests` target), plus `run_live_capstone.py` -> `CloudBrainCapstoneTests` for the
 long-form mission. **Model**: `us.anthropic.claude-opus-4-8` (Bedrock, us-west-2) — see
 bake-off below. All clips are real, separately-billed `CloudBrain` missions; no scripted
@@ -273,7 +273,7 @@ live retake each for cap4 (after the battery-rate fix), cap2 (passed first try),
 (one failed attempt that caught the geofence gap, one clean retake after the fix) + several
 free Godot-IPC diagnostics to calibrate the battery-drain rate and sanity-check the geofence
 occupancy-grid change before spending on live retakes. Exact total Bedrock spend not
-separately itemized here; all calls went through `AWS_PROFILE=astral`, `us-west-2`, real
+separately itemized here; all calls went through `AWS_PROFILE=coybot`, `us-west-2`, real
 billed Bedrock — no shortcuts taken to economize.
 
 **One-video-per-capability round** (completing #5/#6/#7/#8 as dedicated clips, refreshing

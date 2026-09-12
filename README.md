@@ -1,12 +1,5 @@
-# Astral Drone Platform
+# Coybot Drone Platform
 
-> **Archive. Active development moved to [presidio-autonomy/eco](https://github.com/presidio-autonomy/eco).**
->
-> Everything here exists there under the Presidio naming, except two things deliberately kept out
-> of that line: `papers/Counter_UAS_Characterization.*` and `drone/common/config.stack-dev.yaml`
-> (live IoT/Cognito endpoint identifiers — that repo tracks a placeholder `.example` instead).
-> That repository also carries packaging, in-repo docs, runnable examples and sim work that was
-> never backported here. Open new work against presidio-autonomy/eco.
 
 Open source autonomous drone intelligence. Natural language → on-device reasoning → flight.
 
@@ -52,7 +45,7 @@ iOS App → API Gateway → Lambda → Claude 3.5 Sonnet → IoT Core → Drone 
    │DroneOperator│         via IoT Core      │   Companion Computer      │
    └─────────────┘                           │   (Orin / RPi / other)    │
                               │                           │
-                             │   ~/astral/               │
+                             │   ~/coybot/               │
                              │     ├── daemon.py         │
                              │     ├── drone_sdk.py      │
                              │     └── certs/            │
@@ -80,7 +73,7 @@ iOS App → API Gateway → Lambda → Claude 3.5 Sonnet → IoT Core → Drone 
 - **Real-time**: MQTT over WebSocket via AWS IoT Core (using AWS Mobile SDK Gen 1)
 - **Credentials**: Cognito Identity Pool provides temporary AWS credentials for MQTT
 - **Provisioning**: Guides user through drone WiFi hotspot setup flow
-- **Bundle ID**: `us.astral.drone`
+- **Bundle ID**: `bot.coy.drone`
 - **Known warning**: `UIColor created with component values far outside the expected range` - harmless, from Apple's ASWebAuthenticationSession
 
 ## Supported Platforms
@@ -126,7 +119,7 @@ See [client/ios/README.md](client/ios/README.md) for full instructions:
 Run this on any new drone (Orin, RPi, or other Linux):
 
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://astral-drone-installer.s3.amazonaws.com/install.sh)"
+sudo /bin/bash -c "$(curl -fsSL https://coybot-drone-installer.s3.amazonaws.com/install.sh)"
 ```
 
 This will:
@@ -136,7 +129,7 @@ This will:
 4. Register the drone with AWS IoT Core
 5. Clear WiFi and start a hotspot for app-based setup
 
-After installation, look for a WiFi network like `Astral-<model>-XXXX` and use the iOS app to complete setup.
+After installation, look for a WiFi network like `Coybot-<model>-XXXX` and use the iOS app to complete setup.
 
 **No manual certificate creation needed!** Fleet Provisioning handles this automatically.
 
@@ -196,14 +189,14 @@ eco/
 │   │   └── reasoning_llm.gguf     # Symlink → appropriate model for hardware
 │   │
 │   ├── ros2_ws/                   # ROS2 workspace for navigation (optional)
-│   │   └── src/astral_drone/
+│   │   └── src/coybot_drone/
 │   │       ├── package.xml
 │   │       ├── setup.py
 │   │       ├── config/
 │   │       │   └── nav2_params.yaml   # Nav2 config for indoor drone
 │   │       ├── launch/
 │   │       │   └── full_stack.launch.py
-│   │       └── astral_drone/
+│   │       └── coybot_drone/
 │   │           ├── camera_node.py     # Camera → ROS2 topics
 │   │           └── mavlink_bridge.py  # Nav2 → MAVLink
 │   │
@@ -271,14 +264,14 @@ New drones are set up via a local WiFi hotspot, similar to Amazon Ring devices.
 │  1. Power on drone (no WiFi configured)                        │
 │     └── daemon.py checks: is WiFi configured?                  │
 │     └── If NO → start provisioning mode for 60 seconds         │
-│     └── Creates WPA2/WPA3 hotspot: "Astral-<model>-XXXX"       │
+│     └── Creates WPA2/WPA3 hotspot: "Coybot-<model>-XXXX"       │
 │     └── Starts HTTP server on 192.168.4.1:80                   │
 │                                                                 │
 │  2. In iOS app, tap "Add Drone" → "Set up new drone"           │
 │     └── App asks for the network + passphrase on the airframe  │
 │     └── Both are printed by the drone installer                │
 │                                                                 │
-│  3. App joins "Astral-<model>-XXXX" (NEHotspotConfiguration)   │
+│  3. App joins "Coybot-<model>-XXXX" (NEHotspotConfiguration)   │
 │     └── iPhone gets IP 192.168.4.x via DHCP from drone         │
 │                                                                 │
 │  4. iOS app detects connection (polls http://192.168.4.1/info) │
@@ -322,8 +315,8 @@ New drones are set up via a local WiFi hotspot, similar to Amazon Ring devices.
 
 - Generated on first boot: `drone-{uuid[:12]}` (e.g., `drone-a1b2c3d4e5f6`)
 - Saved to `/etc/drone-id` (or `~/.drone-id` if not root)
-- Hotspot name derived from model + MAC: `Astral-{model}-{mac[-4:]}` (e.g., `Astral-NVIDIAJetson-F1A2`)
-- Hotspot is WPA2/WPA3; the passphrase is generated once and stored at `/var/lib/astral/hotspot_password`
+- Hotspot name derived from model + MAC: `Coybot-{model}-{mac[-4:]}` (e.g., `Coybot-NVIDIAJetson-F1A2`)
+- Hotspot is WPA2/WPA3; the passphrase is generated once and stored at `/var/lib/coybot/hotspot_password`
 - The same passphrase authorizes `POST /configure` as a Bearer token, so joining the network is not by itself
   permission to reconfigure the drone. The iOS app collects it once and uses it for both.
 - `drone/platforms/{orin,rpi}/install.sh` prints the network name and passphrase when the install finishes —
@@ -351,10 +344,10 @@ To move a drone to a new WiFi network or transfer ownership:
 
 ```bash
 # Interactive (asks for confirmation)
-ssh $DRONE_HOST "cd ~/astral && sudo python3 factory_reset.py"
+ssh $DRONE_HOST "cd ~/coybot && sudo python3 factory_reset.py"
 
 # Non-interactive (for scripts)
-ssh $DRONE_HOST "cd ~/astral && sudo python3 factory_reset.py --force && sudo reboot"
+ssh $DRONE_HOST "cd ~/coybot && sudo python3 factory_reset.py --force && sudo reboot"
 ```
 
 After reboot, the drone will enter provisioning mode (hotspot) for 5 minutes.
@@ -390,15 +383,15 @@ Drones automatically get their own unique IoT certificates via AWS IoT Fleet Pro
 ### Claim Certificate Location
 
 The claim certificate is stored in S3 (private) and downloaded by the installer:
-- `s3://astral-drone-installer/certs/claim-cert.pem`
-- `s3://astral-drone-installer/certs/claim-private.key`
+- `s3://coybot-drone-installer/certs/claim-cert.pem`
+- `s3://coybot-drone-installer/certs/claim-private.key`
 
 ### Helper Scripts on Drone
 
 ```bash
-~/astral/reset-and-reboot.sh   # Factory reset + immediate reboot
-~/astral/show-logs.sh          # Show recent daemon logs
-~/astral/test-hotspot.sh       # Manually test hotspot creation
+~/coybot/reset-and-reboot.sh   # Factory reset + immediate reboot
+~/coybot/show-logs.sh          # Show recent daemon logs
+~/coybot/test-hotspot.sh       # Manually test hotspot creation
 ```
 
 ## Authentication
@@ -463,17 +456,17 @@ cd aws && sam deploy --region us-west-2 --capabilities CAPABILITY_IAM --resolve-
 
 ### View Drone Logs
 ```bash
-ssh $DRONE_HOST "tail -f ~/astral/logs/drone.log"
+ssh $DRONE_HOST "tail -f ~/coybot/logs/drone.log"
 ```
 
 ### Restart Drone Daemon
 ```bash
-ssh $DRONE_HOST "sudo systemctl restart astral"
+ssh $DRONE_HOST "sudo systemctl restart coybot"
 ```
 
 ### Test Flight Controller Directly
 ```bash
-ssh $DRONE_HOST "cd ~/astral && ./venv/bin/python -c 'from drone_sdk import *; motor_test(1)'"
+ssh $DRONE_HOST "cd ~/coybot && ./venv/bin/python -c 'from drone_sdk import *; motor_test(1)'"
 ```
 
 ### Delete Everything
@@ -624,7 +617,7 @@ This copies files (including the pre-built `llama-cpp-python` CUDA wheel from `d
 
 **Option 2: One-liner installer (new drones, downloads from S3)**
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://astral-drone-installer.s3.amazonaws.com/install.sh)"
+sudo /bin/bash -c "$(curl -fsSL https://coybot-drone-installer.s3.amazonaws.com/install.sh)"
 ```
 
 **Option 3: Local install (on the Orin itself)**
@@ -690,13 +683,13 @@ cd drone/ros2_ws
 colcon build
 
 # Launch full stack (camera + SLAM + Nav2)
-ros2 launch astral_drone full_stack.launch.py
+ros2 launch coybot_drone full_stack.launch.py
 ```
 
 Files:
-- `drone/ros2_ws/src/astral_drone/` - ROS2 package
-- `drone/ros2_ws/src/astral_drone/config/nav2_params.yaml` - Navigation config
-- `drone/ros2_ws/src/astral_drone/launch/full_stack.launch.py` - Launch file
+- `drone/ros2_ws/src/coybot_drone/` - ROS2 package
+- `drone/ros2_ws/src/coybot_drone/config/nav2_params.yaml` - Navigation config
+- `drone/ros2_ws/src/coybot_drone/launch/full_stack.launch.py` - Launch file
 
 ## Safety Notes
 
@@ -714,7 +707,7 @@ Files:
 | "Drone already registered" | Drone registered to another account |
 | No status updates | Check drone is online, IoT Rule writing to DynamoDB |
 | "Motor Emergency Stopped" | Press safety switch for 3-5 seconds |
-| Daemon not receiving commands | Check `systemctl status astral`, verify IoT certs |
+| Daemon not receiving commands | Check `systemctl status coybot`, verify IoT certs |
 | LLM generates bad code | Improve prompt in `handler.py` SYSTEM_PROMPT |
 | Provisioning timeout | Drone hotspot lasts 5 minutes; run `reset-and-reboot.sh` to retry |
 | Can't find drone hotspot | Check WiFi interface exists, run `nmcli radio wifi on` |
@@ -729,12 +722,12 @@ Files:
 Just run the one-liner on any Linux device:
 
 ```bash
-sudo /bin/bash -c "$(curl -fsSL https://astral-drone-installer.s3.amazonaws.com/install.sh)"
+sudo /bin/bash -c "$(curl -fsSL https://coybot-drone-installer.s3.amazonaws.com/install.sh)"
 ```
 
 The drone will:
 1. Auto-provision its IoT certificate
-2. Start a WiFi hotspot (`Astral-<model>-XXXX`, WPA2/WPA3 — passphrase in `/var/lib/astral/hotspot_password`)
+2. Start a WiFi hotspot (`Coybot-<model>-XXXX`, WPA2/WPA3 — passphrase in `/var/lib/coybot/hotspot_password`)
 3. Wait for the iOS app to configure WiFi
 
 ### Add new SDK function
@@ -966,7 +959,7 @@ ssh orin-admin@<host> "~/drone-api/venv/bin/pip install websockets aiortc"
 
 **Testing telemetry directly:**
 ```bash
-ssh orin-admin@100.69.83.8 "cd /home/orin-admin/astral && venv/bin/python -c '
+ssh orin-admin@100.69.83.8 "cd /home/orin-admin/coybot && venv/bin/python -c '
 from drone_sdk import get_battery, get_telemetry
 print(\"Battery:\", get_battery())
 print(\"Telemetry:\", get_telemetry())
@@ -1047,26 +1040,26 @@ cd client/ios/DroneOperator && xcodegen generate
 cd aws && sam build && sam deploy
 
 # Deploy single file to drone
-scp drone/common/daemon.py orin-admin@100.69.83.8:/home/orin-admin/astral/
+scp drone/common/daemon.py orin-admin@100.69.83.8:/home/orin-admin/coybot/
 
 # Deploy autonomous intelligence modules
 scp drone/common/{perception,vlm,nav2_bridge,reasoning_loop}.py orin-admin@100.69.83.8:/home/orin-admin/drone-api/
 
 # Download AI models on drone
-ssh orin-admin@100.69.83.8 "cd ~/astral/models && python setup_models.py"
+ssh orin-admin@100.69.83.8 "cd ~/coybot/models && python setup_models.py"
 
 # Test provisioning locally
 cd drone/common && sudo python3 provisioning.py
 
 # Check drone logs
-ssh orin-admin@100.69.83.8 "tail -50 /home/orin-admin/astral/logs/drone.log"
+ssh orin-admin@100.69.83.8 "tail -50 /home/orin-admin/coybot/logs/drone.log"
 ```
 
 ---
 
 ## License
 
-Copyright 2026 Astral AI, Inc.
+Copyright 2026 Coybot AI, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

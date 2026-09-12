@@ -354,7 +354,7 @@ struct SetupDroneView: View {
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.7))
             
-            TextField("Astral-...", text: $hotspotSSID)
+            TextField("Coybot-...", text: $hotspotSSID)
                 .textFieldStyle(.plain)
                 .padding()
                 .background(Color.white.opacity(0.1))

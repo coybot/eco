@@ -16,5 +16,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AstralDrone"
+rootProject.name = "CoybotDrone"
 include(":app")

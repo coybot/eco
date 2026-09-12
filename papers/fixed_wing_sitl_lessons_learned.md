@@ -1,6 +1,6 @@
 # Fixed-Wing Autonomy: SITL & Sim Verification — Lessons Learned
 
-*Session: July 2026. Yusuf Saib, Astral.*
+*Session: July 2026. Yusuf Saib, Coybot.*
 
 ---
 

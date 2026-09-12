@@ -4,7 +4,7 @@ import OSLog
 /// Centralized logging with OSLog for debugging
 enum AppLogger {
     
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "us.astral.drone"
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "bot.coy.drone"
     
     // Category-specific loggers
     static let auth = Logger(subsystem: subsystem, category: "Auth")

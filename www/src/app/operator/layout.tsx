@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Operator | Astral",
-  description: "Astral drone operator console",
+  title: "Operator | Coybot",
+  description: "Coybot drone operator console",
   robots: { index: false, follow: false },
 }
 

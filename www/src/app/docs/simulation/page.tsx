@@ -5,12 +5,12 @@ import { Header, Footer } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { socialMeta } from "@/lib/social-metadata";
 
-const DESC = "Run the Astral SDK against ArduPilot SITL or Isaac Sim — test autonomy logic without hardware. Identical SDK API in sim and on real drones.";
+const DESC = "Run the Coybot SDK against ArduPilot SITL or Isaac Sim — test autonomy logic without hardware. Identical SDK API in sim and on real drones.";
 
 export const metadata: Metadata = {
   title: "Run in Simulation",
   description: DESC,
-  ...socialMeta("/docs/simulation", "Run in Simulation | Astral", DESC),
+  ...socialMeta("/docs/simulation", "Run in Simulation | Coybot", DESC),
 };
 
 export default function SimulationPage() {
@@ -29,7 +29,7 @@ export default function SimulationPage() {
             </Link>
             <h1 className="text-4xl font-bold mb-4">Run in Simulation</h1>
             <p className="text-muted-foreground">
-              Two ways to run the Astral SDK without hardware: lightweight
+              Two ways to run the Coybot SDK without hardware: lightweight
               ArduPilot SITL for API-level work, and Isaac Sim for full
               perception-in-the-loop autonomy.
             </p>
@@ -44,7 +44,7 @@ export default function SimulationPage() {
               </CardHeader>
               <CardContent className="space-y-4 text-muted-foreground">
                 <p>
-                  No GPU, no Astral hardware. ~5 min setup. Best for trying
+                  No GPU, no Coybot hardware. ~5 min setup. Best for trying
                   the SDK API and validating flight logic before real flight.
                 </p>
                 <p>
@@ -56,10 +56,10 @@ export default function SimulationPage() {
 sim_vehicle.py -v ArduCopter --console --map
 
 # Terminal 2
-pip install astral-sdk
-export ASTRAL_SDK_SERIAL_PORT=tcp:127.0.0.1:5760
+pip install coybot-sdk
+export COYBOT_SDK_SERIAL_PORT=tcp:127.0.0.1:5760
 python -c "
-import time, astral_sdk as drone
+import time, coybot_sdk as drone
 drone.takeoff(2.0)
 time.sleep(5)
 drone.land()
@@ -70,9 +70,9 @@ drone.disconnect()
                   Runnable example:{" "}
                   <a
                     className="underline hover:text-foreground"
-                    href="https://github.com/astral-us/astral-sdk/tree/main/examples/sitl"
+                    href="https://github.com/coybot/coybot-sdk/tree/main/examples/sitl"
                   >
-                    astral-sdk/examples/sitl
+                    coybot-sdk/examples/sitl
                   </a>
                   .
                 </p>
@@ -131,9 +131,9 @@ drone.disconnect()
                 </p>
                 <p>
                   How the pieces connect: your Python calls{" "}
-                  <code>astral_sdk</code>, which talks MAVLink to ArduPilot
+                  <code>coybot_sdk</code>, which talks MAVLink to ArduPilot
                   SITL, which is driven by Isaac Sim's physics. The{" "}
-                  <code>astral_drone</code> ROS 2 package bridges Nav2 goals
+                  <code>coybot_drone</code> ROS 2 package bridges Nav2 goals
                   into MAVLink velocity setpoints.
                 </p>
                 <p>
@@ -147,13 +147,13 @@ drone.disconnect()
                   is a good starting scene), then connect:
                 </p>
                 <pre className="rounded-md border border-border bg-background p-4 text-sm overflow-x-auto">
-{`export ASTRAL_SDK_SERIAL_PORT=tcp:127.0.0.1:5760
+{`export COYBOT_SDK_SERIAL_PORT=tcp:127.0.0.1:5760
 
 # Build and launch the ROS 2 package
 cd ros2_ws
-colcon build --packages-select astral_drone
+colcon build --packages-select coybot_drone
 source install/setup.bash
-ros2 launch astral_drone bringup.launch.py`}
+ros2 launch coybot_drone bringup.launch.py`}
                 </pre>
                 <p>
                   Send Nav2 goals from RViz or{" "}
@@ -178,7 +178,7 @@ ros2 launch astral_drone bringup.launch.py`}
                 <p>
                   The SDK API is identical between sim and real flight —
                   the only thing that changes is{" "}
-                  <code>ASTRAL_SDK_SERIAL_PORT</code>. What flies in sim
+                  <code>COYBOT_SDK_SERIAL_PORT</code>. What flies in sim
                   flies on the drone.
                 </p>
               </CardContent>

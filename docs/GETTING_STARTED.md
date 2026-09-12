@@ -1,6 +1,6 @@
-# Astral — Developer Setup
+# Coybot — Developer Setup
 
-Welcome to the Astral drone platform. This guide gets you from zero to building and deploying.
+Welcome to the Coybot drone platform. This guide gets you from zero to building and deploying.
 
 ## Prerequisites
 
@@ -13,18 +13,18 @@ Welcome to the Astral drone platform. This guide gets you from zero to building 
 
 ## 1. Clone the repos
 
-All repos live under the [astral-us](https://github.com/astral-us) GitHub org. You should have received an invite — accept it first.
+All repos live under the [coybot](https://github.com/coybot) GitHub org. You should have received an invite — accept it first.
 
 ```bash
-mkdir -p ~/code/astral && cd ~/code/astral
+mkdir -p ~/code/coybot && cd ~/code/coybot
 
 # Public
-git clone https://github.com/astral-us/astral-sdk.git sdk
-git clone https://github.com/astral-us/astral-docs.git docs
+git clone https://github.com/coybot/coybot-sdk.git sdk
+git clone https://github.com/coybot/coybot-docs.git docs
 
 # Private — requires org membership
-git clone https://github.com/astral-us/eco.git
-git clone https://github.com/astral-us/clearkeep.git
+git clone https://github.com/coybot/eco.git
+git clone https://github.com/coybot/clearkeep.git
 ```
 
 ### What's what
@@ -32,16 +32,16 @@ git clone https://github.com/astral-us/clearkeep.git
 | Repo | Description |
 |------|-------------|
 | **eco** | Main platform: AWS backend (SAM), iOS app, drone daemon, website |
-| **sdk** | Open-source Python SDK for ArduPilot drones (`pip install astral-sdk`) |
-| **docs** | Public docs site (Mintlify), rendered at astral.us/docs |
+| **sdk** | Open-source Python SDK for ArduPilot drones (`pip install coybot-sdk`) |
+| **docs** | Public docs site (Mintlify), rendered at coy.bot/docs |
 | **clearkeep** | Encrypted messaging (Rust): QUIC + Noise + MLS, with iOS client support |
 
 ## 2. AWS access
 
-You should have received an IAM invite for the `astral` account (us-west-2). Configure your CLI:
+You should have received an IAM invite for the `coybot` account (us-west-2). Configure your CLI:
 
 ```bash
-aws configure --profile astral
+aws configure --profile coybot
 # Region: us-west-2
 # Output: json
 ```
@@ -49,13 +49,13 @@ aws configure --profile astral
 Verify access:
 
 ```bash
-AWS_PROFILE=astral aws sts get-caller-identity
+AWS_PROFILE=coybot aws sts get-caller-identity
 ```
 
 The backend stack is called `drone-api`. To see its outputs (API endpoint, IoT endpoint, etc.):
 
 ```bash
-AWS_PROFILE=astral sam list stack-outputs --stack-name drone-api --region us-west-2
+AWS_PROFILE=coybot sam list stack-outputs --stack-name drone-api --region us-west-2
 ```
 
 ## 3. SDK quickstart
@@ -65,7 +65,7 @@ cd sdk
 uv sync          # or: pip install -e ".[all]"
 ```
 
-Copy `src/astral_sdk/config_example.yaml` to `config.yaml` and edit `serial_port` for your flight controller. Run SITL examples without hardware:
+Copy `src/coybot_sdk/config_example.yaml` to `config.yaml` and edit `serial_port` for your flight controller. Run SITL examples without hardware:
 
 ```bash
 python examples/sitl/fly_sitl.py
@@ -84,7 +84,7 @@ If you need to redeploy the SAM stack:
 
 ```bash
 cd eco/aws
-AWS_PROFILE=astral sam deploy \
+AWS_PROFILE=coybot sam deploy \
   --region us-west-2 \
   --capabilities CAPABILITY_IAM \
   --resolve-s3 \

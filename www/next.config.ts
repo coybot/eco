@@ -9,11 +9,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "astral.us",
+        hostname: "coy.bot",
       },
       {
         protocol: "https",
-        hostname: "*.astral.us",
+        hostname: "*.coy.bot",
       },
     ],
   },

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 const miniResults = [
   {
     rank: 1,
-    system: "Astral (modular stack)",
+    system: "Coybot (modular stack)",
     meanError: "1.04 m",
     collisionRate: "0%",
     highlight: true,

@@ -65,7 +65,7 @@ function SignInScreen() {
           <Radio className="size-10 text-amber-500" />
         </div>
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-white">Astral Simulator</h1>
+          <h1 className="text-2xl font-semibold text-white">Coybot Simulator</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Sign in to run drones in the simulator
           </p>
@@ -696,7 +696,7 @@ export default function SimulatorPage() {
       <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur">
         <div className="flex items-center gap-2">
           <Radio className="size-5 text-amber-500" />
-          <span className="font-semibold text-sm">Astral Simulator</span>
+          <span className="font-semibold text-sm">Coybot Simulator</span>
         </div>
         <div className="flex items-center gap-4">
           {phase === "live" && (

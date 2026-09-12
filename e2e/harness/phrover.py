@@ -6,7 +6,7 @@ Three independent, unrelated checks — see scenarios.yaml's comment for why:
                    (aws/src/rover.py). fast tier hits harness/mock_rover_converse.py;
                    live tier hits the real deployed endpoint.
   navigate      -- on-device RoverNav planning/driving. Identical in both tiers: it's pure
-                   Swift, offline, deterministic — RoverNavTests in the public astral-sdk
+                   Swift, offline, deterministic — RoverNavTests in the public coybot-sdk
                    repo (sibling of this repo; see ../../../sdk). NavIntegrationTests
                    .testDriveAroundCornerToGoalCollisionFree already asserts "plan reaches
                    the goal without violating the costmap" for a doorway-shaped gap,
@@ -63,12 +63,12 @@ def _first_available_simulator() -> str | None:
 
 def _run_swift_tests() -> tuple[bool, str]:
     if not _SDK_DIR.exists():
-        return False, f"astral-sdk package not found at {_SDK_DIR} (expected as a sibling of this repo)"
+        return False, f"coybot-sdk package not found at {_SDK_DIR} (expected as a sibling of this repo)"
     udid = _first_available_simulator()
     if not udid:
         return False, "no available iOS Simulator found (xcrun simctl list devices available)"
     proc = subprocess.run(
-        ["xcodebuild", "test", "-scheme", "astral-sdk-Package",
+        ["xcodebuild", "test", "-scheme", "coybot-sdk-Package",
          "-destination", f"id={udid}",
          "-only-testing:RoverNavTests", "-only-testing:PhroverKitTests"],
         cwd=_SDK_DIR, capture_output=True, text=True, timeout=300)

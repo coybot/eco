@@ -8,7 +8,7 @@
 # respawns its aircraft on its own (see Sim.reconnect), so it is allowed to come
 # up first and sit retrying until thor's sim appears — which is exactly what
 # happens on a cold boot of both machines.
-Description=Presidio obstacle avoidance guidance (Orin Nano)
+Description=Coybot obstacle avoidance guidance (Orin Nano)
 After=network-online.target
 Wants=network-online.target
 

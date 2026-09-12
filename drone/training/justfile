@@ -1,4 +1,4 @@
-# Astral analog-pilot training — tasks for hoopoe (A100).
+# Coybot analog-pilot training — tasks for hoopoe (A100).
 # Usage (from repo root):
 #   just -f eco/drone/training/justfile deploy
 #   just -f eco/drone/training/justfile dataset episodes=4000
@@ -7,7 +7,7 @@
 #   just -f eco/drone/training/justfile smoke    # run unit tests on hoopoe
 
 hoopoe := "yusuf@hoopoe"
-remote_dir := "~/astral-training"
+remote_dir := "~/coybot-training"
 model_out := "~/drone-data/bc_v2/models"
 local_models := "eco/drone/models"
 ssh_opts := "-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new"
@@ -112,10 +112,10 @@ pull-ma version="ma_rover_v1":
 
 # Run MA scorecard comparison after pulling a trained policy
 scorecard-compare version="ma_rover_v1":
-    /Users/jsaib/code/ys/a/eco/drone/sim/.venv-mac/bin/python \
-        /Users/jsaib/code/ys/a/eco/drone/sim/scorecard.py \
+    ~/code/ys/coybot/eco/drone/sim/.venv-mac/bin/python \
+        ~/code/ys/coybot/eco/drone/sim/scorecard.py \
         --policy {{local_models}}/policy_{{version}}.onnx \
-        --out /Users/jsaib/code/ys/a/eco/drone/sim/scorecard_{{version}}.json
+        --out ~/code/ys/coybot/eco/drone/sim/scorecard_{{version}}.json
 
 # Full MA pipeline: deploy -> train -> pull -> compare
 train-ma-all version="ma_rover_v1" iters="1200":

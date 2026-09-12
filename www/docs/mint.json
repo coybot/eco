@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/schema.json",
-  "name": "Astral Documentation",
+  "name": "Coybot Documentation",
   "logo": {
     "dark": "/logo/dark.svg",
     "light": "/logo/light.svg"
@@ -18,12 +18,12 @@
   "topbarLinks": [
     {
       "name": "Support",
-      "url": "mailto:support@astral.us"
+      "url": "mailto:support@coy.bot"
     }
   ],
   "topbarCtaButton": {
     "name": "Dashboard",
-    "url": "https://web.astral.us"
+    "url": "https://web.coy.bot"
   },
   "tabs": [
     {
@@ -35,12 +35,12 @@
     {
       "name": "GitHub",
       "icon": "github",
-      "url": "https://github.com/astral-us"
+      "url": "https://github.com/coybot"
     },
     {
       "name": "Community",
       "icon": "discord",
-      "url": "https://discord.gg/astral"
+      "url": "https://discord.gg/coybot"
     }
   ],
   "navigation": [
@@ -90,8 +90,8 @@
     }
   ],
   "footerSocials": {
-    "twitter": "https://twitter.com/astral_us",
-    "github": "https://github.com/astral-us",
-    "linkedin": "https://linkedin.com/company/astral-us"
+    "twitter": "https://twitter.com/coybot_us",
+    "github": "https://github.com/coybot",
+    "linkedin": "https://linkedin.com/company/coybot"
   }
 }

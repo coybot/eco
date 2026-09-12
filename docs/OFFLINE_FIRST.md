@@ -1,4 +1,4 @@
-# Offline-First Drone Control (Astral)
+# Offline-First Drone Control (Coybot)
 
 This describes the **phone-hosted** offline path: a Core ML model on the iOS
 app itself plans missions, sent as structured JSON only (no natural-language
@@ -24,8 +24,8 @@ chat and/or multiple drones served from one place.
 - `drone/common/network_manager.yaml.example` (config)
 - `drone/common/local_control_api.py` (local HTTPS API)
 - `drone/common/mission_runner.py` (mission state + ROS2/MAVROS stub)
-- `drone/platforms/orin/astral-network-manager.service` (systemd unit)
-- `drone/platforms/orin/astral-local-control.service` (systemd unit)
+- `drone/platforms/orin/coybot-network-manager.service` (systemd unit)
+- `drone/platforms/orin/coybot-local-control.service` (systemd unit)
 - `client/ios/DroneOperator/DroneOperator/Models/Mission.swift` (schema)
 - `client/ios/DroneOperator/DroneOperator/Services/LocalDroneControlClient.swift`
 - `client/ios/DroneOperator/DroneOperator/Services/LocalLLMService.swift`
@@ -51,10 +51,10 @@ stateDiagram-v2
   APMode --> APMode: clientConnected_or_missionActive
 ```
 
-Config lives in `/etc/astral/network_manager.yaml` (see example file).
+Config lives in `/etc/coybot/network_manager.yaml` (see example file).
 
 AP defaults:
-- SSID: `Astral-<model>-<last4>`
+- SSID: `Coybot-<model>-<last4>`
 - WPA2/WPA3 enabled
 - IP: `192.168.4.1`
 - DHCP: `192.168.4.10-192.168.4.100`
@@ -63,7 +63,7 @@ AP defaults:
 Transport: HTTPS (self‑signed cert generated on first run).
 
 Auth:
-- Pairing token stored at `/var/lib/astral/pairing_token.json`.
+- Pairing token stored at `/var/lib/coybot/pairing_token.json`.
 - Client sends `Authorization: Bearer <token>`.
 
 Endpoints:
@@ -82,7 +82,7 @@ Mission schema:
 ```
 
 Mission execution is routed through `mission_runner.py`, which toggles
-`/var/lib/astral/mission_active.json` to keep AP alive during flight.
+`/var/lib/coybot/mission_active.json` to keep AP alive during flight.
 
 ## iOS app behavior
 - Joins the drone AP via `NEHotspotConfigurationManager` (join once, remember).

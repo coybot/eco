@@ -1,10 +1,10 @@
-# astral.us — Architecture Overview
+# coy.bot — Architecture Overview
 
 ## One repo, one source of truth
 
-The live website at **https://astral.us** is built entirely from this directory (`eco/www/`).
+The live website at **https://coy.bot** is built entirely from this directory (`eco/www/`).
 It is a Next.js 16 App Router site deployed to AWS via SST (CloudFront + Lambda).
-GitHub repo: `astral-us/eco`, path `www/`.
+GitHub repo: `coybot/eco`, path `www/`.
 
 There is no separate CMS, no headless WordPress, no Sanity, no external blog platform.
 All content lives as TypeScript files in `src/`.
@@ -58,9 +58,9 @@ Five are blog-only posts (no companion paper):
 ## Other repos — what they are NOT
 
 - **`eco/papers/`** — raw markdown source files, not wired into the website. Pre-dates the current site. Not published anywhere automatically.
-- **`astral-us/astral-docs`** — API/SDK documentation only, served at `docs.astral.us`. No blog, no research section.
+- **`coybot/coybot-docs`** — API/SDK documentation only, served at `docs.coy.bot`. No blog, no research section.
 
 ## Models
 
-Drone inference models are hosted at `https://huggingface.co/astralhf/astral-drone-models`.
+Drone inference models are hosted at `https://huggingface.co/coybothf/coybot-drone-models`.
 Blog posts that reference models link there (not to S3). Constant defined in `src/lib/site.ts` as `SITE.droneModels`.

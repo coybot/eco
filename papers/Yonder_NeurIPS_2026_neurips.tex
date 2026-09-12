@@ -98,7 +98,7 @@ For all 167 HSSD scenes, we re-rendered semantic segmentation channels (not stor
 
 \subsection{Storage and Access}
 
-Yonder is hosted on the HuggingFace Hub at \url{https://huggingface.co/datasets/astralhf/yonder}. Each waypoint is stored as a single compressed NPZ file (52 sensor arrays + optional semantic channels). Total storage: approximately 3.3\,TB. We provide loading utilities, manifest files, and per-scene COCO annotation files in the accompanying code release. For reviewers and others wanting a fast preview before downloading the full release, we additionally publish a $\sim$500\,MB single-scene sample at \url{https://huggingface.co/datasets/astralhf/yonder-sample}.
+Yonder is hosted on the HuggingFace Hub at \url{https://huggingface.co/datasets/coybothf/yonder}. Each waypoint is stored as a single compressed NPZ file (52 sensor arrays + optional semantic channels). Total storage: approximately 3.3\,TB. We provide loading utilities, manifest files, and per-scene COCO annotation files in the accompanying code release. For reviewers and others wanting a fast preview before downloading the full release, we additionally publish a $\sim$500\,MB single-scene sample at \url{https://huggingface.co/datasets/coybothf/yonder-sample}.
 
 \subsection{Generation Cost}
 
@@ -307,7 +307,7 @@ We introduce Yonder, a 4.65-million-frame drone-perspective dataset for indoor n
 Our findings argue for closed-loop evaluation as a non-negotiable component of any work claiming to improve perception for embodied AI tasks, and for explicit testing of cross-simulator transfer when training and evaluation use different simulation platforms. We release Yonder, all four fine-tuned model checkpoints, the closed-loop benchmark code, and complete trial logs to enable rigorous study of these phenomena.
 
 \begin{ack}
-The Yonder dataset is publicly available at \url{https://huggingface.co/datasets/astralhf/yonder}. All fine-tuned model checkpoints, closed-loop benchmark code, and complete trial logs are available alongside the dataset. The released data is licensed CC-BY-NC-4.0 (inheriting HSSD's NonCommercial restriction); the code release is Apache-2.0. Compute for dataset generation was provided by the authors' organization (withheld for double-blind review); rented from Vast.ai at approximately \$60 total cost for the released subset.
+The Yonder dataset is publicly available at \url{https://huggingface.co/datasets/coybothf/yonder}. All fine-tuned model checkpoints, closed-loop benchmark code, and complete trial logs are available alongside the dataset. The released data is licensed CC-BY-NC-4.0 (inheriting HSSD's NonCommercial restriction); the code release is Apache-2.0. Compute for dataset generation was provided by the authors' organization (withheld for double-blind review); rented from Vast.ai at approximately \$60 total cost for the released subset.
 \end{ack}
 
 % References use unnumbered first-level heading per NeurIPS format.
@@ -415,7 +415,7 @@ Following~\cite{gebru2021datasheets}:
 
 \textbf{Uses.} Recommended for perception model training with closed-loop validation in deployment domain. Not recommended for end-to-end navigation policy training or for reporting fine-tuning improvements based solely on offline metrics.
 
-\textbf{Distribution.} Hosted on the HuggingFace Hub at \url{https://huggingface.co/datasets/astralhf/yonder}. Croissant metadata with Responsible AI fields published alongside the dataset card. License: \textbf{CC-BY-NC-4.0} (data, inheriting HSSD's NonCommercial restriction; HSSD attribution preserved per source license) and Apache-2.0 (code). Replica and HM3D-derived scenes were excluded because their upstream licenses do not permit open redistribution of derivative renders; ReplicaCAD scenes were excluded because they lack semantic annotations and were not used in any reported experiment.
+\textbf{Distribution.} Hosted on the HuggingFace Hub at \url{https://huggingface.co/datasets/coybothf/yonder}. Croissant metadata with Responsible AI fields published alongside the dataset card. License: \textbf{CC-BY-NC-4.0} (data, inheriting HSSD's NonCommercial restriction; HSSD attribution preserved per source license) and Apache-2.0 (code). Replica and HM3D-derived scenes were excluded because their upstream licenses do not permit open redistribution of derivative renders; ReplicaCAD scenes were excluded because they lack semantic annotations and were not used in any reported experiment.
 
 \textbf{Maintenance.} Maintained by the corresponding author. Updates and corrections will be posted to the project website.
 

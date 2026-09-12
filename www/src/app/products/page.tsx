@@ -9,12 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { products, formatPrice } from "@/lib/products";
 import { socialMeta } from "@/lib/social-metadata";
 
-const DESC = "Astral autonomous platforms: Quadcopter, Rover, Fixed-Wing, and Phrover. NDAA-compliant, GPS-denied capable, Jetson on-device AI or bring your own phone.";
+const DESC = "Coybot autonomous platforms: Quadcopter, Rover, Fixed-Wing, and Phrover. NDAA-compliant, GPS-denied capable, Jetson on-device AI or bring your own phone.";
 
 export const metadata: Metadata = {
   title: "Products",
   description: DESC,
-  ...socialMeta("/products", "Products | Astral", DESC),
+  ...socialMeta("/products", "Products | Coybot", DESC),
 };
 
 export default function ProductsPage() {

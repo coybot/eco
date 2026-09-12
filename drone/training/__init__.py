@@ -1,4 +1,4 @@
-"""Astral analog-piloting training package (Phase 0/1).
+"""Coybot analog-piloting training package (Phase 0/1).
 
 Builds the learned mid-level control policy that replaces discrete waypoint hops with
 smooth, continuous velocity + yaw-rate setpoints, while ArduPilot keeps closing the inner

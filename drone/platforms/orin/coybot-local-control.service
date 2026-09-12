@@ -1,5 +1,5 @@
 [Unit]
-Description=Astral Network Manager (Orin)
+Description=Coybot Local Control API
 After=network-online.target
 Wants=network-online.target
 
@@ -11,7 +11,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=__INSTALL_DIR__
-ExecStart=__INSTALL_DIR__/venv/bin/python __INSTALL_DIR__/network_manager.py
+ExecStart=__INSTALL_DIR__/venv/bin/python __INSTALL_DIR__/local_control_api.py
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

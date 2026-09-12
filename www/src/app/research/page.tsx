@@ -11,12 +11,12 @@ import { researchPapers } from "@/lib/research-data";
 import { blogPosts } from "@/lib/blog-data";
 
 const RESEARCH_DESCRIPTION =
-  "Astral publishes rigorous autonomy research on vision-language navigation for aerial and ground robots, modular architectures, swarm sensing, and large-scale datasets including Yonder.";
+  "Coybot publishes rigorous autonomy research on vision-language navigation for aerial and ground robots, modular architectures, swarm sensing, and large-scale datasets including Yonder.";
 
 export const metadata: Metadata = {
   title: "Research",
   description: RESEARCH_DESCRIPTION,
-  ...socialMeta("/research", "Research | Astral", RESEARCH_DESCRIPTION),
+  ...socialMeta("/research", "Research | Coybot", RESEARCH_DESCRIPTION),
 };
 
 // Build a unified list of papers + standalone blog posts, newest first.
@@ -82,10 +82,10 @@ export default function ResearchPage() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    name: "Astral Research",
+    name: "Coybot Research",
     description: RESEARCH_DESCRIPTION,
     url: `${SITE.origin}/research`,
-    isPartOf: { "@type": "WebSite", name: "Astral", url: SITE.origin },
+    isPartOf: { "@type": "WebSite", name: "Coybot", url: SITE.origin },
     hasPart: researchPapers.map((p) => ({
       "@type": p.schemaType === "Dataset" ? "Dataset" : "Report",
       name: p.title,
@@ -104,7 +104,7 @@ export default function ResearchPage() {
           <div className="container mx-auto px-4 max-w-4xl">
             <h1 className="text-4xl sm:text-5xl font-bold mb-6">Research</h1>
             <p className="text-lg text-muted-foreground mb-8">
-              Papers, technical reports, and write-ups from the Astral autonomy
+              Papers, technical reports, and write-ups from the Coybot autonomy
               team — ordered by date.
             </p>
             <div className="flex flex-wrap gap-3 mb-16">
@@ -182,7 +182,7 @@ export default function ResearchPage() {
                 <iframe
                   className="absolute inset-0 w-full h-full"
                   src="https://www.youtube.com/embed/hePElM49LFE?autoplay=1&rel=0"
-                  title="Astral L5 Autonomy Demo Reel"
+                  title="Coybot L5 Autonomy Demo Reel"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 />

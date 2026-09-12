@@ -205,7 +205,7 @@
       "target": "car",
       "truth_count": 4,
       "reported_count": 0,
-      "video_path": "/Users/jsaib/code/ys/a/eco/drone/sim/s2_videos/how_many_cars_are_parked_down_there__come_back_and_tell_me.mp4",
+      "video_path": "~/code/ys/coybot/eco/drone/sim/s2_videos/how_many_cars_are_parked_down_there__come_back_and_tell_me.mp4",
       "n_frames": 1768
     },
     {
@@ -221,7 +221,7 @@
       "target": "person",
       "truth_count": 5,
       "reported_count": 0,
-      "video_path": "/Users/jsaib/code/ys/a/eco/drone/sim/s2_videos/circle_around_and_count_the_people_then_land.mp4",
+      "video_path": "~/code/ys/coybot/eco/drone/sim/s2_videos/circle_around_and_count_the_people_then_land.mp4",
       "n_frames": 474
     }
   ]

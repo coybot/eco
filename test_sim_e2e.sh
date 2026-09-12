@@ -6,7 +6,7 @@
 # Prerequisites:
 #   - sim_bridge.py running on hoopoe: cd ~/code/ishmael/benchmark && ~/isaac-sim-env/bin/python3 sim_bridge.py --env office
 #   - cloudflared tunnel: ~/bin/cloudflared tunnel --url http://localhost:8765
-#   - AWS profile 'astral' configured
+#   - AWS profile 'coybot' configured
 
 set -e
 
@@ -17,7 +17,7 @@ CONV_ID="e2e-conv-$(date +%s)"
 REGION="us-west-2"
 
 echo "=== Step 1: Register sim drone with tunnel URL ==="
-AWS_PROFILE=astral aws dynamodb put-item \
+AWS_PROFILE=coybot aws dynamodb put-item \
   --table-name drone-registry-dev \
   --region $REGION \
   --item "{
@@ -50,7 +50,7 @@ PAYLOAD
 
 echo "$PAYLOAD" > /tmp/e2e_event.json
 
-AWS_PROFILE=astral aws lambda invoke \
+AWS_PROFILE=coybot aws lambda invoke \
   --function-name drone-chat-message-dev \
   --region $REGION \
   --invocation-type RequestResponse \
@@ -68,7 +68,7 @@ sleep 45
 
 echo ""
 echo "=== Conversation messages: ==="
-AWS_PROFILE=astral aws dynamodb query \
+AWS_PROFILE=coybot aws dynamodb query \
   --table-name drone-conversations-dev \
   --region $REGION \
   --key-condition-expression 'PK = :pk AND begins_with(SK, :sk)' \

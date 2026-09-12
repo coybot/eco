@@ -54,7 +54,7 @@
   "description": "A 4.65-million-frame drone-perspective dataset spanning 167 indoor 3D environments (all from HSSD, all with semantic annotations), with stereo RGB, depth, IR, LiDAR-360, and semantic segmentation captured at 387,527 navmesh-sampled waypoints (12 yaws each). Released alongside a closed-loop benchmark designed to expose the cross-simulator generalization gap: the failure of perception trained on one simulator to transfer to a different simulator, even when both target the same task.",
   "conformsTo": "http://mlcommons.org/croissant/1.0",
   "license": "https://creativecommons.org/licenses/by-nc/4.0/",
-  "url": "https://huggingface.co/datasets/astralhf/yonder",
+  "url": "https://huggingface.co/datasets/coybothf/yonder",
   "version": "1.0.0",
   "datePublished": "2026-05-01",
   "creator": {
@@ -100,7 +100,7 @@
       "@id": "yonder-repo",
       "name": "yonder-repo",
       "description": "The Yonder dataset hosted on the HuggingFace Hub.",
-      "contentUrl": "https://huggingface.co/datasets/astralhf/yonder",
+      "contentUrl": "https://huggingface.co/datasets/coybothf/yonder",
       "encodingFormat": "git+https",
       "sha256": "main"
     },

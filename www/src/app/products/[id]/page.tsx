@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     title: product.name,
     description: product.description,
     openGraph: {
-      title: `${product.name} | Astral`,
+      title: `${product.name} | Coybot`,
       description: product.description,
       images: [product.image],
     },
@@ -60,7 +60,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       description: product.description,
       image: `${SITE.origin}${product.image}`,
       url: productUrl,
-      brand: { "@type": "Brand", name: "Astral" },
+      brand: { "@type": "Brand", name: "Coybot" },
       offers: {
         "@type": "Offer",
         price: product.price,

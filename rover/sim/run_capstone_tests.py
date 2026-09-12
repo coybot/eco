@@ -40,7 +40,7 @@ def main() -> int:
     try:
         cmd = [
             "xcodebuild", "test",
-            "-scheme", "astral-sdk-Package",
+            "-scheme", "coybot-sdk-Package",
             "-destination", f"platform=iOS Simulator,name={args.device}",
             f"-only-testing:{args.test}",
         ]

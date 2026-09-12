@@ -23,7 +23,7 @@ else
 end
 
 test.build_configurations.each do |c|
-  c.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'us.astral.drone.uitests'
+  c.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'bot.coy.drone.uitests'
   c.build_settings['TEST_TARGET_NAME'] = 'DroneOperator'
   c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
   c.build_settings['SWIFT_VERSION'] = '5.9'

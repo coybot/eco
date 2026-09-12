@@ -1,7 +1,7 @@
 ## Count-demo environment: a grass area with people, a parking area with cars, and
 ## a tree line obstacle on the direct route between them and the launch point —
 ## built for the fixed-wing autonomy plan's Milestone S (sim verification gate,
-## see /Users/jsaib/.claude/plans/no-again-not-for-compiled-quiche.md). Ground
+## see ~/.claude/plans/no-again-not-for-compiled-quiche.md). Ground
 ## truth for scoring comes from the SAME existing oracle every other env already
 ## supports (FixedWingManager.prop_truth() reads this node's `.props` Array +
 ## each prop's "label"/"is_anomaly" meta) — no separate/duplicated ground-truth

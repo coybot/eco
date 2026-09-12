@@ -36,7 +36,7 @@ export function Footer() {
             <Link href="/" className="inline-block">
               <img 
                 src="/logo-white.png" 
-                alt="Astral" 
+                alt="Coybot" 
                 className="h-6 w-auto"
               />
             </Link>
@@ -81,7 +81,7 @@ export function Footer() {
         {/* Bottom Bar */}
         <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Astral. All rights reserved.
+            © {new Date().getFullYear()} Coybot. All rights reserved.
           </p>
           <div className="flex items-center space-x-4">
             <span className="text-sm text-muted-foreground flex items-center">

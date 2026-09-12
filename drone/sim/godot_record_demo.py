@@ -84,7 +84,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=9999)
-    ap.add_argument("--out", default="/tmp/astral_demo")
+    ap.add_argument("--out", default="/tmp/coybot_demo")
     args = ap.parse_args()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

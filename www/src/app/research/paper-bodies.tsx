@@ -531,8 +531,8 @@ export function ResearchPaperBody({ slug }: { slug: string }) {
           <h2>How to use Yonder</h2>
           <p>
             The full dataset is on Hugging Face at{" "}
-            <a href={SITE.yonderDataset}>astralhf/yonder</a>. A 500 MB sample
-            (astralhf/yonder-sample) is available for quick evaluation. The
+            <a href={SITE.yonderDataset}>coybothf/yonder</a>. A 500 MB sample
+            (coybothf/yonder-sample) is available for quick evaluation. The
             dataset card documents the collection protocol, coordinate frames,
             label schema, and known edge cases.
           </p>

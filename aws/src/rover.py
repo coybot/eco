@@ -46,7 +46,7 @@ def converse_handler(event, context):
     DialogAgent (PhroverKit). Only reached when the on-device Apple Foundation Model flags
     an utterance as needing escalation (small talk, general knowledge); navigation intents
     are parsed and dispatched entirely on-device and never hit this endpoint. See
-    ClaudeDialogClient.swift in the sibling astral-sdk repo (swift/Sources/PhroverCloud)
+    ClaudeDialogClient.swift in the sibling coybot-sdk repo (swift/Sources/PhroverCloud)
     and eco/rover/docs/architecture.md.
     """
     if not get_user_id(event):
@@ -304,7 +304,7 @@ def act_handler(event, context):
     """POST /rover/act — vision + tool-use mission brain for MissionAgent (PhroverKit).
     Sibling of /rover/converse: this route drives ACTIONS (navigate/lookAround/ask/say/
     stop/done), not just talk, and is the "cloud primary" half of the hybrid brain — see
-    CloudBrain.swift / HybridBrain.swift in the sibling astral-sdk repo
+    CloudBrain.swift / HybridBrain.swift in the sibling coybot-sdk repo
     (swift/Sources/PhroverCloud/Cloud), which this request/response shape mirrors exactly.
     """
     if not get_user_id(event):

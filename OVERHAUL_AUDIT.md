@@ -1,8 +1,8 @@
-# Astral Overhaul — Phase 0 Audit (eco repo)
+# Coybot Overhaul — Phase 0 Audit (eco repo)
 
 Scope: website (`www/`), benchmark reproducibility, dataset/model provenance, eco-side
 licensing. SDK-specific findings live in `../sdk/OVERHAUL_AUDIT.md`. Audited by reading
-this local checkout (`astral-us/eco`), not by crawling the live astral.us site — source is
+this local checkout (`coybot/eco`), not by crawling the live coy.bot site — source is
 ground truth here and this is a code-level audit.
 
 Method note: every claim below is cited to a file:line or a live HF URL. Where I could not
@@ -19,7 +19,7 @@ work:
    surviving M1-A/M1-G reference anywhere in `www/` is `public/llms.txt:63` (see below).
 2. **"`localhost:3000` og-image URL on /enterprise"** — not found. Root metadata
    (`src/app/layout.tsx:24-26`) uses `metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL
-   ?? "https://astral.us")`, and `/enterprise` resolves its OG URL from `SITE.origin`. The
+   ?? "https://coy.bot")`, and `/enterprise` resolves its OG URL from `SITE.origin`. The
    only `localhost` string in `www/src` is `src/app/api/plan-mission/route.ts:142`, a
    server-side Ollama fallback gated behind `OFFLINE_MODE==='true'` — intentional local-demo
    plumbing, not a leaked dev URL.
@@ -40,12 +40,12 @@ work:
   caveat, at a stated 45 MPH (≈20 m/s) cruise speed. A D435-class stereo camera's ~10 m
   usable range is traversed in ~0.5 s at that speed — this claim would fail basic technical
   diligence from any serious evaluator. **This is Risk #1.**
-- **Benchmark numbers on the site are stale relative to Astral's own later paper.**
+- **Benchmark numbers on the site are stale relative to Coybot's own later paper.**
   `src/app/benchmark/page.tsx:62-66` reports the modular pipeline at 9.98 m (worse than the
   9.50 m hover baseline in aggregate). But `src/app/blog/post-bodies.tsx:945,952` describes
   a later result where "six targeted fixes moved aggregate error from 9.98 m to 8.15 m,"
   beating hover for the first time — which matches `eco/papers/Engineering_the_Separation_Principle.md`.
-  The benchmark page was never updated to reflect Astral's own improved result, so the site
+  The benchmark page was never updated to reflect Coybot's own improved result, so the site
   currently understates its own capability and states a number the company has since beaten.
 - **RESOLVED — "`ZeroClaw` dataset claimed public, not found published."** Confirmed with
   the author: ZeroClaw was the internal working name for what was later renamed and
@@ -59,13 +59,13 @@ work:
   table clarifying that those specific numbers (275 scenes) reflect the pre-license-reduction
   internal snapshot used for those experiments, not the 167-scene public release. No change
   needed to `Closing_the_Metric_Gap.md`/`.tex` — grep found no ZeroClaw mentions there.
-- **RESOLVED — `astralhf/astral-drone-models`.** Fetched the live HF card directly: it's a
-  real, licensed (CC-BY-NC-4.0, commercial licensing via astral.us/enterprise) repo hosting
+- **RESOLVED — `coybothf/coybot-drone-models`.** Fetched the live HF card directly: it's a
+  real, licensed (CC-BY-NC-4.0, commercial licensing via coy.bot/enterprise) repo hosting
   six models (`yolov8n_domain_v3.onnx`, `vlm_lora_v1_q4km.gguf`+mmproj, `policy_v1.onnx`,
   `depth_v1.onnx`) that map directly to the "separation principle" architecture (VLM target
   selection + depth backprojection + reactive policy) from
   `Engineering_the_Separation_Principle.md`. It's a different lineage from the L5 nav
-  policies in `astralhf/eco-drone-policies` (referenced by `setup_models.py`), not an
+  policies in `coybothf/eco-drone-policies` (referenced by `setup_models.py`), not an
   orphaned/unaccounted repo — it's just not yet linked from the papers or website. Optional
   follow-up (not urgent): link it from the paper/`/research` page for discoverability.
 - Enterprise page claim **"manage hundreds of drones from a single dashboard"**
@@ -103,7 +103,7 @@ in this repo.**
   `yonder-code-release/README.md` states *"the full closed-loop benchmark runner ... are
   described in the paper but are not anonymized for double-blind release here."*
 - Reference [18] in the Yonder paper (the thing being benchmarked against) is confirmed to
-  be an anonymized self-citation to Astral's own `Closing the Metric Gap` paper — i.e. Astral
+  be an anonymized self-citation to Coybot's own `Closing the Metric Gap` paper — i.e. Coybot
   *is* the benchmark's author, it's just not in a public repo.
 - Static check on what code does exist: `reproduce_finding.py` inside the paper's code zip
   computes aggregate error as a plain mean over trial logs, and one logged condition has
@@ -116,7 +116,7 @@ in this repo.**
 
 **Verdict: not verifiable in this environment** (as originally audited). **Update**: the
 harness has since been moved from the untracked hoopoe working directory into
-[astral-us/benchmark](https://github.com/astral-us/benchmark) (private repo). This resolves
+[coybot/benchmark](https://github.com/coybot/benchmark) (private repo). This resolves
 the "the code doesn't exist anywhere version-controlled" problem, but **the repo is
 private** — Phase 3's "the harness is open, bring your vendor's stack" pitch still cannot
 ship honestly until someone makes the actual release decision (public visibility, license,
@@ -139,7 +139,7 @@ migration — is what should gate Phase 3 copy and `--tier outdoor|fleet` scaffo
   stated anywhere, which is itself the gap: an outside evaluator has no way to reach the same
   conclusion without doing what we just did.
 - `eco/drone/models/setup_models.py` pulls the L5 nav policies from
-  `astralhf/eco-drone-policies` (public HF repo) and pulls other artifacts
+  `coybothf/eco-drone-policies` (public HF repo) and pulls other artifacts
   (`vlm_drone`, `depth_model`, `domain_detector`) from S3 with inline docstring notes on
   training data (e.g. "2,000 VisDrone aerial scenes") — but no license field anywhere in
   code or `README.md` for any of these.
@@ -154,16 +154,16 @@ migration — is what should gate Phase 3 copy and `--tier outdoor|fleet` scaffo
 1. **HIGH** — Fixed-wing product page claims D435 stereo obstacle avoidance at 45 MPH
    cruise; physically incorrect and live on a marketing page right now.
 2. **MEDIUM** (downgraded from HIGH) — Benchmark harness is now version-controlled at
-   [astral-us/benchmark](https://github.com/astral-us/benchmark) but still **private**;
+   [coybot/benchmark](https://github.com/coybot/benchmark) but still **private**;
    Phase 3's "the harness is open" pitch remains false as written until a public-release
    decision is made.
 3. ~~MEDIUM — `ZeroClaw` dataset described as "publicly available"~~ **RESOLVED**: ZeroClaw
    was Yonder's internal codename; papers/blog renamed accordingly, see above.
 4. **MEDIUM** — Model weight provenance/license undocumented (no data-source/license field
    in any train/RL summary; NOTICE doesn't cover Yonder attribution or HF-hosted weights).
-5. ~~MEDIUM — `astralhf/astral-drone-models` unaccounted-for~~ **RESOLVED**: confirmed real,
+5. ~~MEDIUM — `coybothf/coybot-drone-models` unaccounted-for~~ **RESOLVED**: confirmed real,
    licensed, and tied to the separation-principle model lineage, see above.
-6. **LOW** — Benchmark page (9.98 m) is stale versus Astral's own later, better result
+6. **LOW** — Benchmark page (9.98 m) is stale versus Coybot's own later, better result
    (8.15 m) reported in a blog post/paper — site understates the company's own progress.
 7. **LOW** — Enterprise page's "hundreds of drones, one dashboard" claim is unsupported by
    any benchmark or paper result.
@@ -182,7 +182,7 @@ migration — is what should gate Phase 3 copy and `--tier outdoor|fleet` scaffo
   benchmark-harness blocker.
 - **Phase 1** (licensing) can proceed largely as planned; the Yonder side is in better shape
   than assumed, but the model-weight provenance gap (Risk #4) and the orphaned
-  `astral-drone-models` repo (Risk #5) need resolving first or the provenance table will have
+  `coybot-drone-models` repo (Risk #5) need resolving first or the provenance table will have
   more "unknown" rows than the brief anticipated.
 
 ## Human-approval gates (tracked here per master-prompt instructions)
@@ -197,10 +197,10 @@ migration — is what should gate Phase 3 copy and `--tier outdoor|fleet` scaffo
 - [ ] Marketing review: all rewritten copy vs. maturity labels
 - [x] ~~NEEDS-HUMAN: confirm ZeroClaw's actual publication status~~ resolved — it's Yonder's
       old internal name, papers/blog renamed
-- [x] ~~NEEDS-HUMAN: confirm ownership/contents/license of `astralhf/astral-drone-models`~~
+- [x] ~~NEEDS-HUMAN: confirm ownership/contents/license of `coybothf/coybot-drone-models`~~
       resolved — real, licensed, tied to the separation-principle models
 - [x] Benchmark harness moved into version control: private
-      [astral-us/benchmark](https://github.com/astral-us/benchmark), migrated from
+      [coybot/benchmark](https://github.com/coybot/benchmark), migrated from
       `~/code/ishmael/benchmark/` on hoopoe (excludes `results/`, model checkpoints, demo
       videos — see its README/.gitignore). This unblocks Phase 3 mechanically, but the repo
       is **private** — Phase 3 still cannot claim "the harness is open" until a decision is

@@ -65,7 +65,7 @@ export default function EnterprisePage() {
       subject: `Enterprise inquiry from ${fullName} at ${formData.company}`,
       body: `Name: ${fullName}\nCompany: ${formData.company}\nEmail: ${formData.email}\nFleet size: ${formData.fleetSize}\nUse case: ${formData.useCase}\nMessage: ${formData.message}`,
     });
-    window.open(`mailto:hello@astral.us?${params}`);
+    window.open(`mailto:hello@coy.bot?${params}`);
     setIsSubmitted(true);
     setIsSubmitting(false);
   };
@@ -321,7 +321,7 @@ export default function EnterprisePage() {
                         you.
                       </p>
                       <Button variant="outline" className="w-full" asChild>
-                        <a href="mailto:hello@astral.us">Email Us</a>
+                        <a href="mailto:hello@coy.bot">Email Us</a>
                       </Button>
                     </div>
 

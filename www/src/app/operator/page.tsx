@@ -52,7 +52,7 @@ function SignInScreen() {
           <Radio className="size-10 text-amber-500" />
         </div>
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-white">Astral Operator</h1>
+          <h1 className="text-2xl font-semibold text-white">Coybot Operator</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Sign in to manage your drone fleet
           </p>
@@ -79,7 +79,7 @@ function SignInScreen() {
       </div>
 
       <p className="text-muted-foreground text-xs text-center max-w-xs">
-        Operator access is restricted to registered Astral fleet accounts.
+        Operator access is restricted to registered Coybot fleet accounts.
       </p>
     </div>
   )
@@ -174,7 +174,7 @@ function DroneListScreen() {
       <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur">
         <div className="flex items-center gap-2">
           <Radio className="size-5 text-amber-500" />
-          <span className="font-semibold text-sm">Astral Operator</span>
+          <span className="font-semibold text-sm">Coybot Operator</span>
         </div>
         <button
           onClick={handleSignOut}

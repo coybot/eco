@@ -34,7 +34,7 @@ Three targets, two deploy steps. Mobile (iOS) has no deploy step unless the app 
 
 ```bash
 cd eco/aws
-PATH="/opt/homebrew/bin:$PATH" AWS_PROFILE=astral sam build && AWS_PROFILE=astral sam deploy
+PATH="/opt/homebrew/bin:$PATH" AWS_PROFILE=coybot sam build && AWS_PROFILE=coybot sam deploy
 ```
 
 **Do NOT use `sst deploy` for `eco/aws`.** The `sst.config.ts` uses a `create`-only Pulumi command resource — SST only runs SAM on the very first deploy and silently skips it on all subsequent ones (exits 0, deploys nothing). Always run SAM directly.
@@ -46,7 +46,7 @@ SAM CLI is at `/opt/homebrew/bin/sam` (installed via Homebrew). If changes aren'
 Files are installed flat into `~/drone-api/` on the companion computer. Copy changed files and restart the service:
 
 ```bash
-DRONE=astral@quadcopter   # or your host/IP
+DRONE=coybot@quadcopter   # or your host/IP
 
 sshpass -p "$DRONE_SSH_PASSWORD" scp \
   -o PreferredAuthentications=password \

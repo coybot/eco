@@ -1,16 +1,16 @@
-# astral.us — deploy + git workflow
+# coy.bot — deploy + git workflow
 
-This is the marketing site at https://astral.us. It is **informational only**: there is no cart, no checkout, no payment processing, no financing, no orders flow. Any agent (Claude, Cursor, future me) that wants to "add" any of those should stop and ask the user — they have been removed deliberately and should stay out.
+This is the marketing site at https://coy.bot. It is **informational only**: there is no cart, no checkout, no payment processing, no financing, no orders flow. Any agent (Claude, Cursor, future me) that wants to "add" any of those should stop and ask the user — they have been removed deliberately and should stay out.
 
 ## What lives where
 
 | Concern | Location |
 |---|---|
-| Source code | `astral-us/eco` GitHub repo, this directory (`www/`) |
+| Source code | `coybot/eco` GitHub repo, this directory (`www/`) |
 | Production site | AWS, deployed via SST → CloudFront + Lambda + S3 |
-| Stage | `production` (live at https://astral.us) |
-| AWS profile | `astral` (account `041686205727`, IAM user `yusuf`) |
-| Git identity | `yusuf-astral <218167113+yusuf-astral@users.noreply.github.com>` (set as repo-local config) |
+| Stage | `production` (live at https://coy.bot) |
+| AWS profile | `coybot` (account `041686205727`, IAM user `yusuf`) |
+| Git identity | `yusuf-coybot <218167113+yusuf-coybot@users.noreply.github.com>` (set as repo-local config) |
 
 ## The single most important rule
 
@@ -18,7 +18,7 @@ This is the marketing site at https://astral.us. It is **informational only**: t
 
 This means GitHub `main` and prod can drift. When they do, the source of truth for *what users see* is prod, and the source of truth for *what's checked in* is `main`. Reconciling them is a deliberate action, not automatic.
 
-**TODO:** Add a `.github/workflows/deploy.yml` that runs `AWS_PROFILE=astral npx sst deploy --stage prod` on push to `main`, with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` set as GitHub Actions secrets for the `astral` IAM user.
+**TODO:** Add a `.github/workflows/deploy.yml` that runs `AWS_PROFILE=coybot npx sst deploy --stage prod` on push to `main`, with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` set as GitHub Actions secrets for the `coybot` IAM user.
 
 ## Deploy
 
@@ -26,7 +26,7 @@ From `www/`:
 
 ```bash
 npm install                                          # if first time or deps changed
-AWS_PROFILE=astral npx sst deploy --stage prod
+AWS_PROFILE=coybot npx sst deploy --stage prod
 ```
 
 The deploy:
@@ -68,16 +68,16 @@ Product CTAs are "Request Info" → `/enterprise`. That's the entire commerce su
 - **"GitHub shows a recent commit but prod still looks old"** → Nobody ran `sst deploy` after the push. Run it.
 - **"Cursor's commit broke the deploy"** → Most likely Cursor re-added Stripe / cart / orders code that this site explicitly doesn't use. Strip it back out. See list above.
 - **"`AssetsBucketBucket` lifecycle_rule.0.enabled is required"** → AWS provider tightened the schema. Each `lifecycleRules[]` entry needs `enabled: true` and an `id`. `infra/storage.ts` has the working shape — copy from there.
-- **"astral.us page returns 403 from `server: AmazonS3` but `astral.us/...image.jpg` works"** → see the `public/` subdir gotcha above. Static files under `public/<route>/` shadow the SSR route `<route>`. Move them to `public/media/...` (or any subdir whose name isn't also a Next.js route).
-- **"astral.us SSL handshake fails (`*.cloudfront.net` cert returned)"** → `infra/web.ts` is missing the `domain` block, so SST stripped the alias and ACM cert from the CloudFront distribution on the last deploy. Re-add the `domain: { name: ..., redirects: [...] }` config and redeploy. (Status of the alias can be checked with `aws cloudfront get-distribution-config --id <prod-dist-id> --query 'DistributionConfig.Aliases'`.)
+- **"coy.bot page returns 403 from `server: AmazonS3` but `coy.bot/...image.jpg` works"** → see the `public/` subdir gotcha above. Static files under `public/<route>/` shadow the SSR route `<route>`. Move them to `public/media/...` (or any subdir whose name isn't also a Next.js route).
+- **"coy.bot SSL handshake fails (`*.cloudfront.net` cert returned)"** → `infra/web.ts` is missing the `domain` block, so SST stripped the alias and ACM cert from the CloudFront distribution on the last deploy. Re-add the `domain: { name: ..., redirects: [...] }` config and redeploy. (Status of the alias can be checked with `aws cloudfront get-distribution-config --id <prod-dist-id> --query 'DistributionConfig.Aliases'`.)
 
 ## Git identity
 
-`~/.gitconfig` defaults to `<work-email>`, which is fine for other work but wrong for `astral-us` org commits. This repo has a local override set at clone time:
+`~/.gitconfig` defaults to `<work-email>`, which is fine for other work but wrong for `coybot` org commits. This repo has a local override set at clone time:
 
 ```bash
-git config user.name "yusuf-astral"
-git config user.email "218167113+yusuf-astral@users.noreply.github.com"
+git config user.name "yusuf-coybot"
+git config user.email "218167113+yusuf-coybot@users.noreply.github.com"
 ```
 
 If a fresh clone shows `Yusuf Saib <<work-email>>` in `git log -1`, the override is missing — set it before committing.
@@ -86,9 +86,9 @@ If a fresh clone shows `Yusuf Saib <<work-email>>` in `git log -1`, the override
 
 1. Edit code in `www/`.
 2. `npm run build` — must succeed.
-3. `git add … && git commit` (yusuf-astral identity) and `git push origin main`.
-4. `AWS_PROFILE=astral npx sst deploy --stage prod`.
-5. Verify the change at https://astral.us/<route> with `curl -I` or a browser. Static assets at https://astral.us/<path>.
+3. `git add … && git commit` (yusuf-coybot identity) and `git push origin main`.
+4. `AWS_PROFILE=coybot npx sst deploy --stage prod`.
+5. Verify the change at https://coy.bot/<route> with `curl -I` or a browser. Static assets at https://coy.bot/<path>.
 6. If something looks wrong, the page is cached at the CloudFront edge — wait a minute or hard-refresh.
 
 ## Local demo mode (offline)

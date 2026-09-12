@@ -122,7 +122,7 @@ export interface SimDrone {
 
 export interface SimSession {
   sessionId: string
-  wsUrl: string          // wss://sim.astral.us/stream?session=…
+  wsUrl: string          // wss://sim.coy.bot/stream?session=…
   drones: SimDrone[]
 }
 

@@ -28,11 +28,11 @@ Parameters:
     Description: EC2 instance id of the on-demand Godot sim host (web simulator)
   SimHostBase:
     Type: String
-    Default: "https://sim.astral.us"
+    Default: "https://sim.coy.bot"
     Description: Base URL the orchestrator uses to reach sim_session_server on the EC2 host
   SimPublicWss:
     Type: String
-    Default: "wss://sim.astral.us"
+    Default: "wss://sim.coy.bot"
     Description: Public WSS base the browser uses for the sim frame stream
   SimSharedSecret:
     Type: String
@@ -110,11 +110,11 @@ Resources:
         - Google
       CallbackURLs:
         - droneoperator://callback
-        - com.astral.drone://callback
+        - com.coybot.drone://callback
         - http://localhost:3000/callback
       LogoutURLs:
         - droneoperator://logout
-        - com.astral.drone://logout
+        - com.coybot.drone://logout
         - http://localhost:3000/logout
       AllowedOAuthFlows:
         - code
@@ -379,7 +379,7 @@ Resources:
             Method: POST
 
   # Rover mission brain (see eco/rover/docs/architecture.md and CloudBrain.swift /
-  # HybridBrain.swift in the sibling astral-sdk repo). Cloud-primary half of the hybrid
+  # HybridBrain.swift in the sibling coybot-sdk repo). Cloud-primary half of the hybrid
   # brain behind MissionAgent — vision + tool-use, drives actions (navigate/lookAround/
   # ask/say/stop/done), not just conversation. Bigger memory/timeout than RoverConverse
   # since requests carry a downscaled JPEG frame.

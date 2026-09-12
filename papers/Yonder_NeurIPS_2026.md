@@ -72,7 +72,7 @@ For all 167 HSSD scenes, we re-rendered semantic segmentation channels (not stor
 
 ### 3.3 Storage and Access
 
-Yonder is hosted on the HuggingFace Hub at https://huggingface.co/datasets/astralhf/yonder. Each waypoint is stored as a single compressed NPZ file (52 arrays + optional semantic channels). Total storage: approximately 3.3 TB. We provide loading utilities, manifest files, and per-scene COCO annotation files in the accompanying code release. For reviewers and others wanting a fast preview before downloading the full release, we additionally publish a ~500 MB single-scene sample at https://huggingface.co/datasets/astralhf/yonder-sample.
+Yonder is hosted on the HuggingFace Hub at https://huggingface.co/datasets/coybothf/yonder. Each waypoint is stored as a single compressed NPZ file (52 arrays + optional semantic channels). Total storage: approximately 3.3 TB. We provide loading utilities, manifest files, and per-scene COCO annotation files in the accompanying code release. For reviewers and others wanting a fast preview before downloading the full release, we additionally publish a ~500 MB single-scene sample at https://huggingface.co/datasets/coybothf/yonder-sample.
 
 ### 3.4 Generation Cost
 
@@ -255,7 +255,7 @@ A full Datasheet for Yonder, structured per [Gebru et al., 2021], is provided in
 
 ## Acknowledgments and Data Availability
 
-The Yonder dataset is publicly available at https://huggingface.co/datasets/astralhf/yonder. All fine-tuned model checkpoints, closed-loop benchmark code, and complete trial logs are available at the same project page. Compute for dataset generation was provided by the authors' organization (withheld for double-blind review); rented from Vast.ai at approximately \$60 total cost for the released subset.
+The Yonder dataset is publicly available at https://huggingface.co/datasets/coybothf/yonder. All fine-tuned model checkpoints, closed-loop benchmark code, and complete trial logs are available at the same project page. Compute for dataset generation was provided by the authors' organization (withheld for double-blind review); rented from Vast.ai at approximately \$60 total cost for the released subset.
 
 ## References
 
@@ -315,7 +315,7 @@ The Yonder dataset is publicly available at https://huggingface.co/datasets/astr
 
 4. **Experimental result reproducibility** — *Yes*. §3.1 specifies simulator, drone configuration, and waypoint sampling. §4 specifies the closed-loop protocol (controller, observation rate, success criterion, timeout, seeds 1000–5000, 93 trials/seed, 465 trials/condition). §5.1 specifies fine-tuning hyperparameters per protocol. Dataset, code, and all four fine-tuned checkpoints are released.
 
-5. **Open access to data and code** — *Yes*. Dataset at https://huggingface.co/datasets/astralhf/yonder (CC-BY-NC-4.0); ~500 MB sample at https://huggingface.co/datasets/astralhf/yonder-sample. Checkpoints, code, and trial logs released alongside the dataset.
+5. **Open access to data and code** — *Yes*. Dataset at https://huggingface.co/datasets/coybothf/yonder (CC-BY-NC-4.0); ~500 MB sample at https://huggingface.co/datasets/coybothf/yonder-sample. Checkpoints, code, and trial logs released alongside the dataset.
 
 6. **Experimental setting/details** — *Yes*. §5.1 lists per-protocol architecture, frozen-layer schedule, learning rates, loss/label-smoothing, sample counts, epoch counts. §3 specifies the held-out test split (17 scenes, environment-level). §4 specifies closed-loop evaluation.
 
@@ -353,6 +353,6 @@ Following [DataSheets for Datasets, Gebru et al. 2021]:
 
 **Uses.** Recommended for perception model training with closed-loop validation in deployment domain. Not recommended for end-to-end navigation policy training or for reporting fine-tuning improvements based solely on offline metrics.
 
-**Distribution.** Hosted on the HuggingFace Hub at https://huggingface.co/datasets/astralhf/yonder. Croissant metadata with Responsible AI fields published alongside the dataset card. License: **CC-BY-NC-4.0** (data, inheriting HSSD's NonCommercial restriction; HSSD attribution preserved per source license) and Apache-2.0 (code). Replica and HM3D-derived scenes were excluded because their upstream licenses do not permit open redistribution of derivative renders; ReplicaCAD scenes were excluded because they lack semantic annotations and were not used in any reported experiment.
+**Distribution.** Hosted on the HuggingFace Hub at https://huggingface.co/datasets/coybothf/yonder. Croissant metadata with Responsible AI fields published alongside the dataset card. License: **CC-BY-NC-4.0** (data, inheriting HSSD's NonCommercial restriction; HSSD attribution preserved per source license) and Apache-2.0 (code). Replica and HM3D-derived scenes were excluded because their upstream licenses do not permit open redistribution of derivative renders; ReplicaCAD scenes were excluded because they lack semantic annotations and were not used in any reported experiment.
 
 **Maintenance.** Maintained by the corresponding author. Updates and corrections will be posted to the project website. Errata will be tracked publicly.

@@ -38,11 +38,11 @@ from .nlp import TestSpec, parse_test_spec  # noqa: E402
 
 @dataclass
 class DirectorConfig:
-    # "astral_sim" = the project's own Godot engine (eco/drone/sim/godot_launch_fleet.py;
-    #   AstralEcoSim project). Godot itself is cross-platform (Linux/macOS/Windows) — this
+    # "coybot_sim" = the project's own Godot engine (eco/drone/sim/godot_launch_fleet.py;
+    #   CoybotEcoSim project). Godot itself is cross-platform (Linux/macOS/Windows) — this
     #   is the default since it needs no GPU host and no Isaac Omniverse install.
     # "isaac" = the optional photoreal engine on hoopoe (eco/drone/sim/launch_fleet.py).
-    engine: str = os.environ.get("ISHMAEL_SIM_ENGINE", "astral_sim")
+    engine: str = os.environ.get("ISHMAEL_SIM_ENGINE", "coybot_sim")
     certs_base: str = os.path.expanduser("~/eco-certs-fleet")
     python: Optional[str] = os.environ.get("ISHMAEL_SIM_PYTHON")
     user_sub: Optional[str] = os.environ.get("ISHMAEL_USER_SUB")
@@ -59,7 +59,7 @@ class DirectorConfig:
             return self.python
         if self.engine == "isaac":
             return "/opt/ml/isaac-sim-env/bin/python3"
-        return sys.executable  # astral_sim: any regular Python env (see godot_launch_fleet.py)
+        return sys.executable  # coybot_sim: any regular Python env (see godot_launch_fleet.py)
 
 
 @dataclass
@@ -188,7 +188,7 @@ def _launch_fleet(spec: TestSpec, cfg: DirectorConfig, result: TestResult):
         if cfg.engine == "isaac":
             cmd.append("--photoreal")
         else:
-            result.log("photoreal requested but ignored: astral_sim (Godot) has no "
+            result.log("photoreal requested but ignored: coybot_sim (Godot) has no "
                        "photoreal mode — use --engine isaac for that")
     env = dict(os.environ)
     env.setdefault("ISHMAEL_HARNESS",

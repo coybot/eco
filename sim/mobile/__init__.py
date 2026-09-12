@@ -1,4 +1,4 @@
-"""Headless mobile clients for the Astral platform — the test harness's "iPhone".
+"""Headless mobile clients for the Coybot platform — the test harness's "iPhone".
 
 ``app_client.AppClient`` speaks the same cloud contract as the iOS DroneOperator
 app (the MQTT topics in ``DroneOperator/Services/MQTTService.swift`` and the

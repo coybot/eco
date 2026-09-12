@@ -10,7 +10,7 @@
 export default $config({
   app(input) {
     return {
-      name: "astral-drone-api",
+      name: "coybot-drone-api",
       removal: input?.stage === "prod" ? "retain" : "remove",
       home: "aws",
       providers: {

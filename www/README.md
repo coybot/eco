@@ -1,6 +1,6 @@
-# Astral Website
+# Coybot Website
 
-The astral.us marketing site. Next.js + Tailwind + Shadcn/ui, deployed to AWS via SST (OpenNext → CloudFront + Lambda + S3).
+The coy.bot marketing site. Next.js + Tailwind + Shadcn/ui, deployed to AWS via SST (OpenNext → CloudFront + Lambda + S3).
 
 The site is informational only — there is no cart, no checkout, no payment processing. Hardware enquiries route through `/enterprise`.
 
@@ -10,7 +10,7 @@ The site is informational only — there is no cart, no checkout, no payment pro
 - **Styling**: Tailwind CSS + Shadcn/ui
 - **CMS**: Sanity.io
 - **Infrastructure**: SST (CloudFront, Lambda, S3) via OpenNext
-- **Documentation**: Mintlify (separate repo: `astral-us/astral-docs`)
+- **Documentation**: Mintlify (separate repo: `coybot/coybot-docs`)
 
 ## Getting Started
 
@@ -52,13 +52,13 @@ www/
 See `CLAUDE.md` in this directory for the full deploy + git workflow. Short version:
 
 ```bash
-AWS_PROFILE=astral npx sst deploy --stage production
+AWS_PROFILE=coybot npx sst deploy --stage production
 ```
 
 ### Remove
 
 ```bash
-AWS_PROFILE=astral npx sst remove --stage <stage>
+AWS_PROFILE=coybot npx sst remove --stage <stage>
 ```
 
 ## Sanity CMS
@@ -79,4 +79,4 @@ npm run build
 
 ## License
 
-Proprietary — Astral, Inc.
+Proprietary — Coybot, Inc.

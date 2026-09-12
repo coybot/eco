@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Astral Network Manager (Orin Nano)
+Coybot Network Manager (Orin Nano)
 
 Deterministic 2-state Wi-Fi controller:
   - Infrastructure Wi-Fi
@@ -39,20 +39,20 @@ from typing import List, Optional, Tuple
 
 import yaml
 
-logger = logging.getLogger("astral.network")
+logger = logging.getLogger("coybot.network")
 
 DEFAULT_CONFIG_PATHS = [
-    "/etc/astral/network_manager.yaml",
+    "/etc/coybot/network_manager.yaml",
     str(Path(__file__).with_name("network_manager.yaml")),
 ]
 
-STATE_DIR = Path("/var/lib/astral")
+STATE_DIR = Path("/var/lib/coybot")
 MISSION_ACTIVE_PATH = STATE_DIR / "mission_active.json"
 
-HOSTAPD_CONF = Path("/run/astral/hostapd.conf")
-DNSMASQ_CONF = Path("/run/astral/dnsmasq.conf")
+HOSTAPD_CONF = Path("/run/coybot/hostapd.conf")
+DNSMASQ_CONF = Path("/run/coybot/dnsmasq.conf")
 HOTSPOT_CONNECTION_NAMES = {"DroneHotspot", "Hotspot"}
-HOTSPOT_SSID_PREFIXES = ("Astral-", "DroneSetup")
+HOTSPOT_SSID_PREFIXES = ("Coybot-", "DroneSetup")
 
 
 @dataclass
@@ -73,7 +73,7 @@ class NetworkConfig:
     dry_run: bool = False
 
 
-class AstralNetworkManager:
+class CoybotNetworkManager:
     def __init__(self, config: NetworkConfig):
         self.config = config
         self.interface = config.interface or self._detect_wifi_interface()
@@ -150,7 +150,7 @@ class AstralNetworkManager:
         try:
             if not self.config.dry_run:
                 STATE_DIR.mkdir(parents=True, exist_ok=True)
-                Path("/run/astral").mkdir(parents=True, exist_ok=True)
+                Path("/run/coybot").mkdir(parents=True, exist_ok=True)
         except Exception as exc:
             logger.warning("Failed creating state dirs: %s", exc)
 
@@ -288,11 +288,11 @@ class AstralNetworkManager:
 
     def _default_ap_password(self) -> str:
         last4 = self._get_mac_last4()
-        return f"Astral{last4}!"
+        return f"Coybot{last4}!"
 
     def _build_ap_ssid(self) -> str:
         last4 = self._get_mac_last4()
-        return f"Astral-{self.config.model_name}-{last4}"
+        return f"Coybot-{self.config.model_name}-{last4}"
 
     def _get_mac_last4(self) -> str:
         try:
@@ -437,7 +437,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
     cfg = load_config()
-    manager = AstralNetworkManager(cfg)
+    manager = CoybotNetworkManager(cfg)
     manager.run()
 
 

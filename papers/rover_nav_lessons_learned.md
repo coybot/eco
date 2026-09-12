@@ -1,6 +1,6 @@
 # Learned Rover Navigation: Lessons Learned & Paper Notes
 
-*Session: June 2026. Yusuf Saib, Astral.*
+*Session: June 2026. Yusuf Saib, Coybot.*
 
 ---
 
@@ -218,7 +218,7 @@ Lesson: **normalize inside the ONNX graph or outside — never both**. The ONNX 
 ### Bug 3: Wrong Python environment on training server
 
 hoopoe has two Python environments that look similar:
-- `~/.astral-venv` — **does NOT exist / is not the right env**
+- `~/.coybot-venv` — **does NOT exist / is not the right env**
 - `~/vlm-train-env` — correct (torch 2.12.0+cu130, CUDA available on dual RTX 5090s)
 
 Always use `~/vlm-train-env/bin/python3` on hoopoe.
@@ -229,7 +229,7 @@ Always use `~/vlm-train-env/bin/python3` on hoopoe.
 
 - **Hardware**: dual RTX 5090 (hoopoe), CUDA 13.0, torch 2.12.0
 - **Training time**: ~30 min for 800 iters, 512 envs, rollout=96, all on GPU
-- **Repo on hoopoe**: flat copy at `/home/yusuf/astral-training/` — not a git checkout. Update files via SCP.
+- **Repo on hoopoe**: flat copy at `/home/yusuf/coybot-training/` — not a git checkout. Update files via SCP.
 - **Environment**: fully vectorised in torch (no Python loops in the inner loop), 2D ray-AABB on GPU
 
 Vectorised lidar is the performance key: 512 envs × 72 rays × 10 obstacle slots = ~370K ray-box tests per step, all batched into `(n,L,K)` tensors. On a 5090 this is trivial; on CPU it would be the bottleneck.

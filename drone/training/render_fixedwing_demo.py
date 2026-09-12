@@ -24,7 +24,7 @@ Environments:
 
 Run on hoopoe (each environment is a fresh Isaac boot; run urban/forest on separate GPUs to
 parallelize with WARP_CUDA_DEVICES):
-    cd ~/astral-training
+    cd ~/coybot-training
     WARP_CUDA_DEVICES=0 /opt/ml/isaac-sim-env/bin/python3 \
         -m eco.drone.training.render_fixedwing_demo --mission urban --out /tmp/fw_videos
     WARP_CUDA_DEVICES=1 /opt/ml/isaac-sim-env/bin/python3 \

@@ -11,8 +11,8 @@ pool on start, so by the time the user finishes configuring (pre-warm overlap) a
 session start is just a fast reconfigure. The host self-stops on idle as a cost
 backstop; this orchestrator also stops it on /end.
 
-Env vars: SIM_INSTANCE_ID, SIM_HOST_BASE (e.g. https://sim.astral.us),
-SIM_SHARED_SECRET, SIM_PUBLIC_WSS (e.g. wss://sim.astral.us).
+Env vars: SIM_INSTANCE_ID, SIM_HOST_BASE (e.g. https://sim.coy.bot),
+SIM_SHARED_SECRET, SIM_PUBLIC_WSS (e.g. wss://sim.coy.bot).
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ import urllib.error
 import boto3
 
 INSTANCE_ID = os.environ.get("SIM_INSTANCE_ID", "")
-HOST_BASE = os.environ.get("SIM_HOST_BASE", "https://sim.astral.us").rstrip("/")
+HOST_BASE = os.environ.get("SIM_HOST_BASE", "https://sim.coy.bot").rstrip("/")
 SHARED_SECRET = os.environ.get("SIM_SHARED_SECRET", "")
-PUBLIC_WSS = os.environ.get("SIM_PUBLIC_WSS", "wss://sim.astral.us")
+PUBLIC_WSS = os.environ.get("SIM_PUBLIC_WSS", "wss://sim.coy.bot")
 REGION = os.environ.get("AWS_REGION", "us-west-2")
 
 ec2 = boto3.client("ec2", region_name=REGION)

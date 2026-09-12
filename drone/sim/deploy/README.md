@@ -8,7 +8,7 @@ Host names, IPs and account names below are this lab's; substitute your own.
 
 ## Sim host (a display-attached box, `thor` here)
 
-`presidio-sim.service` is a **user** unit, because it renders to a real monitor
+`coybot-sim.service` is a **user** unit, because it renders to a real monitor
 and so needs the seat's X session, DISPLAY and Xauthority — none of which exist
 before someone is logged in. A system unit would have to invent a virtual
 display, and then nothing appears on the monitor at all.
@@ -24,9 +24,9 @@ actually created and keeps the first one `xdpyinfo` can authenticate to.
 
     scp run-sim.sh <host>:eco/drone/sim/deploy/
     ssh <host> chmod +x eco/drone/sim/deploy/run-sim.sh
-    scp presidio-sim.service <host>:.config/systemd/user/
+    scp coybot-sim.service <host>:.config/systemd/user/
     ssh <host> systemctl --user daemon-reload
-    ssh <host> systemctl --user enable --now presidio-sim
+    ssh <host> systemctl --user enable --now coybot-sim
     ssh <host> sudo loginctl enable-linger <user>   # user manager starts at boot
 
 `enable-linger` is the part that is easy to miss: without it the systemd --user
@@ -54,19 +54,19 @@ straight to an unlocked desktop — a decision for the machine's owner.
 
 ## Drone host (a Jetson Orin Nano, `thorin` here)
 
-`presidio-avoidance.service` is a plain system unit: the obstacle-avoidance
+`coybot-avoidance.service` is a plain system unit: the obstacle-avoidance
 guidance is headless, talks to the sim over TCP, and has no display needs.
 
-    scp presidio-avoidance.service <host>:/tmp/
-    ssh <host> sudo cp /tmp/presidio-avoidance.service /etc/systemd/system/
-    ssh <host> sudo systemctl enable --now presidio-avoidance
+    scp coybot-avoidance.service <host>:/tmp/
+    ssh <host> sudo cp /tmp/coybot-avoidance.service /etc/systemd/system/
+    ssh <host> sudo systemctl enable --now coybot-avoidance
 
 It reconnects and re-spawns the aircraft by itself, so restarting the sim host
 does not need anything done here. `--host` in the unit points at the sim host.
 
 **Disable it when you are not demoing.** With `Restart=always` and no mission it
 will spawn an aircraft and fly it in a straight line out over the water; that
-has happened twice. `systemctl disable --now presidio-avoidance`.
+has happened twice. `systemctl disable --now coybot-avoidance`.
 
 ## Reboot forensics (`thor-heartbeat.*`)
 

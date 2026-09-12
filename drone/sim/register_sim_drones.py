@@ -2,7 +2,7 @@
 """Register the 5 sim vehicles in DynamoDB drone-registry-dev so the API recognises them.
 
 Usage:
-    AWS_PROFILE=astral python3 register_sim_drones.py
+    AWS_PROFILE=coybot python3 register_sim_drones.py
 """
 
 from __future__ import annotations

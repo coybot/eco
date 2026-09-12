@@ -139,7 +139,7 @@ VLM_DRONE_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west
 
 
 def domain_detector(models_dir: Path) -> None:
-    """Astral domain-trained YOLOv8n (9 classes: person, drone, vehicle, ...).
+    """Coybot domain-trained YOLOv8n (9 classes: person, drone, vehicle, ...).
 
     Trained on 18 k sim frames (office/warehouse/hospital) plus public aerial sets.
     Stored in the dev S3 bucket after training on hoopoe. Falls back to curl if requests
@@ -163,7 +163,7 @@ def domain_detector(models_dir: Path) -> None:
 
 
 def vlm_drone(models_dir: Path) -> None:
-    """Astral drone-action VLM v1 — Qwen2.5-VL-3B LoRA fine-tuned on aerial missions.
+    """Coybot drone-action VLM v1 — Qwen2.5-VL-3B LoRA fine-tuned on aerial missions.
 
     Q4_K_M GGUF (~1.8 GB) + mmproj (~1.2 GB). Downloads as vlm.gguf + vlm_mmproj.gguf
     so daemon.py picks them up automatically (same slot as the stock Qwen3-VL-2B).
@@ -195,7 +195,7 @@ def vlm_drone(models_dir: Path) -> None:
 
 
 def reactive_policy(models_dir: Path) -> None:
-    """Astral reactive policy MLP v1 (~120 KB total: ONNX + external data + state norm).
+    """Coybot reactive policy MLP v1 (~120 KB total: ONNX + external data + state norm).
 
     Trained via behavioral cloning of the reactive_planner rule-set on 200k synthetic
     state→velocity-command pairs. Input: 12-dim state, output: [vx, vy, vz] m/s.
@@ -222,7 +222,7 @@ def reactive_policy(models_dir: Path) -> None:
     print("Reactive policy v1 ready.")
 
 
-NAV_POLICIES_HF_REPO = "astralhf/eco-drone-policies"
+NAV_POLICIES_HF_REPO = "coybothf/eco-drone-policies"
 NAV_POLICY_FILES = {
     "quadcopter": ["policy_v26rnn_dr.onnx"],
     "rover": ["policy_rover_v2.onnx", "policy_rover_v2.onnx.data"],
@@ -232,7 +232,7 @@ NAV_POLICY_FILES = {
 
 def nav_policies(models_dir: Path, vehicles: list[str] | None = None) -> None:
     """L5 learned-planner ONNX policies (quadcopter / rover / fixed-wing), hosted on the
-    Hugging Face Hub at astralhf/eco-drone-policies. Filenames match each vehicle class's
+    Hugging Face Hub at coybothf/eco-drone-policies. Filenames match each vehicle class's
     default `policy_onnx` in vehicle_class.py, so no renaming is needed after download.
 
     These are optional -- the platform's benchmarked L5 fleet controller
@@ -339,12 +339,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Setup AI models for drone mission autonomy")
     parser.add_argument("--yolo-only", action="store_true", help="Download YOLOv8n and export to ONNX")
     parser.add_argument("--yolox", action="store_true", help="Download YOLOv8x and export to ONNX (AGX)")
-    parser.add_argument("--domain-detector", action="store_true", help="Download astral domain detector v1 (drone/vehicle/person ONNX)")
+    parser.add_argument("--domain-detector", action="store_true", help="Download coybot domain detector v1 (drone/vehicle/person ONNX)")
     parser.add_argument("--vlm-drone", action="store_true", help="Download drone-action VLM v1 (Qwen2.5-VL-3B LoRA Q4_K_M GGUF, ~1.8+1.2 GB)")
     parser.add_argument("--reactive-policy", action="store_true", help="Download reactive policy MLP v1 (12-dim state → velocity cmd ONNX)")
     parser.add_argument("--nav-policies", type=str, nargs="*", metavar="VEHICLE",
                         help="Download L5 learned-planner ONNX policies from Hugging Face "
-                             "(astralhf/eco-drone-policies). No args = all vehicles, or "
+                             "(coybothf/eco-drone-policies). No args = all vehicles, or "
                              "specify: quadcopter rover fixedwing")
     parser.add_argument("--depth-model", action="store_true", help="Download depth model v1 (Depth Anything V2 Small, aerial fine-tuned ONNX)")
     parser.add_argument("--qwen3-vl-2b", action="store_true", help="Small VLM for Nano (7B Q4_K_M)")

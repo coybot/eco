@@ -56,7 +56,7 @@ Godot 4 (headless, DISPLAY=:99)
 Register all five in DynamoDB before first use:
 
 ```bash
-AWS_PROFILE=astral python3 eco/drone/sim/register_sim_drones.py
+AWS_PROFILE=coybot python3 eco/drone/sim/register_sim_drones.py
 ```
 
 ## Config
@@ -68,7 +68,7 @@ Each daemon inherits these defaults (can be overridden via env vars or CLI flags
 | `GODOT_BIN`      | `~/godot4`                                      | Godot 4 binary path              |
 | `GODOT_PROJECT`  | `~/eco-sim/godot`                               | Godot project directory          |
 | `CERTS_DIR`      | `~/drone-api/certs`                             | IoT TLS certificates             |
-| `IOT_ENDPOINT`   | from `~/.config/astral/secrets.env`             | AWS IoT Core endpoint          |
+| `IOT_ENDPOINT`   | from `~/.config/coybot/secrets.env`             | AWS IoT Core endpoint          |
 | `--sock`         | `tcp://127.0.0.1:9999`                          | Godot IPC address                |
 
 `config.yaml` on the daemon host should contain `iot_endpoint` and `certs_path` if using the real drone daemon path. For the sim fleet these are passed as CLI flags by `launch_fleet.sh`.

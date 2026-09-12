@@ -36,8 +36,8 @@ def manager(monkeypatch):
 
 
 @pytest.mark.parametrize("name", [
-    "Astral-NVIDIAJetson-4F2A",   # current AP naming: model + MAC suffix
-    "Astral-Drone-0000",
+    "Coybot-NVIDIAJetson-4F2A",   # current AP naming: model + MAC suffix
+    "Coybot-Drone-0000",
     "DroneSetup-4F2A",            # legacy AP naming, still seen on old devices
     "DroneHotspot",
     "Hotspot",
@@ -52,7 +52,7 @@ def test_our_own_hotspot_profiles_do_not_count_as_configured_wifi(manager, name)
 
 @pytest.mark.parametrize("lines,expected", [
     (["802-11-wireless:HomeWiFi"], True),
-    (["802-11-wireless:Astral-X-1", "802-11-wireless:HomeWiFi"], True),
+    (["802-11-wireless:Coybot-X-1", "802-11-wireless:HomeWiFi"], True),
     (["802-3-ethernet:Wired connection 1"], False),   # wired is not WiFi
     ([""], False),
     ([], False),

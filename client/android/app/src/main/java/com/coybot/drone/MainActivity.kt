@@ -1,4 +1,4 @@
-package com.astral.drone
+package com.coybot.drone
 
 import android.content.Context
 import android.os.Bundle
@@ -74,8 +74,8 @@ private const val COGNITO_REGION = "us-west-2"
 private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
 private const val COGNITO_URL = "https://cognito-idp.$COGNITO_REGION.amazonaws.com/"
 private const val COGNITO_HOSTED_UI = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"
-private const val OAUTH_REDIRECT_URI = "com.astral.drone://callback"
-private const val PREFS_NAME = "astral_drone_prefs"
+private const val OAUTH_REDIRECT_URI = "com.coybot.drone://callback"
+private const val PREFS_NAME = "coybot_drone_prefs"
 
 // ============================================================
 // JSON
@@ -1487,7 +1487,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: android.content.Intent) {
         val data = intent.data ?: return
-        if (data.scheme == "com.astral.drone" && data.host == "callback") {
+        if (data.scheme == "com.coybot.drone" && data.host == "callback") {
             val code = data.getQueryParameter("code") ?: return
             vm.handleOAuthCallback(code)
         }
@@ -1515,7 +1515,7 @@ fun DroneApp(vm: DroneViewModel) {
 @Composable
 fun LoginScreen(state: UiState, vm: DroneViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    Scaffold(topBar = { TopAppBar(title = { Text("Astral Drone") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Coybot Drone") }) }) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 32.dp)
                 .verticalScroll(rememberScrollState()),
@@ -2239,7 +2239,7 @@ fun SettingsScreen(state: UiState, vm: DroneViewModel) {
                             }
                             Column {
                                 Text(state.userEmail.ifBlank { "Signed in" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                Text("Astral Drone Operator", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Coybot Drone Operator", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -2266,7 +2266,7 @@ fun SettingsScreen(state: UiState, vm: DroneViewModel) {
             // the Ground Control Station card's fields), and weight() inside
             // a scrollable Column has unbounded height to distribute against.
             Spacer(Modifier.height(24.dp))
-            Text("Astral Drone Platform", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Text("Coybot Drone Platform", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
     }
 }

@@ -47,7 +47,7 @@ Two other options remain open, roughly in order of effort beyond compositing:
    source of real images and a licensing check.
 
 Copy `RoverYOLO.mlpackage` to `sdk/swift/Sources/PhroverKit/Resources/` in the sibling
-astral-sdk repo (a PhroverKit package resource) — `Detector.swift` compiles it at load
+coybot-sdk repo (a PhroverKit package resource) — `Detector.swift` compiles it at load
 time via `Bundle.module` and loads it by that name.
 
 ## Other candidates (not yet built)

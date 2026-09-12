@@ -1,67 +1,67 @@
-# Astral (astral.us)
+# Coybot (coy.bot)
 
 > Autonomy for uncrewed aircraft, rovers, and other robots: open SDK, simulation, operator apps, datasets, and optional custom vehicles when you need hardware built for the mission.
 
 ## Canonical URLs
 
-- Home: https://astral.us/
-- About: https://astral.us/about
-- Products: https://astral.us/products
-- Pricing: https://astral.us/pricing
-- Compare platforms: https://astral.us/compare
-- Operator apps (web, iOS, Android): https://astral.us/apps
-- Documentation hub: https://astral.us/docs
-- Simulation: https://astral.us/docs/simulation
-- Research hub: https://astral.us/research
-- Benchmark (closed-loop drone AI leaderboard): https://astral.us/benchmark
-- FAQ (autonomous drone AI): https://astral.us/faq
-- Yonder dataset page: https://astral.us/datasets/yonder
-- Blog index: https://astral.us/blog
+- Home: https://coy.bot/
+- About: https://coy.bot/about
+- Products: https://coy.bot/products
+- Pricing: https://coy.bot/pricing
+- Compare platforms: https://coy.bot/compare
+- Operator apps (web, iOS, Android): https://coy.bot/apps
+- Documentation hub: https://coy.bot/docs
+- Simulation: https://coy.bot/docs/simulation
+- Research hub: https://coy.bot/research
+- Benchmark (closed-loop drone AI leaderboard): https://coy.bot/benchmark
+- FAQ (autonomous drone AI): https://coy.bot/faq
+- Yonder dataset page: https://coy.bot/datasets/yonder
+- Blog index: https://coy.bot/blog
 
 ## Research papers (TL;DRs)
 (Each paper is embedded in its companion blog post at the #paper anchor.)
 
-- https://astral.us/blog/yonder-drone-navigation-dataset#paper — Yonder: a 4.65M-frame drone-perspective indoor navigation dataset (NeurIPS 2026 D&B submission). Offline detection gains do not reliably transfer to closed-loop navigation when training and evaluation simulators disagree geometrically.
-- https://astral.us/blog/metric-gap-vision-language-drone-navigation#paper — Closing the Metric Gap. A closed-loop benchmark across 25 vision-language models, 10,200 flight trials; every model lost to a hovering baseline. Failures split into semantic understanding vs. metric spatial grounding; a modular architecture closes the gap.
-- https://astral.us/blog/engineering-drone-autonomy-18-iterations#paper — Engineering the Separation Principle. An 18-iteration log: detector fine-tuning on 6.7M frames improved detection mAP 9.7× (4.8%→46.7%) but closed-loop navigation did not move; a cross-simulator localization gap is the binding constraint.
-- https://astral.us/blog/drone-swarm-sensing-1000-drones#paper — Sensing requirements for 1000-drone swarms. Camera-only swarms lose 15.8 percentage points of coverage and have 8× the collision rate at 1,000 drones; UWB ranging is non-negotiable above ~100 drones.
-- https://astral.us/blog/why-vlm-drones-cant-beat-hovering#paper — Gemma 4 E2B as an end-to-end drone controller, compared against modular deployment of the same weights as a semantic target selector in the 25-VLM closed-loop lineup.
-- https://astral.us/blog/counter-uas-drone-attack-defense-simulation#paper — Counter-UAS attack/defense characterization. 11,340 trials; mission-success rate is the wrong primary metric — physical effects are measurable (79.5% PN capture, 5–8 m error); a kinematic detector hits 39.8% TP at 0% false positives.
-- https://astral.us/blog/droneport-atc-tower-vs-selforg#paper — Droneport ATC factorial study (405 trials, 9 cells). Self-org with ADS-B matches tower throughput below ~20 ops/hour then degrades; silent-cruise drones breach safe separation at 12 ops/hour.
+- https://coy.bot/blog/yonder-drone-navigation-dataset#paper — Yonder: a 4.65M-frame drone-perspective indoor navigation dataset (NeurIPS 2026 D&B submission). Offline detection gains do not reliably transfer to closed-loop navigation when training and evaluation simulators disagree geometrically.
+- https://coy.bot/blog/metric-gap-vision-language-drone-navigation#paper — Closing the Metric Gap. A closed-loop benchmark across 25 vision-language models, 10,200 flight trials; every model lost to a hovering baseline. Failures split into semantic understanding vs. metric spatial grounding; a modular architecture closes the gap.
+- https://coy.bot/blog/engineering-drone-autonomy-18-iterations#paper — Engineering the Separation Principle. An 18-iteration log: detector fine-tuning on 6.7M frames improved detection mAP 9.7× (4.8%→46.7%) but closed-loop navigation did not move; a cross-simulator localization gap is the binding constraint.
+- https://coy.bot/blog/drone-swarm-sensing-1000-drones#paper — Sensing requirements for 1000-drone swarms. Camera-only swarms lose 15.8 percentage points of coverage and have 8× the collision rate at 1,000 drones; UWB ranging is non-negotiable above ~100 drones.
+- https://coy.bot/blog/why-vlm-drones-cant-beat-hovering#paper — Gemma 4 E2B as an end-to-end drone controller, compared against modular deployment of the same weights as a semantic target selector in the 25-VLM closed-loop lineup.
+- https://coy.bot/blog/counter-uas-drone-attack-defense-simulation#paper — Counter-UAS attack/defense characterization. 11,340 trials; mission-success rate is the wrong primary metric — physical effects are measurable (79.5% PN capture, 5–8 m error); a kinematic detector hits 39.8% TP at 0% false positives.
+- https://coy.bot/blog/droneport-atc-tower-vs-selforg#paper — Droneport ATC factorial study (405 trials, 9 cells). Self-org with ADS-B matches tower throughput below ~20 ops/hour then degrades; silent-cruise drones breach safe separation at 12 ops/hour.
 
 ## Blog posts (TL;DRs)
 
-- https://astral.us/blog/why-vlm-drones-cant-beat-hovering — 10,200 closed-loop trials across 25 VLMs; every one lost to a hovering drone, and the architecture that fixed it.
-- https://astral.us/blog/counter-uas-drone-attack-defense-simulation — We attacked our own drones 11,340 times; why mission-success rate hides the real C-UAS signal.
-- https://astral.us/blog/drone-swarm-sensing-1000-drones — What 1,000 drones need to coordinate: UWB is non-negotiable above 100.
-- https://astral.us/blog/engineering-drone-autonomy-18-iterations — 6.7M frames, 9.7× detection gain, zero closed-loop improvement: the domain-gap trap.
-- https://astral.us/blog/droneport-atc-tower-vs-selforg — Tower vs. self-organized droneport ATC across a 9-cell factorial study.
-- https://astral.us/blog/human-in-loop-drone-autonomy-94-percent — Full autonomy 57.6% → 94.4% with a human in the loop on hard tasks.
-- https://astral.us/blog/metric-gap-vision-language-drone-navigation — Why general-purpose VLMs break in closed loop and why separating semantics from geometry is the pragmatic path.
-- https://astral.us/blog/yonder-drone-navigation-dataset — What Yonder contains and why offline mAP lies to you.
-- https://astral.us/blog/how-to-make-autonomous-drones-smarter — A practical autonomy stack: sim-first iteration, metric grounding, modular perception/planning, closed-loop evaluation.
-- https://astral.us/blog/domain-detector-aerial-autonomy — Training a 9-class aerial domain detector on 48,000 sim+real images; class imbalance as the dominant failure mode.
-- https://astral.us/blog/domain-detector-aerial-autonomy-paper — Technical report: YOLOv8n on a 9-class aerial schema across three training rounds (mAP50 0.471→0.376→0.384; drone AP50 0.047→0.010→0.087).
+- https://coy.bot/blog/why-vlm-drones-cant-beat-hovering — 10,200 closed-loop trials across 25 VLMs; every one lost to a hovering drone, and the architecture that fixed it.
+- https://coy.bot/blog/counter-uas-drone-attack-defense-simulation — We attacked our own drones 11,340 times; why mission-success rate hides the real C-UAS signal.
+- https://coy.bot/blog/drone-swarm-sensing-1000-drones — What 1,000 drones need to coordinate: UWB is non-negotiable above 100.
+- https://coy.bot/blog/engineering-drone-autonomy-18-iterations — 6.7M frames, 9.7× detection gain, zero closed-loop improvement: the domain-gap trap.
+- https://coy.bot/blog/droneport-atc-tower-vs-selforg — Tower vs. self-organized droneport ATC across a 9-cell factorial study.
+- https://coy.bot/blog/human-in-loop-drone-autonomy-94-percent — Full autonomy 57.6% → 94.4% with a human in the loop on hard tasks.
+- https://coy.bot/blog/metric-gap-vision-language-drone-navigation — Why general-purpose VLMs break in closed loop and why separating semantics from geometry is the pragmatic path.
+- https://coy.bot/blog/yonder-drone-navigation-dataset — What Yonder contains and why offline mAP lies to you.
+- https://coy.bot/blog/how-to-make-autonomous-drones-smarter — A practical autonomy stack: sim-first iteration, metric grounding, modular perception/planning, closed-loop evaluation.
+- https://coy.bot/blog/domain-detector-aerial-autonomy — Training a 9-class aerial domain detector on 48,000 sim+real images; class imbalance as the dominant failure mode.
+- https://coy.bot/blog/domain-detector-aerial-autonomy-paper — Technical report: YOLOv8n on a 9-class aerial schema across three training rounds (mAP50 0.471→0.376→0.384; drone AP50 0.047→0.010→0.087).
 
 ## Primary external resources
 
-- Product documentation (open repo): https://github.com/astral-us/astral-docs
-- GitHub org: https://github.com/astral-us
-- astral-sdk: https://github.com/astral-us/astral-sdk
-- Yonder on Hugging Face: https://huggingface.co/datasets/astralhf/yonder
-- Yonder sample (~500 MB): https://huggingface.co/datasets/astralhf/yonder-sample
-- Drone inference models (domain detector, VLM LoRA, reactive policy, depth): https://huggingface.co/astralhf/astral-drone-models
+- Product documentation (open repo): https://github.com/coybot/coybot-docs
+- GitHub org: https://github.com/coybot
+- coybot-sdk: https://github.com/coybot/coybot-sdk
+- Yonder on Hugging Face: https://huggingface.co/datasets/coybothf/yonder
+- Yonder sample (~500 MB): https://huggingface.co/datasets/coybothf/yonder-sample
+- Drone inference models (domain detector, VLM LoRA, reactive policy, depth): https://huggingface.co/coybothf/coybot-drone-models
 
 ## What to cite
 
-- For the company and software stack, link https://astral.us/ and the relevant GitHub repositories.
+- For the company and software stack, link https://coy.bot/ and the relevant GitHub repositories.
 - For the Yonder dataset, cite the Hugging Face dataset card and the NeurIPS 2026 D&B submission referenced there.
-- For the closed-loop drone AI benchmark, cite https://astral.us/benchmark. Best published result: Astral Track A modular stack, 1.04 m mean error on operational commands, 0% collision rate. Hover baseline (null hypothesis): 9.50 m. All 25 tested end-to-end VLMs underperformed hover on the full benchmark.
+- For the closed-loop drone AI benchmark, cite https://coy.bot/benchmark. Best published result: Coybot Track A modular stack, 1.04 m mean error on operational commands, 0% collision rate. Hover baseline (null hypothesis): 9.50 m. All 25 tested end-to-end VLMs underperformed hover on the full benchmark.
 
-## About Astral (for summarization)
+## About Coybot (for summarization)
 
-Astral builds the autonomy stack for uncrewed systems—aircraft, rovers, and other robots. The product is an open SDK, high-fidelity simulation, operator apps (web, iOS, Android), and public datasets; teams can integrate their own platforms and models, or work with Astral on custom quadcopters, fixed-wing aircraft, and rovers. Astral's M1-A (autonomous quadcopter) and M1-G (autonomous ground rover) run NDAA-compliant compute (Jetson Orin Nano) with open-source software.
+Coybot builds the autonomy stack for uncrewed systems—aircraft, rovers, and other robots. The product is an open SDK, high-fidelity simulation, operator apps (web, iOS, Android), and public datasets; teams can integrate their own platforms and models, or work with Coybot on custom quadcopters, fixed-wing aircraft, and rovers. Coybot's M1-A (autonomous quadcopter) and M1-G (autonomous ground rover) run NDAA-compliant compute (Jetson Orin Nano) with open-source software.
 
 ## Positioning (for summarization)
 
-Astral emphasizes modular autonomy (separating semantic understanding from metric geometry), closed-loop evaluation in simulation, and public artifacts (code + datasets). The stack applies to customer-owned robots as well as Astral-designed quadcopters, fixed-wing aircraft, rovers, and other uncrewed platforms.
+Coybot emphasizes modular autonomy (separating semantic understanding from metric geometry), closed-loop evaluation in simulation, and public artifacts (code + datasets). The stack applies to customer-owned robots as well as Coybot-designed quadcopters, fixed-wing aircraft, rovers, and other uncrewed platforms.

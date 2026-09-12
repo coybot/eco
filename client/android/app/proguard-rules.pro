@@ -8,10 +8,10 @@
 -keepclasseswithmembers class kotlinx.serialization.json.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class com.astral.drone.**$$serializer { *; }
--keepclassmembers class com.astral.drone.** {
+-keep,includedescriptorclasses class com.coybot.drone.**$$serializer { *; }
+-keepclassmembers class com.coybot.drone.** {
     *** Companion;
 }
--keepclasseswithmembers class com.astral.drone.** {
+-keepclasseswithmembers class com.coybot.drone.** {
     kotlinx.serialization.KSerializer serializer(...);
 }

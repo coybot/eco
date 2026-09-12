@@ -19,7 +19,7 @@ Deploy the training package to hoopoe:
 
 Then on hoopoe (or via `just -f eco/drone/training/justfile train`):
     # 1. generate dataset
-    cd ~/astral-training
+    cd ~/coybot-training
     uv run python -m dataset --out ~/drone-data/bc_v2 --episodes 4000
 
     # 2. train + export

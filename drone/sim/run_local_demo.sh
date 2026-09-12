@@ -18,7 +18,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DATA_DIR="${DATA_DIR:-$HOME/.presidio-demo}"
+DATA_DIR="${DATA_DIR:-$HOME/.coybot-demo}"
 LOG_DIR="$DATA_DIR/logs"; mkdir -p "$LOG_DIR" "$DATA_DIR/gcs-data"
 MOSQ="${MOSQ:-/opt/homebrew/opt/mosquitto/sbin/mosquitto}"
 PLANNER_MODEL="${PLANNER_MODEL:-qwen2.5:7b-instruct}"

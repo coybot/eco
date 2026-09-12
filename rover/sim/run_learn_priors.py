@@ -8,7 +8,7 @@ One xcodebuild invocation runs all N + 2M episodes inside a single Swift test me
 (resetting/respawning the Depot between them) — avoids repeated simulator-boot overhead
 for what would otherwise be 22 separate xcodebuild invocations.
 
-This makes real, billed Bedrock calls (Claude Sonnet, via AWS_PROFILE=astral) across ~22
+This makes real, billed Bedrock calls (Claude Sonnet, via AWS_PROFILE=coybot) across ~22
 episodes — meant to be run once, not iterated on.
 
 Usage: python3 run_learn_priors.py [--port 9999] [--device "iPhone 17"]
@@ -53,7 +53,7 @@ class Bridge:
 
 
 def launch_bridge() -> Bridge:
-    env = {**os.environ, "AWS_PROFILE": "astral"}
+    env = {**os.environ, "AWS_PROFILE": "coybot"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "e2e.harness.live_rover_act_bridge"],
         cwd=ECO_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -186,7 +186,7 @@ def main() -> int:
     try:
         cmd = [
             "xcodebuild", "test",
-            "-scheme", "astral-sdk-Package",
+            "-scheme", "coybot-sdk-Package",
             "-destination", f"platform=iOS Simulator,name={args.device}",
             "-only-testing:PhroverSimTests/LearnPriorsTests",
         ]

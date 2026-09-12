@@ -5,8 +5,8 @@ this repository carries placeholders rather than real ones. First hit wins:
 
 1. an explicit --iot-endpoint / --credentials-endpoint on the command line
 2. IOT_ENDPOINT / CREDENTIALS_ENDPOINT in the environment
-3. ~/.config/astral/secrets.env, or the upstream repo's
-   ~/.config/presidio/secrets.env (override with ASTRAL_SECRETS)
+3. ~/.config/coybot/secrets.env, or the upstream repo's
+   ~/.config/coybot/secrets.env (override with COYBOT_SECRETS)
 4. the placeholders below, which are not working endpoints
 
 secrets.env is the same plain KEY=VALUE file the shell launchers source via
@@ -26,14 +26,14 @@ _cache: Optional[Dict[str, str]] = None
 
 
 def secrets_path() -> Path:
-    explicit = os.environ.get("ASTRAL_SECRETS")
+    explicit = os.environ.get("COYBOT_SECRETS")
     if explicit:
         return Path(explicit).expanduser()
-    local = Path("~/.config/astral/secrets.env").expanduser()
+    local = Path("~/.config/coybot/secrets.env").expanduser()
     if local.exists():
         return local
-    # presidio-autonomy/eco writes the same keys, so one file serves both checkouts
-    return Path("~/.config/presidio/secrets.env").expanduser()
+    # coybot-autonomy/eco writes the same keys, so one file serves both checkouts
+    return Path("~/.config/coybot/secrets.env").expanduser()
 
 
 def _load() -> Dict[str, str]:

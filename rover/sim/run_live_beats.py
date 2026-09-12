@@ -4,7 +4,7 @@ LiveCapstoneBeats.swift as its own isolated Godot + bridge + xcodebuild invocati
 encode that mission's own captured overhead frames directly into its own named clip — no
 cutting or timestamp correlation needed, since each mission IS its capability's clip.
 
-Real, billed Bedrock calls (Claude Sonnet, via AWS_PROFILE=astral) — one short live
+Real, billed Bedrock calls (Claude Sonnet, via AWS_PROFILE=coybot) — one short live
 mission per beat. See LiveCapstoneBeats.swift's file doc comment for why this replaced an
 earlier plan to slice sub-clips out of one long continuous run.
 
@@ -69,7 +69,7 @@ def launch_bridge() -> Bridge:
     # silently falls back to rover.py's own default (sonnet-5, NOT the winner), so an
     # entire round of "final" recordings got made with the wrong model without anyone
     # noticing until a capability that sonnet-5 handles worse (person-crossing) failed.
-    env = {**os.environ, "AWS_PROFILE": "astral",
+    env = {**os.environ, "AWS_PROFILE": "coybot",
            "BEDROCK_MODEL_ID": os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8")}
     proc = subprocess.Popen(
         [sys.executable, "-m", "e2e.harness.live_rover_act_bridge"],
@@ -208,7 +208,7 @@ def run_one_beat(test_name: str, clip_name: str, port: int, device: str, fps: fl
     try:
         cmd = [
             "xcodebuild", "test",
-            "-scheme", "astral-sdk-Package",
+            "-scheme", "coybot-sdk-Package",
             "-destination", f"platform=iOS Simulator,name={device}",
             f"-only-testing:PhroverSimTests/LiveCapstoneBeats/{test_name}",
         ]

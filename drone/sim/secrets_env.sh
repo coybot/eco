@@ -1,20 +1,20 @@
 # Sourced by the sim launchers. Fills in the account-specific endpoints from
-# ~/.config/astral/secrets.env so they stay out of the repository.
+# ~/.config/coybot/secrets.env so they stay out of the repository.
 #
 # Only fills variables the caller has not already set, so
 # `IOT_ENDPOINT=... bash launch_fleet.sh` still wins over the file.
 # shellcheck shell=bash
 
-if [ -n "${ASTRAL_SECRETS:-}" ]; then
-  PRESIDIO_SECRETS="$ASTRAL_SECRETS"
-elif [ -f "$HOME/.config/astral/secrets.env" ]; then
-  PRESIDIO_SECRETS="$HOME/.config/astral/secrets.env"
+if [ -n "${COYBOT_SECRETS:-}" ]; then
+  COYBOT_SECRETS="$COYBOT_SECRETS"
+elif [ -f "$HOME/.config/coybot/secrets.env" ]; then
+  COYBOT_SECRETS="$HOME/.config/coybot/secrets.env"
 else
-  # presidio-autonomy/eco writes the same keys; one file serves both checkouts
-  PRESIDIO_SECRETS="$HOME/.config/presidio/secrets.env"
+  # coybot-autonomy/eco writes the same keys; one file serves both checkouts
+  COYBOT_SECRETS="$HOME/.config/coybot/secrets.env"
 fi
 
-if [ -f "$PRESIDIO_SECRETS" ]; then
+if [ -f "$COYBOT_SECRETS" ]; then
   while IFS='=' read -r _k _v; do
     _k="${_k#export }"
     _k="${_k// /}"
@@ -26,6 +26,6 @@ if [ -f "$PRESIDIO_SECRETS" ]; then
     if [ -z "$(eval "printf '%s' \"\${$_k-}\"")" ]; then
       export "$_k=$_v"
     fi
-  done < "$PRESIDIO_SECRETS"
+  done < "$COYBOT_SECRETS"
   unset _k _v
 fi

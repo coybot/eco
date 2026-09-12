@@ -8,12 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { JsonLd } from "@/components/json-ld";
 import { socialMeta } from "@/lib/social-metadata";
 
-const DESC = "Transparent pricing for Astral hardware and software. Quadcopter $9,000, Rover $4,000, Fixed-Wing $14,000, Phrover $1,000. Free SDK tier, Pro at $49/mo, Enterprise custom.";
+const DESC = "Transparent pricing for Coybot hardware and software. Quadcopter $9,000, Rover $4,000, Fixed-Wing $14,000, Phrover $1,000. Free SDK tier, Pro at $49/mo, Enterprise custom.";
 
 export const metadata: Metadata = {
   title: "Pricing",
   description: DESC,
-  ...socialMeta("/pricing", "Pricing | Astral", DESC),
+  ...socialMeta("/pricing", "Pricing | Coybot", DESC),
 };
 
 const hardwareProducts = [

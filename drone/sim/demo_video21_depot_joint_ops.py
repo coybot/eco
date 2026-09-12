@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """video21 — Depot Joint Ops: fixed-wings + quads + phrovers, inside and outside.
 
-Renders a ~30s demo from the astral Godot sim (AstralEcoSim, godot/) showing a
+Renders a ~30s demo from the coybot Godot sim (CoybotEcoSim, godot/) showing a
 mixed fleet working one scenario at the depot env: two fixed-wings orbit
 outside, a quadcopter re-tasks from the yard to the doorway to confirm a
 "spill" prop, and a phrover drives to it indoors for a real `phrover_detect`
@@ -182,7 +182,7 @@ class GodotProcess:
 
 
 def pkill_godot() -> None:
-    subprocess.run(["pkill", "-f", "AstralEcoSim"], check=False)
+    subprocess.run(["pkill", "-f", "CoybotEcoSim"], check=False)
     subprocess.run(["pkill", "-f", f"godot .*{GODOT_PROJECT.name}"], check=False)
     time.sleep(1.0)
 
@@ -1006,7 +1006,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--port", type=int, default=9999)
     ap.add_argument("--out", default=str(Path(__file__).resolve().parents[3] / "video" / "video21_depot_joint_ops.mp4"))
-    ap.add_argument("--scratch", default="/private/tmp/claude-504/-Users-jsaib-code-ys-a/e4272541-a5e2-4214-802b-0e95261f052d/scratchpad/video21")
+    ap.add_argument("--scratch", default="/private/tmp/claude-504/-code-ys-coybot/e4272541-a5e2-4214-802b-0e95261f052d/scratchpad/video21")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="playback speed multiplier (2.0 = twice as fast, half the duration)")
     ap.add_argument("--dry-run", action="store_true")

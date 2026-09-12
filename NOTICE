@@ -1,8 +1,8 @@
-Astral Drone Platform
-Copyright 2026 Astral AI, Inc.
+Coybot Drone Platform
+Copyright 2026 Coybot AI, Inc.
 
-This product includes software developed at Astral AI, Inc.
-(https://astral.ai/).
+This product includes software developed at Coybot AI, Inc.
+(https://coybot.ai/).
 
 Third-party components:
 - YOLOv8 (Ultralytics) - AGPL-3.0 (model weights only, not linked)

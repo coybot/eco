@@ -2,7 +2,7 @@ from setuptools import setup
 import os
 from glob import glob
 
-package_name = 'astral_drone'
+package_name = 'coybot_drone'
 
 setup(
     name=package_name,
@@ -17,15 +17,15 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Astral Team',
-    maintainer_email='team@astral.ai',
-    description='Astral drone ROS2 integration',
+    maintainer='Coybot Team',
+    maintainer_email='team@coybot.ai',
+    description='Coybot drone ROS2 integration',
     license='Proprietary',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'camera_node = astral_drone.camera_node:main',
-            'mavlink_bridge = astral_drone.mavlink_bridge:main',
+            'camera_node = coybot_drone.camera_node:main',
+            'mavlink_bridge = coybot_drone.mavlink_bridge:main',
         ],
     },
 )

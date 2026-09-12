@@ -29,7 +29,7 @@ LOG=/var/log/thor-heartbeat.log
     [ -r "$f" ] && printf ' cpu0khz=%s' "$(cat "$f")"
   done
   printf ' memfree=%skB' "$(awk '/MemAvailable/{print $2}' /proc/meminfo)"
-  printf ' sim=%s' "$(systemctl --user -M <user>@ is-active presidio-sim 2>/dev/null || echo n/a)"
+  printf ' sim=%s' "$(systemctl --user -M <user>@ is-active coybot-sim 2>/dev/null || echo n/a)"
   printf '\n'
 } >> "$LOG" 2>/dev/null
 # Keep it bounded: ~20k lines is about a week at 30 s.

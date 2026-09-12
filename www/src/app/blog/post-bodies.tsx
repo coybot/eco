@@ -657,7 +657,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           <h2>Start in simulation, but validate in closed loop</h2>
           <p>
             Simulation is the right place to iterate quickly on APIs, frame
-            conventions, planner edge cases, and perception plumbing. Astral
+            conventions, planner edge cases, and perception plumbing. Coybot
             documents two practical paths: lightweight ArduPilot SITL for
             SDK-level work, and Isaac Sim for perception-in-the-loop autonomy.{" "}
             <Link href="/docs/simulation">Run in simulation</Link> walks through
@@ -685,26 +685,26 @@ export function BlogPostBody({ slug }: { slug: string }) {
             closed-loop success. That failure mode is exactly what the{" "}
             <Link href="/datasets/yonder">Yonder</Link> dataset and benchmark are
             designed to surface, alongside the public release on Hugging Face (
-            <a href={SITE.yonderDataset}>astralhf/yonder</a>).
+            <a href={SITE.yonderDataset}>coybothf/yonder</a>).
           </p>
           <h2>Ship software like a platform, not a demo</h2>
           <ul>
             <li>
               <strong>Open source core:</strong>{" "}
-              <a href={SITE.astralSdk}>astral-sdk</a> and related repos on{" "}
+              <a href={SITE.coybotSdk}>coybot-sdk</a> and related repos on{" "}
               <a href={SITE.githubOrg}>GitHub</a>.
             </li>
             <li>
-              <strong>Operator tooling:</strong> the Astral mobile apps for iOS
+              <strong>Operator tooling:</strong> the Coybot mobile apps for iOS
               and Android (links on the homepage).
             </li>
             <li>
               <strong>Documentation:</strong> product docs are in the open{" "}
-              <a href={SITE.docs}>astral-docs</a> repository on GitHub.
+              <a href={SITE.docs}>coybot-docs</a> repository on GitHub.
             </li>
           </ul>
           <p>
-            Astral is aiming to be the open autonomous drone software stack: credible
+            Coybot is aiming to be the open autonomous drone software stack: credible
             benchmarks, datasets, and runnable code, not slideware. If you want
             the shortest path from reading to doing, install the SDK, run SITL,
             then turn on closed-loop trials in Isaac when you are ready to stress
@@ -780,7 +780,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
             environments, with rich sensor arrays per waypoint (stereo RGB, depth,
             LiDAR-style sweeps, semantics, pose). Full details and layout are on
             the Hugging Face dataset card; start with the smoke subset{" "}
-            <a href={SITE.yonderSample}>astralhf/yonder-sample</a> if you want a
+            <a href={SITE.yonderSample}>coybothf/yonder-sample</a> if you want a
             small download before committing to large transfers.
           </p>
           <h2>What Yonder is for (and not for)</h2>
@@ -966,7 +966,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
             detection mAP improvement: 4.8% → 46.7%. By any offline measure, this solved detection.
           </p>
           <p>
-            Except it did not. The dataset is available at <Link href="/datasets/yonder">astral.us/datasets/yonder</Link>.
+            Except it did not. The dataset is available at <Link href="/datasets/yonder">coy.bot/datasets/yonder</Link>.
           </p>
 
           <h2>The Domain Gap Trap</h2>
@@ -1017,7 +1017,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           </ul>
           <p>
             Full technical detail: <Link href="/research#engineering-separation">research documentation</Link>.
-            Yonder dataset: <Link href="/datasets/yonder">astral.us/datasets/yonder</Link>.
+            Yonder dataset: <Link href="/datasets/yonder">coy.bot/datasets/yonder</Link>.
           </p>
         </Prose>
       );
@@ -1376,7 +1376,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           </p>
           <p>
             Full experimental design, metrics, and simulation methodology: <Link href="/research#droneport-atc">research section</Link>. The kinematic harness and all nine cells are available at the{" "}
-            <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer">Astral GitHub</a>.
+            <a href={SITE.githubOrg} target="_blank" rel="noopener noreferrer">Coybot GitHub</a>.
           </p>
         </Prose>
       );
@@ -1500,7 +1500,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           <h2>Deployment</h2>
           <p>
             All four models are running on both the rover (Jetson Orin Nano,{" "}
-            <code>jetson@rover</code>) and the quadcopter (<code>astral@quadcopter</code>).
+            <code>jetson@rover</code>) and the quadcopter (<code>coybot@quadcopter</code>).
             The deployment sequence:
           </p>
           <ol>
@@ -1530,7 +1530,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           <h2>Download</h2>
           <p>
             All models are publicly available on Hugging Face at{" "}
-            <a href={SITE.droneModels}>astralhf/astral-drone-models</a>:
+            <a href={SITE.droneModels}>coybothf/coybot-drone-models</a>:
           </p>
           <ul>
             <li>
@@ -1753,7 +1753,7 @@ export function BlogPostBody({ slug }: { slug: string }) {
           <h2>Download</h2>
           <p>
             The ONNX model is on Hugging Face at{" "}
-            <a href={SITE.droneModels}>astralhf/astral-drone-models</a>:
+            <a href={SITE.droneModels}>coybothf/coybot-drone-models</a>:
           </p>
           <ul>
             <li>

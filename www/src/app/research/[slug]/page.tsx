@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: paper.title,
     description: paper.summary,
-    ...socialMeta(`/research/${paper.slug}`, `${paper.title} | Astral`, paper.summary, {
+    ...socialMeta(`/research/${paper.slug}`, `${paper.title} | Coybot`, paper.summary, {
       type: "article",
       publishedTime: paper.dateIso,
     }),
@@ -53,7 +53,7 @@ export default async function ResearchPaperPage({ params }: Props) {
           url,
           datePublished: paper.dateIso,
           license: "https://creativecommons.org/licenses/by-nc/4.0/",
-          creator: { "@type": "Organization", name: "Astral", url: SITE.origin },
+          creator: { "@type": "Organization", name: "Coybot", url: SITE.origin },
           isAccessibleForFree: true,
           distribution: {
             "@type": "DataDownload",
@@ -70,8 +70,8 @@ export default async function ResearchPaperPage({ params }: Props) {
           abstract: paper.summary,
           description: paper.summary,
           datePublished: paper.dateIso,
-          author: { "@type": "Organization", name: "Astral", url: SITE.origin },
-          publisher: { "@type": "Organization", name: "Astral", url: SITE.origin },
+          author: { "@type": "Organization", name: "Coybot", url: SITE.origin },
+          publisher: { "@type": "Organization", name: "Coybot", url: SITE.origin },
           mainEntityOfPage: { "@type": "WebPage", "@id": url },
           ...(citations.length > 0 ? { citation: citations } : {}),
         };

@@ -1,14 +1,14 @@
 """Top-level e2e runner for all 4 drone types.
 
     python -m eco.e2e.run_e2e --type all --tier fast    # CI on every push, no AWS/sim/phone
-    python -m eco.e2e.run_e2e --type all --tier live     # nightly, against Astral Sim + real AWS
+    python -m eco.e2e.run_e2e --type all --tier live     # nightly, against Coybot Sim + real AWS
 
 Fast tier = the vehicle-behavior regression gate (reusing eco/drone/training/sim_validate.py
 and the existing eco/drone/sim/tests/test_vehicle_class.py + eco/drone/common/tests/
 test_l5_parity.py pytest suites — covers quad/rover/fixed-wing kinematics) PLUS a mocked
 app-contract check per type (harness/mock_cloud.py, harness/mock_rover_converse.py — no AWS
 needed). Live tier is the full-stack app-contract check against the real cloud + a drone
-already brought up in Astral Sim (see README.md) or on real hardware.
+already brought up in Coybot Sim (see README.md) or on real hardware.
 
 Must be run with this package importable, i.e. from the outer repo root:
     cd <repo-root> && python3 -m eco.e2e.run_e2e ...

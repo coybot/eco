@@ -8,7 +8,7 @@ Endpoints:
   POST /abort    -> abort mission
 
 Authentication:
-  - Bearer token from /var/lib/astral/pairing_token.json
+  - Bearer token from /var/lib/coybot/pairing_token.json
   - No cloud dependency
 """
 
@@ -26,13 +26,13 @@ from typing import Dict, Tuple
 
 from mission_runner import MissionRunner
 
-logger = logging.getLogger("astral.local_api")
+logger = logging.getLogger("coybot.local_api")
 
-STATE_DIR = Path("/var/lib/astral")
+STATE_DIR = Path("/var/lib/coybot")
 PAIRING_TOKEN_PATH = STATE_DIR / "pairing_token.json"
 
-DEFAULT_CERT = "/etc/astral/certs/local_control.crt"
-DEFAULT_KEY = "/etc/astral/certs/local_control.key"
+DEFAULT_CERT = "/etc/coybot/certs/local_control.crt"
+DEFAULT_KEY = "/etc/coybot/certs/local_control.key"
 
 
 class LocalControlConfig:
@@ -74,7 +74,7 @@ def _ensure_cert(cert_path: str, key_path: str) -> None:
         "-out", cert_path,
         "-days", "3650",
         "-nodes",
-        "-subj", "/CN=astral-drone"
+        "-subj", "/CN=coybot-drone"
     ], check=True)
 
 

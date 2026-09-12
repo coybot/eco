@@ -8,12 +8,12 @@ import { SITE } from "@/lib/site";
 import { socialMeta } from "@/lib/social-metadata";
 
 const ABOUT_DESCRIPTION =
-  "Astral builds autonomy for uncrewed aircraft, rovers, and other robots: an open SDK, high-fidelity simulation, operator apps, and public datasets—plus custom vehicles when a mission needs purpose-built hardware.";
+  "Coybot builds autonomy for uncrewed aircraft, rovers, and other robots: an open SDK, high-fidelity simulation, operator apps, and public datasets—plus custom vehicles when a mission needs purpose-built hardware.";
 
 export const metadata: Metadata = {
   title: "About",
   description: ABOUT_DESCRIPTION,
-  ...socialMeta("/about", "About | Astral", ABOUT_DESCRIPTION),
+  ...socialMeta("/about", "About | Coybot", ABOUT_DESCRIPTION),
 };
 
 const pillars: Array<{ title: string; body: string }> = [
@@ -42,13 +42,13 @@ export default function AboutPage() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "AboutPage",
-    name: "About Astral",
+    name: "About Coybot",
     description: ABOUT_DESCRIPTION,
     url: `${SITE.origin}/about`,
-    isPartOf: { "@type": "WebSite", name: "Astral", url: SITE.origin },
+    isPartOf: { "@type": "WebSite", name: "Coybot", url: SITE.origin },
     mainEntity: {
       "@type": "Organization",
-      name: "Astral",
+      name: "Coybot",
       url: SITE.origin,
       logo: `${SITE.origin}/logo-black.png`,
       sameAs: [SITE.linkedin, SITE.githubOrg, SITE.youtube],
@@ -62,9 +62,9 @@ export default function AboutPage() {
       <main className="flex-1">
         <section className="py-16 bg-gradient-to-b from-background to-card">
           <div className="container mx-auto px-4 max-w-4xl">
-            <h1 className="text-4xl sm:text-5xl font-bold mb-6">About Astral</h1>
+            <h1 className="text-4xl sm:text-5xl font-bold mb-6">About Coybot</h1>
             <p className="text-lg text-muted-foreground mb-8">
-              Astral builds the autonomy stack for uncrewed systems. We treat
+              Coybot builds the autonomy stack for uncrewed systems. We treat
               autonomous robots as a systems problem—perception, geometry,
               planning, safety, simulation fidelity, and honest evaluation—and
               ship it as an open SDK, high-fidelity simulation, operator apps,
@@ -109,7 +109,7 @@ export default function AboutPage() {
             <h2 className="text-2xl font-bold mb-4">Built in the open</h2>
             <p className="text-muted-foreground mb-6">
               Our software, research, and datasets are public. The fastest way to
-              understand Astral is to use them.
+              understand Coybot is to use them.
             </p>
             <div className="flex flex-wrap gap-3">
               {proof.map((l) =>

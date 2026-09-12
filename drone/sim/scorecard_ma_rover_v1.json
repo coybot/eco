@@ -8,7 +8,7 @@
   "policy": {
     "autonomy_level": 2,
     "rationale": "mean 1.42 interventions/scenario, 67% success",
-    "onnx_path": "/Users/jsaib/code/ys/a/eco/drone/models/policy_ma_rover_v1.onnx",
+    "onnx_path": "~/code/ys/coybot/eco/drone/models/policy_ma_rover_v1.onnx",
     "mean_interventions": 1.42,
     "mission_success_rate": 0.667
   },

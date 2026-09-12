@@ -3,7 +3,7 @@
 **Date**: 2026-07-10 · **Model**: `us.anthropic.claude-sonnet-4-6` (Bedrock, us-west-2),
 **3 concurrent instances**
 **Runner**: `eco/rover/sim/run_live_team.py` → `TeamCloudBrainTests`
-(astral-sdk, `PhroverSimTests` target)
+(coybot-sdk, `PhroverSimTests` target)
 **Mission**: 3 rovers (`team-1`, `team-2`, `team-3`) told to claim an unclaimed room from
 a shared team context, search it, and pick up a silent teammate's room if one goes quiet.
 `team-3` is killed (`kill_rover`) ~12s in.

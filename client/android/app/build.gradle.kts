@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.astral.drone"
+    namespace = "com.coybot.drone"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.astral.drone"
+        applicationId = "com.coybot.drone"
         minSdk = 28
         targetSdk = 35
         versionCode = 1

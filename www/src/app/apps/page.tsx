@@ -15,12 +15,12 @@ import {
 } from "lucide-react"
 import { socialMeta } from "@/lib/social-metadata"
 
-const DESC = "Access Astral Operator on web, iOS, or Android. Real-time drone telemetry, mission control, and fleet management from any device."
+const DESC = "Access Coybot Operator on web, iOS, or Android. Real-time drone telemetry, mission control, and fleet management from any device."
 
 export const metadata: Metadata = {
-  title: "Astral Operator — Web, iOS & Android",
+  title: "Coybot Operator — Web, iOS & Android",
   description: DESC,
-  ...socialMeta("/apps", "Astral Operator — Web, iOS & Android | Astral", DESC),
+  ...socialMeta("/apps", "Coybot Operator — Web, iOS & Android | Coybot", DESC),
 }
 
 export default function AppsPage() {
@@ -38,7 +38,7 @@ export default function AppsPage() {
               </div>
             </div>
             <h1 className="text-center text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6">
-              Astral Operator
+              Coybot Operator
             </h1>
             <p className="text-center text-lg text-gray-400 max-w-2xl mx-auto">
               Control your drone fleet from any device. Web, iOS, or Android — choose what works best for you.
@@ -256,7 +256,7 @@ export default function AppsPage() {
               <StepCard
                 number="1"
                 title="Sign Up"
-                description="Create an Astral account using your email. Takes less than a minute."
+                description="Create an Coybot account using your email. Takes less than a minute."
               />
               <StepCard
                 number="2"
@@ -281,7 +281,7 @@ export default function AppsPage() {
                   <ChevronRight className="size-4" />
                 </Link>
                 <a
-                  href="mailto:hello@astral.us"
+                  href="mailto:hello@coy.bot"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-500/30 hover:border-amber-500 text-amber-500 text-sm font-medium transition-colors"
                 >
                   Contact Support

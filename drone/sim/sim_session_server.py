@@ -45,7 +45,7 @@ from engine_client import EngineClient  # noqa: E402
 from fleet import parse_roster  # noqa: E402
 
 # Browser origins allowed to open the frame WebSocket / call the server.
-ALLOWED_ORIGINS = {"https://astral.us", "http://localhost:3000"}
+ALLOWED_ORIGINS = {"https://coy.bot", "http://localhost:3000"}
 IDLE_TIMEOUT = float(os.environ.get("SIM_IDLE_TIMEOUT", "120"))   # s, no-viewer → teardown
 MAX_LIFETIME = float(os.environ.get("SIM_MAX_LIFETIME", "1200"))  # s, hard session cap
 FRAME_FPS = float(os.environ.get("SIM_FRAME_FPS", "13"))
@@ -55,7 +55,7 @@ SIM_SECRET = os.environ.get("SIM_SHARED_SECRET", "")
 
 
 def _cors(resp: web.StreamResponse, origin: str | None) -> web.StreamResponse:
-    allow = origin if origin in ALLOWED_ORIGINS else "https://astral.us"
+    allow = origin if origin in ALLOWED_ORIGINS else "https://coy.bot"
     resp.headers["Access-Control-Allow-Origin"] = allow
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Sim-Secret"
     resp.headers["Access-Control-Allow-Methods"] = "POST,GET,OPTIONS"
@@ -313,7 +313,7 @@ def make_app(host: SimHost) -> web.Application:
             raise web.HTTPBadRequest(reason="userId required")
         result = await host.start_session(fleet, env_name, user_id)
         # Absolute WS url the browser should open.
-        base = os.environ.get("SIM_PUBLIC_WSS", "wss://sim.astral.us")
+        base = os.environ.get("SIM_PUBLIC_WSS", "wss://sim.coy.bot")
         result["wsUrl"] = f"{base}/stream?session={result['sessionId']}"
         return _cors(web.json_response(result), request.headers.get("Origin"))
 

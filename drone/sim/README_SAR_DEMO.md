@@ -8,7 +8,7 @@ Everything below runs on this Mac. Godot must run with a real rendering driver
 every captured frame blank.
 
 ```bash
-PY=/Users/jsaib/.astral-venv/bin/python3     # the venv with llama_cpp + cv2
+PY=~/.coybot-venv/bin/python3     # the venv with llama_cpp + cv2
 cd eco/drone/sim
 ```
 
@@ -60,9 +60,9 @@ $PY -u ../../rover/sim/depot_smoke.py
 ## Shooting the video
 
 ```bash
-AWS_PROFILE=astral $PY -u fw_swarm_demo.py --takes 1 --drones 1   # M7, single aircraft
-AWS_PROFILE=astral $PY -u fw_swarm_demo.py --takes 1              # M8, both
-AWS_PROFILE=astral $PY -u fw_swarm_demo.py --takes 20 --record runs   # M10, farm takes
+AWS_PROFILE=coybot $PY -u fw_swarm_demo.py --takes 1 --drones 1   # M7, single aircraft
+AWS_PROFILE=coybot $PY -u fw_swarm_demo.py --takes 1              # M8, both
+AWS_PROFILE=coybot $PY -u fw_swarm_demo.py --takes 20 --record runs   # M10, farm takes
 $PY -u fw_edit.py --take runs/take_07 --report swarm_report.json --out final.mp4
 ```
 

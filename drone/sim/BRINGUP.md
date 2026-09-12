@@ -54,19 +54,19 @@ commands until a fresh heartbeat lands — wait before sending.
 Three steps: provision a cert, register it to a user, then launch a bridge for it.
 
 ```bash
-# (run with AWS_PROFILE=astral on a machine with the AWS CLI)
+# (run with AWS_PROFILE=coybot on a machine with the AWS CLI)
 ID=sim-quadcopter-001                 # your new drone id
-AWS_PROFILE=astral aws iot create-thing --thing-name $ID
-ARN=$(AWS_PROFILE=astral aws iot create-keys-and-certificate --set-as-active \
+AWS_PROFILE=coybot aws iot create-thing --thing-name $ID
+ARN=$(AWS_PROFILE=coybot aws iot create-keys-and-certificate --set-as-active \
   --certificate-pem-outfile device.pem --private-key-outfile private.key \
   --query certificateArn --output text)
-AWS_PROFILE=astral aws iot attach-policy --policy-name drone-policy-dev --target "$ARN"
-AWS_PROFILE=astral aws iot attach-thing-principal --thing-name $ID --principal "$ARN"
+AWS_PROFILE=coybot aws iot attach-policy --policy-name drone-policy-dev --target "$ARN"
+AWS_PROFILE=coybot aws iot attach-thing-principal --thing-name $ID --principal "$ARN"
 curl -s https://www.amazontrust.com/repository/AmazonRootCA1.pem -o root-ca.pem
 # copy device.pem/private.key/root-ca.pem to hoopoe:~/eco-certs-$ID/
 
 # register it to the app user (sub = that user's Cognito sub; harun's is 28a1f320-...-a5d9)
-AWS_PROFILE=astral aws dynamodb put-item --table-name drone-registry-dev --item '{
+AWS_PROFILE=coybot aws dynamodb put-item --table-name drone-registry-dev --item '{
   "userId":{"S":"<USER_SUB>"},"droneId":{"S":"'$ID'"},"name":{"S":"Quad 001"},
   "registeredAt":{"S":"2026-01-01T00:00:00"},"status":{"S":"registered"},
   "droneType":{"S":"sim"},"vehicleType":{"S":"quadcopter"},
@@ -86,7 +86,7 @@ connection (one fleet cert) — each drone is IRL-identical to the cloud/app.
 ```bash
 # 1) register the fleet in the cloud (host WITH AWS creds, e.g. your Mac):
 #    ids are deterministic: sim-quadcopter-001..NNN, sim-rover-001..NNN
-AWS_PROFILE=astral python3 fleet.py --fleet quad:10,rover:10 --user-sub <COGNITO_SUB>
+AWS_PROFILE=coybot python3 fleet.py --fleet quad:10,rover:10 --user-sub <COGNITO_SUB>
 #    (no boto3 on the Mac? register rows with `aws dynamodb put-item` instead — see git history)
 
 # 2) launch the fleet on hoopoe (one process, one world):

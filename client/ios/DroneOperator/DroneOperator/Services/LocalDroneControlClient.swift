@@ -29,7 +29,7 @@ final class LocalDroneControlClient {
     
     private let baseURL: URL
     private let session: URLSession
-    private let tokenKey = "us.astral.drone.pairing"
+    private let tokenKey = "bot.coy.drone.pairing"
     
     init(baseURL: URL = URL(string: "https://192.168.4.1:8443")!, session: URLSession = .shared) {
         self.baseURL = baseURL

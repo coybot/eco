@@ -3,7 +3,7 @@ import { products } from "@/lib/products";
 import { blogPosts } from "@/lib/blog-data";
 import { researchPapers } from "@/lib/research-data";
 
-const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "https://astral.us";
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "https://coy.bot";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [

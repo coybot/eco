@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -49,28 +50,55 @@ FONT_CANDIDATES = [
 ]
 
 
-# Brand typography and palette. Archivo is the only typeface: Thin for
-# titles and body, Bold ALL-CAPS and tracked for eyebrows and labels. Three
-# brand colours, plus ONE accent per composition — Light Blue here, because the
-# footage is sky and aircraft and the brand guidance is to pick the accent that
-# harmonises with the dominant tones.
-BRAND = pathlib_Path(
-    "<brand-assets>/"
-    "brand-guidelines")
-ARCHIVO_THIN = BRAND / "assets/fonts/Archivo-Thin.ttf"
-ARCHIVO_BOLD = BRAND / "assets/fonts/Archivo-Bold.ttf"
-BRAND_LOGO_LIGHT = BRAND / "assets/logos/logo-light.png"
-BRAND_LOGO_DARK = BRAND / "assets/logos/logo-dark.png"
+# Typography and palette for the showcase cut. Nothing here is baked in: point
+# FW_BRAND_DIR at a directory laid out as assets/fonts/{Regular,Bold}.ttf and
+# assets/logos/logo-{dark,light}.png to brand the output, or set any of the
+# individual paths directly. With none of them set the cut still renders, using
+# the system sans fallback and no logo.
+#
+# The typographic rules the layout assumes: one typeface throughout, a light
+# weight for titles and body, bold ALL-CAPS and letter-spaced for eyebrows and
+# labels, and exactly ONE accent colour per composition — pick one that
+# harmonises with the dominant tones of the footage.
+def _brand_path(env: str, *rel: str):
+    v = os.environ.get(env)
+    if v:
+        return pathlib_Path(v)
+    root = os.environ.get("FW_BRAND_DIR")
+    return pathlib_Path(root).joinpath(*rel) if root else None
+
+
+BRAND_FONT_REGULAR = _brand_path("FW_BRAND_FONT_REGULAR", "assets/fonts/Regular.ttf")
+BRAND_FONT_BOLD = _brand_path("FW_BRAND_FONT_BOLD", "assets/fonts/Bold.ttf")
+BRAND_LOGO_LIGHT = _brand_path("FW_BRAND_LOGO_LIGHT", "assets/logos/logo-light.png")
+BRAND_LOGO_DARK = _brand_path("FW_BRAND_LOGO_DARK", "assets/logos/logo-dark.png")
+
+
+def _rgb(env: str, default: tuple) -> tuple:
+    """FW_BRAND_ACCENT=#75e1f3 or 117,225,243 — falls back to `default`."""
+    v = os.environ.get(env)
+    if not v:
+        return default
+    v = v.strip().lstrip("#")
+    try:
+        if "," in v:
+            return tuple(int(p) for p in v.split(",", 2))
+        return tuple(int(v[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return default
+
 
 BRIGHT_WHITE = (255, 255, 255)
-TECHNICAL_SAND = (229, 224, 217)
+PAPER = _rgb("FW_BRAND_PAPER", (232, 229, 224))    # light card background
 DEEP_BLACK = (0, 0, 0)
-ACCENT = (117, 225, 243)          # Light Blue
+ACCENT = _rgb("FW_BRAND_ACCENT", (96, 186, 214))   # the single accent colour
 
 
 def brand_font(size: int, bold: bool = False):
-    """Archivo, or a geometric sans fallback — never a serif (brand rule)."""
-    path = ARCHIVO_BOLD if bold else ARCHIVO_THIN
+    """The brand typeface, or a geometric sans fallback — never a serif."""
+    path = BRAND_FONT_BOLD if bold else BRAND_FONT_REGULAR
+    if path is None:
+        return font(size)
     try:
         return ImageFont.truetype(str(path), size)
     except Exception:
@@ -78,7 +106,7 @@ def brand_font(size: int, bold: bool = False):
 
 
 def tracked(d, xy, text: str, f, fill, spacing: float = 0.15):
-    """Bold means ALL-CAPS and tracked out — not optional, per the brand."""
+    """Bold means ALL-CAPS and tracked out."""
     x, y = xy
     for ch in text.upper():
         d.text((x, y), ch, font=f, fill=fill)
@@ -238,14 +266,14 @@ def write_seq(images, out_dir: Path, start_idx: int = 0) -> int:
 
 
 def card_image(title: str, body: str, subtitle: str = "") -> Image.Image:
-    """A brand card: Technical Sand ground, Deep Black type, one accent rule.
+    """A title card: light ground, near-black type, one accent rule.
 
     Was white-on-near-black in a system font, which reads as a terminal dump.
-    The brand is deliberately three colours and one typeface — Archivo Thin for
-    the title and body, Bold ALL-CAPS and tracked for the eyebrow — and its
-    identity is bright and warm rather than dark and technical.
+    Three colours and one typeface — light weight for the title and body, Bold
+    ALL-CAPS and tracked for the eyebrow — reading bright and warm rather than
+    dark and technical.
     """
-    im = Image.new("RGB", (W, H), TECHNICAL_SAND)
+    im = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(im)
     ft, fs, fe = brand_font(72), brand_font(30), brand_font(22, bold=True)
 
@@ -266,6 +294,8 @@ def card_image(title: str, body: str, subtitle: str = "") -> Image.Image:
         y += 46
 
     try:
+        if BRAND_LOGO_DARK is None:
+            raise FileNotFoundError
         logo = Image.open(BRAND_LOGO_DARK).convert("RGBA")
         lh = 46
         logo = logo.resize((int(lh * logo.width / logo.height), lh), Image.LANCZOS)
@@ -329,7 +359,7 @@ def caption_frame(path: Path, lines: list, badge: str,
         bw = sum(d.textlength(c, font=fbb) + fbb.size * 0.15 for c in badge)
         d.rectangle([W - bw - 104, 44, W - 44, 96], fill=(0, 0, 0, 205))
         d.rectangle([W - bw - 104, 44, W - bw - 100, 96], fill=ACCENT)
-        tracked(d, (W - bw - 82, 58), badge, fbb, TECHNICAL_SAND)
+        tracked(d, (W - bw - 82, 58), badge, fbb, PAPER)
 
     if lines:
         # Blur-and-tint the caption zone rather than dropping a black box on it.
@@ -358,7 +388,7 @@ def caption_frame(path: Path, lines: list, badge: str,
                 # Eyebrow: Bold, ALL-CAPS, tracked, with the accent rule.
                 d.rectangle([78, y + 6, 78 + 54, y + 10], fill=ACCENT)
                 tracked(d, (150, y - 2), line, brand_font(22, bold=True),
-                        TECHNICAL_SAND)
+                        PAPER)
             else:
                 d.text((78, y), line, font=brand_font(31), fill=BRIGHT_WHITE)
             y += 46

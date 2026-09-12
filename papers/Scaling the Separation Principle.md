@@ -4,9 +4,9 @@
 
 Yusuf Saib
 
-*Astral Technology Corporation, Santa Clara, CA*
+*Coybot Technology Corporation, Santa Clara, CA*
 
-contact@astral.us
+contact@coy.bot
 
 ***Abstract***
 

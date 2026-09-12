@@ -8,12 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { products, formatPrice } from "@/lib/products";
 import { socialMeta } from "@/lib/social-metadata";
 
-const DESC = "Compare the Astral autonomous platforms side-by-side — Quadcopter, Rover, Fixed-Wing, and Phrover. Compute, sensors, runtime, payload, and use cases.";
+const DESC = "Compare the Coybot autonomous platforms side-by-side — Quadcopter, Rover, Fixed-Wing, and Phrover. Compute, sensors, runtime, payload, and use cases.";
 
 export const metadata: Metadata = {
   title: "Compare Platforms",
   description: DESC,
-  ...socialMeta("/compare", "Compare Platforms | Astral", DESC),
+  ...socialMeta("/compare", "Compare Platforms | Coybot", DESC),
 };
 
 // Short platform-type label shown under each product name in the table header.

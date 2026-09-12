@@ -40,7 +40,7 @@ COCO_CLASSES = [
     'toothbrush'
 ]
 
-# Domain class names for the astral-trained detector (v1+).
+# Domain class names for the coybot-trained detector (v1+).
 # Matches the category order in drone-data/dataset.yaml / sim_dataset_recorder.CLASS_NAMES.
 # Switch to this by loading yolov8n_domain_v1.onnx (or .engine) instead of yolov8n.
 DOMAIN_CLASSES = [
@@ -211,7 +211,7 @@ class TensorRTDetector:
         # Repo layout: script in drone/common, models in drone/models
         models_dir = COMMON_DIR / 'models' if (COMMON_DIR / 'models').exists() else DRONE_DIR / 'models'
 
-        # Domain-trained detector (astral v1): try TRT then ONNX
+        # Domain-trained detector (coybot v1): try TRT then ONNX
         for name in ('yolov8n_domain_v3.engine', 'yolov8n_domain_v3.onnx',
                      'yolov8n_domain_v1.engine', 'yolov8n_domain_v1.onnx'):
             p = models_dir / name

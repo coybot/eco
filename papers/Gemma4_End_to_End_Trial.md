@@ -4,9 +4,9 @@
 
 Yusuf Saib
 
-*Astral Technology Corporation, Santa Clara, CA*
+*Coybot Technology Corporation, Santa Clara, CA*
 
-contact@astral.us
+contact@coy.bot
 
 ***Abstract***
 
@@ -81,6 +81,6 @@ If folded into the `Closing_the_Metric_Gap` Table I (the 25-VLM aggregate), Gemm
 
 [2] NVIDIA, "Gemma 4 VLA Demo on Jetson Orin Nano Super," HuggingFace blog, 2026, https://huggingface.co/blog/nvidia/gemma4.
 
-[3] Y. Saib, "Closing the Metric Gap: From Diagnosis to Solution in Vision-Language Drone Navigation," Astral Technology Corporation, 2026.
+[3] Y. Saib, "Closing the Metric Gap: From Diagnosis to Solution in Vision-Language Drone Navigation," Coybot Technology Corporation, 2026.
 
-[4] Y. Saib, "Engineering the Separation Principle: From Modular Architecture to Deployable Drone Navigation," Astral Technology Corporation, 2026.
+[4] Y. Saib, "Engineering the Separation Principle: From Modular Architecture to Deployable Drone Navigation," Coybot Technology Corporation, 2026.

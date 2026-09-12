@@ -5,7 +5,7 @@ Godot analog of sim_dataset_recorder.py -- same purpose, same output format
 different backend (godot_engine.py via engine_client.EngineClient instead of
 IsaacVehicleBridge). Adopted in place of the Isaac path after ADR-0005's visual
 alignment gate found two issues on the Isaac side (see
-reports/isaac_grounding_frames_finding.json in the astral-autonomy repo): a
+reports/isaac_grounding_frames_finding.json in the coybot-autonomy repo): a
 driving-pattern bug (fixed there, and fixed identically in this driver's
 _random_goals below) and a still-unresolved render/GT mismatch that would need
 USD-stage inspection to chase further. Godot's FleetManager mirrors

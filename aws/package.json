@@ -1,5 +1,5 @@
 {
-  "name": "astral-drone-api",
+  "name": "coybot-drone-api",
   "private": true,
   "scripts": {
     "deploy": "sst deploy",

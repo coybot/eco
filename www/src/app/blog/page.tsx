@@ -9,21 +9,21 @@ import { SITE } from "@/lib/site";
 import { socialMeta } from "@/lib/social-metadata";
 
 const BLOG_DESCRIPTION =
-  "Astral's drone autonomy research blog: closed-loop benchmarks, the metric gap in vision-language navigation, swarm sensing at scale, counter-UAS, and the Yonder dataset.";
+  "Coybot's drone autonomy research blog: closed-loop benchmarks, the metric gap in vision-language navigation, swarm sensing at scale, counter-UAS, and the Yonder dataset.";
 
 export const metadata: Metadata = {
   title: "Blog",
   description: BLOG_DESCRIPTION,
-  ...socialMeta("/blog", "Blog | Astral", BLOG_DESCRIPTION),
+  ...socialMeta("/blog", "Blog | Coybot", BLOG_DESCRIPTION),
 };
 
 const blogJsonLd = {
   "@context": "https://schema.org",
   "@type": "Blog",
-  name: "Astral Blog",
+  name: "Coybot Blog",
   description: BLOG_DESCRIPTION,
   url: `${SITE.origin}/blog`,
-  publisher: { "@type": "Organization", name: "Astral", url: SITE.origin },
+  publisher: { "@type": "Organization", name: "Coybot", url: SITE.origin },
   blogPost: blogPosts.map((p) => ({
     "@type": "BlogPosting",
     headline: p.title,
@@ -56,7 +56,7 @@ export default function BlogPage() {
               <h1 className="text-4xl sm:text-5xl font-bold mb-6">Blog</h1>
               <p className="text-lg text-muted-foreground">
                 Stay informed with the latest news, updates, and industry
-                insights from Astral.
+                insights from Coybot.
               </p>
             </div>
           </div>

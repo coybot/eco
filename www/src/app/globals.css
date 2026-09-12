@@ -45,7 +45,7 @@
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
   
-  /* Astral colors */
+  /* Coybot colors */
   --color-success: var(--success);
   --color-warning: var(--warning);
 }
@@ -93,7 +93,7 @@
   --sidebar-ring: 0 0% 4%;
 }
 
-/* Dark mode - PRIMARY theme for Astral */
+/* Dark mode - PRIMARY theme for Coybot */
 .dark {
   --background: 0 0% 0%;
   --foreground: 0 0% 98%;
@@ -144,7 +144,7 @@
   }
 }
 
-/* Custom utility classes for Astral */
+/* Custom utility classes for Coybot */
 @layer utilities {
   .glow {
     box-shadow: 0 0 20px rgba(250, 204, 21, 0.25), 0 0 40px rgba(250, 204, 21, 0.1);

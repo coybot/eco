@@ -3,7 +3,7 @@
 # the sim world, with every decision made by the REAL model behind the production
 # /rover/act handler (via harness/live_rover_act_bridge.py).
 #
-#   AWS_PROFILE=astral bash eco/e2e/run_live_mission.sh
+#   AWS_PROFILE=coybot bash eco/e2e/run_live_mission.sh
 #
 # Makes real, billed Bedrock calls (roughly 15-35 per run) — this is deliberately NOT part
 # of the fast e2e gate. Output (including the full per-tick transcripts) is teed to a log
@@ -13,7 +13,7 @@ set -euo pipefail
 ECO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SDK_DIR="$(cd "$ECO_DIR/../sdk" && pwd)"
 LOG="$(mktemp /tmp/live_mission_XXXX.log)"
-export AWS_PROFILE="${AWS_PROFILE:-astral}"
+export AWS_PROFILE="${AWS_PROFILE:-coybot}"
 
 echo "eco:   $ECO_DIR"
 echo "sdk:   $SDK_DIR"
@@ -53,7 +53,7 @@ echo "simulator: $UDID"
 
 set +e
 (cd "$SDK_DIR" && TEST_RUNNER_LIVE_ROVER_ACT_URL="$URL" xcodebuild test \
-    -scheme astral-sdk-Package \
+    -scheme coybot-sdk-Package \
     -destination "id=$UDID" \
     -only-testing:PhroverKitLiveProbes/CloudBrainLiveMissionTests) 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}

@@ -18,7 +18,7 @@
 # (no greeter session to hold :0 any more) and the unit retried for four hours
 # against a socket that was never going to appear. Same empty screen, different
 # cause. See run-sim.sh.
-Description=Presidio Manhattan sim (fullscreen)
+Description=Coybot Manhattan sim (fullscreen)
 After=default.target
 
 [Service]

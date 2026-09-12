@@ -43,7 +43,7 @@ ISHMAEL_HARNESS=$HOME/code/ishmael/swarm_eval/harness $PY \
   ~/code/ishmael/eco_sim/sim_bridge.py \
   --env office --drone-id sim-quadcopter-test --vehicle quadcopter \
   --certs-dir ~/eco-certs
-# defaults come from IOT_ENDPOINT / CREDENTIALS_ENDPOINT, or ~/.config/astral/secrets.env
+# defaults come from IOT_ENDPOINT / CREDENTIALS_ENDPOINT, or ~/.config/coybot/secrets.env
 # (see secrets.env.example); pass --iot-endpoint / --credentials-endpoint to override
 # --vehicle rover  for the Nova Carter.  --http-debug  re-enables a local /execute server.
 ```
@@ -63,4 +63,4 @@ to warehouse (add USDs to `_ENV_USD_MAP` in `isaac_vehicle.py` for distinct scen
 ## Cloud side
 `eco/aws/src/conversations.py` no longer special-cases `droneType=="sim"` — sim commands flow through
 the normal capability-based path and are published to IoT MQTT like any drone. **Deploy with SAM**
-(`cd eco/aws && AWS_PROFILE=astral sam build && sam deploy`).
+(`cd eco/aws && AWS_PROFILE=coybot sam build && sam deploy`).

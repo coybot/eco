@@ -6,7 +6,7 @@ Three cameras per course:
   - fpv     : drone onboard
 
 Run on hoopoe:
-  cd ~/astral-training
+  cd ~/coybot-training
   /opt/ml/isaac-sim-env/bin/python3 -m eco.drone.training.render_session1 \
       --out /tmp/session1_videos
 """

@@ -8,9 +8,9 @@ No torch/ONNX needed. Uses a Vector Field Histogram (VFH) reactive planner:
 This is the analytic baseline. The trained GRU policy will handle the same
 course with memory (doesn't get stuck in local minima, knows which way it came).
 
-    ~/.astral-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet
-    ~/.astral-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet --course maze
-    ~/.astral-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet --all --svg out.svg
+    ~/.coybot-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet
+    ~/.coybot-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet --course maze
+    ~/.coybot-venv/bin/python3 -m eco.drone.training.demo_rover_gauntlet --all --svg out.svg
 """
 from __future__ import annotations
 

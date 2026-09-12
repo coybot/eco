@@ -227,10 +227,10 @@ elif [ -f "$COMMON_DIR/config.yaml.example" ]; then
 fi
 
 # Create config directory
-sudo mkdir -p /etc/astral
-sudo mkdir -p /etc/astral/certs
+sudo mkdir -p /etc/coybot
+sudo mkdir -p /etc/coybot/certs
 if [ -f "$COMMON_DIR/network_manager.yaml.example" ]; then
-    sudo cp "$COMMON_DIR/network_manager.yaml.example" /etc/astral/network_manager.yaml
+    sudo cp "$COMMON_DIR/network_manager.yaml.example" /etc/coybot/network_manager.yaml
 fi
 
 # Create virtual environment
@@ -433,23 +433,23 @@ WantedBy=multi-user.target
 EOF
 
 # Create network manager service (if template exists)
-if [ -f "$DRONE_DIR/platforms/orin/astral-network-manager.service" ]; then
+if [ -f "$DRONE_DIR/platforms/orin/coybot-network-manager.service" ]; then
     # Substitute, do not cat: the template's __INSTALL_DIR__ has to become
     # this user's install dir. A heredoc around $(cat ...) does not re-expand
     # the file's own contents, which is how the old literal path survived.
     sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
-        "$DRONE_DIR/platforms/orin/astral-network-manager.service" \
-        | sudo tee "/etc/systemd/system/astral-network-manager.service" > /dev/null
+        "$DRONE_DIR/platforms/orin/coybot-network-manager.service" \
+        | sudo tee "/etc/systemd/system/coybot-network-manager.service" > /dev/null
 fi
 
 # Create local control API service (if template exists)
-if [ -f "$DRONE_DIR/platforms/orin/astral-local-control.service" ]; then
+if [ -f "$DRONE_DIR/platforms/orin/coybot-local-control.service" ]; then
     # Substitute, do not cat: the template's __INSTALL_DIR__ has to become
     # this user's install dir. A heredoc around $(cat ...) does not re-expand
     # the file's own contents, which is how the old literal path survived.
     sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
-        "$DRONE_DIR/platforms/orin/astral-local-control.service" \
-        | sudo tee "/etc/systemd/system/astral-local-control.service" > /dev/null
+        "$DRONE_DIR/platforms/orin/coybot-local-control.service" \
+        | sudo tee "/etc/systemd/system/coybot-local-control.service" > /dev/null
 fi
 
 # Reload systemd
@@ -486,14 +486,14 @@ if [ "$START_AFTER_INSTALL" = true ]; then
     sudo systemctl start drone-api
     
     # Start optional services if they exist
-    if [ -f "/etc/systemd/system/astral-network-manager.service" ]; then
-        sudo systemctl enable astral-network-manager
-        sudo systemctl start astral-network-manager
+    if [ -f "/etc/systemd/system/coybot-network-manager.service" ]; then
+        sudo systemctl enable coybot-network-manager
+        sudo systemctl start coybot-network-manager
     fi
     
-    if [ -f "/etc/systemd/system/astral-local-control.service" ]; then
-        sudo systemctl enable astral-local-control
-        sudo systemctl start astral-local-control
+    if [ -f "/etc/systemd/system/coybot-local-control.service" ]; then
+        sudo systemctl enable coybot-local-control
+        sudo systemctl start coybot-local-control
     fi
     
     echo ""

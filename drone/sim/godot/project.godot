@@ -6,8 +6,8 @@ config_version=5
 
 [application]
 
-config/name="AstralEcoSim"
-config/description="Astral drone fleet simulator — Godot 4 backend for eco/"
+config/name="CoybotEcoSim"
+config/description="Coybot drone fleet simulator — Godot 4 backend for eco/"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"

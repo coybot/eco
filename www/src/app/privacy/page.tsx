@@ -2,8 +2,8 @@ import { Metadata } from "next";
 import { Header, Footer } from "@/components/layout";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy – Astral",
-  description: "Astral privacy policy",
+  title: "Privacy Policy – Coybot",
+  description: "Coybot privacy policy",
 };
 
 export default function PrivacyPage() {
@@ -15,7 +15,7 @@ export default function PrivacyPage() {
         <p className="text-muted-foreground mb-12">Effective date: June 6, 2026</p>
 
         <Section title="1. Information We Collect">
-          <p>We collect information you provide when creating an account, including your name and email address. When you use the Astral Drone Operator app, we may collect operational data such as drone telemetry, flight logs, and usage statistics to provide and improve the service.</p>
+          <p>We collect information you provide when creating an account, including your name and email address. When you use the Coybot Drone Operator app, we may collect operational data such as drone telemetry, flight logs, and usage statistics to provide and improve the service.</p>
         </Section>
 
         <Section title="2. How We Use Your Information">
@@ -35,7 +35,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="6. Your Rights">
-          <p>You may access, update, or delete your personal information at any time by contacting us at privacy@astral.us. Users in certain jurisdictions may have additional rights under applicable law.</p>
+          <p>You may access, update, or delete your personal information at any time by contacting us at privacy@coy.bot. Users in certain jurisdictions may have additional rights under applicable law.</p>
         </Section>
 
         <Section title="7. Changes to This Policy">
@@ -43,7 +43,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="8. Contact">
-          <p>Questions about this policy? Contact us at <a href="mailto:privacy@astral.us" className="underline">privacy@astral.us</a>.</p>
+          <p>Questions about this policy? Contact us at <a href="mailto:privacy@coy.bot" className="underline">privacy@coy.bot</a>.</p>
         </Section>
       </main>
       <Footer />
