@@ -15,9 +15,12 @@ Parameters:
     Description: Google OAuth Web Client ID for Cognito federation (must be Web type, not iOS)
   GoogleClientSecret:
     Type: String
-    Default: "${GOOGLE_CLIENT_SECRET}"
+    Default: ""
     NoEcho: true
-    Description: Google OAuth Web Client Secret for Cognito federation
+    Description: >-
+      Google OAuth Web Client Secret for Cognito federation. Never give this a
+      default: pass it at deploy time, e.g.
+      sam deploy --parameter-overrides GoogleClientSecret=$GOOGLE_CLIENT_SECRET
   AppleServicesId:
     Type: String
     Default: ""
