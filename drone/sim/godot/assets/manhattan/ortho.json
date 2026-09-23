@@ -1,0 +1,15 @@
+{
+ "source": "USGS National Map imagery (public domain)",
+ "note": "resampled into the sim's 29-degree-rotated Manhattan ENU frame",
+ "bounds_enu": [
+  -2834.5,
+  139.9,
+  2538.1,
+  21707.6
+ ],
+ "size_px": [
+  1200,
+  4817
+ ],
+ "zoom": 14
+}

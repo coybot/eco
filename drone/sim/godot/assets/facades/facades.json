@@ -1,0 +1,45 @@
+{
+ "licence": "CC0 1.0 (ambientCG) \u2014 public domain, safe to redistribute",
+ "facades": [
+  {
+   "file": "facade_00.jpg",
+   "source": "Facade001",
+   "span_m": 18.0
+  },
+  {
+   "file": "facade_01.jpg",
+   "source": "Facade006",
+   "span_m": 20.0
+  },
+  {
+   "file": "facade_02.jpg",
+   "source": "Facade018A",
+   "span_m": 16.0
+  },
+  {
+   "file": "facade_03.jpg",
+   "source": "Facade002",
+   "span_m": 18.0
+  },
+  {
+   "file": "facade_04.jpg",
+   "source": "Facade005",
+   "span_m": 17.0
+  },
+  {
+   "file": "facade_05.jpg",
+   "source": "Facade013",
+   "span_m": 19.0
+  },
+  {
+   "file": "facade_06.jpg",
+   "source": "Facade017",
+   "span_m": 18.0
+  }
+ ],
+ "roof": {
+  "file": "roof.jpg",
+  "source": "Asphalt015",
+  "span_m": 12.0
+ }
+}
