@@ -308,6 +308,31 @@ func _physics_process(delta: float) -> void:
 	_check_geofence()
 
 
+## Altitude floor at this position, in metres.
+##
+## Flat ALT_FLOOR_M everywhere, except in envs that publish real terrain: there
+## the floor follows the ground, so a descent into rising ground is caught the
+## same way a descent below the envelope is. Guarded by has_method, so every
+## flat env keeps exactly the behaviour it had.
+##
+## TERRAIN_CLEARANCE_M is deliberately not zero: the heightfield is sampled at
+## ~3 m posts, and skimming a levee at literally zero clearance turns sampling
+## noise into repeated envelope events.
+const TERRAIN_CLEARANCE_M := 2.0
+
+func _floor_at(x: float, y: float) -> float:
+	if _env == null:
+		return ALT_FLOOR_M
+	# collision_height includes anything standing on the terrain (tree crowns);
+	# ground_height is bare terrain. Prefer the former where an env has it, so
+	# a low pass over a treeline is caught rather than flown through.
+	if _env.has_method("collision_height"):
+		return maxf(ALT_FLOOR_M, _env.collision_height(x, y) + TERRAIN_CLEARANCE_M)
+	if _env.has_method("ground_height"):
+		return maxf(ALT_FLOOR_M, _env.ground_height(x, y) + TERRAIN_CLEARANCE_M)
+	return ALT_FLOOR_M
+
+
 func _step(st: FixedWingState, dt: float) -> void:
 	# Apply flight dynamics
 	_apply_flight_dynamics(st, dt)
@@ -319,7 +344,7 @@ func _step(st: FixedWingState, dt: float) -> void:
 	# fraction of a tick that carried the aircraft past the limit. Without this
 	# the altitude floor leaks by a few centimetres and "z never below the floor"
 	# stops being a checkable invariant.
-	st.position.z = clamp(st.position.z, ALT_FLOOR_M, ALT_CEILING_M)
+	st.position.z = clamp(st.position.z, _floor_at(st.position.x, st.position.y), ALT_CEILING_M)
 	st.altitude = st.position.z
 	
 	# Apply pose
@@ -398,11 +423,13 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	# be caught by the vehicle rather than allowed to fly into the ground — and
 	# the intervention must be VISIBLE in telemetry, since "zero envelope
 	# interventions" is one of the demo's take-selection gates.
-	if st.position.z <= ALT_FLOOR_M and st.climb_rate < 0.0:
+	var floor_m := _floor_at(st.position.x, st.position.y)
+	if st.position.z <= floor_m and st.climb_rate < 0.0:
 		st.climb_rate = 0.0
 		st.cmd_climb_rate = 0.0
-		_log_event("envelope_protection", {"id": st.id, "limit": "alt_floor",
-			"alt": st.position.z, "floor": ALT_FLOOR_M})
+		_log_event("envelope_protection", {"id": st.id,
+			"limit": "terrain_floor" if floor_m > ALT_FLOOR_M else "alt_floor",
+			"alt": st.position.z, "floor": floor_m})
 	elif st.position.z >= ALT_CEILING_M and st.climb_rate > 0.0:
 		st.climb_rate = 0.0
 		st.cmd_climb_rate = 0.0
