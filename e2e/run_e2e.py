@@ -84,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
         gate = _run_behavior_gate()
         scorecard["behavior_gate"] = gate
         ok = ok and gate["ok"]
+        print(f"[{'PASS' if gate['ok'] else 'FAIL'}] behaviour gate")
+        for _name, _check in gate["checks"].items():
+            if not _check["ok"]:
+                print(f"  [FAIL] {_name}\n{_check['detail']}")
 
     for vehicle_type in types:
         result = _run_type(vehicle_type, args.tier)
