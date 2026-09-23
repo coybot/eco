@@ -47,8 +47,14 @@ _VALID_ACTIONS = {"navigate", "explore", "lookAround", "ask", "say", "stop", "do
 
 
 def _first_available_simulator() -> str | None:
-    proc = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
-                          capture_output=True, text=True, timeout=30)
+    # The first xcrun on a cold CI runner has to resolve the toolchain and can take
+    # well over 30s; a timeout here used to escape as an unhandled TimeoutExpired and
+    # kill the whole run rather than reporting a failed check.
+    try:
+        proc = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
+                              capture_output=True, text=True, timeout=180)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
     if proc.returncode != 0:
         return None
     devices = json.loads(proc.stdout).get("devices", {})
