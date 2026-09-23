@@ -118,9 +118,24 @@ _s3_client = None
 _s3_bucket = None
 _s3_credentials_expiry = None
 
-# Config, certs, and logs live alongside this file (repo: drone/common/; on-device: ~/drone-api/).
+# Config, certs, and logs live alongside this file by default (repo:
+# drone/common/; on-device flat deploy: ~/drone-api/). Override with
+# COYBOT_SDK_CONFIG_DIR or set_config_path() when running as an installed
+# package with config living elsewhere (e.g. examples/, a customer's own
+# project layout).
 _script_dir = Path(__file__).parent.absolute()
-DRONE_DIR = _script_dir
+DRONE_DIR = Path(os.environ.get("COYBOT_SDK_CONFIG_DIR", _script_dir)).absolute()
+
+
+def set_config_path(path):
+    """Override the directory where config.yaml, certs/, and logs live.
+
+    Defaults to this file's own directory (or $COYBOT_SDK_CONFIG_DIR), which
+    matches flat on-device deployment. Call this when running the SDK as an
+    installed package pointed at a different config directory.
+    """
+    global DRONE_DIR
+    DRONE_DIR = Path(path).absolute()
 
 
 def _connect():
@@ -131,24 +146,37 @@ def _connect():
     global _master
     # Note: caller must hold _mavlink_lock (RLock allows re-entry if needed)
     if _master is None:
-        import yaml
-        config_path = DRONE_DIR / 'config.yaml'
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        port = config.get('serial_port', '/dev/ttyACM0')
-        baud = config.get('baud_rate', 115200)
-        
-        # Check if serial port exists before attempting connection
         import os
-        if not os.path.exists(port):
+        import yaml
+
+        port = '/dev/ttyACM0'
+        baud = 115200
+        config_path = DRONE_DIR / 'config.yaml'
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f) or {}
+            port = config.get('serial_port', port)
+            baud = config.get('baud_rate', baud)
+
+        # Env overrides, e.g. for SITL: COYBOT_SDK_SERIAL_PORT=tcp:127.0.0.1:5760
+        port = os.environ.get('COYBOT_SDK_SERIAL_PORT', port)
+        baud = int(os.environ.get('COYBOT_SDK_BAUD_RATE', baud))
+
+        # Network URLs (SITL, MAVProxy, etc.) bypass the serial-device check.
+        is_network = port.startswith(('tcp:', 'tcpin:', 'udp:', 'udpin:', 'udpout:'))
+        if not is_network and not os.path.exists(port):
             raise ConnectionError(
                 f"Flight controller not found at {port}. "
-                f"Check USB connection and verify the serial port in config.yaml."
+                f"Check USB connection and verify the serial port in config.yaml. "
+                f"For SITL/simulation, set COYBOT_SDK_SERIAL_PORT to a MAVLink URL "
+                f"(e.g. tcp:127.0.0.1:5760)."
             )
-        
+
         print(f"Connecting to {port} at {baud}...")
-        _master = mavutil.mavlink_connection(port, baud=baud, source_system=255)
+        if is_network:
+            _master = mavutil.mavlink_connection(port, source_system=255)
+        else:
+            _master = mavutil.mavlink_connection(port, baud=baud, source_system=255)
 
         # First heartbeat (any); then prefer ArduPilot FC — USB setups sometimes see sys=0
         # or a companion heartbeat first, which breaks arm/takeoff when used as target.

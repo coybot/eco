@@ -109,7 +109,7 @@ export default function DocsPage() {
                 <pre className="p-4 overflow-x-auto text-sm font-mono">
                   <code className="text-muted-foreground">
 {`# Install uv (if you haven't already)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://coybot.sh/uv/install.sh | sh
 
 # Create a new project
 uv init my-drone-app && cd my-drone-app
