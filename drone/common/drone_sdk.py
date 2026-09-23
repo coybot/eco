@@ -1303,11 +1303,44 @@ def _load_config():
     return {}
 
 
+# Extension -> Content-Type. Kept explicit rather than using mimetypes so the
+# set of things this SDK will upload is visible and reviewable in one place.
+_CONTENT_TYPES = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.mp4': 'video/mp4',
+}
+
+
+def _content_type_for(filename):
+    return _CONTENT_TYPES.get(Path(filename).suffix.lower(), 'application/octet-stream')
+
+
+def _media_key(conversation_id, filename):
+    """Build the S3 key for a media object.
+
+    This layout is a contract, not an implementation detail: the cloud's
+    upload_url_handler builds the identical key, and generate_presigned_url
+    parses it back into bucket+key by string splitting. Change it in one place
+    only and the app silently gets dead links.
+    """
+    config = _load_config()
+    drone_id = config.get('drone_id', 'unknown')
+    from datetime import datetime
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return f'drones/{drone_id}/conversations/{conversation_id}/{timestamp}_{filename}'
+
+
 def upload_photo(local_path, conversation_id):
     """
     Upload a photo and return its public URL - to S3 (control_plane: aws,
     default) or to a local Ground Control Station's HTTP API
     (control_plane: gcs, see eco/gcs/README.md).
+
+    Thin wrapper over upload_media. Kept with this exact name and signature
+    because it is named in aws/src/handler.py's system prompts and therefore
+    appears verbatim in LLM-generated code.
 
     Args:
         local_path: Path to the local image file.
@@ -1316,19 +1349,52 @@ def upload_photo(local_path, conversation_id):
     Returns:
         Public URL of the uploaded image, or None if upload failed.
     """
+    return upload_media(local_path, conversation_id)
+
+
+def upload_media(local_path, conversation_id, content_type=None):
+    """Upload any media file (photo or video) and return its public URL."""
     config = _load_config()
-    drone_id = config.get('drone_id', 'unknown')
     filename = Path(local_path).name
-    from datetime import datetime
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    image_key = f'drones/{drone_id}/conversations/{conversation_id}/{timestamp}_{filename}'
+    key = _media_key(conversation_id, filename)
+    content_type = content_type or _content_type_for(filename)
 
     if config.get('control_plane') == 'gcs':
-        return _upload_photo_gcs(local_path, image_key, config.get('gcs', {}) or {})
-    return _upload_photo_s3(local_path, image_key)
+        return _upload_media_gcs(local_path, key, config.get('gcs', {}) or {}, content_type)
+    return _upload_media_s3(local_path, key, content_type)
 
 
-def _upload_photo_s3(local_path, s3_key):
+def upload_video_bytes(mp4_bytes, conversation_id, label='clip'):
+    """Upload in-memory MP4 bytes and return the public URL.
+
+    Bytes rather than a path because video_record.encode_mp4() returns bytes -
+    writing them to a temp file just to read them back would add a failure mode
+    (and the cleanup that capture_photo has to do) for nothing. Mirrors
+    sim/cloud_creds.upload_mp4_to_s3 on the hardware path.
+    """
+    if not mp4_bytes:
+        return None
+    config = _load_config()
+    key = _media_key(conversation_id, f'{label}.mp4')
+
+    if config.get('control_plane') == 'gcs':
+        return _upload_bytes_gcs(mp4_bytes, key, config.get('gcs', {}) or {}, 'video/mp4')
+
+    s3, bucket = _get_s3()
+    if s3 is None or bucket is None:
+        print("Error: S3 not available")
+        return None
+    try:
+        s3.put_object(Bucket=bucket, Key=key, Body=mp4_bytes, ContentType='video/mp4')
+        url = f'https://{bucket}.s3.amazonaws.com/{key}'
+        print(f"Video uploaded: {url} ({len(mp4_bytes)} bytes)")
+        return url
+    except Exception as e:
+        print(f"Error uploading video: {e}")
+        return None
+
+
+def _upload_media_s3(local_path, s3_key, content_type='image/jpeg'):
     s3, bucket = _get_s3()
     if s3 is None or bucket is None:
         print("Error: S3 not available")
@@ -1339,7 +1405,7 @@ def _upload_photo_s3(local_path, s3_key):
             local_path,
             bucket,
             s3_key,
-            ExtraArgs={'ContentType': 'image/jpeg'}
+            ExtraArgs={'ContentType': content_type}
         )
 
         # Generate public URL
@@ -1353,10 +1419,19 @@ def _upload_photo_s3(local_path, s3_key):
         return None
 
 
-def _upload_photo_gcs(local_path, image_key, gcs_config):
+def _upload_media_gcs(local_path, image_key, gcs_config, content_type='image/jpeg'):
     """HTTP PUT to the GCS's own /images/{key} route (gcs/http_api.py),
     authenticated with this drone's own pairing token - the GCS-mode
-    counterpart of _upload_photo_s3's IoT-role-credentialed S3 upload."""
+    counterpart of _upload_media_s3's IoT-role-credentialed S3 upload."""
+    try:
+        with open(local_path, 'rb') as f:
+            return _upload_bytes_gcs(f.read(), image_key, gcs_config, content_type)
+    except Exception as e:
+        print(f"Error reading {local_path} for GCS upload: {e}")
+        return None
+
+
+def _upload_bytes_gcs(data, image_key, gcs_config, content_type):
     images_base_url = gcs_config.get('images_base_url')
     auth_token = gcs_config.get('auth_token')
     if not images_base_url or not auth_token:
@@ -1367,20 +1442,128 @@ def _upload_photo_gcs(local_path, image_key, gcs_config):
 
     url = f"{images_base_url.rstrip('/')}/images/{image_key}"
     try:
-        with open(local_path, 'rb') as f:
-            data = f.read()
         req = urllib.request.Request(url, data=data, method='PUT')
-        req.add_header('Content-Type', 'image/jpeg')
+        req.add_header('Content-Type', content_type)
         req.add_header('Authorization', f'Bearer {auth_token}')
         with urllib.request.urlopen(req, timeout=30) as resp:
             if resp.status != 200:
-                print(f"Error uploading photo to GCS: HTTP {resp.status}")
+                print(f"Error uploading media to GCS: HTTP {resp.status}")
                 return None
-        print(f"Photo uploaded: {url}")
+        print(f"Media uploaded: {url}")
         return url
     except Exception as e:
-        print(f"Error uploading photo to GCS: {e}")
+        print(f"Error uploading media to GCS: {e}")
         return None
 
 
+# ---------------------------------------------------------------------------
+# Recording — capture that runs while the vehicle moves.
+#
+# These live here, not in LLM-generated code, because daemon.execute_code's
+# deny-list blocks file writes (\bopen\s*\([^)]*['"][wa]) and subprocess use.
+# Anything that touches the disk has to be an SDK verb.
+#
+# One recorder per process: the camera is a single exclusive device, so a
+# second concurrent recording is a bug in the caller, not a use case.
+# ---------------------------------------------------------------------------
+_recorder = None
 
+
+def _sdk_frame_source():
+    """Frame source for the SDK's own recordings: the SDK camera directly.
+
+    The mission loop passes backends.Backend.capture_frame instead, which
+    prefers PerceptionService. This path is for the codegen route, which has no
+    backend object.
+    """
+    camera = _get_camera()
+    if camera is None:
+        return None
+    return camera.get_frame(timeout_ms=500)
+
+
+def start_recording(mode="video", fps=6.0, interval_s=3.0, max_seconds=120.0):
+    """Start recording in the background and return immediately.
+
+    Flight commands issued after this run while the recording continues. Call
+    stop_recording() to finish and upload. mode is "video" (one MP4) or
+    "photos" (a still every interval_s).
+
+    Returns True if recording started, False if one was already running.
+    """
+    global _recorder
+    if _recorder is not None and _recorder.is_recording:
+        print("Warning: already recording; ignoring start_recording()")
+        return False
+    from media_recorder import MediaRecorder
+
+    _recorder = MediaRecorder(
+        _sdk_frame_source,
+        mode=mode,
+        fps=fps,
+        interval_s=interval_s,
+        max_seconds=max_seconds,
+    )
+    _recorder.start()
+    return True
+
+
+def stop_recording(conversation_id=None):
+    """Stop the recording, encode, upload, and return the list of URLs.
+
+    Safe to call when nothing is recording (returns []), because the mission
+    loop's cleanup path calls it unconditionally.
+    """
+    global _recorder
+    if _recorder is None:
+        return []
+    recorder = _recorder
+    _recorder = None
+
+    artifacts = recorder.stop()
+    # Hand the camera back so the WebRTC producer can reclaim it, exactly as
+    # capture_photo does after a single still.
+    release_camera()
+    if not artifacts:
+        if recorder.error:
+            print(f"Recording produced nothing: {recorder.error}")
+        return []
+
+    if conversation_id is None:
+        conversation_id = globals().get('CONVERSATION_ID') or os.environ.get('CONVERSATION_ID')
+    if not conversation_id:
+        import uuid
+        conversation_id = f"recordings/{uuid.uuid4().hex[:8]}"
+
+    urls = []
+    for artifact in artifacts:
+        if isinstance(artifact, (bytes, bytearray)):
+            url = upload_video_bytes(bytes(artifact), conversation_id)
+        else:
+            url = upload_media(str(artifact), conversation_id)
+            try:
+                os.remove(str(artifact))
+            except OSError:
+                pass
+        if url:
+            urls.append(url)
+    return urls
+
+
+def record_video(seconds=10.0, fps=6.0):
+    """Record a fixed-length clip here and now, upload it, return the URL.
+
+    The blocking one-shot form, for "take a 5 second video" with no flying in
+    between. Mirrors sim_sdk.record_video. Use start_recording/stop_recording
+    when the capture has to overlap a flight.
+    """
+    if not start_recording(mode="video", fps=fps, max_seconds=seconds):
+        return None
+    wait(seconds)
+    urls = stop_recording()
+    return urls[0] if urls else None
+
+
+def is_recording():
+    """True while a recording started by start_recording() is still running."""
+    return _recorder is not None and _recorder.is_recording

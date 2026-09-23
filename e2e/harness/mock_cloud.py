@@ -23,9 +23,14 @@ class MockCloud:
 
     Returns a canned success response: {"success": True, "image_urls": [...]} when the
     mission mentions capturing something visual, else {"success": True, "image_urls": []}.
+    A mission mentioning video/recording also gets "video_urls", mirroring the
+    real daemon, which publishes both fields side by side.
     """
 
-    _PHOTO_WORDS = re.compile(r"\b(photo|picture|photograph|see|look)\b", re.IGNORECASE)
+    _PHOTO_WORDS = re.compile(r"\b(photos?|pictures?|photographs?|see|look)\b", re.IGNORECASE)
+    # "record"/"recording" as well as "video": the phase pair behind this is
+    # start_recording/stop_recording, and an operator says either.
+    _VIDEO_WORDS = re.compile(r"\b(video|record|recording|film|footage)\b", re.IGNORECASE)
 
     def __init__(self):
         self.received: list[dict] = []
@@ -62,9 +67,11 @@ class MockCloud:
                 outer.received.append(body)
                 command = body.get("command", "")
                 has_image = bool(outer._PHOTO_WORDS.search(command))
+                has_video = bool(outer._VIDEO_WORDS.search(command))
                 resp = {
                     "success": True,
                     "image_urls": ["https://mock-cloud.invalid/photo.jpg"] if has_image else [],
+                    "video_urls": ["https://mock-cloud.invalid/clip.mp4"] if has_video else [],
                     "stdout": f"mock executed: {command}",
                 }
                 payload = json.dumps(resp).encode()

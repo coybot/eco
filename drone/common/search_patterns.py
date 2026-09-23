@@ -125,3 +125,131 @@ def lawnmower(
             pts.append(rotate(max_x, lane_y))
             pts.append(rotate(min_x, lane_y))
     return pts
+
+
+def rectangle(
+    size: Point,
+    origin: Point,
+    vehicle_class,
+    heading_deg: float = 0.0,
+    waypoints_per_side: int = 1,
+) -> List[Point]:
+    """Perimeter of a rectangle, as flyable world-ENU waypoints.
+
+    `size` is (forward_m, right_m) and `origin` is (forward_m, right_m) of the
+    near corner — both in the *body* frame whose +forward axis is `heading_deg`
+    (compass degrees, 0 = north/+y, increasing clockwise). Returns points in
+    world ENU (x=east, y=north), the same convention orbit()/lawnmower() use, so
+    the caller feeds them straight to backend.goto(north_m, east_m, alt).
+
+    Body frame is the whole point: every other positional phase is
+    north/east-from-home, which cannot express "10 meters ahead and 5 to the
+    right". Rotation happens here, once, rather than at each call site.
+
+    Corners are arcs of the vehicle's own minimum turn radius, not points. For a
+    quad or rover that radius is sub-metre so the arcs collapse to the corners
+    themselves and the output is the plain rectangle; for a fixed-wing (~42 m)
+    they are the difference between a flyable circuit and four waypoints that
+    each time out. This mirrors orbit()'s radius clamp, and exists for the same
+    reason recorded there: an unflyable geometry surfaces as a misleading
+    "blocked waypoint", never as "you asked for something the airframe can't do".
+
+    A side shorter than twice the turn radius cannot contain even one corner
+    arc, so the side is clamped up to 2*r — at which point the rectangle has
+    degenerated into a circle of that radius, which is the honest answer for
+    "fly a 10 m box" on an airframe that needs 42 m to turn.
+    """
+    # A vehicle that can stop takes corners sharply; only one that must keep
+    # flying needs them arced. See VehicleClass.can_hover.
+    r = 0.0 if vehicle_class.can_hover else turn_radius_m(vehicle_class)
+    fwd, right = float(size[0]), float(size[1])
+    # A zero/negative side is a degenerate rectangle; treat it as a point-ish
+    # box rather than emitting NaNs or a reversed traversal.
+    fwd, right = max(abs(fwd), 1e-3), max(abs(right), 1e-3)
+
+    # Corner arcs need r of straight run on each side of the corner, so a side
+    # must be at least 2*r to hold the two arcs that meet on it.
+    min_side = 2.0 * r
+    if r > 1e-3 and (fwd < min_side or right < min_side):
+        fwd = max(fwd, min_side)
+        right = max(right, min_side)
+
+    # Corner radius can never exceed half the shorter side, or opposing arcs
+    # would overlap and the traversal would double back.
+    rc = min(r, min(fwd, right) / 2.0)
+
+    o_f, o_r = float(origin[0]), float(origin[1])
+    # Body-frame corners, counter-clockwise starting at the near corner so the
+    # traversal is consistent regardless of sign conventions upstream.
+    corners = [
+        (o_f, o_r),
+        (o_f + fwd, o_r),
+        (o_f + fwd, o_r + right),
+        (o_f, o_r + right),
+    ]
+
+    n_mid = max(0, int(waypoints_per_side) - 1)
+    body_pts: List[Point] = []
+    for i, c in enumerate(corners):
+        nxt = corners[(i + 1) % 4]
+        prv = corners[(i - 1) % 4]
+        if rc > 1e-3:
+            # Replace the sharp corner with entry/exit points rc back along each
+            # adjoining side, plus one mid-arc point so a heading-hold
+            # controller carves the turn instead of overshooting it.
+            body_pts.append(_along(c, prv, rc))
+            body_pts.append(_arc_mid(c, prv, nxt, rc))
+            body_pts.append(_along(c, nxt, rc))
+        else:
+            body_pts.append(c)
+        for k in range(1, n_mid + 1):
+            t = k / (n_mid + 1)
+            start = _along(c, nxt, rc) if rc > 1e-3 else c
+            end = _along(nxt, c, rc) if rc > 1e-3 else nxt
+            body_pts.append((start[0] + (end[0] - start[0]) * t,
+                             start[1] + (end[1] - start[1]) * t))
+
+    pts = [_body_to_enu(f, rt, heading_deg) for f, rt in body_pts]
+    # When a side is exactly 2*rc the two corner arcs meet, so the exit point of
+    # one corner and the entry point of the next coincide. Flying to a waypoint
+    # you are already standing on is at best wasted time and at worst a goto()
+    # that never reports arrival, so collapse them.
+    out: List[Point] = []
+    for pt in pts:
+        if not out or math.hypot(pt[0] - out[-1][0], pt[1] - out[-1][1]) > 1e-6:
+            out.append(pt)
+    if len(out) > 1 and math.hypot(out[0][0] - out[-1][0], out[0][1] - out[-1][1]) <= 1e-6:
+        out.pop()
+    return out
+
+
+def _along(frm: Point, toward: Point, dist: float) -> Point:
+    """Point `dist` from `frm` along the segment toward `toward`."""
+    dx, dy = toward[0] - frm[0], toward[1] - frm[1]
+    length = math.hypot(dx, dy)
+    if length < 1e-9:
+        return frm
+    t = min(dist / length, 1.0)
+    return (frm[0] + dx * t, frm[1] + dy * t)
+
+
+def _arc_mid(corner: Point, prv: Point, nxt: Point, rc: float) -> Point:
+    """Midpoint of the rounded corner: pulled diagonally inward from the corner
+    so the three corner points describe a turn rather than a spike."""
+    a = _along(corner, prv, rc)
+    b = _along(corner, nxt, rc)
+    mx, my = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
+    # Pull toward the true arc: the arc's midpoint sits between the chord
+    # midpoint and the corner, at (1 - 1/sqrt(2)) of the way for a 90 deg turn.
+    k = 1.0 - math.sqrt(0.5)
+    return (mx + (corner[0] - mx) * k, my + (corner[1] - my) * k)
+
+
+def _body_to_enu(forward_m: float, right_m: float, heading_deg: float) -> Point:
+    """Body (forward, right) -> world ENU (east, north) for a given compass
+    heading. Heading 0 means forward = north, right = east; heading grows
+    clockwise, which is the compass/MAVLink convention, NOT the maths one."""
+    th = math.radians(heading_deg)
+    north = forward_m * math.cos(th) - right_m * math.sin(th)
+    east = forward_m * math.sin(th) + right_m * math.cos(th)
+    return (east, north)

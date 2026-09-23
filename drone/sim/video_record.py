@@ -1,73 +1,33 @@
-"""MP4 recording helpers for the eco sim host.
+"""Compatibility shim — the real module is now ``drone/common/video_record.py``.
 
-Records a short clip by polling a frame source (the drone camera over the engine
-IPC, or a vantage camera) and encoding the frames to an MP4 with PyAV (`av`, already
-a Hoopoe dependency). Used by the SDK ``record_video`` / vantage verbs in
-``sim_control``; the resulting bytes are uploaded via
-``cloud_creds.upload_mp4_to_s3`` so the app receives a ``video_urls`` entry exactly
-like ``image_urls``.
+It moved because the on-aircraft daemon needs it too: install scripts copy
+``drone/common/*.py`` flat into ``~/drone-api/``, so a recorder living under
+``drone/sim/`` could never reach real hardware. The code itself was always
+generic (a ``grab_rgb`` callable in, frames or MP4 bytes out) and had no sim
+dependency, so it moved rather than being duplicated.
 
-Kept dependency-light and importable without ``av`` (the encode call imports it
-lazily) so unit tests can exercise the polling/timing logic on a laptop.
+This shim stays because the sim tree imports it in seven places, in two
+different styles (flat ``from video_record import ...`` under a sys.path that
+contains ``drone/sim``, and package-relative ``from .video_record import ...``).
+Loading the common module by explicit path satisfies both without depending on
+``drone/common`` being on sys.path, and without the self-import a plain
+``from video_record import *`` would cause here.
 """
 
 from __future__ import annotations
 
-import time
-from typing import Callable, Optional
+import importlib.util as _importlib_util
+import pathlib as _pathlib
 
-import numpy as np
+_TARGET = _pathlib.Path(__file__).resolve().parent.parent / "common" / "video_record.py"
+_spec = _importlib_util.spec_from_file_location("_eco_common_video_record", _TARGET)
+if _spec is None or _spec.loader is None:  # pragma: no cover - packaging error
+    raise ImportError(f"cannot load the moved video_record module from {_TARGET}")
+_mod = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
 
+record_frames = _mod.record_frames
+encode_mp4 = _mod.encode_mp4
+record_mp4 = _mod.record_mp4
 
-def record_frames(grab_rgb: Callable[[], Optional[np.ndarray]], seconds: float = 5.0,
-                  fps: int = 15, max_frames: int = 900) -> list[np.ndarray]:
-    """Poll ``grab_rgb`` at ~``fps`` for ``seconds`` and return RGB frames.
-
-    ``grab_rgb`` returns an (H,W,3) uint8 RGB array or None (skipped). Caps at
-    ``max_frames`` so a stuck source can't grow unbounded.
-    """
-    frames: list[np.ndarray] = []
-    interval = 1.0 / max(1, fps)
-    deadline = time.time() + max(0.1, float(seconds))
-    while time.time() < deadline and len(frames) < max_frames:
-        t = time.time()
-        rgb = grab_rgb()
-        if rgb is not None and getattr(rgb, "size", 0):
-            frames.append(np.ascontiguousarray(rgb[:, :, :3]))
-        dt = interval - (time.time() - t)
-        if dt > 0:
-            time.sleep(dt)
-    return frames
-
-
-def encode_mp4(frames: list[np.ndarray], fps: int = 15) -> bytes:
-    """Encode RGB frames to H.264 MP4 bytes (faststart, yuv420p)."""
-    if not frames:
-        return b""
-    import io
-    import av  # lazy: only needed when actually encoding
-
-    h, w = frames[0].shape[:2]
-    # H.264 needs even dimensions
-    w -= w % 2
-    h -= h % 2
-    buf = io.BytesIO()
-    container = av.open(buf, mode="w", format="mp4")
-    stream = container.add_stream("h264", rate=fps)
-    stream.width, stream.height, stream.pix_fmt = w, h, "yuv420p"
-    stream.options = {"movflags": "faststart"}
-    for f in frames:
-        frame = av.VideoFrame.from_ndarray(np.ascontiguousarray(f[:h, :w, :3]),
-                                           format="rgb24")
-        for pkt in stream.encode(frame):
-            container.mux(pkt)
-    for pkt in stream.encode():  # flush
-        container.mux(pkt)
-    container.close()
-    return buf.getvalue()
-
-
-def record_mp4(grab_rgb: Callable[[], Optional[np.ndarray]], seconds: float = 5.0,
-               fps: int = 15) -> bytes:
-    """Convenience: record then encode in one call."""
-    return encode_mp4(record_frames(grab_rgb, seconds, fps), fps)
+__all__ = ["record_frames", "encode_mp4", "record_mp4"]

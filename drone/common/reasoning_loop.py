@@ -225,6 +225,11 @@ class MissionResult:
     total_phases: int
     findings: List[str] = field(default_factory=list)
     photos: List[str] = field(default_factory=list)
+    # Recorded clips (MP4 URLs) from start_recording/stop_recording phases.
+    # Separate from `photos` so the daemon can publish `video_urls` alongside
+    # `image_urls` — the field the sim daemon has always published and the
+    # cloud now reads.
+    videos: List[str] = field(default_factory=list)
     # Structured counterpart to the prose "memory: <label> at (...)" lines
     # _memory_finding_strings() already appends to `findings` — one dict per
     # distinct object seen this mission (see MissionLoop._landmarks_out).
@@ -243,6 +248,7 @@ class MissionResult:
             'total_phases': self.total_phases,
             'findings': self.findings,
             'photos': self.photos,
+            'videos': self.videos,
             'landmarks': self.landmarks,
             'duration_seconds': self.duration_seconds,
             'actions_taken': self.actions_taken,
@@ -341,6 +347,9 @@ class MissionLoop:
         self._history: List[str] = []
         self._findings: List[str] = []
         self._photos: List[str] = []
+        self._videos: List[str] = []
+        self._recorder = None
+        self._home_yaw_rad: Optional[float] = None
         # Same shared-reference trick as _findings: every MissionResult
         # construction site passes landmarks=self._landmarks_out, and the
         # `finally` block below extends the SAME list right before returning —
@@ -450,6 +459,9 @@ class MissionLoop:
         self._history = []
         self._findings = []
         self._photos = []
+        self._videos = []
+        self._recorder = None
+        self._home_yaw_rad = None
         self._landmarks_out = []
         self._landmark_photos_taken = 0
         self._home_lat = None
@@ -469,6 +481,25 @@ class MissionLoop:
                 self._home_lat, self._home_lon, self._home_alt = _drone_sdk.get_position()
             except Exception:
                 pass
+
+        # Capture the heading we started at, ONCE, so body-relative phases
+        # ("10m ahead and 5 to the right") resolve against a fixed reference.
+        # Deliberately not the live heading at each phase: a rectangle whose
+        # orientation depends on whichever way the aircraft happened to be
+        # pointing when the phase began is unpredictable to the operator and
+        # un-replannable after a failed leg.
+        try:
+            pose = self._get_backend().get_pose()
+            if pose is not None and pose[3] is not None:
+                self._home_yaw_rad = float(pose[3])
+        except Exception:
+            pass
+        if self._home_yaw_rad is None:
+            self._report_progress(
+                "No heading available at start - treating 'ahead' as north "
+                "for any body-relative phase"
+            )
+            self._home_yaw_rad = 0.0
 
         # Ceiling guard runs for the entire mission as a safety thread
         if DRONE_SDK_AVAILABLE:
@@ -539,6 +570,7 @@ class MissionLoop:
                             total_phases=len(mission.phases),
                             findings=self._findings,
                             photos=self._photos,
+                            videos=self._videos,
                             landmarks=self._landmarks_out,
                             duration_seconds=time.time() - mission.start_time,
                             actions_taken=actions_taken,
@@ -558,6 +590,7 @@ class MissionLoop:
                         total_phases=len(mission.phases),
                         findings=self._findings,
                         photos=self._photos,
+                        videos=self._videos,
                         landmarks=self._landmarks_out,
                         duration_seconds=elapsed,
                         actions_taken=actions_taken,
@@ -572,6 +605,7 @@ class MissionLoop:
                         total_phases=len(mission.phases),
                         findings=self._findings,
                         photos=self._photos,
+                        videos=self._videos,
                         landmarks=self._landmarks_out,
                         duration_seconds=elapsed,
                         actions_taken=actions_taken,
@@ -589,6 +623,7 @@ class MissionLoop:
                 total_phases=len(mission.phases),
                 findings=self._findings,
                 photos=self._photos,
+                videos=self._videos,
                 landmarks=self._landmarks_out,
                 duration_seconds=time.time() - mission.start_time,
                 actions_taken=actions_taken,
@@ -605,6 +640,7 @@ class MissionLoop:
                 total_phases=len(mission.phases),
                 findings=self._findings,
                 photos=self._photos,
+                videos=self._videos,
                 landmarks=self._landmarks_out,
                 duration_seconds=time.time() - mission.start_time,
                 actions_taken=actions_taken,
@@ -637,8 +673,11 @@ class MissionLoop:
         "nav": "_exec_nav",
         "go_to_gps": "_exec_go_to_gps",
         "fly_circle": "_exec_fly_circle",
+        "fly_rect": "_exec_fly_rect",
         "look_around": "_exec_look_around",
         "capture_photo": "_exec_capture_photo",
+        "start_recording": "_exec_start_recording",
+        "stop_recording": "_exec_stop_recording",
         "return_home": "_exec_return_home",
         "land": "_exec_land",
     }
@@ -801,6 +840,173 @@ class MissionLoop:
                 reason = getattr(result, 'message', 'blocked')
                 return {'failed': True, 'reason': f'Waypoint {i + 1} blocked: {reason}', 'actions': i + 1}
         return {'success': True, 'actions': n_waypoints}
+
+    def _body_to_home_offset(self, forward_m: float, right_m: float) -> tuple:
+        """Body-frame (forward, right) -> the (north_m, east_m) offset-from-home
+        that backend.goto() already speaks.
+
+        The rotation reference is the heading captured once at mission start
+        (_home_yaw_rad), not the live heading — see _run_impl. Compass
+        convention: yaw 0 = north, increasing clockwise, so +right is east at
+        yaw 0. This is the same convention search_patterns._body_to_enu uses;
+        the two must agree or a rectangle comes out mirrored.
+        """
+        yaw = self._home_yaw_rad or 0.0
+        north_m = forward_m * math.cos(yaw) - right_m * math.sin(yaw)
+        east_m = forward_m * math.sin(yaw) + right_m * math.cos(yaw)
+        return north_m, east_m
+
+    def _exec_fly_rect(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        forward_m = phase.get('forward_m', 10.0)
+        right_m = phase.get('right_m', 10.0)
+        origin_forward_m = phase.get('origin_forward_m', 0.0)
+        origin_right_m = phase.get('origin_right_m', 0.0)
+        alt_m = self._apply_clearance(phase.get('altitude_m', 5.0), phase)
+        per_side = phase.get('waypoints_per_side', 1)
+
+        heading_deg = math.degrees(self._home_yaw_rad or 0.0)
+        # search_patterns.rectangle applies the same body->ENU rotation and the
+        # same turn-radius treatment fly_circle's clamp does, so the geometry
+        # lives in one place for both patterns.
+        pts = search_patterns.rectangle(
+            (forward_m, right_m),
+            (origin_forward_m, origin_right_m),
+            self.vehicle_class,
+            heading_deg=heading_deg,
+            waypoints_per_side=per_side,
+        )
+        if not self.vehicle_class.can_hover:
+            min_side = 2.0 * search_patterns.turn_radius_m(self.vehicle_class)
+            if min(abs(forward_m), abs(right_m)) < min_side:
+                # Same class of failure _exec_fly_circle's radius clamp guards:
+                # left unclamped this reads as a string of blocked waypoints
+                # with the real cause invisible.
+                self._report_progress(
+                    f"Requested {forward_m}x{right_m}m rectangle has a side "
+                    f"tighter than this vehicle can turn in ({min_side:.0f}m) "
+                    f"- enlarging it to stay flyable"
+                )
+
+        self._report_progress(
+            f"Flying rectangle: {forward_m}m ahead x {right_m}m right, "
+            f"altitude={alt_m}m ({len(pts)} waypoints)"
+        )
+        backend = self._get_backend()
+        for i, (east_m, north_m) in enumerate(pts):
+            self._report_progress(f"Rectangle waypoint {i + 1}/{len(pts)}")
+            try:
+                result = backend.goto(north_m, east_m, alt_m)
+            except Exception as e:
+                return {'failed': True, 'reason': f'Waypoint {i + 1}: {e}', 'actions': i + 1}
+            if not self._goto_ok(result):
+                reason = getattr(result, 'message', 'blocked')
+                return {'failed': True, 'reason': f'Waypoint {i + 1} blocked: {reason}', 'actions': i + 1}
+        return {'success': True, 'actions': len(pts)}
+
+    def _exec_start_recording(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        mode = phase.get('mode', 'video')
+        fps = phase.get('fps', 6.0)
+        interval_s = phase.get('interval_s', 3.0)
+        max_seconds = phase.get('max_seconds', 120.0)
+
+        if self._recorder is not None and self._recorder.is_recording:
+            # Not an error: a planner that emitted two start_recording phases
+            # still wants one recording, and failing the phase would abort a
+            # flight over a planning slip.
+            self._report_progress("Already recording - continuing the existing recording")
+            return {'success': True, 'actions': 0}
+
+        try:
+            from media_recorder import MediaRecorder
+        except ImportError as e:
+            return {'failed': True, 'reason': f'media_recorder unavailable: {e}', 'actions': 0}
+
+        self._report_progress(f"Starting {mode} recording")
+        try:
+            # backend.capture_frame, not the SDK camera directly: it is already
+            # implemented for hardware (via PerceptionService, the shared owner
+            # of the device) and for the sim, so one recorder covers every
+            # vehicle and nothing has to arbitrate for the camera here.
+            self._recorder = MediaRecorder(
+                self._get_backend().capture_frame,
+                mode=mode,
+                fps=fps,
+                interval_s=interval_s,
+                max_seconds=max_seconds,
+            )
+            self._recorder.start()
+        except Exception as e:
+            self._recorder = None
+            return {'failed': True, 'reason': f'could not start recording: {e}', 'actions': 0}
+        return {'success': True, 'actions': 1}
+
+    def _exec_stop_recording(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        urls = self._finish_recording()
+        if not urls:
+            # A recording that produced nothing is worth saying out loud, but
+            # it must not fail the mission: the flight itself succeeded and
+            # aborting here would throw away everything after this phase.
+            self._report_progress("Recording produced no media")
+            return {'success': True, 'actions': 1}
+        self._report_progress(f"Recording finished: {len(urls)} file(s)")
+        return {'success': True, 'actions': 1}
+
+    def _finish_recording(self) -> List[str]:
+        """Stop any live recording, upload it, and file the URLs.
+
+        Split out of _exec_stop_recording because _cleanup() needs the same
+        behaviour: a mission that aborts mid-pattern should still deliver the
+        footage it already shot, which is often exactly what explains the
+        abort. Safe to call when nothing is recording.
+        """
+        recorder = self._recorder
+        self._recorder = None
+        if recorder is None:
+            return []
+
+        try:
+            artifacts = recorder.stop()
+        except Exception as e:
+            self._report_progress(f"WARNING: stopping the recording failed: {e}")
+            return []
+        if not artifacts:
+            return []
+
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        if sdk is None:
+            self._report_progress("WARNING: recorded media cannot be uploaded (no SDK)")
+            return []
+        if not hasattr(sdk, 'upload_video_bytes') or not hasattr(sdk, 'upload_media'):
+            # The sim daemon injects a shim that duck-types only capture_photo/
+            # look_around (see _exec_look_around). Say which capability is
+            # missing rather than dying on a bare AttributeError.
+            self._report_progress(
+                "WARNING: this SDK cannot upload recorded media "
+                "(no upload_media/upload_video_bytes) - discarding the recording"
+            )
+            return []
+
+        conversation_id = self.conversation_id
+        urls: List[str] = []
+        for artifact in artifacts:
+            try:
+                if isinstance(artifact, (bytes, bytearray)):
+                    url = sdk.upload_video_bytes(bytes(artifact), conversation_id)
+                    if url:
+                        self._videos.append(url)
+                else:
+                    url = sdk.upload_media(str(artifact), conversation_id)
+                    if url:
+                        self._photos.append(url)
+                    try:
+                        Path(artifact).unlink()
+                    except OSError:
+                        pass
+                if url:
+                    urls.append(url)
+            except Exception as e:
+                self._report_progress(f"WARNING: uploading recorded media failed: {e}")
+        return urls
 
     def _exec_look_around(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         directions = phase.get('directions', 4)
@@ -2284,6 +2490,15 @@ class MissionLoop:
 
     def _cleanup(self):
         """Clean up resources."""
+        # Before anything else: a mission that aborted mid-pattern still has a
+        # recorder thread running and footage buffered. That footage is often
+        # what explains the abort, so deliver it rather than dropping it — and
+        # stop the thread regardless, since it outlives the phase that started
+        # it and is bounded only by its own max_seconds.
+        try:
+            self._finish_recording()
+        except Exception as e:
+            self._report_progress(f"WARNING: recorder cleanup failed: {e}")
         if self._perception:
             self._perception.release()
 

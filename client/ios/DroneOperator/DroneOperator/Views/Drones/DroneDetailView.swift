@@ -753,6 +753,26 @@ struct ChatTabView: View {
         }
     }
     
+    /// Parse the `media` array out of a loosely-decoded MQTT payload.
+    ///
+    /// This path uses JSONSerialization rather than Codable (the payloads are
+    /// heterogeneous and partially untyped), so the strict decoding in
+    /// MessageContent.MediaItem doesn't apply here and the leniency has to be
+    /// repeated: an item missing a usable URL is dropped, and an unknown kind
+    /// falls back to .photo rather than discarding the whole message.
+    static func parseMedia(_ raw: Any?) -> [MessageContent.MediaItem]? {
+        guard let array = raw as? [[String: Any]] else { return nil }
+        let items = array.compactMap { entry -> MessageContent.MediaItem? in
+            guard let urlString = entry["url"] as? String,
+                  let url = URL(string: urlString) else { return nil }
+            let kind = MessageContent.MediaItem.Kind(
+                rawValue: entry["kind"] as? String ?? ""
+            ) ?? .photo
+            return MessageContent.MediaItem(url: url, kind: kind)
+        }
+        return items.isEmpty ? nil : items
+    }
+
     private func handleMQTTMessage(_ payload: Data) {
         if let jsonString = String(data: payload, encoding: .utf8) {
             print("📨 Chat MQTT payload: \(jsonString)")
@@ -767,6 +787,7 @@ struct ChatTabView: View {
         let text = json["text"] as? String ?? ""
         let imageUrls = json["image_urls"] as? [String]
         let imageOptions = json["image_options"] as? [[String: Any]]
+        let media = Self.parseMedia(json["media"])
         
         Task { @MainActor in
             // Handle "ack" - cloud received request and forwarded to drone
@@ -826,11 +847,16 @@ struct ChatTabView: View {
                 status: .delivered
             )
             
-            // Handle images
-            if let urls = imageUrls, !urls.isEmpty {
+            // Captured media. Set before the imageURLs fallbacks and
+            // checked first when rendering, because the server sends
+            // image_urls alongside media for older builds — taking both here
+            // would show the same photos twice.
+            if let media, !media.isEmpty {
+                newMessage.media = media
+            } else if let urls = imageUrls, !urls.isEmpty {
                 newMessage.imageURLs = urls
             }
-            
+
             // Handle image choice options
             if let options = imageOptions, !options.isEmpty {
                 newMessage.imageURLs = options.compactMap { $0["url"] as? String }
@@ -998,6 +1024,7 @@ struct DisplayMessage: Identifiable {
     let isUser: Bool
     let timestamp: Date
     var imageURLs: [String]?
+    var media: [MessageContent.MediaItem]?
     var status: MessageStatus
     
     enum MessageStatus {
@@ -1010,6 +1037,7 @@ struct DisplayMessage: Identifiable {
     static func from(chatMessage: ChatMessage) -> DisplayMessage {
         var content: String = ""
         var imageURLs: [String]? = nil
+        var media: [MessageContent.MediaItem]? = nil
         var status: MessageStatus = .delivered
         
         switch chatMessage.content {
@@ -1020,6 +1048,8 @@ struct DisplayMessage: Identifiable {
         case .imageChoice(let options):
             imageURLs = options.map { $0.url.absoluteString }
             content = "Here's what I see:"
+        case .media(let items):
+            media = items
         case .loading(let text):
             content = text
             status = .inProgress
@@ -1038,6 +1068,7 @@ struct DisplayMessage: Identifiable {
             isUser: chatMessage.sender == .user,
             timestamp: chatMessage.timestamp,
             imageURLs: imageURLs,
+            media: media,
             status: status
         )
     }
@@ -1068,12 +1099,19 @@ struct MessageBubble: View {
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
                 // Message content
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(message.content)
-                        .font(.body)
-                        .foregroundColor(message.isUser ? .white : .primary)
-                    
-                    // Images
-                    if let imageURLs = message.imageURLs, !imageURLs.isEmpty {
+                    if !message.content.isEmpty {
+                        Text(message.content)
+                            .font(.body)
+                            .foregroundColor(message.isUser ? .white : .primary)
+                    }
+
+                    // Captured media: one file inline, several as an album
+                    // card. Checked before imageURLs so a `media` message
+                    // never renders twice — the server populates image_urls
+                    // alongside media for older builds' benefit.
+                    if let media = message.media, !media.isEmpty {
+                        MediaAttachmentView(items: media)
+                    } else if let imageURLs = message.imageURLs, !imageURLs.isEmpty {
                         ForEach(Array(imageURLs.enumerated()), id: \.offset) { _, urlString in
                             AsyncImage(url: URL(string: urlString)) { image in
                                 image

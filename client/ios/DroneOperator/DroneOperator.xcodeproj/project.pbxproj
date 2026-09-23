@@ -10,6 +10,7 @@
 		0226CF272345B9DFD323A207 /* MQTTClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852D4B7A3590B029C16F8846 /* MQTTClientProtocol.swift */; };
 		057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F7EF5F138BEA331DC60973C2 /* WebRTC */; };
 		0C7CD6C64F1A964DCFDEFEA7 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 108E6D9254DA11DE44020D09 /* Foundation.framework */; };
+		0FC3E19D38EBA507B5C49A0D /* MediaAlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0989F22FDDFFC1229AAE1E5C /* MediaAlbumView.swift */; };
 		108C2B667CC25044DED0793F /* DroneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */; };
 		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
 		2080601FFA5F70674A60C87A /* DroneSetupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */; };
@@ -58,6 +59,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0989F22FDDFFC1229AAE1E5C /* MediaAlbumView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MediaAlbumView.swift; sourceTree = "<group>"; };
 		100B1A7A36761E30F2A4500A /* SetupDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDroneView.swift; sourceTree = "<group>"; };
 		108E6D9254DA11DE44020D09 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		24F92BA31E0CFB629DD79C76 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
@@ -121,6 +123,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		07AC6683914D75948D344E30 /* Media */ = {
+			isa = PBXGroup;
+			children = (
+				0989F22FDDFFC1229AAE1E5C /* MediaAlbumView.swift */,
+			);
+			name = Media;
+			path = Media;
+			sourceTree = "<group>";
+		};
 		1DACF4284ED086EA990DDB2C /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -259,6 +270,7 @@
 				BE97CDCBE34B4FED709FF517 /* Auth */,
 				56A3539E966CCEAFEE52AF88 /* Drones */,
 				7BB606F0CBD7E9BCCE3D8BAD /* Settings */,
+				07AC6683914D75948D344E30 /* Media */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -418,6 +430,7 @@
 				2C1645D0F8DB6DA0DD08FBAB /* AWSIoTMQTTClient.swift in Sources */,
 				2202266A5D33F3407FB64060 /* CocoaMQTTClient.swift in Sources */,
 				B623500CC83A610DB774B0BA /* ControlPlaneSettingsView.swift in Sources */,
+				0FC3E19D38EBA507B5C49A0D /* MediaAlbumView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

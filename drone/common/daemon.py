@@ -417,10 +417,22 @@ def execute_code(code: str, conversation_id: str = None) -> dict:
             'returncode': 0
         }
         
-        # Try to extract image URLs from stdout
+        # Try to extract media URLs from stdout
         image_urls = extract_image_urls(stdout_output)
+        video_urls = extract_video_urls(stdout_output)
+
+        # Generated code that starts a recording and never stops it is a
+        # plausible LLM slip, and the footage is already on the vehicle by
+        # then. Recover it here, on the success path, where the URLs can still
+        # reach the operator — the finally block below is a resource-cleanup
+        # backstop for the exception path and cannot return anything.
+        for url in _recover_unstopped_recording(conversation_id):
+            (video_urls if url.lower().endswith('.mp4') else image_urls).append(url)
+
         if image_urls:
             output['image_urls'] = image_urls
+        if video_urls:
+            output['video_urls'] = video_urls
         
         logger.info(f"Execution successful:\n{stdout_output}")
         # Publish stdout to logs
@@ -439,6 +451,19 @@ def execute_code(code: str, conversation_id: str = None) -> dict:
         return {'success': False, 'error': str(e), 'stderr': error_msg}
     
     finally:
+        # Stop any recording the generated code started but never stopped. The
+        # recorder runs on its own thread and holds the camera, so a snippet
+        # that calls start_recording() and then raises would otherwise leave
+        # the device claimed until the recorder's own max_seconds expired -
+        # with the WebRTC producer unable to reclaim it in the meantime. The
+        # mission path does the same thing in MissionLoop._cleanup.
+        # Cleanup only: on the success path the recording was already stopped
+        # (and its URLs returned) above. This catches the exception path, where
+        # there is no response left to attach anything to — the goal here is
+        # purely to release the camera and the thread.
+        for url in _recover_unstopped_recording(conversation_id):
+            logger.warning(f"Discarding media from an unstopped recording after an error: {url}")
+
         # SAFETY LAYER 1: Always ensure drone lands if still armed after execution
         # This catches: exceptions mid-flight, code that forgets to land, infinite loops that timeout
         try:
@@ -473,12 +498,49 @@ def execute_code(code: str, conversation_id: str = None) -> dict:
             pass
 
 
+def _recover_unstopped_recording(conversation_id) -> list:
+    """Stop a recording the generated code started but never stopped.
+
+    Returns the uploaded URLs (possibly empty). Never raises: this runs on the
+    cleanup path, where an exception would mask whatever actually went wrong.
+
+    It matters beyond tidiness because the recorder holds the camera on its own
+    thread, so a leaked one keeps the WebRTC producer from reclaiming the
+    device until its max_seconds expires.
+    """
+    try:
+        import drone_sdk
+        if not drone_sdk.is_recording():
+            return []
+        logger.warning("Code finished with a recording still running - stopping it")
+        return drone_sdk.stop_recording(conversation_id=conversation_id) or []
+    except Exception as e:
+        logger.error(f"Failed to stop a leftover recording: {e}")
+        return []
+
+
+def _extract_media_urls(stdout: str, extensions: str) -> list:
+    """Extract S3 URLs with the given extensions from generated-code stdout.
+
+    The codegen path has no structured return channel — the SDK verbs print
+    their URLs and this scrapes them back out — so an extension missing here
+    means media that was really captured and uploaded never reaches the app.
+    """
+    pattern = r'https://[a-zA-Z0-9\-]+\.s3\.amazonaws\.com/[^\s\'"]+\.(?:' + extensions + r')'
+    # dict.fromkeys dedups while preserving capture order, which set() lost —
+    # a look_around's photos arriving shuffled made the app's image_choice
+    # numbering disagree with the order they were taken in.
+    return list(dict.fromkeys(re.findall(pattern, stdout)))
+
+
 def extract_image_urls(stdout: str) -> list:
     """Extract S3 image URLs from stdout."""
-    # Match S3 URLs
-    url_pattern = r'https://[a-zA-Z0-9\-]+\.s3\.amazonaws\.com/[^\s\'"]+\.jpg'
-    urls = re.findall(url_pattern, stdout)
-    return list(set(urls))  # Remove duplicates
+    return _extract_media_urls(stdout, 'jpg|jpeg|png')
+
+
+def extract_video_urls(stdout: str) -> list:
+    """Extract S3 video URLs from stdout (record_video / stop_recording)."""
+    return _extract_media_urls(stdout, 'mp4')
 
 
 def _shadow_base() -> str:
@@ -1094,6 +1156,10 @@ def on_chat_command(topic, payload, **kwargs):
                         'mission_id': mission_id,
                         'result': result.to_dict(),
                         'image_urls': result.photos,
+                        # Matches the field sim_drone_daemon.py has always
+                        # published, so the sim and hardware paths finally
+                        # agree on the wire and the cloud needs one reader.
+                        'video_urls': result.videos,
                         'timestamp': datetime.now(timezone.utc).isoformat()
                     }
                     
@@ -1166,9 +1232,11 @@ def on_chat_command(topic, payload, **kwargs):
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
-        # Include any captured images
+        # Include any captured media
         if result.get('image_urls'):
             response_payload['image_urls'] = result['image_urls']
+        if result.get('video_urls'):
+            response_payload['video_urls'] = result['video_urls']
         
         # Publish to conversation-specific response topic
         if _mqtt_connection:

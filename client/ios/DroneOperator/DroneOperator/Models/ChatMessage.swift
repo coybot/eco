@@ -34,10 +34,47 @@ enum MessageContent: Codable, Equatable {
     case text(String)
     case image(URL)
     case imageChoice([ImageOption])  // Multiple images for user selection
+    case media([MediaItem])          // Photos and/or recorded clips from a mission
     case loading(String)             // Drone is processing, with status text
     case error(String)               // Error message
     case missionProgress(MissionProgress)  // Mission execution progress
     
+    /// One captured file — a still or a recorded clip.
+    struct MediaItem: Codable, Equatable, Identifiable {
+        let url: URL
+        let kind: Kind
+
+        /// The server sends the kind explicitly rather than us inferring it
+        /// from the path extension: these URLs are presigned and carry a query
+        /// string, so every extension check downstream would have to strip it
+        /// first, and eventually one would not.
+        enum Kind: String, Codable {
+            case photo
+            case video
+        }
+
+        /// URL is unique per item and stable for the life of the message.
+        var id: String { url.absoluteString }
+
+        // Decoded leniently: an unrecognised kind from a newer server should
+        // show up as a photo thumbnail, not fail the whole conversation.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            url = try c.decode(URL.self, forKey: .url)
+            kind = (try? c.decode(Kind.self, forKey: .kind)) ?? .photo
+        }
+
+        init(url: URL, kind: Kind) {
+            self.url = url
+            self.kind = kind
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case url
+            case kind
+        }
+    }
+
     /// Image option for selection
     struct ImageOption: Codable, Equatable, Identifiable {
         let id: Int
@@ -70,6 +107,7 @@ enum MessageContent: Codable, Equatable {
         case text
         case url
         case options
+        case media
         case missionProgress = "mission_progress"
     }
     
@@ -87,6 +125,9 @@ enum MessageContent: Codable, Equatable {
         case "image_choice":
             let options = try container.decode([ImageOption].self, forKey: .options)
             self = .imageChoice(options)
+        case "media":
+            let items = try container.decode([MediaItem].self, forKey: .media)
+            self = .media(items)
         case "loading":
             let text = try container.decode(String.self, forKey: .text)
             self = .loading(text)
@@ -97,7 +138,13 @@ enum MessageContent: Codable, Equatable {
             let progress = try container.decode(MissionProgress.self, forKey: .missionProgress)
             self = .missionProgress(progress)
         default:
-            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown message type: \(type)")
+            // Degrade to text rather than throwing. This decoder runs over a
+            // whole conversation at once, so one message of a type this build
+            // doesn't know would otherwise fail the entire history request —
+            // which is exactly what a server-side addition like "media" used
+            // to do to older app builds.
+            let text = (try? container.decode(String.self, forKey: .text)) ?? ""
+            self = .text(text)
         }
     }
     
@@ -114,6 +161,9 @@ enum MessageContent: Codable, Equatable {
         case .imageChoice(let options):
             try container.encode("image_choice", forKey: .type)
             try container.encode(options, forKey: .options)
+        case .media(let items):
+            try container.encode("media", forKey: .type)
+            try container.encode(items, forKey: .media)
         case .loading(let text):
             try container.encode("loading", forKey: .type)
             try container.encode(text, forKey: .text)
