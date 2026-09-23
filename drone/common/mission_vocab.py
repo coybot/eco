@@ -95,12 +95,60 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
             "waypoints": FieldSpec("int", 8, description="Points around the circle"),
         },
     ),
+    "fly_rect": PhaseSpec(
+        description="Fly the perimeter of a rectangle, sized and placed in the "
+                     "aircraft's own body frame: forward_m runs along the "
+                     "heading the aircraft had at mission start, right_m runs "
+                     "90 deg clockwise from it. This is what makes an operator "
+                     "phrase like \"the rectangle 10 meters ahead and 5 to the "
+                     "right\" expressible (forward_m=10, right_m=5) — the other "
+                     "positional phases are all north/east-from-home and cannot "
+                     "say \"ahead\". A bounded, finite pattern, not a loiter. "
+                     "IMPORTANT for a fixed-wing, for the same reason fly_circle "
+                     "has a radius floor: the corners are flown as arcs of the "
+                     "airframe's own minimum turn radius (roughly max_speed_mps "
+                     "/ max_yaw_rate_radps — 40m+ for a typical small "
+                     "fixed-wing), so a side shorter than twice that radius is "
+                     "not merely suboptimal, it is unflyable and degenerates "
+                     "into a circle. Pick sides of 100m+ for a fixed-wing if "
+                     "unsure; the on-device code clamps as a backstop but do "
+                     "not rely on it.",
+        fields={
+            "forward_m": FieldSpec("float", 10.0, description="Rectangle extent along the start heading, meters"),
+            "right_m": FieldSpec("float", 10.0, description="Rectangle extent 90 deg right of the start heading, meters"),
+            "origin_forward_m": FieldSpec("float", 0.0, description="Near corner's forward offset from home, meters"),
+            "origin_right_m": FieldSpec("float", 0.0, description="Near corner's rightward offset from home, meters"),
+            "altitude_m": FieldSpec("float", 5.0),
+            "waypoints_per_side": FieldSpec("int", 1, description="Intermediate points along each side, for smoother tracking"),
+            "min_clearance_alt": FieldSpec("float", None, description="Same climb-to-clear semantics as the nav phase's field."),
+        },
+    ),
     "look_around": PhaseSpec(
         description="Pan and capture photos in N directions (quad/rover — "
                      "no fixed-wing equivalent yet).",
         fields={"directions": FieldSpec("int", 4)},
     ),
     "capture_photo": PhaseSpec(description="Capture and upload a single photo.", fields={}),
+    "start_recording": PhaseSpec(
+        description="Start capturing media in the background and return "
+                     "immediately — the phases that follow fly while it "
+                     "records. Pair with a later stop_recording, which is what "
+                     "actually encodes and uploads. Use this for \"take a video "
+                     "of ...\" or \"... and take pictures\" where the capture "
+                     "has to happen DURING a pattern; use capture_photo "
+                     "instead for a single still at one spot.",
+        fields={
+            "mode": FieldSpec("str", "video", description='"video" for one MP4, "photos" for a still every interval_s'),
+            "fps": FieldSpec("float", 6.0, description="Video mode only: frames per second"),
+            "interval_s": FieldSpec("float", 3.0, description="Photos mode only: seconds between stills"),
+            "max_seconds": FieldSpec("float", 120.0, description="Hard stop, whatever the following phases do"),
+        },
+    ),
+    "stop_recording": PhaseSpec(
+        description="Stop the recording started by start_recording, encode it "
+                     "and upload. Harmless if nothing is recording.",
+        fields={},
+    ),
     "return_home": PhaseSpec(
         description="Return toward the launch point (RTL). Fixed-wing: loiters "
                      "at RTL altitude near home — does not land by itself "

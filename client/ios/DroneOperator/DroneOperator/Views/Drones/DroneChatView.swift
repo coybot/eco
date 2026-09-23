@@ -429,6 +429,14 @@ struct ChatBubble: View {
             .background(bubbleBackground)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             
+        case .media(let items):
+            // Group chat reaches this bubble too, so a fleet mission's
+            // recordings land here rather than only in the per-drone chat.
+            MediaAttachmentView(items: items)
+                .padding(8)
+                .background(bubbleBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
         case .imageChoice(let options):
             VStack(alignment: .leading, spacing: 12) {
                 Text("Which one?")

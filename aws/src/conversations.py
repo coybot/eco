@@ -114,8 +114,29 @@ at import time, so keep this section in sync with it if either changes)
    — commonly 40m+, NOT the 10-20m that's fine for a quadcopter); a tighter
    radius isn't just suboptimal, it's physically unflyable and the mission
    will fail outright. If unsure for a fixed-wing, use 50m+.
+   {"type": "fly_rect", "forward_m": 10, "right_m": 5, "altitude_m": 5}
+   — the rectangle is sized and placed in the drone's OWN body frame, using
+   the heading it had at mission start: forward_m runs straight ahead,
+   right_m runs to its right. This is the phase for "the rectangle 10 meters
+   ahead and 5 to the right" (forward_m: 10, right_m: 5) — "nav" and
+   "fly_circle" are north/east-from-home and cannot express "ahead".
+   Optional "origin_forward_m"/"origin_right_m" move the near corner off the
+   start point; "waypoints_per_side" adds intermediate points for smoother
+   tracking. Same fixed-wing caveat as fly_circle, for the same reason: the
+   corners are flown as arcs of the airframe's minimum turn radius, so a side
+   under twice that radius (commonly 85m+) is unflyable and the box collapses
+   into a circle. Use sides of 100m+ for a fixed-wing if unsure.
    {"type": "look_around", "directions": 4}
    {"type": "capture_photo"}
+   {"type": "start_recording", "mode": "video", "fps": 6, "max_seconds": 120}
+   {"type": "stop_recording"}
+   — recording runs in the BACKGROUND: put start_recording before the flight
+   phases you want captured and stop_recording after them, and the drone flies
+   while it records. mode "video" produces one MP4; mode "photos" takes a
+   still every "interval_s" seconds. Use this pair for "take a video of ..."
+   or "... and take pictures" where the capture has to happen DURING a
+   pattern. For a single still at one spot, use capture_photo instead — do not
+   bracket a whole mission in a recording just to get one picture.
    {"type": "return_home", "alt_m": 5}
    {"type": "land", "heading_deg": 270}
    — land's heading_deg matters for a fixed-wing (approach INTO wind); include
@@ -179,6 +200,12 @@ RULES:
 - Always start with arm_and_takeoff, always end with return_home then land
 - Use "nav" for any explicit distance/direction ("go 10m north", "move 5m east")
 - Use "fly_circle" for radius/orbit commands ("look around a 10m radius", "circle the area")
+- Use "fly_rect" for box/rectangle/perimeter commands, and for anything
+  phrased relative to the drone itself ("10 meters ahead and 5 to the right",
+  "fly a box around the yard in front of you")
+- Wrap flight phases in "start_recording"/"stop_recording" whenever the user
+  asks for a video, or for photos taken while flying a pattern ("take a video
+  of flying a 10 meter circle" -> start_recording, fly_circle, stop_recording)
 - Use "go_to_gps" when you can resolve an address/landmark to approximate coordinates; include your best GPS estimate
 - If the tasking gives positions as WORLD COORDINATES in metres — "(400, 0)",
   "120 m of position (400,0)" — that is a local frame, not GPS. Use "nav" with
@@ -380,6 +407,9 @@ AVAILABLE FUNCTIONS:
 - get_position() - returns tuple (lat, lon, alt_m)
 - get_attitude() - returns tuple (roll, pitch, yaw) in degrees
 - capture_photo(upload=True) - Take photo and upload to S3, return URL
+- start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
+- stop_recording() - Stop, upload, and return the list of media URLs (print them)
+- record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
 - home_lat, home_lon, home_alt
@@ -392,6 +422,7 @@ RULES:
 4. NEVER call takeoff() unless the user explicitly asks to fly or take off
 5. For flight (only outdoors, only when asked): arm() → takeoff() → ... → land()
 6. Keep altitude under 20m
+7. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
@@ -409,6 +440,9 @@ AVAILABLE FUNCTIONS:
 - get_position() - Returns (lat, lon, alt_m) from GPS or odometry
 - get_attitude() - Returns (roll, pitch, yaw) degrees
 - capture_photo(upload=True) - Take photo and upload to S3, return URL
+- start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
+- stop_recording() - Stop, upload, and return the list of media URLs (print them)
+- record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
 - home_lat, home_lon, home_alt — GPS position at command time
@@ -420,6 +454,7 @@ RULES:
 3. For motion: arm() first, then drive()/turn()/set_velocity()/goto(), then safe_disarm() when done
 4. Do NOT use takeoff(), land(), set_yaw(), motor_test(), disarm() — those are either quadcopter-only or blocked
 5. "stop" or "halt" means stop(). "disarm" always means safe_disarm() — never use disarm() directly
+6. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
@@ -475,7 +510,7 @@ def json_response(status_code, body):
     }
 
 
-def save_message(conversation_id, drone_id, sender, content_type, content, image_urls=None):
+def save_message(conversation_id, drone_id, sender, content_type, content, image_urls=None, media=None):
     """Save a message to the conversation history."""
     table = dynamodb.Table(CONVERSATIONS_TABLE)
     
@@ -497,6 +532,10 @@ def save_message(conversation_id, drone_id, sender, content_type, content, image
     
     if image_urls:
         item['imageUrls'] = image_urls
+    if media:
+        # Stored UNSIGNED, like imageUrls: presigned URLs expire in 24h but the
+        # message lives for 7 days, so history has to re-sign on read.
+        item['media'] = media
     
     table.put_item(Item=item)
     
@@ -690,7 +729,7 @@ def generate_code(instruction, conversation_id, drone_id=None, vehicle_type=None
             if (stripped.startswith('#') or 
                 stripped.startswith('import ') or
                 stripped.startswith('from ') or
-                any(stripped.startswith(f'{func}(') for func in ['motor_test', 'arm', 'safe_disarm', 'disarm', 'takeoff', 'land', 'goto', 'wait', 'get_position', 'capture_photo', 'set_velocity', 'set_yaw']) or
+                any(stripped.startswith(f'{func}(') for func in ['motor_test', 'arm', 'safe_disarm', 'disarm', 'takeoff', 'land', 'goto', 'wait', 'get_position', 'capture_photo', 'set_velocity', 'set_yaw', 'start_recording', 'stop_recording', 'record_video']) or
                 stripped.startswith('CONVERSATION_ID')):
                 code_start = i
                 break
@@ -734,6 +773,20 @@ def failure_message(result):
     return reason
 
 
+def media_items(image_urls, video_urls=None):
+    """Combine photo and clip URLs into one ordered list of typed media items.
+
+    Photos first, then clips, both in capture order. The `kind` is carried
+    explicitly rather than inferred from the file extension client-side,
+    because the URLs the app receives are presigned and carry a query string —
+    every "does it end in .mp4" check downstream would have to strip it first,
+    and one of them eventually would not.
+    """
+    items = [{'url': u, 'kind': 'photo'} for u in (image_urls or [])]
+    items += [{'url': u, 'kind': 'video'} for u in (video_urls or [])]
+    return items
+
+
 def publish_to_drone(drone_id, conversation_id, payload):
     """Send command to drone via IoT Core.
 
@@ -764,7 +817,7 @@ def publish_to_drone(drone_id, conversation_id, payload):
     print(f"✅ Published to drone")
 
 
-def publish_to_app(drone_id, conversation_id, message_type, text, image_urls=None, image_options=None):
+def publish_to_app(drone_id, conversation_id, message_type, text, image_urls=None, image_options=None, media=None):
     """Send message to app via IoT Core."""
     topic = f'drone/{drone_id}/chat/{conversation_id}'
     
@@ -784,6 +837,10 @@ def publish_to_app(drone_id, conversation_id, message_type, text, image_urls=Non
         payload['image_options'] = [
             {**opt, 'url': generate_presigned_url(opt['url'])}
             for opt in image_options
+        ]
+    if media:
+        payload['media'] = [
+            {**m, 'url': generate_presigned_url(m['url'])} for m in media
         ]
     
     print(f"📤 Publishing to app topic: {topic}, type: {message_type}")
@@ -1120,6 +1177,16 @@ def get_handler(event, context):
             'timestamp': item['timestamp']
         }
         
+        if item.get('media'):
+            # Re-sign on read: what is stored is the permanent S3 URL, and the
+            # presigned form handed out at publish time expired after 24h while
+            # the message itself lives 7 days. Without this, replayed history
+            # shows dead links rather than the media it actually captured.
+            msg['content']['media'] = [
+                {**m, 'url': generate_presigned_url(m['url'])}
+                for m in item['media']
+            ]
+
         if item.get('imageUrls'):
             # Generate pre-signed URLs for all images
             print(f"Processing message with {len(item['imageUrls'])} images")
@@ -1596,10 +1663,18 @@ def response_handler(event, context):
     
     result = payload.get('result', {})
     image_urls = payload.get('image_urls', [])
+    video_urls = payload.get('video_urls', [])
     original_message = payload.get('original_message', '')
     follow_up = payload.get('follow_up', False)
-    
-    print(f"📋 Processing: drone={drone_id}, conv={conversation_id}, images={len(image_urls)}, follow_up={follow_up}")
+
+    # One ordered list, photos then clips, is what decides "a file or a folder"
+    # on the app: it renders a single item inline and several as an album, by
+    # length alone. Building it here keeps that decision in one place instead
+    # of asking the client to reconcile two parallel URL lists.
+    media = media_items(image_urls, video_urls)
+
+    print(f"📋 Processing: drone={drone_id}, conv={conversation_id}, "
+          f"images={len(image_urls)}, videos={len(video_urls)}, follow_up={follow_up}")
     print(f"📋 Result: success={result.get('success')}, stdout={result.get('stdout', '')[:200]}")
 
     # Report the failure before anything else, including the history read. This is
@@ -1612,11 +1687,15 @@ def response_handler(event, context):
     # photo, with the reason dropped entirely. Failure wins; images ride along.
     if result and not result.get('success', False):
         msg = f"There was an issue: {failure_message(result)}"
-        content_type = 'image' if image_urls else 'text'
+        # 'media' whenever anything was captured — including video, which the
+        # old 'image' type could not describe. Text only when nothing was.
+        content_type = 'media' if media else 'text'
         save_message(conversation_id, drone_id, 'drone', content_type, msg,
-                     image_urls=image_urls if image_urls else None)
+                     image_urls=image_urls if image_urls else None,
+                     media=media if media else None)
         publish_to_app(drone_id, conversation_id, content_type, msg,
-                       image_urls=image_urls if image_urls else None)
+                       image_urls=image_urls if image_urls else None,
+                       media=media if media else None)
         print(f"✅ Failure reported to app: {msg[:120]}")
         return
     
@@ -1656,41 +1735,56 @@ Analyze the situation and respond appropriately. If multiple options match what 
         else:
             # Single result or just text response
             msg_content = agent_response.get('message', 'Here\'s what I found.')
-            content_type = 'image' if image_urls else 'text'
-            
+            content_type = 'media' if media else 'text'
+
             save_message(
                 conversation_id, drone_id, 'drone', content_type,
                 msg_content,
-                image_urls=image_urls if image_urls else None
+                image_urls=image_urls if image_urls else None,
+                media=media if media else None
             )
-            
+
             publish_to_app(
                 drone_id, conversation_id, content_type,
                 msg_content,
-                image_urls=image_urls if image_urls else None
+                image_urls=image_urls if image_urls else None,
+                media=media if media else None
             )
     
-    elif image_urls:
-        # Drone sent a single image (e.g., photo of the sign)
-        # Analyze the image if we have vision capability
-        analysis_prompt = f"""The drone has captured this image: {image_urls[0]}
+    elif media:
+        # The drone captured something. Keyed on `media`, not image_urls,
+        # because a recorded clip with no stills is a perfectly normal result
+        # of "take a video of ..." and used to fall through to the text-only
+        # branch below, silently dropping the video the operator asked for.
+        if image_urls:
+            # Only stills can go to the vision model; an MP4 cannot. So a
+            # video-only result gets a plain acknowledgement rather than a
+            # description, instead of a failed or hallucinated analysis.
+            analysis_prompt = f"""The drone has captured this image: {image_urls[0]}
 Original user request: {original_message}
 Execution result: {json.dumps(result)}
 
 Describe what you see in the image and respond to the user's request."""
-        
-        agent_response = call_agent(history, analysis_prompt, pending_images=image_urls)
-        
+            agent_response = call_agent(history, analysis_prompt, pending_images=image_urls)
+            default_msg = "Here's the photo."
+        else:
+            agent_response = {}
+            default_msg = (f"Here's the recording ({len(video_urls)} clip"
+                           f"{'s' if len(video_urls) != 1 else ''}).")
+
+        msg_content = agent_response.get('message') or default_msg
         save_message(
-            conversation_id, drone_id, 'drone', 'image',
-            agent_response.get('message', 'Here\'s the photo.'),
-            image_urls=image_urls
+            conversation_id, drone_id, 'drone', 'media',
+            msg_content,
+            image_urls=image_urls if image_urls else None,
+            media=media
         )
-        
+
         publish_to_app(
-            drone_id, conversation_id, 'image',
-            agent_response.get('message', 'Here\'s the photo.'),
-            image_urls=image_urls
+            drone_id, conversation_id, 'media',
+            msg_content,
+            image_urls=image_urls if image_urls else None,
+            media=media
         )
     
     else:

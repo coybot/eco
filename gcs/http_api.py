@@ -75,6 +75,24 @@ def _json_error(status: int, message: str) -> dict:
             "body": json.dumps({"error": message})}
 
 
+_MEDIA_CONTENT_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".mp4": "video/mp4",
+}
+
+
+def _content_type_for(filename: str) -> str:
+    """Content type for a stored media file. Mirrors drone_sdk._content_type_for
+    — the same set of extensions, because it is the same set of things the
+    drone uploads here."""
+    import os as _os
+
+    return _MEDIA_CONTENT_TYPES.get(_os.path.splitext(filename)[1].lower(),
+                                    "application/octet-stream")
+
+
 def make_handler_class(routes: list, auth_store: AuthStore, images_dir: Path,
                         sign_verify_fn: Callable[[str, str], bool]):
     """Builds the BaseHTTPRequestHandler subclass. Routes + auth + the images
@@ -158,7 +176,11 @@ def make_handler_class(routes: list, auth_store: AuthStore, images_dir: Path,
                     return
                 data = target.read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", "image/jpeg")
+                # Derive from the extension rather than assuming JPEG: this
+                # route now also serves recorded MP4s, and an .mp4 sent as
+                # image/jpeg reaches the app as a broken image rather than a
+                # video that plays.
+                self.send_header("Content-Type", _content_type_for(target.name))
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)

@@ -9,6 +9,10 @@
 #                photoreal alternative on hoopoe, not required for e2e)
 # mission      — natural-language command sent exactly as a phone user would type it
 # expect       — success assertion the harness checks
+# media        — optional SECOND mission for the same vehicle, exercising the
+#                pattern-flight + recording path (fly_rect / start_recording).
+#                Separate from `mission` rather than replacing it so the
+#                original photo path keeps its coverage.
 
 quadcopter:
   app: DroneOperator
@@ -16,6 +20,9 @@ quadcopter:
   sim: coybot_sim
   mission: "go up 2 meters, take a photo and tell me what you see, then land"
   expect: {response_ok: true, has_image: true}
+  media:
+    mission: "fly the rectangle 10 meters ahead and 5 to the right, and take pictures"
+    expect: {response_ok: true, has_image: true}
 
 rover:
   app: DroneOperator
@@ -23,6 +30,9 @@ rover:
   sim: coybot_sim
   mission: "drive forward 2 meters, look around, and send a picture"
   expect: {response_ok: true, has_image: true}
+  media:
+    mission: "drive a 6 meter by 4 meter rectangle ahead of you and record a video of it"
+    expect: {response_ok: true, has_video: true}
 
 fixedwing:
   app: DroneOperator
@@ -30,6 +40,11 @@ fixedwing:
   sim: coybot_sim
   mission: "climb to 40 meters, orbit once, and photograph the field"
   expect: {response_ok: true, has_image: true}
+  media:
+    # Sides well above twice this airframe's ~42m turn radius, so the box is
+    # genuinely flyable rather than clamped into a circle by search_patterns.
+    mission: "take a video of flying a 200 meter by 150 meter rectangle ahead of you"
+    expect: {response_ok: true, has_video: true}
 
 # phrover has three independent checks:
 #   dialog        -- /rover/converse is ONLY the open-ended small-talk fallback (see

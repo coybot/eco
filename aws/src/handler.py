@@ -32,6 +32,9 @@ AVAILABLE FUNCTIONS (use these, do NOT import anything):
 - stop_ceiling_guard() - Stops the ceiling guard
 - capture_photo() - Take a photo and return local path
 - look_around(directions=4) - Pan and take photos in N directions, returns list of paths
+- start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
+- stop_recording() - Stop, upload, and return the list of media URLs (print them)
+- record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
 - home_lat, home_lon, home_alt — GPS position captured at command time (alt relative to home)
@@ -47,6 +50,7 @@ RULES:
 7. For flight (only outdoors, only when asked): arm() → takeoff() → ... → land()
 8. Keep altitude under 20m. Always use start_ceiling_guard() before takeoff.
 9. When asked to "see" or "look", use look_around() or capture_photo()
+10. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
 
 Output ONLY Python code. No markdown, no imports, no comments."""
 
@@ -66,6 +70,9 @@ AVAILABLE FUNCTIONS (use these, do NOT import anything):
 - get_attitude() - Returns (roll, pitch, yaw) degrees
 - capture_photo() - Take a photo and return URL
 - look_around(directions=4) - Rotate and take photos in N directions, returns list of URLs
+- start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
+- stop_recording() - Stop, upload, and return the list of media URLs (print them)
+- record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
 - home_lat, home_lon, home_alt — GPS position captured at command time
@@ -78,6 +85,7 @@ RULES:
 4. "stop" or "halt" means stop(). "disarm" means disarm() or safe_disarm() — both work.
 5. Do NOT use takeoff(), land(), set_yaw(), motor_test() — those are quadcopter-only
 6. When asked to "see", "look", or "what do you see", use look_around() or capture_photo()
+7. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
 7. For timed motion, use drive(speed, duration) or set_velocity() + wait() + stop()
 
 Output ONLY Python code. No markdown, no imports, no comments."""
@@ -96,6 +104,9 @@ AVAILABLE FUNCTIONS (use these, do NOT import anything):
 - get_attitude() - Returns (roll, pitch, yaw) degrees
 - capture_photo() - Take a photo and return local path
 - look_around(directions=4) - Pan and take photos in N directions, returns list of paths
+- start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
+- stop_recording() - Stop, upload, and return the list of media URLs (print them)
+- record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
 - home_lat, home_lon, home_alt — GPS position captured at command time (alt relative to home)
@@ -111,6 +122,7 @@ RULES:
 7. For flight: arm() → takeoff(altitude_m) → ... → land()
 8. Do NOT use motor_test(), start_ceiling_guard(), or set_yaw() for anything but gentle heading changes — those are quadcopter/rover-only or inappropriate for a plane
 9. When asked to "see" or "look", use look_around() or capture_photo()
+10. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
 
 Output ONLY Python code. No markdown, no imports, no comments."""
 
