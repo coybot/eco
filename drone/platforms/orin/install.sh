@@ -129,6 +129,7 @@ fi
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 DRONE_DIR="$( cd "$SCRIPT_DIR/../.." && pwd )"
 COMMON_DIR="$DRONE_DIR/common"
+CAMERA_DIR="$DRONE_DIR/camera"
 MODELS_DIR="$DRONE_DIR/models"
 INSTALL_DIR="$HOME/drone-api"
 
@@ -209,6 +210,17 @@ if [ -d "$COMMON_DIR/certs" ]; then
     cp -r "$COMMON_DIR/certs/"* "$INSTALL_DIR/certs/" 2>/dev/null || true
 fi
 
+# Copy the camera package. This is drone/camera, NOT drone/common/camera -- the
+# latter is a partial duplicate holding only the base classes. The flat
+# "cp common/*.py" above cannot pick this up because it is a package, and
+# drone_sdk.py, perception.py, video_producer.py and video_stream.py all import
+# `camera` at runtime. Without it a fresh install looks fine until the first
+# frame is requested, then dies with ModuleNotFoundError.
+echo "Copying camera package..."
+rm -rf "$INSTALL_DIR/camera"
+cp -r "$CAMERA_DIR" "$INSTALL_DIR/camera"
+find "$INSTALL_DIR/camera" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+
 # Copy mission autonomy modules
 echo "Copying mission autonomy modules..."
 
@@ -253,6 +265,22 @@ if ! pip install onnxruntime-gpu 2>/dev/null; then
         || echo "  ⚠️  onnxruntime not installed - perception may fall back to CPU or be unavailable"
 fi
 pip install opencv-python-headless numpy ultralytics huggingface_hub
+
+# Camera SDKs. These are deliberately installed one at a time and allowed to
+# fail: neither publishes a wheel for every Jetson aarch64 / Python combination,
+# and on JetPack 5 (Python 3.8) pyrealsense2 usually has to be built from
+# librealsense source. Failing the whole install over that would be worse than
+# continuing, but the warning has to be loud -- no camera works without one.
+#
+# Note this does NOT install from common/requirements.txt. That file targets the
+# cloud/sim side and pins numpy>=2.0.0 (needs Python >=3.9) and
+# pyrealsense2>=2.56.0, neither of which is satisfiable on a JetPack 5 board,
+# so -r requirements.txt fails outright there.
+echo "Installing camera SDKs..."
+pip install pyrealsense2 \
+    || echo "  ⚠️  pyrealsense2 not installed - Intel RealSense cameras unavailable (build from source: https://github.com/IntelRealSense/librealsense)"
+pip install depthai \
+    || echo "  ⚠️  depthai not installed - OAK-D cameras unavailable"
 
 # Grounding DINO (run_prompt.py) — torch wheel is platform-specific; install may skip on failure
 echo "Installing optional HF / Track A dependencies..."

@@ -14,13 +14,17 @@ def _check_oakd_available() -> bool:
         return False
 
 
-def _check_realsense_available() -> bool:
-    """Check if RealSense camera is available."""
+def _check_realsense_available(serial: Optional[str] = None) -> bool:
+    """Check if a RealSense camera is available, optionally a specific one."""
     try:
         import pyrealsense2 as rs
-        ctx = rs.context()
-        devices = ctx.query_devices()
-        return len(devices) > 0
+        devices = list(rs.context().query_devices())
+        if serial is None:
+            return len(devices) > 0
+        return any(
+            device.get_info(rs.camera_info.serial_number) == serial
+            for device in devices
+        )
     except Exception:
         return False
 
@@ -69,6 +73,7 @@ def get_camera(
     rgb_fps: int = 30,
     enable_depth: bool = True,
     rgb_resolution: Tuple[int, int] = (1280, 720),
+    serial: Optional[str] = None,
 ) -> Optional[Camera]:
     """
     Get a camera instance, auto-detecting the available hardware.
@@ -78,19 +83,32 @@ def get_camera(
         rgb_fps: Target frame rate for RGB camera.
         enable_depth: Whether to enable depth output.
         rgb_resolution: Desired RGB resolution as (width, height).
+        serial: Bind to one specific RealSense by serial number, as reported by
+                list_available_cameras(). Required to reach a particular unit
+                when several are attached -- without it librealsense picks one
+                arbitrarily and the rest are unreachable.
     
     Returns:
         Camera instance if available, None otherwise.
     """
+    # A serial identifies a specific RealSense, so it also settles the backend.
+    if serial and preferred_type is None:
+        preferred_type = "realsense"
+    
     # Try preferred type first
     if preferred_type == "oakd":
         camera = _try_oakd(rgb_fps, enable_depth, rgb_resolution)
         if camera:
             return camera
     elif preferred_type == "realsense":
-        camera = _try_realsense(rgb_fps, enable_depth, rgb_resolution)
+        camera = _try_realsense(rgb_fps, enable_depth, rgb_resolution, serial)
         if camera:
             return camera
+    
+    # An explicit serial is a request for one device, not a hint. Fall through
+    # to some other camera and the caller silently gets the wrong hardware.
+    if serial:
+        return None
     
     # Auto-detect: try OAK-D first (preferred), then RealSense
     camera = _try_oakd(rgb_fps, enable_depth, rgb_resolution)
@@ -121,9 +139,16 @@ def _try_oakd(rgb_fps: int, enable_depth: bool, rgb_resolution: Tuple[int, int])
         return None
 
 
-def _try_realsense(rgb_fps: int, enable_depth: bool, rgb_resolution: Tuple[int, int]) -> Optional[Camera]:
+def _try_realsense(
+    rgb_fps: int,
+    enable_depth: bool,
+    rgb_resolution: Tuple[int, int],
+    serial: Optional[str] = None,
+) -> Optional[Camera]:
     """Try to create a RealSense camera instance."""
-    if not _check_realsense_available():
+    if not _check_realsense_available(serial):
+        if serial:
+            print(f"RealSense with serial {serial} is not connected")
         return None
     
     try:
@@ -133,6 +158,7 @@ def _try_realsense(rgb_fps: int, enable_depth: bool, rgb_resolution: Tuple[int, 
             rgb_fps=min(rgb_fps, 30),  # Cap at 30fps for stability
             enable_depth=enable_depth,
             rgb_resolution=rgb_resolution,
+            serial=serial,
         )
     except Exception as e:
         print(f"Failed to initialize RealSense camera: {e}")

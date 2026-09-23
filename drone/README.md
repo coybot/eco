@@ -156,12 +156,14 @@ cp config.yaml.example config.yaml
 
 Key settings:
 ```yaml
-drone_id: "your-drone-id"
-camera_type: "oakd"  # or "realsense"
-flight_controller:
-  connection: "/dev/ttyTHS1"
-  baud: 921600
+drone_id: "your-drone-id"   # /etc/drone-id wins over this when it exists
+serial_port: "/dev/ttyACM0" # prefer a stable /dev/serial/by-id/... path
+baud_rate: 115200
 ```
+
+There is no `camera_type` config key. The camera backend is chosen in code by
+`get_camera()`, which auto-detects OAK-D first, then RealSense. See
+[Selecting a camera](#selecting-a-camera).
 
 ### 5. Fleet Provisioning (automatic)
 
@@ -261,6 +263,48 @@ ros2 launch coybot_drone full_stack.launch.py
 | `vlm.py` | Vision-language model (Qwen3-VL) |
 | `nav2_bridge.py` | Nav2 navigation bridge |
 | `perception.py` | YOLOv8 detection + distance estimation |
+| `camera/` | Camera backends (OAK-D, RealSense) behind one interface |
+
+## Selecting a camera
+
+`get_camera()` auto-detects, preferring OAK-D and falling back to RealSense:
+
+```python
+from camera import get_camera, list_available_cameras
+
+list_available_cameras()   # [{'type': 'realsense', 'name': ..., 'serial': ...}, ...]
+cam = get_camera()         # first camera found
+```
+
+**With more than one RealSense attached, pass a serial.** Without one,
+librealsense binds to whichever device it picks first and the others cannot be
+reached at all:
+
+```python
+cam = get_camera(serial="123456789012")   # serial from list_available_cameras()
+cam.start()
+frame = cam.get_frame()
+```
+
+A serial is treated as a request for that specific device: if it is not
+connected, `get_camera()` returns `None` rather than quietly falling back to
+different hardware.
+
+Stereo-only modules (the D430, for example) have no RGB sensor. They are
+supported, and return frames with `rgb=None`, depth populated, and the IR pair
+in `left_mono` / `right_mono`:
+
+```python
+cam = get_camera(serial="987654321098")
+cam.start()
+cam.has_color      # False
+frame = cam.get_frame()
+frame.rgb          # None
+frame.left_mono    # IR image
+```
+
+Depth is always enabled for such a device regardless of `enable_depth`, since
+it is the only image that hardware produces.
 
 ## Testing
 
@@ -297,8 +341,21 @@ lsusb
 # For OAK-D
 python -c "import depthai; print(depthai.Device.getAllAvailableDevices())"
 
-# For RealSense
-rs-enumerate-devices
+# For RealSense. Use the Python API, not rs-enumerate-devices: that is part of
+# the librealsense CLI tools, which a pip-installed pyrealsense2 does not ship,
+# so it is usually absent on a drone even when the camera works fine.
+python -c "import pyrealsense2 as rs; print([(d.get_info(rs.camera_info.name), d.get_info(rs.camera_info.serial_number)) for d in rs.context().query_devices()])"
+
+# Or, from the install directory, via the camera package itself:
+python -c "from camera import list_available_cameras; print(list_available_cameras())"
+```
+
+If a camera enumerates but frames never arrive, check what USB generation it
+negotiated — a depth camera on a USB 2 link cannot sustain the higher
+resolutions and will fail to resolve those stream configs:
+
+```bash
+python -c "import pyrealsense2 as rs; print([(d.get_info(rs.camera_info.name), d.get_info(rs.camera_info.usb_type_descriptor)) for d in rs.context().query_devices()])"
 ```
 
 ### VLM not loading
