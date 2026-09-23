@@ -36,6 +36,10 @@ jobs:
   # needs the sdk repo checked out as a sibling of eco (see eco/e2e/harness/phrover.py).
   phrover-fast:
     runs-on: macos-latest
+    # Depends on an iOS Simulator being usable on a hosted runner, which is not
+    # dependable — this job has never passed since the repo was created. Kept for
+    # signal, but not allowed to fail the run until it can pass consistently.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
