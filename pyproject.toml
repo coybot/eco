@@ -59,7 +59,8 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.4",
-    "Pillow>=10.0",  # drone/sim/tests/test_pixel_axis.py
+    "Pillow>=10.0",  # drone/sim/tests/test_pixel_axis.py, drone/sim/tools/fetch_*.py
+    "scipy>=1.11",   # drone/sim/tools/fetch_baylands.py tree detection
 ]
 
 [project.urls]

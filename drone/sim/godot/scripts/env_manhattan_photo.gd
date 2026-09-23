@@ -232,7 +232,6 @@ func _add_city_ground() -> void:
 	mat.albedo_color = Color(0.55, 0.55, 0.55)
 	mat.roughness = 1.0
 	mat.metallic = 0.0
-	mat.specular = 0.0
 	mi.material_override = mat
 	add_child(mi)
 	print("[env_manhattan_photo] ortho ground %.0f x %.0f m" % [e1 - e0, n1 - n0])

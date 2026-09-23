@@ -86,6 +86,20 @@ drone/sim/godot/assets/*
 # Kenney CC0 city kit (~500KB, CC0) is tracked directly
 !drone/sim/godot/assets/kenney_city
 
+# Public-domain / CC0 scene data IS committed, so a plain clone can run every
+# environment with no fetch step. The blanket ignore above exists for
+# redistributable-licence reasons (Fab .glb packs), not size, so each new
+# scene's data has to be un-ignored HERE by name.
+#
+# If you add a scene and its assets seem to vanish from `git status`, this is
+# why — add the directory below rather than reaching for `git add -f`, which
+# commits the files but leaves the next person with the same puzzle.
+!drone/sim/godot/assets/baylands
+!drone/sim/godot/assets/facades
+!drone/sim/godot/assets/manhattan
+# ...but never the fetch caches inside them.
+drone/sim/godot/assets/*/_*
+
 # Godot's import cache — regenerated from the assets, never committed.
 # Godot 4 rebuilds this on `godot --import` (or first editor open); it is ~100
 # binary files for this project. Note the *.import sidecars next to the tracked

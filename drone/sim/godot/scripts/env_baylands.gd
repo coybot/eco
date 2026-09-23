@@ -263,7 +263,6 @@ func _build_terrain() -> void:
 	mat.albedo_color = Color(0.55, 0.55, 0.55)
 	mat.roughness = 1.0
 	mat.metallic = 0.0
-	mat.specular = 0.0
 	mi.material_override = mat
 	add_child(mi)
 
