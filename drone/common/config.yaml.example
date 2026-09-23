@@ -1,5 +1,11 @@
 # Drone API Configuration
-# Copy this to config.yaml and fill in your values
+# Copy this to config.yaml and fill in your values.
+#
+# By default this is loaded from the same directory as drone_sdk.py itself
+# (matches on-device flat deployment: drone/common/*.py copied into
+# ~/drone-api/ alongside config.yaml). Running the SDK as an installed
+# package with config living elsewhere? Override with set_config_path() or
+# the COYBOT_SDK_CONFIG_DIR environment variable.
 
 # Drone Identity (auto-generated if not set)
 # drone_id: "drone-abc123"
