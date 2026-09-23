@@ -116,7 +116,6 @@ class Sim:
         self.host = host
         self.port = port
         self._pending = 0
-        self._connect()
 
     def _connect(self) -> None:
         # 10 s, not 60. A stalled sim should be noticed and reconnected in
@@ -126,11 +125,38 @@ class Sim:
         self.f = self.s.makefile("rwb")
         self._pending = 0
 
+    def wait_for_sim(self, notice_every: int = 12) -> None:
+        """Block until the sim accepts a connection.
+
+        Reconnect-after-a-drop was already handled; the FIRST connect was not,
+        and that is the one that fails on a cold start. Running as a service on
+        the Orin, this process comes up with the machine while the workstation
+        rendering the sim may be at a login screen or still booting — so
+        create_connection raised ConnectionRefusedError, the unit exited 1, and
+        systemd restart-looped it. It recovered eventually but reported itself as
+        crashing when it was really just early.
+        """
+        attempt = 0
+        while True:
+            try:
+                self._connect()
+                if attempt:
+                    print(f"sim came up after {attempt} attempt(s)", flush=True)
+                return
+            except OSError as e:
+                # Only announce occasionally: at one line per 5 s an overnight
+                # wait would otherwise be tens of thousands of identical lines.
+                if attempt % notice_every == 0:
+                    print(f"waiting for sim at {self.host}:{self.port} "
+                          f"({type(e).__name__})", flush=True)
+                attempt += 1
+                time.sleep(5.0)
+
     def reconnect(self) -> None:
         """Rebuild the link after a stall or drop.
 
         Needed because the sim is now on another machine and its main loop can
-        genuinely stop answering — GNOME blanked thor's screen mid-flight, the
+        genuinely stop answering — GNOME blanked the sim host's screen mid-flight, the
         compositor stopped presenting frames, Godot's loop throttled, and the
         socket timed out. The guidance itself was fine and the aircraft was still
         airborne; only the client died, which turned a recoverable hiccup into a
@@ -461,6 +487,9 @@ def main() -> int:
     args = ap.parse_args()
 
     sim = Sim(args.port, args.host)
+    # Wait rather than crash if the sim is not up yet — on a cold boot the
+    # machine rendering it may still be at a login screen.
+    sim.wait_for_sim()
     env = sim.op(op="fw_env_state")["env"]
     if env.get("env") != "manhattan":
         print(f"env is {env.get('env')!r}, expected manhattan", file=sys.stderr)
@@ -521,7 +550,7 @@ def main() -> int:
     while deadline is None or time.time() < deadline:
         # Ride out a sim stall rather than exiting on it. Losing the link is not
         # the same as losing the aircraft, and treating them the same ended a
-        # perfectly good 7-lap flight because thor's screen blanked.
+        # perfectly good 7-lap flight because the sim host's screen blanked.
         try:
             st = sim.op(op="fw_state", id=args.drone_id)
             if not st.get("ok"):
