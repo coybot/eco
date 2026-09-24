@@ -480,6 +480,8 @@ struct GeneralTabView: View {
                             }
                         }
                         
+                        BatteryReadinessView(status: status)
+
                         // Position coordinates (if available)
                         if let pos = status.position {
                             HStack {
@@ -1826,5 +1828,51 @@ struct LogEntryView: View {
         ))
         .environment(APIClient.shared)
         .environment(MQTTService.shared)
+    }
+}
+
+
+/// Pre-takeoff battery status: ready or not (and why), the pack voltage, any
+/// battery-sensor faults the drone detected, and in flight the action budget.
+struct BatteryReadinessView: View {
+    let status: DroneStatus
+
+    var body: some View {
+        if status.preflight != nil || !(status.batteryWarnings ?? []).isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                if status.armed == true, let budget = status.batteryBudget {
+                    row(icon: budget.verdict == "ok" ? "gauge.with.dots.needle.67percent" : "exclamationmark.triangle.fill",
+                        color: budget.verdict == "ok" ? .green : .orange,
+                        text: budget.verdict == "ok"
+                            ? "About \(budget.actionsLeft ?? 0) more actions before returning home"
+                            : (budget.reason ?? "Returning home for battery"))
+                } else if let pre = status.preflight {
+                    row(icon: pre.canTakeoff ? "checkmark.seal.fill" : "xmark.octagon.fill",
+                        color: pre.canTakeoff ? .green : .red,
+                        text: pre.canTakeoff
+                            ? "Battery OK for takeoff"
+                            : (pre.reason ?? "Not safe to take off"))
+                }
+                if let v = status.voltage {
+                    Text(String(format: "Pack %.2f V", v) + (status.batterySource.map { " · from \($0.replacingOccurrences(of: "_", with: " "))" } ?? ""))
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                ForEach(status.batteryWarnings ?? [], id: \.self) { warning in
+                    Text(warning)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+        }
+    }
+
+    private func row(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: icon).foregroundColor(color)
+            Text(text).font(.subheadline)
+        }
     }
 }

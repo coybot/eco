@@ -688,6 +688,12 @@ def _load_battery_config():
             if loaded.get("cellCount"):
                 _battery_config = loaded
                 logger.info(f"Loaded battery config: {_battery_config}")
+                try:
+                    from drone_sdk import set_battery_pack
+                    set_battery_pack(cells=loaded.get("cellCount"),
+                                     capacity_mah=loaded.get("capacityMah"))
+                except Exception:
+                    pass
     except Exception as e:
         logger.warning(f"Failed loading battery config: {e}")
 
@@ -739,6 +745,11 @@ def _handle_battery_config(battery_config: dict, source: str):
                 'cellFullVoltage': float(cell_full)
             }
             _save_battery_config()
+            try:
+                from drone_sdk import set_battery_pack
+                set_battery_pack(cells=int(cell_count), capacity_mah=int(capacity_mah))
+            except Exception as pack_err:
+                logger.warning(f"Could not update battery estimator: {pack_err}")
 
             # Set ArduPilot parameters via MAVLink
             try:
@@ -1559,7 +1570,8 @@ def ensure_flight_controller_setup():
             n_cells=battery_cfg.get('cells', 4),
             capacity_mah=battery_cfg.get('capacity_mah', 5000),
             low_voltage=battery_cfg.get('low_voltage_per_cell', 3.5),
-            critical_voltage=battery_cfg.get('critical_voltage_per_cell', 3.3)
+            critical_voltage=battery_cfg.get('critical_voltage_per_cell', 3.3),
+            fc_pins=battery_cfg.get('fc_pins'),
         )
         logger.info("Battery monitoring configured")
         
@@ -1654,38 +1666,44 @@ def publish_heartbeat():
     
     # Collect telemetry from flight controller
     try:
-        from drone_sdk import get_telemetry, get_battery
+        from drone_sdk import get_telemetry
         telemetry = get_telemetry()
         
-        # Get battery percentage - if FC returns -1, calculate from voltage
-        battery_pct = telemetry.get('battery')
-        if battery_pct is None or battery_pct < 0:
-            # Try to calculate from voltage using battery config
-            try:
-                battery_data = get_battery()
-                voltage = battery_data.get('voltage', 0)
-                if voltage > 0:
-                    # Calculate percentage from voltage
-                    cell_count = _battery_config['cellCount']
-                    cell_empty = _battery_config['cellEmptyVoltage']
-                    cell_full = _battery_config['cellFullVoltage']
-                    
-                    empty_pack = cell_empty * cell_count
-                    full_pack = cell_full * cell_count
-                    
-                    if voltage <= empty_pack:
-                        battery_pct = 0
-                    elif voltage >= full_pack:
-                        battery_pct = 100
-                    else:
-                        battery_pct = int(100 * (voltage - empty_pack) / (full_pack - empty_pack))
-                    
-                    heartbeat['voltage'] = round(voltage, 2)
-            except Exception as volt_err:
-                logger.debug(f"Could not get battery voltage: {volt_err}")
-        
-        if battery_pct is not None and battery_pct >= 0:
-            heartbeat['battery'] = battery_pct
+        # Battery: drone_sdk's estimate, never the FC's raw battery_remaining
+        # (that counter resets to 100% at FC boot and freezes when the
+        # current sensor reads ~0 A - how a flat pack showed 87%).
+        try:
+            from drone_sdk import (battery_status, seed_fc_battery_from_voltage,
+                                   _battery_gates_apply)
+            flies = _battery_gates_apply()
+            b = battery_status()
+            if b['remaining'] >= 0:
+                heartbeat['battery'] = int(round(b['remaining']))
+            if b['voltage']:
+                heartbeat['voltage'] = round(b['voltage'], 2)
+            heartbeat['batterySource'] = b['source']
+            if b['warnings']:
+                heartbeat['batteryWarnings'] = b['warnings']
+            # The pre-takeoff status the operator checks before flying.
+            if flies:
+                heartbeat['preflight'] = {
+                    'canTakeoff': b['can_takeoff'],
+                    'reason': b['takeoff_reason'],
+                    'minTakeoffPct': b['min_takeoff_pct'],
+                    'reservePct': b['reserve_pct'],
+                }
+            if flies and b['armed']:
+                heartbeat['batteryBudget'] = {
+                    'actionsLeft': b['actions_left'],
+                    'verdict': b['in_flight']['action'],
+                    'reason': b['in_flight']['reason'],
+                }
+            if b['guard']:
+                heartbeat['batteryGuard'] = b['guard']
+            if not b['armed']:
+                seed_fc_battery_from_voltage()
+        except Exception as batt_err:
+            logger.debug(f"Could not estimate battery: {batt_err}")
         
         # Include armed status
         if telemetry.get('armed') is not None:

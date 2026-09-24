@@ -55,6 +55,7 @@ from spatial_memory import SpatialMemory, normalize_label, labels_match
 import search_patterns
 import mission_vocab
 from situation import ObstacleTracker, PeerTracker, payload_block
+from battery import BatteryConfig, BatteryGovernor
 
 # Fallback image dimensions for NAVIGATE_TO_POINT's pixel->normalized conversion
 # when the captured frame isn't a numpy array to read .shape from (SimBackend's
@@ -327,6 +328,12 @@ class MissionLoop:
         self.drone_sdk = drone_sdk
         self.backend: Optional[Backend] = backend
         self.vehicle_class: VehicleClass = vehicle_class or get_class("quadcopter")
+        # Battery budget: every phase and VLM action is priced against "can we
+        # still get home and land with the reserve?". Multirotor only: the
+        # cost model is hover-based and means nothing for a plane or a rover.
+        self._battery_gov: Optional[BatteryGovernor] = (
+            BatteryGovernor(BatteryConfig.load())
+            if self.vehicle_class.name == "quadcopter" else None)
 
         # World-frame landmark memory. merge_radius scales with sense_range_m: the
         # default 1.5m (SpatialMemory's own default) was tuned for the quad's ~10m
@@ -555,8 +562,26 @@ class MissionLoop:
 
                     reason = phase_result.get('reason', 'Unknown')
                     elapsed = time.time() - mission.start_time
-                    battery = self._get_backend().get_battery()
-                    battery_ok = battery is None or battery.get('remaining', 100.0) > 15.0
+                    if phase_result.get('battery_abort'):
+                        return MissionResult(
+                            success=False,
+                            summary=f"Ended for battery at phase {phase_num}",
+                            phases_completed=mission.current_phase,
+                            total_phases=len(mission.phases),
+                            findings=self._findings,
+                            photos=self._photos,
+                            videos=self._videos,
+                            landmarks=self._landmarks_out,
+                            duration_seconds=time.time() - mission.start_time,
+                            actions_taken=actions_taken,
+                            failure_reason=reason,
+                        )
+                    if self._battery_gov is not None:
+                        pct, dist_home, alt = self._battery_situation()
+                        battery_ok = self._battery_gov.in_flight(pct, dist_home, alt).ok
+                    else:
+                        battery = self._get_backend().get_battery()
+                        battery_ok = battery is None or battery.get('remaining', 100.0) > 15.0
                     budget_ok = (
                         replans_used < self.MAX_REPLANS_PER_PHASE
                         and elapsed < self.MAX_DURATION_SECONDS * 0.9
@@ -687,10 +712,163 @@ class MissionLoop:
         No `type` (or an unrecognized one) falls through to the open-ended VLM
         loop — matching the cloud prompt's "untyped phase" contract."""
         phase_type = phase.get('type')
+        blocked = self._battery_gate_phase(phase)
+        if blocked is not None:
+            return blocked
         method_name = self._PHASE_DISPATCH.get(phase_type)
         if method_name is not None:
             return getattr(self, method_name)(phase)
         return self._exec_vlm_phase(phase, mission)
+
+    # ------------------------------------------------------------------ #
+    # Battery budget                                                     #
+    # ------------------------------------------------------------------ #
+
+    # Phases that spend nothing new or that ARE the way home: never blocked.
+    _BATTERY_FREE_PHASES = ("return_home", "land", "stop_recording")
+
+    def _battery_situation(self):
+        """(pct or None, distance from home m, altitude m) from the backend."""
+        pct = None
+        try:
+            b = self._get_backend().get_battery()
+            if b is not None and b.get('remaining') is not None and b['remaining'] >= 0:
+                pct = float(b['remaining'])
+        except Exception:
+            pass
+        dist_home, alt = 0.0, 0.0
+        pose = None
+        try:
+            pose = self._get_backend().get_pose()
+        except Exception:
+            pass
+        if pose is not None:
+            dist_home = math.hypot(pose[0], pose[1])
+            alt = max(0.0, float(pose[2]))
+        elif self.drone_sdk is not None:
+            # No Nav2 pose (e.g. GPS-only flight): the FC's position vs home.
+            try:
+                lat, lon, alt = self.drone_sdk.get_position()
+                alt = max(0.0, float(alt))
+                if self._home_lat is not None:
+                    n, e = self._gps_to_home_offset(lat, lon)
+                    dist_home = math.hypot(n, e)
+            except Exception:
+                pass
+        return pct, dist_home, alt
+
+    def _phase_battery_cost(self, phase: Dict[str, Any], dist_home: float, alt: float):
+        """(kind, cost %, distance from home after m, altitude after m)."""
+        gov = self._battery_gov
+        t = phase.get('type')
+        if t == 'arm_and_takeoff':
+            a = float(phase.get('altitude_m', 5.0))
+            return 'takeoff', gov.takeoff_cost(a), 0.0, a
+        if t == 'nav':
+            n, e = float(phase.get('north_m', 0.0)), float(phase.get('east_m', 0.0))
+            a = float(phase.get('min_clearance_alt') or phase.get('alt_m', 5.0))
+            return 'nav', gov.move_cost(math.hypot(n, e), a - alt), math.hypot(n, e), a
+        if t == 'go_to_gps' and self._home_lat is not None and phase.get('lat') is not None:
+            n, e = self._gps_to_home_offset(phase['lat'], phase['lon'])
+            a = float(phase.get('min_clearance_alt') or phase.get('alt_m', 15.0))
+            d = math.hypot(n, e)
+            return 'go_to_gps', gov.move_cost(d, a - alt), d, a
+        if t == 'fly_circle':
+            r = float(phase.get('radius_m', 10.0))
+            a = float(phase.get('altitude_m', 5.0))
+            return 'fly_circle', gov.move_cost(2 * math.pi * r + r, a - alt), dist_home, a
+        if t == 'fly_rect':
+            f, rt = float(phase.get('forward_m', 10.0)), float(phase.get('right_m', 10.0))
+            a = float(phase.get('min_clearance_alt') or phase.get('altitude_m', 5.0))
+            return 'fly_rect', gov.move_cost(2 * (f + rt) + math.hypot(f, rt), a - alt), dist_home, a
+        if t == 'look_around':
+            return 'look_around', gov.hover_cost(8.0 * float(phase.get('directions', 4))), dist_home, alt
+        if t == 'capture_photo':
+            return 'capture_photo', gov.hover_cost(5.0), dist_home, alt
+        if t == 'start_recording':
+            # Costs its duration in hover, but that overlaps the phases after it.
+            return 'start_recording', 0.0, dist_home, alt
+        # Untyped (VLM) phase: its own actions are priced as they come.
+        return 'phase', 0.0, dist_home, alt
+
+    def _battery_abort(self, verdict_action: str, reason: str, actions: int = 0) -> Dict[str, Any]:
+        """Stop spending: head home (or land here) and fail the phase for battery."""
+        self._report_progress(f"BATTERY: {reason}")
+        backend = self._get_backend()
+        try:
+            # A quad's rtl() only flies home; landing there is the point.
+            if verdict_action != 'land_now' and not backend.rtl():
+                self._report_progress("BATTERY: return home failed - landing here")
+            backend.land()
+        except Exception as e:
+            self._report_progress(f"BATTERY: could not command {verdict_action}: {e}")
+        return {'failed': True, 'reason': f"battery: {reason}", 'actions': actions,
+                'battery_abort': True}
+
+    def _battery_guard_verdict(self):
+        """The drone_sdk in-flight guard may already have sent us home."""
+        if self.drone_sdk is not None and hasattr(self.drone_sdk, 'battery_guard_tripped'):
+            try:
+                return self.drone_sdk.battery_guard_tripped()
+            except Exception:
+                return None
+        return None
+
+    def _battery_gate_phase(self, phase: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """None to proceed, or the phase result that ends the mission for battery."""
+        if self._battery_gov is None or phase.get('type') in self._BATTERY_FREE_PHASES:
+            return None
+        trip = self._battery_guard_verdict()
+        if trip:
+            # The FC is already flying home/landing; commanding anything else fights it.
+            self._report_progress(f"BATTERY: {trip['reason']}")
+            return {'failed': True, 'reason': f"battery: {trip['reason']}",
+                    'actions': 0, 'battery_abort': True}
+        pct, dist_home, alt = self._battery_situation()
+        gov = self._battery_gov
+        kind, cost, dist_after, alt_after = self._phase_battery_cost(phase, dist_home, alt)
+        if kind == 'takeoff':
+            v = gov.preflight(pct, alt_after)
+            if not v.ok:
+                self._report_progress(f"BATTERY: takeoff refused - {v.reason}")
+                return {'failed': True, 'reason': f"battery: {v.reason}", 'actions': 0,
+                        'battery_abort': True}
+            return None
+        standing = gov.in_flight(pct, dist_home, alt)
+        if not standing.ok and alt > 0.5:
+            return self._battery_abort(standing.action, standing.reason)
+        v = gov.check_action(pct, cost, dist_after, alt_after, kind=kind)
+        if not v.ok:
+            if alt > 0.5:
+                return self._battery_abort('return_home', v.reason)
+            self._report_progress(f"BATTERY: {v.reason}")
+            return {'failed': True, 'reason': f"battery: {v.reason}", 'actions': 0,
+                    'battery_abort': True}
+        return None
+
+    # Price of one open-ended VLM decision: ~30 s of flying.
+    _VLM_ACTION_SECONDS = 30.0
+
+    def _battery_gate_vlm_action(self, phase_actions: int) -> Optional[Dict[str, Any]]:
+        if self._battery_gov is None:
+            return None
+        trip = self._battery_guard_verdict()
+        if trip:
+            self._report_progress(f"BATTERY: {trip['reason']}")
+            return {'failed': True, 'reason': f"battery: {trip['reason']}",
+                    'actions': phase_actions, 'battery_abort': True}
+        pct, dist_home, alt = self._battery_situation()
+        if alt <= 0.5:
+            return None  # on the ground: nothing is being spent
+        gov = self._battery_gov
+        standing = gov.in_flight(pct, dist_home, alt)
+        if not standing.ok:
+            return self._battery_abort(standing.action, standing.reason, phase_actions)
+        cost = gov.transit_cost(self._VLM_ACTION_SECONDS * gov.config.cruise_speed_mps)
+        v = gov.check_action(pct, cost, dist_home, alt, kind="next action")
+        if not v.ok:
+            return self._battery_abort('return_home', v.reason, phase_actions)
+        return None
 
     # ------------------------------------------------------------------ #
     # Typed phase executors — all actuation goes through the `backend`     #
@@ -1133,6 +1311,9 @@ class MissionLoop:
             if getattr(self, "_aborted", False):
                 return {'failed': True, 'reason': 'aborted by the harness',
                         'actions': phase_actions, 'aborted': True}
+            blocked = self._battery_gate_vlm_action(phase_actions)
+            if blocked is not None:
+                return blocked
             # 1. Capture current frame (via the backend, so this works identically
             # whether we're flying real hardware or a sim vehicle — see backends.py)
             try:
@@ -2009,6 +2190,10 @@ class MissionLoop:
                 state['battery'] = battery.get('remaining', -1)
             except:
                 pass
+            if self._battery_gov is not None and state.get('battery', -1) >= 0:
+                _, dist_home, alt = self._battery_situation()
+                state['battery_actions_left'] = self._battery_gov.actions_left(
+                    state['battery'], dist_home, alt)
             
             try:
                 lat, lon, alt = self.drone_sdk.get_position()

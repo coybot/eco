@@ -32,6 +32,29 @@ struct DroneStatus: Codable {
     var result: CommandResult?
     var isOnline: Bool?
     var ttl: Int?  // TTL for DynamoDB
+    // Battery, as estimated on the drone (resting-voltage curve on the ground,
+    // verified current or sag-compensated voltage in the air) - not the FC's
+    // raw counter, which reset at boot and froze with a dead current sensor.
+    var voltage: Double?
+    var batterySource: String?
+    var batteryWarnings: [String]?
+    var preflight: Preflight?
+    var batteryBudget: BatteryBudget?
+
+    /// May it take off, and if not why. Recomputed on every heartbeat.
+    struct Preflight: Codable {
+        let canTakeoff: Bool
+        let reason: String?
+        let minTakeoffPct: Double?
+        let reservePct: Double?
+    }
+
+    /// In flight: roughly how many more ~30 s actions before it must head home.
+    struct BatteryBudget: Codable {
+        let actionsLeft: Int?
+        let verdict: String?
+        let reason: String?
+    }
     
     struct Position: Codable {
         let latitude: Double
@@ -56,6 +79,7 @@ struct DroneStatus: Codable {
     enum CodingKeys: String, CodingKey {
         case droneId, status, position, attitude, battery, armed, mode
         case lastUpdate, result, isOnline, ttl
+        case voltage, batterySource, batteryWarnings, preflight, batteryBudget
     }
     
     init(from decoder: Decoder) throws {
@@ -70,6 +94,12 @@ struct DroneStatus: Codable {
         result = try container.decodeIfPresent(CommandResult.self, forKey: .result)
         isOnline = try container.decodeIfPresent(Bool.self, forKey: .isOnline)
         ttl = try container.decodeIfPresent(Int.self, forKey: .ttl)
+        // try? so an older or newer daemon's shape never breaks decoding the rest.
+        voltage = try? container.decodeIfPresent(Double.self, forKey: .voltage)
+        batterySource = try? container.decodeIfPresent(String.self, forKey: .batterySource)
+        batteryWarnings = try? container.decodeIfPresent([String].self, forKey: .batteryWarnings)
+        preflight = try? container.decodeIfPresent(Preflight.self, forKey: .preflight)
+        batteryBudget = try? container.decodeIfPresent(BatteryBudget.self, forKey: .batteryBudget)
         
         // Handle lastUpdate as either Double (epoch ms) or String (ISO8601)
         if let doubleValue = try? container.decodeIfPresent(Double.self, forKey: .lastUpdate) {
@@ -107,6 +137,11 @@ struct DroneStatus: Codable {
         try container.encodeIfPresent(result, forKey: .result)
         try container.encodeIfPresent(isOnline, forKey: .isOnline)
         try container.encodeIfPresent(ttl, forKey: .ttl)
+        try container.encodeIfPresent(voltage, forKey: .voltage)
+        try container.encodeIfPresent(batterySource, forKey: .batterySource)
+        try container.encodeIfPresent(batteryWarnings, forKey: .batteryWarnings)
+        try container.encodeIfPresent(preflight, forKey: .preflight)
+        try container.encodeIfPresent(batteryBudget, forKey: .batteryBudget)
     }
     
     var lastUpdateDate: Date? {

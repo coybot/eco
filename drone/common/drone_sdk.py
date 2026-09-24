@@ -18,6 +18,11 @@ import sys
 from pathlib import Path
 from pymavlink import mavutil
 
+try:
+    import battery as _battery
+except ImportError:  # installed as a package
+    from . import battery as _battery
+
 # Set up logging to go to both stdout (captured by daemon) and stderr (goes to journald)
 _logger = logging.getLogger('drone_sdk')
 _logger.setLevel(logging.INFO)
@@ -370,6 +375,38 @@ def _wait_for_disarm(timeout=30):
     return False
 
 
+def _force_arm_allowed():
+    """Force-arming skips every FC pre-arm check, battery included. Off unless
+    config.yaml sets allow_force_arm: true (e.g. a bench rig with no GPS)."""
+    return bool(_load_config().get('allow_force_arm', False))
+
+
+def _send_arm(force):
+    return _mav_command(
+        lambda m: m.mav.command_long_send(
+            m.target_system, m.target_component,
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            0, 1, 21196 if force else 0, 0, 0, 0, 0, 0
+        ), 400)
+
+
+def _arm_checked():
+    """Normal arm, so the FC's pre-arm checks (battery, GPS, EKF...) apply.
+    Falls back to force only when allowed. Returns (ack_ok, result)."""
+    ack_ok, result = _send_arm(force=False)
+    if ack_ok:
+        return ack_ok, result
+    reasons = _drain_statustext(timeout=1, print_msgs=False) or []
+    for r in reasons:
+        _log(f"  FC: {r}")
+    if not _force_arm_allowed():
+        _log("Arm refused by the FC's pre-arm checks (above). Not force-arming: "
+             "fix the cause, or set allow_force_arm: true in config.yaml for a bench rig.")
+        return ack_ok, result
+    _log("WARNING: force-arming past the FC's pre-arm checks (allow_force_arm is set)")
+    return _send_arm(force=True)
+
+
 def arm():
     """Arm the drone motors. Returns True only if actually armed."""
     _log("Arming...")
@@ -389,15 +426,7 @@ def arm():
     time.sleep(0.5)
     
     # Send arm command and wait for ACK atomically (prevents heartbeat thread from stealing ACK)
-    def send_arm(m):
-        _log(f"Sending arm to system {m.target_system}, component {m.target_component}")
-        m.mav.command_long_send(
-            m.target_system, m.target_component,
-            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-            0, 1, 21196, 0, 0, 0, 0, 0  # arm with force
-        )
-    
-    ack_ok, result = _mav_command(send_arm, 400)
+    ack_ok, result = _arm_checked()
     
     result_names = {0: "ACCEPTED", 1: "TEMPORARILY_REJECTED", 2: "DENIED",
                     3: "UNSUPPORTED", 4: "FAILED", 5: "IN_PROGRESS"}
@@ -416,9 +445,6 @@ def arm():
     
     if not ack_ok:
         _log("Arm command rejected by FC")
-        status_msgs = _drain_statustext(timeout=1)
-        for msg in status_msgs:
-            _log(f"  FC: {msg}")
         return False
     
     # Wait for motors and verify armed
@@ -495,6 +521,11 @@ def takeoff(altitude_m):
     
     # Run preflight checks
     _log("Running preflight checks...")
+    batt_ok, batt_reason = _battery_preflight(altitude_m)
+    if not batt_ok:
+        _log(f"TAKEOFF REFUSED: {batt_reason}")
+        _disarm_if_on_ground()
+        return False
     ok, issues = _check_preflight_status()
     if not ok:
         for issue in issues:
@@ -506,27 +537,10 @@ def takeoff(altitude_m):
         _log("Already armed, skipping arm step")
     else:
         _log("Arming (normal)...")
-        ack_ok, result = _mav_command(
-            lambda m: m.mav.command_long_send(
-                m.target_system, m.target_component,
-                mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-                0, 1, 0, 0, 0, 0, 0, 0
-            ), 400)
-
+        ack_ok, result = _arm_checked()
         if not ack_ok:
-            _log("Normal arm failed, trying force-arm...")
-            _drain_statustext(timeout=1)
-            ack_ok, result = _mav_command(
-                lambda m: m.mav.command_long_send(
-                    m.target_system, m.target_component,
-                    mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-                    0, 1, 21196, 0, 0, 0, 0, 0
-                ), 400)
-
-            if not ack_ok:
-                _log(f"Force arm also failed! (result={result})")
-                _drain_statustext()
-                return False
+            _log(f"Arm failed (result={result})")
+            return False
 
         _log("Arm ACK received, waiting for motors...")
         time.sleep(0.3)
@@ -537,6 +551,11 @@ def takeoff(altitude_m):
             return False
         _log("Armed confirmed!")
     
+    global _flight_home
+    pos = _position_relative()
+    _flight_home = (pos[0], pos[1]) if pos else None
+    start_battery_guard()
+
     # Send takeoff command atomically
     _log(f"Sending takeoff to {altitude_m}m...")
     ack_ok, result = _mav_command(
@@ -576,6 +595,15 @@ def land():
     _wait_for_disarm(timeout=45)
 
 
+def _disarm_if_on_ground():
+    """Undo an arm() that a refused takeoff would otherwise leave spinning."""
+    if is_armed():
+        try:
+            safe_disarm()
+        except RuntimeError as e:
+            _log(str(e))
+
+
 def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
     """Fly to GPS coordinates.
 
@@ -589,6 +617,15 @@ def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
     easy to miss.
     """
     alt = _clamp(alt, MIN_ALTITUDE, max_alt, "altitude")
+    if _battery_gates_apply():
+        _, _, gov = _battery_models()
+        pos = _position_relative()
+        if pos is not None:
+            cost = gov.move_cost(_flat_dist_m(pos[0], pos[1], lat, lon), alt - pos[2])
+            ok, reason = check_battery_for("goto", cost, _dist_home_m(lat, lon), alt)
+            if not ok:
+                _log(f"GOTO REFUSED: {reason}")
+                return False
     print(f"Flying to ({lat}, {lon}) at {alt}m...")
     _mav_send(lambda m: m.mav.set_position_target_global_int_send(
         0, 1, 1,
@@ -747,19 +784,492 @@ def get_attitude():
     return (0, 0, 0)
 
 
+# =============================================================================
+# SAFETY LAYER 5: Battery - estimation, preflight gate, in-flight guard.
+# The logic lives in battery.py (pure, testable); this is the FC I/O around it.
+#
+# The FC's own SYS_STATUS.battery_remaining is NOT used as the battery level:
+# it is integrated current that resets to 100% at every FC boot and freezes
+# when the current sensor reads ~0 A, which is how a flat pack read 87%.
+# =============================================================================
+
+_battery_state_lock = threading.Lock()
+_battery_cfg = None
+_battery_estimator = None
+_battery_governor = None
+_battery_guard_thread = None
+_battery_guard_stop = threading.Event()
+_battery_guard_trip = None   # None, or {'action': 'return_home'|'land_now', 'reason': str}
+_flight_home = None          # (lat, lon) captured at takeoff/arm, for trip-home cost
+_last_fc_seed = 0.0
+
+# ArduPilot-specific: set the FC's remaining % (ardupilotmega.xml).
+_MAV_CMD_BATTERY_RESET = 42651
+
+
+def _battery_models():
+    """(config, estimator, governor), built lazily from config.yaml `battery:`."""
+    global _battery_cfg, _battery_estimator, _battery_governor
+    with _battery_state_lock:
+        if _battery_cfg is None:
+            _battery_cfg = _battery.BatteryConfig.from_dict(_load_config().get('battery'))
+            _battery_estimator = _battery.BatteryEstimator(_battery_cfg)
+            _battery_governor = _battery.BatteryGovernor(_battery_cfg)
+        return _battery_cfg, _battery_estimator, _battery_governor
+
+
+def set_battery_pack(cells=None, capacity_mah=None):
+    """Override the pack's cell count / capacity (the app's battery settings)."""
+    cfg, est, _ = _battery_models()
+    with _battery_state_lock:
+        if cells:
+            cfg.cells = int(cells)
+        if capacity_mah:
+            cfg.capacity_mah = float(capacity_mah)
+
+
+def _battery_gates_apply():
+    """Only a multirotor's flight is priced by battery.py's hover-based model."""
+    vt = str(_load_config().get('vehicle_type', 'quadcopter')).lower()
+    return vt in ('quadcopter', 'quad', 'copter', 'multirotor')
+
+
+def _read_battery_raw(max_wait=1.5):
+    """One fresh FC battery reading as a battery.BatterySample.
+
+    Pumps the link briefly and then reads pymavlink's latest-message cache, so
+    it does not hold the serial lock for seconds the way a filtered
+    recv_match loop would (the in-flight guard calls this every 2 s).
+    """
+    with _mavlink_lock:
+        m = _connect()
+        m.mav.request_data_stream_send(
+            m.target_system, m.target_component,
+            mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 4, 1)
+        start = time.time()
+        while time.time() - start < max_wait:
+            msg = m.recv_match(blocking=True, timeout=0.1)
+            if msg is not None and msg.get_type() == 'SYS_STATUS':
+                break
+        cache = dict(m.messages)
+
+    def fresh(name, age=5.0):
+        msg = cache.get(name)
+        if msg is None:
+            return None
+        ts = getattr(msg, '_timestamp', None)
+        return msg if ts is None or time.time() - ts <= age else None
+
+    sys_status = fresh('SYS_STATUS')
+    batt_status = fresh('BATTERY_STATUS')
+    hb = fresh('HEARTBEAT')
+    sample = _battery.BatterySample()
+    if sys_status is not None:
+        sample.voltage = sys_status.voltage_battery / 1000.0 if sys_status.voltage_battery not in (-1, 65535) else 0.0
+        sample.current_a = sys_status.current_battery / 100.0 if sys_status.current_battery != -1 else None
+        sample.fc_remaining = sys_status.battery_remaining
+    if batt_status is not None and batt_status.current_consumed != -1:
+        sample.consumed_mah = float(batt_status.current_consumed)
+    if hb is not None:
+        sample.armed = (hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
+    else:
+        sample.armed = is_armed()
+    return sample
+
+
 def get_battery():
-    """Get battery status. Returns dict with voltage, remaining %, and current."""
-    _mav_send(lambda m: m.mav.request_data_stream_send(1, 1, mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 4, 1))
-    start = time.time()
-    while time.time() - start < 3:
-        msg = _mav_recv('SYS_STATUS', timeout=0.5)
+    """Battery state. Keys: voltage (V), current (A or None), remaining (%, or -1
+    when it cannot be determined), source, warnings, consumed_mah, fc_remaining,
+    armed.
+
+    `remaining` is this SDK's estimate (resting-voltage curve on the ground,
+    verified current count or sag-compensated voltage in the air) - not the
+    FC's own counter, which is reported separately as fc_remaining.
+    """
+    _, estimator, _ = _battery_models()
+    sample = _read_battery_raw()
+    with _battery_state_lock:
+        est = estimator.update(sample)
+    return {
+        'voltage': sample.voltage or 0,
+        'remaining': est.pct if est.pct is not None else -1,
+        'current': sample.current_a,
+        'consumed_mah': sample.consumed_mah,
+        'fc_remaining': est.fc_remaining,
+        'source': est.source,
+        'warnings': est.warnings,
+        'armed': sample.armed,
+    }
+
+
+def _position_relative():
+    """(lat, lon, rel_alt_m) or None, from the latest GLOBAL_POSITION_INT."""
+    try:
+        with _mavlink_lock:
+            msg = _connect().messages.get('GLOBAL_POSITION_INT')
+        if msg is None:
+            return None
+        return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
+    except Exception:
+        return None
+
+
+def _flat_dist_m(lat1, lon1, lat2, lon2):
+    dn = (lat2 - lat1) * 111320.0
+    de = (lon2 - lon1) * 111320.0 * math.cos(math.radians(lat1))
+    return math.hypot(dn, de)
+
+
+def _dist_home_m(lat, lon):
+    if _flight_home is None or lat is None:
+        return 0.0
+    return _flat_dist_m(_flight_home[0], _flight_home[1], lat, lon)
+
+
+def battery_status(planned_alt_m=5.0):
+    """Everything the operator needs before and during a flight, in one dict.
+
+    can_takeoff/takeoff_reason: the preflight verdict for `planned_alt_m`.
+    in_flight: the standing must-we-go-home verdict (meaningful when armed).
+    actions_left: roughly how many ~30 s flying actions remain before the
+    trip home eats into the reserve.
+    """
+    cfg, _, gov = _battery_models()
+    b = get_battery()
+    pct = b['remaining'] if b['remaining'] >= 0 else None
+    pos = _position_relative()
+    alt = max(0.0, pos[2]) if pos else 0.0
+    dist_home = _dist_home_m(pos[0], pos[1]) if pos else 0.0
+    pre = gov.preflight(pct, planned_alt_m)
+    flight = gov.in_flight(pct, dist_home, alt)
+    return {
+        **b,
+        'can_takeoff': pre.ok,
+        'takeoff_reason': pre.reason,
+        'in_flight': flight.to_dict(),
+        'actions_left': gov.actions_left(pct, dist_home, alt),
+        'reserve_pct': cfg.landing_reserve_pct,
+        'min_takeoff_pct': cfg.min_takeoff_pct,
+        'guard': dict(_battery_guard_trip) if _battery_guard_trip else None,
+    }
+
+
+def _battery_preflight(altitude_m):
+    """(ok, reason) for taking off to altitude_m on the current pack."""
+    if not _battery_gates_apply():
+        return True, ""
+    _, _, gov = _battery_models()
+    b = get_battery()
+    for w in b['warnings']:
+        _log(f"  BATTERY: {w}")
+    pct = b['remaining'] if b['remaining'] >= 0 else None
+    v = gov.preflight(pct, altitude_m)
+    src = b['source']
+    if pct is not None:
+        _log(f"Battery: {pct:.0f}% ({b['voltage']:.2f} V, from {src})")
+    return v.ok, v.reason
+
+
+def check_battery_for(kind, cost_pct, dist_home_after_m=None, alt_after_m=None):
+    """Governor check for an action about to run. Returns (ok, reason).
+
+    Always ok on the ground and for non-multirotor vehicles. Callers that know
+    where the action leaves the aircraft pass it; otherwise "here" is assumed.
+    """
+    if not _battery_gates_apply():
+        return True, ""
+    _, _, gov = _battery_models()
+    b = get_battery()
+    if not b['armed']:
+        return True, ""
+    pct = b['remaining'] if b['remaining'] >= 0 else None
+    pos = _position_relative()
+    if dist_home_after_m is None:
+        dist_home_after_m = _dist_home_m(pos[0], pos[1]) if pos else 0.0
+    if alt_after_m is None:
+        alt_after_m = max(0.0, pos[2]) if pos else 0.0
+    v = gov.check_action(pct, cost_pct, dist_home_after_m, alt_after_m, kind=kind)
+    return v.ok, v.reason
+
+
+def battery_guard_tripped():
+    """None, or {'action', 'reason'} once the in-flight guard has sent the
+    aircraft home or down. Mission code must stop commanding when set."""
+    return dict(_battery_guard_trip) if _battery_guard_trip else None
+
+
+def _battery_state_path():
+    return DRONE_DIR / 'battery_state.json'
+
+
+def _save_last_flight(consumed_mah):
+    try:
+        _battery_state_path().write_text(json.dumps({
+            'last_flight_consumed_mah': consumed_mah,
+            'recorded_at': time.time(),
+        }))
+    except Exception as e:
+        _log(f"Could not record flight mAh: {e}")
+
+
+def _set_mode_confirmed(mode, timeout=3):
+    _mav_send(lambda m: m.set_mode(mode))
+    return _wait_for_mode(mode, timeout=timeout)
+
+
+def _battery_guard_loop(interval_s):
+    """While armed: if the governor says go home / land now, make the FC do it.
+
+    Escalates only (ok -> RTL -> LAND), never back. Needs two consecutive bad
+    readings before acting so a single sag spike in a climb can't trigger it.
+    RTL needs a position fix; if the FC refuses RTL it lands instead.
+    """
+    global _battery_guard_trip, _flight_home
+    _, estimator, gov = _battery_models()
+    _log("Battery guard started")
+    strikes = 0
+    was_armed = False
+    started = time.time()
+    while not _battery_guard_stop.is_set():
+        try:
+            b = get_battery()
+            if b['armed']:
+                was_armed = True
+                pct = b['remaining'] if b['remaining'] >= 0 else None
+                pos = _position_relative()
+                if _flight_home is None and pos:
+                    _flight_home = (pos[0], pos[1])
+                alt = max(0.0, pos[2]) if pos else 0.0
+                dist_home = _dist_home_m(pos[0], pos[1]) if pos else 0.0
+                v = gov.in_flight(pct, dist_home, alt)
+                strikes = strikes + 1 if not v.ok else 0
+                current = (_battery_guard_trip or {}).get('action')
+                rank = {'ok': 0, 'return_home': 1, 'land_now': 2}
+                if strikes >= 2 and rank.get(v.action, 0) > rank.get(current, 0):
+                    _log(f"BATTERY GUARD: {v.reason}")
+                    if v.action == 'return_home' and _set_mode_confirmed('RTL'):
+                        _battery_guard_trip = {'action': 'return_home', 'reason': v.reason}
+                    else:
+                        if v.action == 'return_home':
+                            _log("BATTERY GUARD: FC refused RTL - landing here instead")
+                        _set_mode_confirmed('LAND')
+                        _battery_guard_trip = {'action': 'land_now', 'reason': v.reason}
+            elif was_armed:
+                # Landed and disarmed: record the flight's mAh for current-sensor
+                # calibration, then stop - the next takeoff starts a new guard.
+                if estimator.last_flight_consumed_mah is not None:
+                    _save_last_flight(estimator.last_flight_consumed_mah)
+                break
+            elif time.time() - started > 120:
+                break  # never armed (takeoff refused or failed)
+        except Exception as e:
+            _log(f"Battery guard error: {e}")
+        _battery_guard_stop.wait(interval_s)
+    _log("Battery guard stopped")
+
+
+def start_battery_guard(interval_s=2.0):
+    """Start the in-flight battery guard (takeoff() does this itself)."""
+    global _battery_guard_thread, _battery_guard_trip
+    if not _battery_gates_apply():
+        return
+    if _battery_guard_thread and _battery_guard_thread.is_alive():
+        return
+    _battery_guard_trip = None
+    _battery_guard_stop.clear()
+    _battery_guard_thread = threading.Thread(
+        target=_battery_guard_loop, args=(interval_s,), daemon=True)
+    _battery_guard_thread.start()
+
+
+def stop_battery_guard():
+    _battery_guard_stop.set()
+
+
+def seed_fc_battery_from_voltage(min_gap_pct=5.0, min_interval_s=120.0):
+    """On the ground, correct the FC's own remaining % from resting voltage.
+
+    ArduPilot's counter restarts at 100% every boot whatever pack is fitted;
+    this re-seeds it (MAV_CMD_BATTERY_RESET) so the FC's own mAh failsafes
+    (BATT_LOW_MAH/BATT_CRT_MAH/BATT_ARM_MAH) start from the truth. Only acts
+    disarmed, on a plausible voltage, when the FC is off by min_gap_pct.
+    Returns the seeded % or None.
+    """
+    global _last_fc_seed
+    if time.time() - _last_fc_seed < min_interval_s:
+        return None
+    b = get_battery()
+    if b['armed'] or b['source'] != 'voltage_rest' or b['fc_remaining'] is None:
+        return None
+    if abs(b['fc_remaining'] - b['remaining']) < min_gap_pct:
+        return None
+    pct = int(round(b['remaining']))
+    ok, result = _mav_command(lambda m: m.mav.command_long_send(
+        m.target_system, m.target_component, _MAV_CMD_BATTERY_RESET, 0,
+        1, pct, 0, 0, 0, 0, 0), _MAV_CMD_BATTERY_RESET)
+    _last_fc_seed = time.time()
+    if ok:
+        _log(f"Seeded FC battery to {pct}% from resting voltage (FC said {b['fc_remaining']}%)")
+        return pct
+    return None
+
+
+def _get_param(name, timeout=2.0):
+    """Read one FC parameter. Returns its float value or None."""
+    with _mavlink_lock:
+        m = _connect()
+        m.mav.param_request_read_send(m.target_system, m.target_component,
+                                      name.encode('utf-8'), -1)
+        start = time.time()
+        while time.time() - start < timeout:
+            msg = m.recv_match(type='PARAM_VALUE', blocking=True, timeout=0.3)
+            if msg and msg.param_id.rstrip('\x00') == name:
+                return float(msg.param_value)
+    return None
+
+
+def _average_voltage(seconds=3.0):
+    vs = []
+    end = time.time() + seconds
+    while time.time() < end:
+        s = _read_battery_raw(max_wait=0.6)
+        if s.voltage:
+            vs.append(s.voltage)
+    return sum(vs) / len(vs) if vs else 0.0
+
+
+def _esc_voltage(seconds=1.5):
+    """Mean pack voltage reported by ESC telemetry (BLHeli32/AM32), or None."""
+    vals = []
+    end = time.time() + seconds
+    while time.time() < end:
+        msg = _mav_recv('ESC_TELEMETRY_1_TO_4', timeout=0.3)
         if msg:
-            return {
-                'voltage': msg.voltage_battery / 1000.0,
-                'remaining': msg.battery_remaining,
-                'current': msg.current_battery / 100.0 if msg.current_battery != -1 else None
-            }
-    return {'voltage': 0, 'remaining': -1, 'current': None}
+            vals.extend(v / 100.0 for v in msg.voltage if v)
+    return sum(vals) / len(vals) if vals else None
+
+
+def battery_diagnostics():
+    """Read the FC's battery-monitor setup and say what, if anything, is wrong.
+
+    No multimeter needed: it cross-checks the FC's voltage against the LiPo
+    plausibility band and ESC telemetry (if the ESCs report voltage), reports
+    the board name from the FC banner so pin numbers can be looked up, and
+    flags the Pixhawk-1 pin/scale values older versions of this SDK wrote to
+    every board.
+    """
+    cfg, _, _ = _battery_models()
+    names = ['BATT_MONITOR', 'BATT_VOLT_PIN', 'BATT_CURR_PIN', 'BATT_VOLT_MULT',
+             'BATT_AMP_PERVLT', 'BATT_AMP_OFFSET', 'BATT_CAPACITY', 'BATT_LOW_VOLT',
+             'BATT_CRT_VOLT', 'BATT_LOW_MAH', 'BATT_CRT_MAH', 'BATT_ARM_VOLT',
+             'BATT_ARM_MAH', 'BATT_FS_LOW_ACT', 'BATT_FS_CRT_ACT', 'ARMING_CHECK']
+    params = {n: _get_param(n) for n in names}
+
+    # The FC prints its board name in the banner it sends on this request.
+    _drain_statustext(timeout=0.2, print_msgs=False)
+    _mav_send(lambda m: m.mav.command_long_send(
+        m.target_system, m.target_component,
+        mavutil.mavlink.MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES, 0, 1, 0, 0, 0, 0, 0, 0))
+    banner = _drain_statustext(timeout=2.0, print_msgs=False)
+
+    b = get_battery()
+    esc_v = _esc_voltage()
+    findings = list(b['warnings'])
+    if params['BATT_MONITOR'] == 0:
+        findings.append("BATT_MONITOR=0: the FC is not monitoring the battery at all")
+    elif params['BATT_MONITOR'] == 3:
+        findings.append("BATT_MONITOR=3 (voltage only): the FC's own % and mAh "
+                        "failsafes cannot work; this SDK estimates from voltage")
+    if (params['BATT_VOLT_PIN'], params['BATT_CURR_PIN'],
+            params['BATT_VOLT_MULT'], params['BATT_AMP_PERVLT']) == (2.0, 3.0, 10.1, 17.0):
+        findings.append(
+            "BATT_VOLT_PIN/CURR_PIN/VOLT_MULT/AMP_PERVLT are 2/3/10.1/17.0 - the "
+            "Pixhawk-1 + 3DR power module values older versions of this SDK wrote "
+            "to every board. Unless this is that hardware, look up the pins for the "
+            "board named below and set battery.fc_pins in config.yaml")
+    if esc_v and b['voltage']:
+        diff = b['voltage'] - esc_v
+        if abs(diff) > 0.03 * esc_v + 0.2:
+            findings.append(
+                f"FC battery monitor reads {b['voltage']:.2f} V but ESC telemetry reads "
+                f"{esc_v:.2f} V - BATT_VOLT_MULT is off; calibrate_voltage(use_esc=True) fixes it")
+    if params['ARMING_CHECK'] == 0:
+        findings.append("ARMING_CHECK=0: the FC's own pre-arm checks (battery included) are off")
+    return {
+        'board_banner': banner,
+        'params': params,
+        'battery': b,
+        'esc_voltage': esc_v,
+        'cells': cfg.cells,
+        'findings': findings,
+    }
+
+
+def calibrate_voltage(reference_v=None, full_charge=False, use_esc=False):
+    """Correct BATT_VOLT_MULT without a multimeter. Disarmed only.
+
+    Pick ONE reference:
+      full_charge=True  - pack has just come off a LiPo charger that
+                          terminated normally: it is at 4.20 V/cell.
+      use_esc=True      - the ESCs' own voltage telemetry.
+      reference_v=15.9  - the pack voltage the charger's display showed.
+    Refuses corrections over 15%: that's a wrong pin or cell count, not scale.
+    """
+    cfg, _, _ = _battery_models()
+    if is_armed():
+        raise RuntimeError("calibrate_voltage() needs the aircraft disarmed and resting")
+    if full_charge:
+        reference_v = _battery.FULL_CHARGE_CELL_V * cfg.cells
+        label = f"full charge ({cfg.cells}S x {_battery.FULL_CHARGE_CELL_V} V)"
+    elif use_esc:
+        reference_v = _esc_voltage(seconds=3.0)
+        if not reference_v:
+            raise RuntimeError("ESCs report no voltage telemetry - use full_charge or reference_v")
+        label = "ESC telemetry"
+    elif reference_v:
+        label = "supplied reference"
+    else:
+        raise ValueError("give reference_v, full_charge=True or use_esc=True")
+    measured = _average_voltage()
+    ratio = _battery.voltage_mult_correction(measured, float(reference_v))
+    old = _get_param('BATT_VOLT_MULT')
+    if old is None:
+        raise RuntimeError("could not read BATT_VOLT_MULT from the FC")
+    new = round(old * ratio, 4)
+    if not _set_param('BATT_VOLT_MULT', new):
+        raise RuntimeError("FC did not acknowledge BATT_VOLT_MULT")
+    after = _average_voltage(seconds=2.0)
+    _log(f"BATT_VOLT_MULT {old} -> {new}: FC read {measured:.2f} V, {label} "
+         f"{reference_v:.2f} V, now reads {after:.2f} V")
+    return {'old': old, 'new': new, 'measured_v': measured,
+            'reference_v': reference_v, 'now_reads_v': after}
+
+
+def calibrate_current(charger_mah, fc_consumed_mah=None):
+    """Correct BATT_AMP_PERVLT from what the charger put back after a flight.
+
+    The standard no-meter method: fly, land, recharge, and give the mAh the
+    charger reports. The FC's count for that flight is recorded automatically
+    at disarm (battery_state.json); pass fc_consumed_mah to override.
+    """
+    if fc_consumed_mah is None:
+        try:
+            state = json.loads(_battery_state_path().read_text())
+            fc_consumed_mah = state['last_flight_consumed_mah']
+        except Exception:
+            raise RuntimeError("no recorded flight mAh - fly once with the battery "
+                               "guard running, or pass fc_consumed_mah")
+    ratio = _battery.current_scale_correction(float(fc_consumed_mah), float(charger_mah))
+    old = _get_param('BATT_AMP_PERVLT')
+    if old is None:
+        raise RuntimeError("could not read BATT_AMP_PERVLT from the FC")
+    new = round(old * ratio, 3)
+    if not _set_param('BATT_AMP_PERVLT', new):
+        raise RuntimeError("FC did not acknowledge BATT_AMP_PERVLT")
+    _log(f"BATT_AMP_PERVLT {old} -> {new}: FC counted {fc_consumed_mah:.0f} mAh, "
+         f"charger put back {charger_mah:.0f} mAh")
+    return {'old': old, 'new': new, 'fc_consumed_mah': fc_consumed_mah,
+            'charger_mah': charger_mah}
 
 
 def is_armed():
@@ -915,29 +1425,51 @@ def _set_param(name, value):
     return False
 
 
-def configure_battery_monitoring(n_cells=4, capacity_mah=5000, low_voltage=3.5, critical_voltage=3.3):
-    """Configure PX4/ArduPilot battery monitoring parameters."""
+def configure_battery_monitoring(n_cells=4, capacity_mah=5000, low_voltage=3.5, critical_voltage=3.3,
+                                 fc_pins=None):
+    """Configure ArduPilot battery monitoring and its battery failsafes.
+
+    Deliberately does NOT write BATT_VOLT_PIN / BATT_CURR_PIN / BATT_VOLT_MULT /
+    BATT_AMP_PERVLT unless fc_pins gives them: those are properties of the
+    board and power module, and the board's firmware defaults are right far
+    more often than any constant here. (This used to write the Pixhawk-1 +
+    3DR power-module values 2/3/10.1/17.0 to every board, which leaves most
+    modern FCs reading ~0 A - and a battery % that never moves.)
+    fc_pins: optional {'volt_pin', 'curr_pin', 'volt_mult', 'amp_per_volt'}.
+    Scale errors are better fixed with calibrate_voltage()/calibrate_current().
+    """
+    cfg, _, _ = _battery_models()
     print(f"Configuring battery monitoring: {n_cells}S, {capacity_mah}mAh...")
-    
+
     params = {
-        'BATT_MONITOR': 4,
         'BATT_CAPACITY': capacity_mah,
-        'BATT_N_CELLS': n_cells,
-        'BATT_LOW_VOLT': n_cells * low_voltage,
-        'BATT_CRT_VOLT': n_cells * critical_voltage,
-        'BATT_VOLT_PIN': 2,
-        'BATT_CURR_PIN': 3,
-        'BATT_VOLT_MULT': 10.1,
-        'BATT_AMP_PERVLT': 17.0,
+        # Loaded-voltage failsafes (the FC sees voltage under load in flight).
+        'BATT_LOW_VOLT': round(n_cells * low_voltage, 2),
+        'BATT_CRT_VOLT': round(n_cells * critical_voltage, 2),
+        # mAh failsafes: RTL with reserve+5% of the pack left, land at critical.
+        # Only meaningful with a working current sensor and a seeded FC counter
+        # (seed_fc_battery_from_voltage); 0 would disable them.
+        'BATT_LOW_MAH': int(capacity_mah * (cfg.landing_reserve_pct + 5.0) / 100.0),
+        'BATT_CRT_MAH': int(capacity_mah * cfg.critical_pct / 100.0),
+        # The FC's own refusal to arm on a low pack, from resting voltage.
+        'BATT_ARM_VOLT': round(n_cells * _battery.cell_voltage_for_pct(cfg.min_takeoff_pct), 2),
     }
-    
+    if (_get_param('BATT_MONITOR') or 0) == 0:
+        params['BATT_MONITOR'] = 4  # analog voltage + current; needs an FC reboot
+    pin_keys = {'volt_pin': 'BATT_VOLT_PIN', 'curr_pin': 'BATT_CURR_PIN',
+                'volt_mult': 'BATT_VOLT_MULT', 'amp_per_volt': 'BATT_AMP_PERVLT'}
+    for key, name in pin_keys.items():
+        if fc_pins and fc_pins.get(key) is not None:
+            params[name] = fc_pins[key]
+
     for name, value in params.items():
         if _set_param(name, value):
             print(f"  Set {name} = {value}")
         else:
             print(f"  Warning: No ACK for {name}")
-    
-    print("Battery monitoring configured. Reboot flight controller to apply.")
+
+    print("Battery monitoring configured. Reboot the flight controller if "
+          "BATT_MONITOR or a pin changed.")
     return True
 
 
@@ -951,7 +1483,7 @@ def configure_failsafes():
         'FS_GCS_ENABLE': 1,      # Land on GCS heartbeat loss
         'FS_THR_ENABLE': 3,      # Land on throttle failsafe
         'FS_THR_VALUE': 975,
-        'BATT_FS_LOW_ACT': 2,    # Land on low battery
+        'BATT_FS_LOW_ACT': 2,    # RTL on low battery (ArduCopter: 1=Land, 2=RTL)
         'BATT_FS_CRT_ACT': 1,    # Land on critical battery
         'LAND_DISARMDELAY': 2,
         'FS_EKF_ACTION': 1,      # Land on EKF failsafe
@@ -1009,7 +1541,8 @@ def setup_drone():
         n_cells=n_cells,
         capacity_mah=capacity,
         low_voltage=low_volt,
-        critical_voltage=crit_volt
+        critical_voltage=crit_volt,
+        fc_pins=battery_config.get('fc_pins'),
     )
     
     print("=" * 50)
@@ -1495,6 +2028,13 @@ def start_recording(mode="video", fps=6.0, interval_s=3.0, max_seconds=120.0):
     if _recorder is not None and _recorder.is_recording:
         print("Warning: already recording; ignoring start_recording()")
         return False
+    # In the air a recording is paid for in hover time; on the ground it's free.
+    if _battery_gates_apply():
+        _, _, gov = _battery_models()
+        ok, reason = check_battery_for("start_recording", gov.hover_cost(max_seconds))
+        if not ok:
+            _log(f"RECORDING REFUSED: {reason}")
+            return False
     from media_recorder import MediaRecorder
 
     _recorder = MediaRecorder(

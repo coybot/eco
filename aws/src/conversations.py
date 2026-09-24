@@ -410,6 +410,10 @@ AVAILABLE FUNCTIONS:
 - start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
 - stop_recording() - Stop, upload, and return the list of media URLs (print them)
 - record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
+- battery_status() - Battery %, pack voltage, can_takeoff/takeoff_reason, actions_left, and any battery-sensor warnings. Print it when asked about battery, status or readiness
+- battery_diagnostics() - Reads the flight controller's battery-monitor setup and returns findings on what is misconfigured (print it)
+- calibrate_voltage(full_charge=True | use_esc=True | reference_v=V) - Fix the battery voltage reading without a meter; disarmed only
+- calibrate_current(charger_mah) - Fix the current sensor scale from the mAh the charger put back after the last flight
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
 - home_lat, home_lon, home_alt
@@ -423,6 +427,7 @@ RULES:
 5. For flight (only outdoors, only when asked): arm() → takeoff() → ... → land()
 6. Keep altitude under 20m
 7. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
+8. takeoff(), goto() and start_recording() REFUSE (return False and print why) when the battery cannot cover them plus the trip home. Check the result: if takeoff() returns False, stop and print battery_status(); if goto() returns False while flying, land(). The drone also returns home or lands by itself when the battery runs low - do not fight it.
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
