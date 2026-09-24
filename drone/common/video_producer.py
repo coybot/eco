@@ -24,6 +24,8 @@ from aiortc.sdp import candidate_from_sdp
 from av import VideoFrame
 import base64
 
+from provisioning import get_or_create_drone_id
+
 # Configuration
 SCRIPT_DIR = Path(__file__).parent.absolute()
 CONFIG_PATH = SCRIPT_DIR / "config.yaml"
@@ -36,7 +38,9 @@ _streaming = False
 
 def load_config():
     with open(CONFIG_PATH) as f:
-        return yaml.safe_load(f) or {}
+        config = yaml.safe_load(f) or {}
+    config["drone_id"] = get_or_create_drone_id(config.get("drone_id"))
+    return config
 
 def get_region(config: dict) -> str:
     """Resolve AWS region for KVS/WebRTC resources."""

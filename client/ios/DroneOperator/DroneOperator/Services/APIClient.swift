@@ -270,6 +270,15 @@ final class APIClient {
             path: "/drones/\(droneId)/video/viewer"
         )
     }
+
+    /// Ensure the signaling channel exists, then tell the drone to start video.
+    func startVideo(droneId: String) async throws {
+        let _: VideoCommandResponse = try await request(
+            method: "POST",
+            path: "/drones/\(droneId)/video/start",
+            body: VideoCommandRequest(action: "start")
+        )
+    }
     
     // MARK: - Ground Control Station
 
@@ -615,6 +624,15 @@ struct VideoViewerResponse: Decodable {
     }
 }
 
+private struct VideoCommandRequest: Encodable {
+    let action: String
+}
+
+private struct VideoCommandResponse: Decodable {
+    let status: String
+    let action: String
+}
+
 // MARK: - Errors
 
 enum APIError: LocalizedError {
@@ -645,4 +663,3 @@ enum APIError: LocalizedError {
         }
     }
 }
-

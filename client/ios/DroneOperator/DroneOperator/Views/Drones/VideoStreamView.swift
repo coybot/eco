@@ -153,11 +153,17 @@ struct VideoStreamView: View {
         error = nil
         print("[VideoStream] Starting stream for drone: \(drone.droneId)")
         
-        // Send MQTT command to drone to start video producer
-        sendVideoCommand(action: "start")
-        
         Task {
             do {
+                if GCSSettings.shared.isGCSMode {
+                    sendVideoCommand(action: "start")
+                } else {
+                    // The cloud endpoint creates the KVS signaling channel before
+                    // publishing the start command, so the viewer request cannot
+                    // race channel creation on first use.
+                    try await apiClient.startVideo(droneId: drone.droneId)
+                }
+
                 // Small delay to let drone start the video producer
                 try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
                 

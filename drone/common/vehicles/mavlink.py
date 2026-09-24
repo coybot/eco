@@ -79,36 +79,27 @@ def _connect():
         print(f"Connecting to {port} at {baud}...")
         _master = mavutil.mavlink_connection(port, baud=baud, source_system=255)
 
-        msg = _master.recv_match(type='HEARTBEAT', blocking=True, timeout=10)
-        if not msg:
+        deadline = time.time() + 10.0
+        fc_heartbeat = None
+        while time.time() < deadline:
+            msg = _master.recv_match(type='HEARTBEAT', blocking=True, timeout=1.0)
+            if msg and _is_flight_controller_heartbeat(msg):
+                fc_heartbeat = msg
+                break
+
+        if fc_heartbeat is None:
             try:
                 _master.close()
             except Exception:
                 pass
             _master = None
             raise ConnectionError(
-                f"Flight controller not responding on {port} — no heartbeat in 10 s."
+                f"Flight controller not responding on {port} — "
+                f"no ArduPilot autopilot heartbeat in 10 s."
             )
 
-        _master.target_system = msg.get_srcSystem()
-        _master.target_component = msg.get_srcComponent()
-
-        # Prefer an ArduPilot heartbeat so we don't target sys=0 / companion
-        t0 = time.time()
-        while (
-            (_master.target_system == 0 or _master.target_component == 0)
-            and time.time() - t0 < 5.0
-        ):
-            m = _master.recv_match(type='HEARTBEAT', blocking=True, timeout=1.0)
-            if m and m.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
-                _master.target_system = m.get_srcSystem()
-                _master.target_component = m.get_srcComponent()
-                break
-
-        if _master.target_system == 0:
-            _master.target_system = 1
-            _master.target_component = 1
-            print("Warning: MAVLink FC sys/comp unknown; using sys=1 comp=1 fallback.")
+        _master.target_system = fc_heartbeat.get_srcSystem()
+        _master.target_component = fc_heartbeat.get_srcComponent()
 
         print(f"Connected to flight controller "
               f"(system {_master.target_system}, comp {_master.target_component})")
@@ -136,6 +127,23 @@ def disconnect():
 # Thread-safe MAVLink I/O primitives
 # =============================================================================
 
+def _is_flight_controller_heartbeat(msg):
+    """Return whether a heartbeat identifies the ArduPilot autopilot component."""
+    return (
+        msg.get_srcSystem() != 0
+        and msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
+        and msg.get_srcComponent()
+        == getattr(mavutil.mavlink, 'MAV_COMP_ID_AUTOPILOT1', 1)
+    )
+
+
+def _is_target_heartbeat(conn, msg):
+    return (
+        msg.get_srcSystem() == conn.target_system
+        and msg.get_srcComponent() == conn.target_component
+    )
+
+
 def _mav_send(send_func):
     with _mavlink_lock:
         m = _connect()
@@ -145,13 +153,34 @@ def _mav_send(send_func):
 def _mav_recv(msg_type, timeout=1.0):
     with _mavlink_lock:
         m = _connect()
-        return m.recv_match(type=msg_type, blocking=True, timeout=timeout)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            msg = m.recv_match(
+                type=msg_type,
+                blocking=True,
+                timeout=min(0.5, max(0.0, deadline - time.time())),
+            )
+            if msg is None:
+                continue
+            if msg_type != 'HEARTBEAT' or _is_target_heartbeat(m, msg):
+                return msg
+        return None
 
 
 def _mav_recv_any(timeout=0.5):
     with _mavlink_lock:
         m = _connect()
-        return m.recv_match(blocking=True, timeout=timeout)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            msg = m.recv_match(
+                blocking=True,
+                timeout=min(0.5, max(0.0, deadline - time.time())),
+            )
+            if msg is None:
+                continue
+            if msg.get_type() != 'HEARTBEAT' or _is_target_heartbeat(m, msg):
+                return msg
+        return None
 
 
 def _mav_command(command_func, ack_command_id, timeout=3):
@@ -258,27 +287,26 @@ def wait(seconds):
 
 def is_armed():
     """Check armed status from a fresh heartbeat."""
-    try:
-        with _mavlink_lock:
+    with _mavlink_lock:
+        try:
             conn = _connect()
-    except Exception:
-        return False
-    deadline = time.time() + 3.0
-    last = None
-    while time.time() < deadline:
-        msg = conn.recv_match(type='HEARTBEAT', blocking=False)
-        if msg is None:
-            if last is not None:
+        except Exception:
+            return False
+
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if conn.recv_match(type='HEARTBEAT', blocking=False) is None:
                 break
-            msg = conn.recv_match(type='HEARTBEAT', blocking=True, timeout=0.5)
-            if msg:
-                last = msg
-                continue
-        else:
-            last = msg
-    if last is None:
+
+        while time.time() < deadline:
+            msg = conn.recv_match(
+                type='HEARTBEAT',
+                blocking=True,
+                timeout=min(0.5, max(0.0, deadline - time.time())),
+            )
+            if msg and _is_target_heartbeat(conn, msg):
+                return (msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
         return False
-    return (last.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
 
 
 def get_position():
