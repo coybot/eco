@@ -1911,6 +1911,9 @@ class MissionLoop:
                         "watching_for": action.target_object,
                     })
 
+            elif action.action_type == ActionType.FOLLOW_TARGET:
+                self._exec_follow_target(action, backend)
+
             elif action.action_type == ActionType.DROP_PAYLOAD:
                 self._exec_drop_payload(action, backend)
 
@@ -2253,6 +2256,73 @@ class MissionLoop:
             fn(center)
         except Exception as exc:
             self._report_progress(f"sensor aim failed: {exc}")
+
+    # One follow leg per decision, mirroring ORBIT_POINT's one-lap-per-decision shape:
+    # the model re-evaluates on a regular cadence and can break off, instead of a mode
+    # that runs unbounded and swallows the mission's whole time budget in one action.
+    FOLLOW_LEG_SECONDS = 15.0
+
+    def _exec_follow_target(self, action, backend) -> None:
+        """Keep station on something that is MOVING, for one bounded leg.
+
+        Separate from navigate (which ends on arrival at a point already stale by the time
+        it is reached) and from orbit_point (which circles a FIXED place). The geometry
+        used is chosen by this vehicle's own kinematics — stand-off for a rover, stand-off
+        plus altitude for a multirotor, a moving circle for a fixed-wing, which cannot
+        hover. See drone/common/follow.py and eco/docs/follow-target.md.
+        """
+        from follow import FollowExecutor
+
+        target = action.target_object or "target"
+        # Seed the lock from something actually seen this pass, so a follow starts on the
+        # right object rather than on whichever match the tracker happens to meet first.
+        seed = None
+        fresh = [d for d in (self._last_detections or [])
+                 if labels_match(d.label, target) or labels_match(target, d.label)]
+        for d in fresh:
+            world = getattr(d, "world_xyz", None)
+            if world is not None and len(world) >= 2:
+                seed = (float(world[0]), float(world[1]))
+                break
+        if seed is None:
+            landmark = self.memory.nearest(target)
+            if landmark is not None:
+                seed = (landmark.x, landmark.y)
+        if seed is None:
+            self._history.append(
+                f"follow_target refused: no current sighting or memory of {target}")
+            self._report_progress(f"Cannot follow — I have not actually seen a {target}")
+            return
+
+        alt = float(action.alt_m) if action.alt_m is not None else None
+        self._report_progress(f"Following {target}")
+        executor = FollowExecutor(backend, self.vehicle_class, target,
+                                  seed=seed, altitude=alt)
+        try:
+            card = executor.run(duration_s=self.FOLLOW_LEG_SECONDS, tick_hz=4.0)
+        finally:
+            executor.stop()
+
+        held = card["in_band_fraction"]
+        note = (f"follow_target {target}: held station {held:.0%} of the leg"
+                f" ({card['geometry']}, stand-off {card['standoff']:.0f} m)")
+        if card["lost_ticks"]:
+            note += f", lost sight for {card['lost_ticks']} ticks"
+        if card["unverified_reacquisitions"]:
+            # Say so rather than hide it: without appearance re-identification the lock
+            # may have transferred to a different instance of the same label.
+            note += (f", re-locked {card['unverified_reacquisitions']}x without"
+                     " confirming it was the same one")
+        self._history.append(note)
+        backend.log_event("follow_leg", {
+            "target": target,
+            "geometry": card["geometry"],
+            "standoff_m": card["standoff"],
+            "in_band_fraction": held,
+            "lost_ticks": card["lost_ticks"],
+            "unverified_reacquisitions": card["unverified_reacquisitions"],
+            "seconds": self.FOLLOW_LEG_SECONDS,
+        })
 
     def _exec_drop_payload(self, action, backend) -> None:
         """Release the payload, but only on a target confirmed right now.

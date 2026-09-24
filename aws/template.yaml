@@ -383,8 +383,10 @@ Resources:
 
   # Rover mission brain (see eco/rover/docs/architecture.md and CloudBrain.swift /
   # HybridBrain.swift in the sibling coybot-sdk repo). Cloud-primary half of the hybrid
-  # brain behind MissionAgent — vision + tool-use, drives actions (navigate/lookAround/
-  # ask/say/stop/done), not just conversation. Bigger memory/timeout than RoverConverse
+  # brain behind MissionAgent — vision + tool-use, drives actions (navigate, follow,
+  # explore, lookAround, ask, say, stop, done, claimRoom — see DECIDE_TOOL in
+  # aws/src/rover.py for the authoritative list), not just conversation. Bigger
+  # memory/timeout than RoverConverse
   # since requests carry a downscaled JPEG frame.
   RoverActFunction:
     Type: AWS::Serverless::Function

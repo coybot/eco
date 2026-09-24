@@ -7,6 +7,12 @@ var waypoints: Array = []
 var speed: float = 0.8
 var active: bool = false
 
+## Route and pace this actor was built with. A `person_walk` inject may override `speed`
+## or `waypoints` for one scenario; `reset_to_home()` puts them back, so the next scenario
+## does not silently inherit the previous one's setup.
+var home_waypoints: Array = []
+var home_speed: float = 0.8
+
 var _target_idx: int = 1
 
 
@@ -29,3 +35,15 @@ func _physics_process(delta: float) -> void:
 
 func enu_position() -> Vector2:
 	return Vector2(position.x, -position.z)
+
+
+## Restore the built-in route/pace and stand at its first waypoint.
+func reset_to_home() -> void:
+	if not home_waypoints.is_empty():
+		waypoints = home_waypoints.duplicate()
+	speed = home_speed
+	_target_idx = 1
+	velocity = Vector3.ZERO
+	if not waypoints.is_empty():
+		var start: Vector2 = waypoints[0]
+		position = Vector3(start.x, 0.0, -start.y)

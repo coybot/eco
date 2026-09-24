@@ -402,6 +402,96 @@ static func _apply_pose_enu(node: Node3D, pos_enu: Vector3, yaw_enu: float) -> v
 # ------------------------------------------------------------------
 # IPC handlers (called from IpcServer, main thread)
 # ------------------------------------------------------------------
+## Per-vtype detection range. An aerial vehicle sees its target from much further out
+## than a ground rover does, and a single range would make one of the two useless.
+const DETECT_RANGE_BY_TYPE := {"quadcopter": 30.0, "rover": 12.0}
+const DETECT_RANGE_DEFAULT := 20.0
+const DETECT_FOV_HALF := deg_to_rad(35.0)
+
+
+## Objects this vehicle can currently see, in the same shape phrover_manager.detect() and
+## fixedwing_manager.detect() return: label, confidence, normalized bearing, and the ENU
+## world point.
+##
+## FleetManager previously had no detection at all — quad and rover had cameras and
+## kinematics but no way to answer "what is in front of me", so anything perception-driven
+## (following a moving target, for one) could not be exercised on them in sim at all.
+## Deliberately the same raycast + FOV + occlusion recipe as PhroverManager.detect rather
+## than a new one, so the three managers agree about what "visible" means.
+##
+## Bearing only: the FOV test is horizontal, matching phrover_manager. An aerial vehicle
+## looking down at a target directly below is a camera-framing question this does not
+## model, which is why the follow stand-offs keep the target ahead rather than underneath.
+func detect(drone_id: String) -> Array:
+	var st: VehicleState = _vehicles.get(drone_id)
+	if st == null:
+		return []
+	var out: Array = []
+	var here := Vector2(st.position.x, st.position.y)
+	var forward := Vector2(cos(st.yaw), sin(st.yaw))
+	var range_m: float = DETECT_RANGE_BY_TYPE.get(st.vtype, DETECT_RANGE_DEFAULT)
+	var eye := Vector3(st.position.x, maxf(st.position.z, 0.3), -st.position.y)
+
+	for node in _detect_candidates():
+		if not is_instance_valid(node):
+			continue
+		var wp := Vector2(node.position.x, -node.position.z)
+		var to_target := wp - here
+		var dist := to_target.length()
+		if dist > range_m or dist < 0.01:
+			continue
+		if absf(forward.angle_to(to_target.normalized())) > DETECT_FOV_HALF:
+			continue
+		var target3 := Vector3(node.position.x, node.position.y + 0.3, node.position.z)
+		if not _occluders_clear(eye, target3, [st.node, node]):
+			continue
+		var angle := forward.angle_to(to_target.normalized())
+		var range_penalty: float = clampf((dist - 0.5 * range_m) / (0.5 * range_m), 0.0, 1.0) * 0.3
+		out.append({
+			"label": String(node.get_meta("label", "person")),
+			"confidence": clampf(0.9 - range_penalty, 0.05, 0.95),
+			"nx": clampf(0.5 + (angle / DETECT_FOV_HALF) * 0.5, 0.0, 1.0),
+			"ny": 0.5,
+			"world": [wp.x, wp.y, node.position.y],
+		})
+	return out
+
+
+## Props plus any scenario-present person actors the loaded environment exposes. Envs
+## predating the `persons` array still answer through their single `person` property.
+func _detect_candidates() -> Array:
+	if _env_node == null:
+		return []
+	var candidates: Array = []
+	var props = _env_node.get("props")
+	if props is Array:
+		candidates.append_array(props)
+	var persons = _env_node.get("persons")
+	if persons is Array:
+		for person in persons:
+			if person != null and is_instance_valid(person) and person.active:
+				candidates.append(person)
+	else:
+		var single = _env_node.get("person")
+		if single != null and is_instance_valid(single) and single.active:
+			candidates.append(single)
+	return candidates
+
+
+func _occluders_clear(from3: Vector3, to3: Vector3, exclude: Array) -> bool:
+	var space := get_viewport().world_3d.direct_space_state if get_viewport() else null
+	if space == null:
+		return true
+	var q := PhysicsRayQueryParameters3D.create(from3, to3)
+	q.collision_mask = 0xFFFFFFFF
+	var rids: Array = []
+	for n in exclude:
+		if n != null and is_instance_valid(n) and n is CollisionObject3D:
+			rids.append(n.get_rid())
+	q.exclude = rids
+	return space.intersect_ray(q).is_empty()
+
+
 func get_state(drone_id: String):
 	var st: VehicleState = _vehicles.get(drone_id)
 	if st == null:

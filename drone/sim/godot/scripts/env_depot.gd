@@ -106,6 +106,16 @@ const START_YAW := PI / 2.0  # facing north (+y)
 # so a genuine "coast is clear" moment actually exists at the point that matters.
 const PERSON_WAYPOINTS: Array = [Vector2(3.0, 4.0), Vector2(-3.0, 4.0)]
 
+# A second walker, patrolling inside room B. Detection reports it with the same "person"
+# label as the first — nothing in the image distinguishes them, which is exactly the
+# situation a COCO-class detector leaves a follow behaviour in, and the case it has to
+# survive by association alone. Same reasoning as env_surveil_truck.gd's parked decoy
+# sedan: a target test that only one candidate can satisfy is not testing the hard part.
+# Only activated by an explicit `person_walk {person: "DecoyActor"}` inject, so scenarios
+# that predate it see exactly one person, as before.
+const DECOY_WAYPOINTS: Array = [Vector2(4.0, 2.6), Vector2(4.0, 5.2)]
+const PERSON_DECOY_NAME := "DecoyActor"
+
 # label -> {room, slots: [Vector2, ...]} — candidate positions; reset(seed) picks one each.
 const PROP_DEFS := {
 	"red_toolbox": {"room": "A", "slots": [Vector2(-5.5, 3.0), Vector2(-2.2, 5.5), Vector2(3.0, 3.5), Vector2(5.5, 5.5)]},
@@ -127,6 +137,9 @@ const PROP_DEFS := {
 var doors: Dictionary = {}   # id -> StaticBody3D panel node
 var props: Array = []        # prop nodes (also in group "depot_prop")
 var person: CharacterBody3D = null
+var decoy: CharacterBody3D = null
+# Primary first — PhroverManager's `person_walk` inject defaults to persons[0].
+var persons: Array = []
 
 
 func _ready() -> void:
@@ -137,6 +150,11 @@ func _ready() -> void:
 	_build_dock_marker()
 	person = _build_person()
 	add_child(person)
+	decoy = _build_person(PERSON_DECOY_NAME, DECOY_WAYPOINTS, Color(0.45, 0.55, 0.8))
+	add_child(decoy)
+	persons = [person, decoy]
+	for p in persons:
+		p.reset_to_home()
 	PhroverManager.register_env(self)
 	var seed_val := int(IpcServer._get_launch_arg("--seed", "0"))
 	rebuild_props(seed_val)
@@ -267,11 +285,15 @@ func _build_dock_marker() -> void:
 	add_child(mesh)
 
 
-func _build_person() -> CharacterBody3D:
+func _build_person(actor_name: String = "PersonActor",
+		route: Array = PERSON_WAYPOINTS,
+		colour: Color = Color(0.9, 0.75, 0.5)) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
 	body.set_script(load("res://scripts/person_actor.gd"))
-	body.name = "PersonActor"
-	body.waypoints = PERSON_WAYPOINTS
+	body.name = actor_name
+	body.waypoints = route.duplicate()
+	body.home_waypoints = route.duplicate()
+	body.home_speed = body.speed
 	var col := CollisionShape3D.new()
 	col.name = "Collision"
 	var cap := CapsuleShape3D.new()
@@ -295,7 +317,9 @@ func _build_person() -> CharacterBody3D:
 	mesh.mesh = cm
 	mesh.position = Vector3(0.0, 0.85, 0.0)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.9, 0.75, 0.5)
+	# Visual only — detect() reports both actors as "person"; the colour is for a human
+	# watching the recorded clip, not a cue the brain ever receives.
+	mat.albedo_color = colour
 	mesh.material_override = mat
 	body.add_child(mesh)
 	var start := PERSON_WAYPOINTS[0]

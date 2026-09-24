@@ -652,3 +652,120 @@ class SimBackend:
         # equivalent to fall back to). No-op success so MissionLoop can call
         # this unconditionally regardless of backend, same as log_event().
         return True
+
+
+class FleetSimBackend:
+    """`Backend` over the Godot FleetManager fleet (quadcopter + rover), via
+    sim/engine_client.py's EngineClient.
+
+    Sibling of `SimBackend`, which speaks the fixed-wing (`fw_*`) IPC ops only. FleetManager
+    is a kinematic integrator with cameras — it has `set_velocity`/`set_yaw`/`get_state` but
+    no yaw-RATE command and, until `fleet_detect` was added alongside this class, no sensing
+    at all. So `drive()` integrates the commanded yaw rate here and issues an absolute yaw,
+    which is exactly what the sim's own kinematic model does with it anyway.
+
+    Coordinates are ENU (x=east, y=north, z=up), matching fleet_manager.gd.
+    """
+
+    def __init__(self, client, agent_id: str, vtype: str = "quadcopter"):
+        self._client = client
+        self._id = agent_id
+        self._vtype = vtype
+        self._last_drive_at: Optional[float] = None
+        self.events: list = []
+
+    # -- sensing -----------------------------------------------------------
+    def capture_frame(self):
+        return self._client.grab_jpeg(self._id)
+
+    def detect(self) -> list:
+        out = []
+        for obj in self._client.detect(self._id):
+            world = obj.get("world")
+            out.append(Detection(
+                label=obj.get("label", "unknown"),
+                score=float(obj.get("confidence", 0.0)),
+                world_xyz=tuple(world) if world is not None else None,
+            ))
+        return out
+
+    def get_pose(self) -> Optional[Tuple[float, float, float, float]]:
+        st = self._client.state(self._id)
+        pos = st.get("position")
+        if pos is None:
+            return None
+        return (float(pos[0]), float(pos[1]), float(pos[2]), float(st.get("yaw", 0.0)))
+
+    def get_battery(self) -> Optional[dict]:
+        return None  # FleetManager models no battery.
+
+    def unproject(self, nx: float, ny: float):
+        # fleet_detect already reports world points, so nothing needs a bearing-to-world
+        # inverse here; a caller wanting one should use the detection's own `world`.
+        return None
+
+    # -- actuation ---------------------------------------------------------
+    def drive(self, airspeed: float, yaw_rate: float, climb: float = 0.0) -> None:
+        pose = self.get_pose()
+        if pose is None:
+            return
+        _, _, _, yaw = pose
+        now = time.time()
+        dt = 0.0 if self._last_drive_at is None else min(0.5, now - self._last_drive_at)
+        self._last_drive_at = now
+
+        if yaw_rate != 0.0 and dt > 0.0:
+            yaw += yaw_rate * dt
+            self._client.set_yaw(self._id, yaw)
+        self._client.set_velocity(
+            self._id, (math.cos(yaw) * airspeed, math.sin(yaw) * airspeed, climb))
+
+    def goto(self, north_m: float, east_m: float, alt_m: float,
+             timeout_s: float = 60.0, tol_m: float = 1.0) -> bool:
+        self._client.set_goal(self._id, (east_m, north_m, alt_m))
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            pose = self.get_pose()
+            if pose is not None and math.dist(pose[:3], (east_m, north_m, alt_m)) <= tol_m:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def loiter(self, center: Optional[tuple], radius: float) -> None:
+        # Present for protocol completeness. A fixed-wing — the only class whose follow
+        # geometry is an orbit — flies through SimBackend, not this one.
+        if center is None:
+            self._client.clear_velocity(self._id)
+            return
+        pose = self.get_pose()
+        if pose is None:
+            return
+        self._client.set_goal(self._id, (center[0] + radius, center[1], pose[2]))
+
+    def log_event(self, kind: str, data: dict) -> None:
+        self.events.append({"kind": kind, "data": data})
+
+    # -- lifecycle (no-ops: a kinematic sim vehicle is always "flying") ------
+    def takeoff(self, alt_m: float) -> bool:
+        pose = self.get_pose()
+        if pose is None:
+            return False
+        self._client.set_goal(self._id, (pose[0], pose[1], alt_m))
+        return True
+
+    def land(self, heading_deg: Optional[float] = None) -> bool:
+        pose = self.get_pose()
+        if pose is None:
+            return False
+        self._client.set_goal(self._id, (pose[0], pose[1], 0.0))
+        return True
+
+    def rtl(self, alt_m: Optional[float] = None) -> bool:
+        self._client.set_goal(self._id, (0.0, 0.0, alt_m if alt_m is not None else 5.0))
+        return True
+
+    def configure_safety(self, fence_radius_m: Optional[float] = None,
+                         fence_max_alt_m: Optional[float] = None,
+                         min_alt_floor_m: Optional[float] = None,
+                         **kwargs) -> bool:
+        return False  # FleetManager enforces no envelope of its own.

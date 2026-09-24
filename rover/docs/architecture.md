@@ -74,7 +74,11 @@ embeddable in the app as a local Swift package.
   `DialogAgent` (on-device Foundation Model parses `RoverIntent`, dispatches to
   `NavigationController`/stop, escalates to `ClaudeDialogClient` only for open-ended
   chat) → `SpeechOut` (on-device TTS). Natural-language destinations resolve against
-  `WorldMapStore` saved places. Person avoidance / follow-me is a later addition here.
+  `WorldMapStore` saved places.
+- **Follow-me** (vision-only, moving target): `FollowController` + `TargetTracker` +
+  `RoverNav.FollowPolicy`, a sibling of `NavigationController` rather than a mode of it —
+  see [../../docs/follow-target.md](../../docs/follow-target.md) for the cross-platform
+  contract and why the static-goal nav loop cannot host it.
 - **Phase 3 — cloud/fleet:** ✅ pose/nav-state telemetry now publishes to AWS IoT (see
   Software layers table). Still open: remote monitoring UI, teleop override (subscribe
   side — `MQTTService.subscribe` exists but nothing calls it yet), and device

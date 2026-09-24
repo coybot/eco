@@ -338,7 +338,7 @@ func _step_rover(st: PhroverState, dt: float) -> void:
 		# rover's heading (st.yaw) still updates normally from w so navigation resumes
 		# on-course the instant it clears this band.
 		var y_escape := 1.0 if st.cmd_v >= 0.0 else -1.0
-		var person_now := _person_node()
+		var person_now := _nearest_person(st)
 		var x_escape := 1.0
 		if person_now:
 			var dx: float = st.pos.x - person_now.enu_position().x
@@ -391,7 +391,7 @@ func _step_rover(st: PhroverState, dt: float) -> void:
 		# debug from otherwise — confirmed the hard way (a 10-collision live failure left
 		# nothing to investigate beyond an aggregate count, forcing guesswork at exactly
 		# the moment precise data mattered most).
-		var person := _person_node()
+		var person := _nearest_person(st)
 		var person_pos: Array = [person.enu_position().x, person.enu_position().y] if person else []
 		_log_event("collision", {"id": st.id, "with": "person", "pos": [st.pos.x, st.pos.y],
 			"person_pos": person_pos, "y_gap": y_gap, "x_gap": _person_x_gap(st),
@@ -433,30 +433,30 @@ func _forward_clearance(st: PhroverState) -> float:
 
 
 func _person_distance(st: PhroverState) -> float:
-	var person := _person_node()
-	if person == null or not person.active:
-		return INF
-	return st.pos.distance_to(person.enu_position())
+	var nearest := INF
+	for person in _person_nodes():
+		nearest = minf(nearest, st.pos.distance_to(person.enu_position()))
+	return nearest
 
 
 # Pure Y-separation from the person, ignoring X entirely — used ONLY as an ADDITIONAL
 # trigger condition (see _step_rover and PERSON_Y_STOP_DIST's own comment for the full
 # history), never to decide whether to release.
 func _person_y_gap(st: PhroverState) -> float:
-	var person := _person_node()
-	if person == null or not person.active:
-		return INF
-	return absf(st.pos.y - person.enu_position().y)
+	var nearest := INF
+	for person in _person_nodes():
+		nearest = minf(nearest, absf(st.pos.y - person.enu_position().y))
+	return nearest
 
 
 # X-proximity qualifier for the Y-gap trigger (see PERSON_X_TRIGGER_DIST) — without this,
 # the Y-gap check alone fires for any rover position sharing the person's patrol y-band,
 # regardless of how far apart they actually are in x.
 func _person_x_gap(st: PhroverState) -> float:
-	var person := _person_node()
-	if person == null or not person.active:
-		return INF
-	return absf(st.pos.x - person.enu_position().x)
+	var nearest := INF
+	for person in _person_nodes():
+		nearest = minf(nearest, absf(st.pos.x - person.enu_position().x))
+	return nearest
 
 
 func _log_person_proximity(st: PhroverState, dist: float) -> void:
@@ -481,10 +481,37 @@ func _check_geofence() -> void:
 		st.in_geofence = inside
 
 
-func _person_node() -> Node:
+## The closest scenario-present person to this rover, or null if none are present.
+func _nearest_person(st: PhroverState) -> Node:
+	var best: Node = null
+	var best_dist := INF
+	for person in _person_nodes():
+		var d: float = st.pos.distance_to(person.enu_position())
+		if d < best_dist:
+			best_dist = d
+			best = person
+	return best
+
+
+## Every scenario-present (active) person actor in the environment. The governor takes the
+## nearest of them; detect() reports all of them. Envs that only ever had a single person
+## still answer through their `person` property.
+func _person_nodes() -> Array:
 	if _env == null:
-		return null
-	return _env.person
+		return []
+	var nodes: Array = []
+	var listed = _env.get("persons")
+	if listed is Array:
+		nodes = listed
+	else:
+		var single = _env.get("person")
+		if single != null:
+			nodes = [single]
+	var active: Array = []
+	for node in nodes:
+		if node != null and is_instance_valid(node) and node.active:
+			active.append(node)
+	return active
 
 
 # ------------------------------------------------------------------
@@ -514,7 +541,8 @@ func get_state(id: String) -> Variant:
 	if st == null:
 		return null
 	return {"pose": [st.pos.x, st.pos.y, st.yaw], "battery": st.battery,
-			"guard_stopped": st.guard_stopped, "person_stop_active": st.person_stop_active}
+			"guard_stopped": st.guard_stopped, "person_stop_active": st.person_stop_active,
+			"clearance": _forward_clearance(st)}
 
 
 func detect(id: String) -> Array:
@@ -525,9 +553,7 @@ func detect(id: String) -> Array:
 	var forward := Vector2(cos(st.yaw), sin(st.yaw))
 	var out: Array = []
 	var candidates: Array = _env.props.duplicate()
-	var person := _person_node()
-	if person != null and person.active:
-		candidates.append(person)
+	candidates.append_array(_person_nodes())
 	for node in candidates:
 		if not is_instance_valid(node):
 			continue
@@ -571,9 +597,7 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 		var cam_pos := Vector3(st.pos.x, 0.3, -st.pos.y)
 		var forward := Vector2(cos(st.yaw), sin(st.yaw))
 		var candidates: Array = _env.props.duplicate()
-		var person := _person_node()
-		if person != null and person.active:
-			candidates.append(person)
+		candidates.append_array(_person_nodes())
 		var best_node = null
 		var best_diff := 0.15  # radians — nx round-trips almost exactly for the object it came from
 		for node in candidates:
@@ -717,12 +741,40 @@ func inject(name: String, params: Dictionary) -> void:
 				_env.set_door_closed(door_id2, false)
 				_rebuild_occ_grid()
 		"person_walk":
-			var person := _person_node()
-			if person:
-				var on: bool = bool(params.get("on", true))
+			var on: bool = bool(params.get("on", true))
+			# No `person` given targets ONLY the primary actor, so every pre-existing
+			# scenario that just says `person_walk {on: true}` behaves exactly as it did
+			# before a second actor existed. A decoy has to be asked for by name.
+			var who: String = str(params.get("person", ""))
+			var listed = _env.get("persons") if _env != null else null
+			var all_persons: Array = listed if listed is Array else (
+				[_env.person] if _env != null and _env.get("person") != null else [])
+			if who == "" and not all_persons.is_empty():
+				all_persons = [all_persons[0]]
+			for person in all_persons:
+				if person == null or not is_instance_valid(person):
+					continue
+				if who != "" and str(person.name) != who:
+					continue
 				person.active = on
 				person.visible = on
-				var col := person.get_node_or_null("Collision")
+				if params.has("speed"):
+					person.speed = float(params["speed"])
+				if params.has("waypoints"):
+					var wps: Array = []
+					for wp in params["waypoints"]:
+						wps.append(Vector2(float(wp[0]), float(wp[1])))
+					if wps.size() >= 2:
+						# `home_waypoints` is deliberately NOT touched: it is what reset()
+						# restores, so overwriting it here would leak this scenario's route
+						# into the next one (it did — a follow scenario's hallway route
+						# survived a reset and put the walker straight in front of the
+						# crossing test's rover).
+						person.waypoints = wps
+						var start: Vector2 = wps[0]
+						person.position = Vector3(start.x, 0.0, -start.y)
+				# `person` comes out of an untyped Array here, so no inference from it.
+				var col: Node = person.get_node_or_null("Collision")
 				if col:
 					col.disabled = not on
 		"battery_drain":
@@ -784,15 +836,18 @@ func reset(seed_val: int) -> void:
 		_env.rebuild_props(seed_val)
 		_env.set_door_closed("A", false)
 		_env.set_door_closed("Y", false)
-		var person := _person_node()
-		if person:
+		var listed = _env.get("persons")
+		var all_persons: Array = listed if listed is Array else (
+			[_env.person] if _env.get("person") != null else [])
+		for person in all_persons:
+			if person == null or not is_instance_valid(person):
+				continue
 			person.active = false
 			person.visible = false
-			var col := person.get_node_or_null("Collision")
+			var col: Node = person.get_node_or_null("Collision")
 			if col:
 				col.disabled = true
-			var start: Vector2 = _env.PERSON_WAYPOINTS[0]
-			person.position = Vector3(start.x, 0.0, -start.y)
+			person.reset_to_home()
 	_rebuild_occ_grid()
 	for st in _rovers.values():
 		st.battery = 100.0

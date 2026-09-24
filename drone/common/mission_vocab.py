@@ -198,6 +198,13 @@ VLM_CAPABILITIES: Dict[str, str] = {
                     "somewhere it may reappear (under cover, inside a "
                     "structure). One lap per decision, so it re-evaluates "
                     "each lap rather than committing to a fixed wait.",
+    "follow_target": "Keep station on something that is MOVING (a vehicle driving "
+                      "away, a person walking) — a stand-off behind it for a rover or "
+                      "multirotor, a continuous circle around it for a fixed-wing, which "
+                      "cannot hover. Distinct from orbit_point (a FIXED point) and from "
+                      "navigate (which ends on arrival at a point that is already stale "
+                      "by the time it gets there). Runs between decisions rather than "
+                      "inside one, so re-issuing it does not restart it.",
     "drop_payload": "Release a carried payload for a target it has confirmed "
                      "and is close to. Refuses unless the target is visible "
                      "in the current frame and within range — a payload "

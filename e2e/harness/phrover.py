@@ -14,6 +14,10 @@ Three independent, unrelated checks — see scenarios.yaml's comment for why:
                    in the same xcodebuild invocation — it exercises MissionAgent's decision
                    loop (grounding, look-around, ask/answer, best-effort fallback) against
                    scripted fakes, and the unprojection math against synthetic geometry.
+  follow        -- the same POST /rover/act route, asked to follow. Checks the one action
+                   that is a mode rather than a trip comes back well-formed (action=follow
+                   with a description or an image point to follow); without it nothing can
+                   reach FollowController from a spoken command.
   mission_agent -- POST /rover/act, the vision + tool-use mission brain behind
                    MissionAgent's CloudBrain (aws/src/rover.py's act_handler). fast tier
                    hits harness/mock_rover_act.py; live tier hits the real deployed
@@ -43,7 +47,11 @@ from .mock_rover_act import MockRoverAct
 from .mock_rover_converse import MockRoverConverse
 
 _SDK_DIR = Path(__file__).resolve().parents[3] / "sdk"
-_VALID_ACTIONS = {"navigate", "explore", "lookAround", "ask", "say", "stop", "done"}
+# Must match DECIDE_TOOL's action enum in aws/src/rover.py, which is the source of truth
+# for what this route can return — a valid action missing here fails the check on a
+# perfectly good answer (claimRoom was missing until a team mission would have hit it).
+_VALID_ACTIONS = {"navigate", "follow", "explore", "lookAround", "ask", "say", "stop",
+                  "done", "claimRoom"}
 
 
 def _first_available_simulator() -> str | None:
@@ -135,11 +143,26 @@ def _mission_agent_live(utterance: str) -> dict[str, Any]:
         return json.load(r)
 
 
+def _follow_target_ok(response: dict[str, Any]) -> bool:
+    """A follow decision has to carry something followable. `visualQuery` needs the
+    description in `text`; an `imagePoint` needs both coordinates. A bare action=follow
+    would start a lock with nothing to lock onto."""
+    if response.get("action") != "follow":
+        return False
+    kind = response.get("target_kind")
+    if kind == "visualQuery":
+        return bool(response.get("text"))
+    if kind in ("imagePoint", "worldPoint"):
+        return response.get("x") is not None and response.get("y") is not None
+    return bool(response.get("text"))
+
+
 def _run(tier: str) -> dict[str, Any]:
     scenario = load_scenarios()["phrover"]
     dialog_spec = scenario["dialog"]
     nav_spec = scenario["navigate"]
     mission_agent_spec = scenario["mission_agent"]
+    follow_spec = scenario["follow"]
 
     dialog_resp = (_dialog_fast if tier == "fast" else _dialog_live)(dialog_spec["utterance"])
     dialog_ok = bool(dialog_resp.get("reply"))
@@ -150,15 +173,21 @@ def _run(tier: str) -> dict[str, Any]:
         mission_agent_spec["utterance"])
     mission_agent_ok = mission_agent_resp.get("action") in _VALID_ACTIONS
 
-    ok = dialog_ok and nav_ok and mission_agent_ok
+    follow_resp = (_mission_agent_fast if tier == "fast" else _mission_agent_live)(
+        follow_spec["utterance"])
+    follow_ok = _follow_target_ok(follow_resp)
+
+    ok = dialog_ok and nav_ok and mission_agent_ok and follow_ok
     reason = "ok" if ok else "; ".join(
         s for s in [None if dialog_ok else "dialog check failed",
                     None if nav_ok else f"swift test failed: {nav_detail}",
-                    None if mission_agent_ok else "mission_agent check failed"] if s)
+                    None if mission_agent_ok else "mission_agent check failed",
+                    None if follow_ok else f"follow check failed: {follow_resp}"] if s)
     return {"type": "phrover", "tier": tier, "ok": ok, "reason": reason,
             "dialog": {"utterance": dialog_spec["utterance"], "response": dialog_resp},
             "navigate": {"mission": nav_spec["mission"], "swift_test_ok": nav_ok},
-            "mission_agent": {"utterance": mission_agent_spec["utterance"], "response": mission_agent_resp}}
+            "mission_agent": {"utterance": mission_agent_spec["utterance"], "response": mission_agent_resp},
+            "follow": {"utterance": follow_spec["utterance"], "response": follow_resp}}
 
 
 def run_fast() -> dict[str, Any]:

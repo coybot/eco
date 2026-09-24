@@ -45,7 +45,16 @@ class MockRoverAct:
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length) or b"{}")
                 outer.received.append(body)
-                payload = json.dumps({"action": "say", "text": "On it."}).encode()
+                # "follow me" is the one utterance whose *shape* of answer differs — a
+                # mode with a target, not an acknowledgement — so the mock answers it in
+                # kind rather than flattening every request to a `say`.
+                utterance = (body.get("utterance") or "").lower()
+                if "follow" in utterance:
+                    decision = {"action": "follow", "target_kind": "visualQuery",
+                                "text": "person"}
+                else:
+                    decision = {"action": "say", "text": "On it."}
+                payload = json.dumps(decision).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))

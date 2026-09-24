@@ -52,10 +52,16 @@ fixedwing:
 #                    dispatched entirely on-device by RoverNav and never reach the cloud.
 #   navigate      -- on-device RoverNav planning/driving (PhroverKit's MissionAgent
 #                    executes decisions through this; unaffected by which brain chose them).
+#   follow        -- the same /rover/act route, checked for the one action that is a MODE
+#                    rather than a trip: a "follow me" utterance has to come back as
+#                    action=follow with something followable attached, or the rover has no
+#                    way to reach FollowController at all.
 #   mission_agent -- /rover/act, the vision + tool-use mission brain behind MissionAgent's
 #                    CloudBrain (aws/src/rover.py's act_handler) — a sibling cloud route to
-#                    /rover/converse, but for actions (navigate/lookAround/ask/say/stop/
-#                    done), not talk. See CloudBrain.swift / HybridBrain.swift in the
+#                    /rover/converse, but for actions (DECIDE_TOOL's enum in
+#                    aws/src/rover.py is the authoritative list), not talk. The harness's
+#                    _VALID_ACTIONS must stay in step with that enum. See
+#                    CloudBrain.swift / HybridBrain.swift in the
 #                    sibling coybot-sdk repo.
 phrover:
   app: PhroverOperator  # sdk/examples/PhroverOperator in the sibling coybot-sdk repo
@@ -72,3 +78,7 @@ phrover:
     transport: rover_act_http          # POST /rover/act -> {"action": "...", ...}
     utterance: "go to the chair"
     expect: {action_ok: true}
+  follow:
+    transport: rover_act_http          # POST /rover/act -> {"action": "follow", ...}
+    utterance: "follow me"
+    expect: {follow_ok: true}

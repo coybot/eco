@@ -56,6 +56,13 @@ class EngineClient:
         r = self._call({"op": "get_state", "id": did})
         return {"position": r.get("position", [0, 0, 0]), "yaw": r.get("yaw", 0.0)}
 
+    def detect(self, did: str) -> list:
+        """Objects this vehicle can currently see: label, confidence, normalized bearing
+        and the ENU world point (fleet_manager.gd's detect()). Same shape as the phrover
+        and fixed-wing detect ops, so one perception consumer serves all three."""
+        r = self._call({"op": "fleet_detect", "id": did})
+        return r.get("objects", []) or []
+
     def camera_pose(self, did: str) -> dict:
         """ENU camera position + forward/up unit vectors for GT-box projection
         (godot_dataset_recorder.py). Read from the live Camera3D transform

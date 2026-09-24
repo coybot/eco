@@ -92,6 +92,19 @@ You must always call the `decide` tool with exactly one next action:
   remembered object in memory when the operator refers to somewhere already visited or \
   something already seen (e.g. "go home", "back to where we started", "the chair we \
   passed") — do not guess a worldPoint you have not actually seen in memory.
+- follow: keep station behind something that is MOVING (a person walking, a cart being \
+  towed) at a fixed stand-off, rather than driving to a fixed point. Use this — not \
+  navigate — whenever the operator asks the rover to come along with someone or stay with \
+  something on the move ("follow me", "stay with that cart"). Name the target with \
+  target_kind="visualQuery" and put the description in text ("the person in the hat"), or \
+  point at it with target_kind="imagePoint" and (x, y); a description usually survives \
+  better, because by the time your answer reaches the rover a walking person has moved on \
+  from the pixel you picked. Follow keeps running on its own between your calls: you are \
+  asked again every few seconds with follow_state telling you what it is doing, and \
+  repeating the same follow does NOT restart it. Do not spam it — say something or choose \
+  done instead, and issue stop when the operator wants the rover to hold. The rover tops \
+  out around 0.35 m/s, well under walking pace, so if the operator strides off it WILL \
+  fall behind: say so rather than pretending otherwise.
 - explore: the target is probably in a part of the space you haven't seen. Pick an opening \
   id from the unexplored-openings list to drive there and look. Prefer unexplored openings; \
   if one you checked turned out to be a dead end (e.g. just a hallway), try the next.
@@ -164,7 +177,7 @@ DECIDE_TOOL = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["navigate", "explore", "lookAround", "ask", "say", "stop", "done", "claimRoom"],
+                "enum": ["navigate", "follow", "explore", "lookAround", "ask", "say", "stop", "done", "claimRoom"],
             },
             "candidate_id": {
                 "type": "string",
@@ -176,8 +189,8 @@ DECIDE_TOOL = {
             },
             "target_kind": {
                 "type": "string",
-                "enum": ["imagePoint", "worldPoint"],
-                "description": "Required when action is navigate.",
+                "enum": ["imagePoint", "worldPoint", "visualQuery"],
+                "description": "Required when action is navigate (imagePoint or worldPoint) or follow (visualQuery preferred, imagePoint allowed).",
             },
             "x": {
                 "type": "number",
@@ -193,7 +206,7 @@ DECIDE_TOOL = {
             },
             "text": {
                 "type": "string",
-                "description": "Required when action is ask (the question) or say (what to say).",
+                "description": "Required when action is ask (the question), say (what to say), or follow with target_kind=visualQuery (a description of what to follow).",
             },
             "reasoning": {
                 "type": "string",
@@ -237,6 +250,13 @@ def _describe_mission(body):
         lines.append(f"Battery: {battery:.0f}%")
 
     lines.append(f"Navigation state: {body.get('navState', 'idle')}")
+
+    follow_state = body.get("followState")
+    if follow_state:
+        lines.append(
+            f"follow_state: {follow_state} (a follow you started is still running; "
+            "repeating the same follow does nothing, and stop ends it)"
+        )
 
     recent_actions = body.get("recentActions") or []
     if recent_actions:
@@ -302,8 +322,9 @@ def _describe_mission(body):
 
 def act_handler(event, context):
     """POST /rover/act — vision + tool-use mission brain for MissionAgent (PhroverKit).
-    Sibling of /rover/converse: this route drives ACTIONS (navigate/lookAround/ask/say/
-    stop/done), not just talk, and is the "cloud primary" half of the hybrid brain — see
+    Sibling of /rover/converse: this route drives ACTIONS (the DECIDE_TOOL action enum
+    above is the authoritative list), not just talk, and is the "cloud primary" half of
+    the hybrid brain — see
     CloudBrain.swift / HybridBrain.swift in the sibling coybot-sdk repo
     (swift/Sources/PhroverCloud/Cloud), which this request/response shape mirrors exactly.
     """

@@ -48,6 +48,10 @@ class ActionType(str, Enum):
     ORBIT_POINT = "orbit_point"  # Circle a world point, sensor held on it, and keep
                                   # watching — for when something you care about is
                                   # temporarily hidden and may reappear
+    FOLLOW_TARGET = "follow_target"  # Keep station on something that is MOVING. Distinct
+                                      # from ORBIT_POINT (which watches a FIXED point) and
+                                      # from navigate (which ends on arrival): the goal is
+                                      # re-estimated every tick and there is no arrival.
     DROP_PAYLOAD = "drop_payload"  # Release the carried payload near a confirmed target
     AVOID = "avoid"  # Obstruction filling the camera: break left/right, or climb OVER it.
                       # Deliberately RELATIVE (no coordinates), because it is the one
@@ -145,14 +149,14 @@ OUTPUT FORMAT:
 You must respond with a JSON object containing:
 {
   "reasoning": "Your brief reasoning about what you see and why you chose this action",
-  "action_type": "one of: navigate_to_point, navigate_to_world, navigate_to_object, return_to_landmark, search_area, orbit_point, drop_payload, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
+  "action_type": "one of: navigate_to_point, navigate_to_world, navigate_to_object, return_to_landmark, search_area, orbit_point, follow_target, drop_payload, count, capture_photo, report, phase_complete, mission_complete, mission_failed, ask_cloud",
   "point_x": <pixel x if navigate_to_point, 0 to IMAGE WIDTH>,
   "point_y": <pixel y if navigate_to_point, 0 to IMAGE HEIGHT, measured DOWN from the top>,
-  "target_object": "<object name if navigate_to_object, return_to_landmark, search_area, count, or drop_payload>",
+  "target_object": "<object name if navigate_to_object, return_to_landmark, search_area, count, follow_target, or drop_payload>",
   "world_x": <world east coordinate if navigate_to_world or orbit_point>,
   "world_y": <world north coordinate if navigate_to_world or orbit_point>,
   "radius_m": <orbit radius in metres if orbit_point, at least 45>,
-  "alt_m": <altitude in metres if orbit_point>,
+  "alt_m": <altitude in metres if orbit_point or follow_target>,
   "message": "<message content if report/complete/failed>"
 }
 
@@ -205,6 +209,15 @@ ACTION TYPES:
   does not. Give world_x/world_y for the point to watch (world coordinates, e.g.
   from MEMORY or CURRENT DETECTIONS), radius_m (45 or more; this aircraft cannot
   hover and stalls in too tight a turn) and alt_m.
+- follow_target: Keep station on something that is MOVING — a vehicle driving away, a
+  person walking. Set target_object to what to follow, and alt_m if you want a specific
+  height. Use this instead of navigate_to_object whenever the thing will not still be
+  there by the time you arrive: navigate ends when it reaches a point, and the point is
+  already stale. Use it instead of orbit_point whenever the thing itself is moving —
+  orbit_point circles a FIXED place. Following runs on its own between your decisions and
+  reports back, so do not re-issue it every turn; report, or choose another action, and
+  issue a stop when you want to break off. This aircraft cannot hover, so for a fixed-wing
+  "following" means flying a continuous circle around the target as it moves.
 - drop_payload: Release the carried payload for a target you have CONFIRMED and
   are close to. Set target_object to what you are delivering to. You carry a
   limited number (see PAYLOAD) and cannot pick one back up, so releasing on the
