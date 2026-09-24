@@ -1,4 +1,44 @@
-# Eco sim host (Isaac Sim)
+# Sim hosts
+
+There are **two** simulator backends in this tree, and this file used to
+document only the older one. Read this section first so you pick the right
+one.
+
+## Godot 4 — what the environments run on
+
+`drone/sim/godot/` is a self-contained Godot 4 project with sixteen
+environments, including three built from real-world public-domain data
+(`manhattan`, `manhattan_photo`, `baylands`). It needs no AWS account, no
+drone and no network, and every asset is committed, so a plain clone runs:
+
+```bash
+godot --path drone/sim/godot -- --fleet= --env=baylands --ipc-port=9978 --seed=0
+```
+
+It speaks newline-delimited JSON over TCP (`scripts/ipc_server.gd`), and
+`godot_engine.py` wraps that behind `sim_engine.py`'s Unix-socket protocol so
+`engine_client.py`, `sim_drone_daemon.py` and `launch_fleet.py` drive it with
+no changes.
+
+Dataset builders for the real-world scenes live in `tools/` — USGS 3DEP
+elevation, USDA NAIP imagery, USGS National Map tiles, OpenStreetMap vectors
+and CC0 facade photographs from ambientCG. All public domain or CC0, no API
+key. See the Simulator section of the repository README for how to add a
+scene of your own.
+
+Further reading: `README_FIXEDWING.md` (the fixed-wing model and its
+perception gates), `README_SAR_DEMO.md`, `BRINGUP_MAC.md`.
+
+## Isaac Sim — the original backend, still present
+
+Everything below describes the Isaac Sim host. It is not the path the Godot
+environments use, but it is not dead code either: `isaac_vehicle.py` is still
+referenced by `drone/common/vehicle_class.py`, `drone/sim/sim_sdk.py` and the
+`drone/training/` render scripts. Do not assume you can delete it.
+
+---
+
+## Eco sim host (Isaac Sim)
 
 Runs **one process per simulated vehicle** on the Isaac Sim host (hoopoe) and makes a sim drone
 behave **exactly like an IRL drone**: commands arrive over AWS IoT **MQTT** (outbound, cert-auth —

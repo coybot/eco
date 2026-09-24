@@ -133,6 +133,109 @@ After installation, look for a WiFi network like `Coybot-<model>-XXXX` and use t
 
 **No manual certificate creation needed!** Fleet Provisioning handles this automatically.
 
+## Simulator
+
+There is a full Godot 4 flight simulator in `drone/sim/godot`, and it needs no
+AWS account, no drone and no network. It is the fastest way to see what this
+repo does.
+
+```bash
+godot --path drone/sim/godot -- --fleet= --env=baylands --ipc-port=9978 --seed=0
+```
+
+Sixteen environments are registered (see `env_map` in
+`drone/sim/godot/scripts/fleet_manager.gd`). Three of them are real places,
+built from public-domain data committed to this repo — clone and run, there is
+no fetch step:
+
+| Env | What it is |
+|---|---|
+| `manhattan` | ~45,000 real building footprints from NYC Open Data, real roof heights |
+| `manhattan_photo` | the same city with photographic facades and a USGS orthophoto ground |
+| `baylands` | Baylands Park, Sunnyvale — USGS LIDAR terrain, NAIP orthophoto, ~11,000 trees |
+
+The rest are hand-built scenes: `office`, `plaza`, `city`, `depot`,
+`flightline`, `countdemo`, `gate`, `sar`, `surveil_truck` and a few aliases.
+
+**Why the real ones are cheap to fly in.** Every building is an axis-aligned
+box, and that one representation feeds three things at once: the occupancy
+grid the router plans against, an analytic ray-vs-prism test for occlusion,
+and a single instanced draw call. That is why a 45,000-building city costs
+about what a courtyard costs. `manhattan` and `manhattan_photo` are the *same
+world* to routing and collision — only the pixels differ.
+
+`baylands` adds terrain: a heightfield an aircraft can actually fly into, and
+tree crowns that count as obstacles.
+
+### Driving it
+
+The sim speaks newline-delimited JSON over TCP (`--ipc-port`). Ops include
+`get_state`, `set_goal`, `set_velocity`, `grab_frame`, `add_vantage`,
+`auto_overhead` and `grab_vantage`, plus a fixed-wing set (`fw_spawn`,
+`fw_drive`, `fw_detect`, `fw_grid`, `fw_unproject`, `fw_grab_frame`, …).
+
+Vantages are free-placed cameras that render to their own viewport and hand
+back a JPEG — useful for stills and for feeding a vision model:
+
+```python
+import socket, json, base64
+s = socket.create_connection(("127.0.0.1", 9978)); f = s.makefile("rwb")
+def call(op, **kw):
+    f.write((json.dumps({"op": op, **kw}) + "\n").encode()); f.flush()
+    return json.loads(f.readline())
+
+# p and look are ENU metres: x=east, y=north, z=UP.
+call("add_vantage", name="top", p=[1547, 1500, 2600], look=[1560, 1700, 0])
+open("shot.jpg", "wb").write(base64.b64decode(call("grab_vantage", name="top")["jpg"]))
+```
+
+Two things that will cost you an hour if you guess: the position key is `p`,
+not `pos`, and a vantage looking straight down is degenerate — nudge the look
+target off true vertical or the camera silently stays horizontal.
+
+`drone/sim/godot_engine.py` wraps the same sim behind `sim_engine.py`'s
+Unix-socket protocol, so `engine_client.py`, `sim_drone_daemon.py` and
+`launch_fleet.py` drive it unmodified.
+
+### Building your own real-world scene
+
+`drone/sim/tools/` has the dataset builders. They pull from USGS 3DEP
+(elevation), USDA NAIP (imagery), USGS National Map (tiles), OpenStreetMap
+(vectors) and ambientCG (CC0 facade photographs) — all public domain or CC0,
+no API key, nothing to sign.
+
+```bash
+python3 drone/sim/tools/fetch_baylands.py --out drone/sim/godot/assets/baylands
+python3 drone/sim/tools/fetch_facades.py  --out drone/sim/godot/assets/facades
+```
+
+A new scene is a `.gd` script in `godot/scripts`, a one-node `.tscn` in
+`godot/scenes/environments`, and a line in `fleet_manager.gd`'s `env_map`.
+`env_baylands.gd` is the worked example — it loads a heightmap, an orthophoto
+and a vector dataset, and exposes `ground_height()` and `collision_height()`
+so the flight code can hit the terrain. Note that `drone/sim/godot/assets/*`
+is gitignored by default; un-ignore your scene's directory by name in
+`.gitignore` (there are examples there) so a plain clone still runs it.
+
+## Ground Control Station
+
+`gcs/` runs the same orchestration logic as the AWS Lambda stack, locally,
+against local models (Ollama, vLLM, anything speaking OpenAI
+`/v1/chat/completions`) with **no internet and no AWS account**. The apps and
+the drones take a config switch between cloud and GCS mode. See
+[gcs/README.md](gcs/README.md).
+
+## Where else to look
+
+| Path | Contents |
+|---|---|
+| [`drone/sim/README.md`](drone/sim/README.md) | sim host notes (both engines) |
+| [`drone/sim/README_FIXEDWING.md`](drone/sim/README_FIXEDWING.md) | the fixed-wing model and its gates |
+| [`gcs/README.md`](gcs/README.md) | offline ground control station |
+| [`e2e/README.md`](e2e/README.md) | headless regression across all four vehicle types |
+| [`client/ios/README.md`](client/ios/README.md) | the iOS operator app |
+| [`docs/README.md`](docs/README.md) | reference docs index |
+
 ## File Structure
 
 ```
