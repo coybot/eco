@@ -49,6 +49,24 @@ battery:
   capacity_mah: 5000            # Battery capacity in mAh
   low_voltage_per_cell: 3.5     # Low battery warning (V per cell)
   critical_voltage_per_cell: 3.3 # Critical battery warning (V per cell)
+  # Flight budget (battery.py). Percent of pack. The drone refuses takeoff below
+  # min_takeoff_pct, refuses any action that would not leave landing_reserve_pct
+  # after flying home, and returns home / lands by itself when it gets there.
+  min_takeoff_pct: 35
+  landing_reserve_pct: 20
+  critical_pct: 10               # below this after the trip home: land where it is
+  low_battery_pct: 35            # low mode: no takeoff, no recording, no climbing above...
+  low_mode_max_alt_m: 10
+  # Cost model - tune from logs: hover % per minute for THIS airframe and pack.
+  hover_pct_per_min: 7.0
+  cruise_speed_mps: 3.0
+  # Only set these if the board's own defaults are wrong (see
+  # battery_diagnostics()). Scale errors: use calibrate_voltage()/calibrate_current().
+  # fc_pins: {volt_pin: 10, curr_pin: 11, volt_mult: 11.0, amp_per_volt: 40.0}
+
+# Force-arming skips EVERY flight-controller pre-arm check, battery included.
+# Only for a bench rig that cannot pass them (e.g. no GPS indoors).
+allow_force_arm: false
 
 # Logging
 log_level: "INFO"

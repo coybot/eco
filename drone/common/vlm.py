@@ -717,7 +717,11 @@ class VLMService:
             lines.append("")
             lines.append("DRONE STATE:")
             if drone_state.get('battery'):
-                lines.append(f"  Battery: {drone_state['battery']}%")
+                lines.append(f"  Battery: {drone_state['battery']:.0f}%")
+            if drone_state.get('battery_actions_left') is not None:
+                lines.append(
+                    f"  Battery budget: ~{drone_state['battery_actions_left']} more actions "
+                    f"before it must return home - prefer the shortest path to the goal")
             if drone_state.get('position'):
                 lines.append(f"  Position: {drone_state['position']}")
             if drone_state.get('altitude'):
