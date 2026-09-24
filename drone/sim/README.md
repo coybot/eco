@@ -29,12 +29,28 @@ scene of your own.
 Further reading: `README_FIXEDWING.md` (the fixed-wing model and its
 perception gates), `README_SAR_DEMO.md`, `BRINGUP_MAC.md`.
 
-## Isaac Sim — the original backend, still present
+## Isaac Sim — the original backend, effectively retired
 
-Everything below describes the Isaac Sim host. It is not the path the Godot
-environments use, but it is not dead code either: `isaac_vehicle.py` is still
-referenced by `drone/common/vehicle_class.py`, `drone/sim/sim_sdk.py` and the
-`drone/training/` render scripts. Do not assume you can delete it.
+Everything below describes the Isaac Sim host, which is **not** how the
+environments run any more and is very close to dead code. Before deleting it,
+know exactly what still touches it:
+
+- `sim_bridge.py` is the Isaac entry point, and **nothing invokes it**. Its
+  only apparent callers are a comment in `test_sim_e2e.sh` and its own
+  docstring. `drone/platforms/sim_host/install.sh` deploys `godot_engine.py`,
+  not this.
+- `sim_sdk.py` is alive, but mostly for things unrelated to Isaac —
+  `sim_control.py`, `fleet_worker.py` and `sim_drone_daemon.py` import
+  `FrameBus` and the lat/lon helpers from it. Its Isaac import is deliberately
+  deferred inside `SimWorker.run()` ("so the module is importable without
+  Isaac"), and `SimWorker` is only reached through `sim_bridge.py`.
+- The real remaining consumers are three standalone render scripts:
+  `drone/training/render_fixedwing_demo.py`, `record_comparison.py` and
+  `render_session1.py`, which import `IsaacVehicleBridge` directly.
+
+So removing Isaac means retiring those three render scripts (or porting them
+to Godot) and dropping `sim_bridge.py` plus `SimWorker`. The rest of
+`sim_sdk.py` stays.
 
 ---
 
