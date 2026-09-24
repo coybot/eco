@@ -26,7 +26,7 @@ def turn_radius_m(vehicle_class) -> float:
     """Minimum turn radius at cruise speed: v / max_yaw_rate.
 
     This is the same quantity the fixed-wing scenario YAML comments size their
-    obstacle spacing against (see scenarios/fw_sweep.yaml) — reused here instead
+    obstacle spacing against (see scenarios_fw/fw_sweep.yaml) — reused here instead
     of re-deriving it so search geometry and obstacle geometry always agree.
     """
     return vehicle_class.max_speed_mps / max(vehicle_class.max_yaw_rate_radps, 1e-6)
