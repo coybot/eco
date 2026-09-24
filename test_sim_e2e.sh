@@ -4,7 +4,7 @@
 # Example: ./test_sim_e2e.sh https://abc-def-123.trycloudflare.com
 #
 # Prerequisites:
-#   - sim_bridge.py running on hoopoe: cd ~/code/ishmael/benchmark && ~/isaac-sim-env/bin/python3 sim_bridge.py --env office
+#   - a sim host running the Godot engine: see drone/sim/README.md
 #   - cloudflared tunnel: ~/bin/cloudflared tunnel --url http://localhost:8765
 #   - AWS profile 'coybot' configured
 

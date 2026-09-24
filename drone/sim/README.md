@@ -29,30 +29,23 @@ scene of your own.
 Further reading: `README_FIXEDWING.md` (the fixed-wing model and its
 perception gates), `README_SAR_DEMO.md`, `BRINGUP_MAC.md`.
 
-## Isaac Sim — the original backend, effectively retired
+## Isaac Sim — mostly removed
 
-Everything below describes the Isaac Sim host, which is **not** how the
-environments run any more and is very close to dead code. Before deleting it,
-know exactly what still touches it:
+The Isaac service path has been deleted: `sim_bridge.py` (its entry point,
+which nothing invoked), `sim_mqtt.py` (its MQTT front end, which had no
+`__main__` and no importers), and `SimWorker` / `build_sdk_namespace` from
+`sim_sdk.py`. `sim_sdk.py` kept the parts that were never Isaac-specific —
+`latlon_to_xy`, `xy_to_latlon`, `FrameBus` and the HOME constants — which
+`sim_control.py`, `fleet_worker.py` and `sim_drone_daemon.py` still use.
 
-- `sim_bridge.py` is the Isaac entry point, and **nothing invokes it**. Its
-  only apparent callers are a comment in `test_sim_e2e.sh` and its own
-  docstring. `drone/platforms/sim_host/install.sh` deploys `godot_engine.py`,
-  not this.
-- `sim_sdk.py` is alive, but mostly for things unrelated to Isaac —
-  `sim_control.py`, `fleet_worker.py` and `sim_drone_daemon.py` import
-  `FrameBus` and the lat/lon helpers from it. Its Isaac import is deliberately
-  deferred inside `SimWorker.run()` ("so the module is importable without
-  Isaac"), and `SimWorker` is only reached through `sim_bridge.py`.
-- The real remaining consumers are three standalone render scripts:
-  `drone/training/render_fixedwing_demo.py`, `record_comparison.py` and
-  `render_session1.py`, which import `IsaacVehicleBridge` directly.
+`isaac_vehicle.py` is deliberately still here. Its remaining consumers are
+three standalone render scripts under `drone/training/` —
+`render_fixedwing_demo.py`, `record_comparison.py` and `render_session1.py` —
+which are tools a human runs rather than dead imports, and `record_comparison`
+is imported by `local_course.py` for its course constants. Retiring Isaac
+completely means porting or dropping those.
 
-So removing Isaac means retiring those three render scripts (or porting them
-to Godot) and dropping `sim_bridge.py` plus `SimWorker`. The rest of
-`sim_sdk.py` stays.
-
----
+The notes below describe the old Isaac host and are kept for that reason.
 
 ## Eco sim host (Isaac Sim)
 
