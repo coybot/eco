@@ -36,6 +36,7 @@ ROVER base) is Layer B — see harness/mock_esp32.py + run_phone.sh, not this mo
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import urllib.request
@@ -81,11 +82,20 @@ def _run_swift_tests() -> tuple[bool, str]:
     udid = _first_available_simulator()
     if not udid:
         return False, "no available iOS Simulator found (xcrun simctl list devices available)"
-    proc = subprocess.run(
-        ["xcodebuild", "test", "-scheme", "coybot-sdk-Package",
-         "-destination", f"id={udid}",
-         "-only-testing:RoverNavTests", "-only-testing:PhroverKitTests"],
-        cwd=_SDK_DIR, capture_output=True, text=True, timeout=300)
+    # A cold macos-latest runner has to resolve packages and build the whole SDK before
+    # the first test runs. Measured on main: 198-311 s for this step across green runs,
+    # so the old 300 s ceiling sat inside normal variance and a slow runner tripped it.
+    # And the TimeoutExpired escaped uncaught, killing the run with a traceback instead
+    # of reporting a failed check — the same shape _first_available_simulator had.
+    timeout_s = int(os.environ.get("E2E_SWIFT_TIMEOUT_S", "900"))
+    try:
+        proc = subprocess.run(
+            ["xcodebuild", "test", "-scheme", "coybot-sdk-Package",
+             "-destination", f"id={udid}",
+             "-only-testing:RoverNavTests", "-only-testing:PhroverKitTests"],
+            cwd=_SDK_DIR, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        return False, f"xcodebuild test did not finish within {timeout_s}s (E2E_SWIFT_TIMEOUT_S)"
     ok = proc.returncode == 0
     tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-15:])
     return ok, tail
