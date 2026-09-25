@@ -119,6 +119,53 @@ def _mav_command(command_func, ack_command_id, timeout=3):
                 return msg.result == 0, msg.result
         return False, None
 
+def _fc_cached(msg_type, max_age=1.5):
+    """Freshest `msg_type` from the AUTOPILOT's own system id, or None.
+
+    pymavlink caches the last message of every type per source system as it
+    parses, whichever thread's recv_match read it - so this sees messages
+    another thread consumed, and never mistakes another MAVLink component's
+    HEARTBEAT (the quadcopter has a non-autopilot one on sys 0) for the FC's.
+    """
+    with _mavlink_lock:
+        m = _connect()
+        st = getattr(m, 'sysid_state', {}).get(m.target_system)
+        msg = st.messages.get(msg_type) if st is not None else None
+    if msg is None or time.time() - getattr(msg, '_timestamp', 0) > max_age:
+        return None
+    if msg_type == 'HEARTBEAT' and msg.autopilot != mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
+        return None
+    return msg
+
+
+def _pump(seconds=0.2):
+    """Read whatever arrives for `seconds`, filling pymavlink's caches."""
+    end = time.time() + seconds
+    with _mavlink_lock:
+        m = _connect()
+        _ensure_streams(m)
+        while time.time() < end:
+            if m.recv_match(blocking=True, timeout=0.05) is None:
+                continue
+
+
+_last_stream_request = 0.0
+
+
+def _ensure_streams(m):
+    """Ask for the telemetry this module reads, rather than relying on the
+    daemon's heartbeat having asked for it (a mission run without the daemon
+    had no position or attitude stream at all). Caller holds the lock."""
+    global _last_stream_request
+    if time.time() - _last_stream_request < 10.0:
+        return
+    for stream in (mavutil.mavlink.MAV_DATA_STREAM_POSITION,
+                   mavutil.mavlink.MAV_DATA_STREAM_EXTRA1,
+                   mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS):
+        m.mav.request_data_stream_send(m.target_system, m.target_component, stream, 4, 1)
+    _last_stream_request = time.time()
+
+
 # S3 configuration (loaded from config)
 _s3_client = None
 _s3_bucket = None
@@ -282,7 +329,7 @@ def _drain_statustext(timeout=2.0, print_msgs=True):
     return list(seen)
 
 
-def _wait_for_mode(target_mode, timeout=5):
+def _wait_for_mode(target_mode, timeout=5, quiet=False):
     """Wait for flight mode to change to target mode.
     
     Args:
@@ -293,18 +340,24 @@ def _wait_for_mode(target_mode, timeout=5):
         True if mode change confirmed, False if timeout
     """
     start = time.time()
+    last = None
     while time.time() - start < timeout:
-        msg = _mav_recv('HEARTBEAT', timeout=0.5)
+        _pump(0.3)
+        msg = _fc_cached('HEARTBEAT', max_age=1.5)
         if msg:
             try:
                 current = mavutil.mode_string_v10(msg)
                 if current == target_mode:
-                    print(f"Mode confirmed: {current}")
+                    if not quiet:
+                        print(f"Mode confirmed: {current}")
                     return True
-                print(f"Mode: {current} (waiting for {target_mode})")
+                if current != last and not quiet:
+                    print(f"Mode: {current} (waiting for {target_mode})")
+                last = current
             except Exception:
                 pass
-    print(f"Mode change to {target_mode} timed out!")
+    if not quiet:
+        print(f"Mode change to {target_mode} timed out!")
     return False
 
 
@@ -514,8 +567,7 @@ def takeoff(altitude_m):
     
     # Set GUIDED mode
     _log("Setting GUIDED mode...")
-    _mav_send(lambda m: m.set_mode('GUIDED'))
-    if not _wait_for_mode('GUIDED', timeout=5):
+    if not _set_mode_confirmed('GUIDED'):
         _log("ERROR: Failed to enter GUIDED mode")
         _drain_statustext()
         return False
@@ -729,15 +781,18 @@ def _ceiling_guard_loop(min_clearance):
         try:
             with _mavlink_lock:
                 conn = _connect()
-                # Drain the buffer for a fresh DISTANCE_SENSOR reading
-                dist_msg = None
-                deadline = time.time() + 0.3
-                while time.time() < deadline:
-                    m = conn.recv_match(type='DISTANCE_SENSOR', blocking=False)
-                    if m and m.orientation == 25 and m.current_distance < m.max_distance:
-                        dist_msg = m
+                # Read the cached DISTANCE_SENSOR rather than draining the link
+                # for one: a type-filtered drain threw away every other message
+                # (heartbeats, mode changes) that mission code was waiting for.
+                for _ in range(20):
+                    if conn.recv_match(blocking=False) is None:
                         break
-                    time.sleep(0.01)
+                st = getattr(conn, 'sysid_state', {}).get(conn.target_system)
+                m = st.messages.get('DISTANCE_SENSOR') if st is not None else None
+                dist_msg = None
+                if (m is not None and time.time() - m._timestamp < 0.5 and m.orientation == 25
+                        and m.current_distance < m.max_distance):
+                    dist_msg = m
 
                 if dist_msg is None:
                     clamped = False
@@ -753,7 +808,7 @@ def _ceiling_guard_loop(min_clearance):
                         _log(f"CEILING GUARD: {clearance:.2f}m clearance — holding altitude")
                         clamped = True
                     # Read current position and re-issue it as a hold target (stops ascent)
-                    pos = conn.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=0.3)
+                    pos = st.messages.get('GLOBAL_POSITION_INT') if st is not None else None
                     if pos:
                         conn.mav.set_position_target_global_int_send(
                             0,
@@ -866,9 +921,7 @@ def _read_battery_raw(max_wait=1.5):
     """
     with _mavlink_lock:
         m = _connect()
-        m.mav.request_data_stream_send(
-            m.target_system, m.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 4, 1)
+        _ensure_streams(m)
         start = time.time()
         while time.time() - start < max_wait:
             msg = m.recv_match(blocking=True, timeout=0.1)
@@ -885,7 +938,6 @@ def _read_battery_raw(max_wait=1.5):
 
     sys_status = fresh('SYS_STATUS')
     batt_status = fresh('BATTERY_STATUS')
-    hb = fresh('HEARTBEAT')
     sample = _battery.BatterySample()
     if sys_status is not None:
         sample.voltage = sys_status.voltage_battery / 1000.0 if sys_status.voltage_battery not in (-1, 65535) else 0.0
@@ -893,10 +945,12 @@ def _read_battery_raw(max_wait=1.5):
         sample.fc_remaining = sys_status.battery_remaining
     if batt_status is not None and batt_status.current_consumed != -1:
         sample.consumed_mah = float(batt_status.current_consumed)
-    if hb is not None:
-        sample.armed = (hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
-    else:
-        sample.armed = is_armed()
+    hb = _fc_cached('HEARTBEAT', max_age=5.0)
+    sample.armed = ((hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
+                    if hb is not None else is_armed())
+    pos = _fc_cached('GLOBAL_POSITION_INT', max_age=5.0)
+    if pos is not None:
+        sample.flying = sample.armed and pos.relative_alt / 1000.0 > 1.0
     scales = _battery_scales()
     if scales.get('BATT_VOLT_MULT') and sample.voltage:
         sample.volt_adc_v = sample.voltage / scales['BATT_VOLT_MULT']
@@ -908,17 +962,23 @@ def _read_battery_raw(max_wait=1.5):
 _battery_scale_cache = {'t': 0.0, 'values': {}}
 
 
-def _battery_scales(max_age_s=300.0):
+def _battery_scales(max_age_s=300.0, retry_s=60.0):
     """The FC's battery input scales (cached): what turns a reading back into
-    the raw pin voltage, so a pin pinned at the ADC rail can be recognised."""
+    the raw pin voltage, so a pin pinned at the ADC rail can be recognised.
+
+    A failed read is cached too (for retry_s): each attempt holds the MAVLink
+    lock for up to ~6 s, and retrying on every battery read would stall the
+    heartbeat whenever the FC does not answer parameter requests.
+    """
     c = _battery_scale_cache
-    if not c['values'] or time.time() - c['t'] > max_age_s:
+    age = time.time() - c['t']
+    if age > (max_age_s if c['values'] else retry_s) or c['t'] == 0.0:
+        c['t'] = time.time()
         try:
             values = {n: _get_param(n) for n in ('BATT_VOLT_MULT', 'BATT_AMP_PERVLT', 'BATT_AMP_OFFSET')}
-            if any(v is not None for v in values.values()):
-                c['values'], c['t'] = values, time.time()
+            c['values'] = values if any(v is not None for v in values.values()) else {}
         except Exception:
-            pass
+            c['values'] = {}
     return c['values']
 
 
@@ -962,9 +1022,12 @@ def _position_relative():
 def _fresh_position(timeout=1.0):
     """(lat, lon, rel_alt_m) from a NEW GLOBAL_POSITION_INT, or None.
     Unlike get_position() this never returns a (0, 0, 0) placeholder."""
-    with _mavlink_lock:
-        m = _connect()
-        msg = m.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=timeout)
+    msg = _fc_cached('GLOBAL_POSITION_INT', max_age=0.4)
+    if msg is None:
+        with _mavlink_lock:
+            m = _connect()
+            _ensure_streams(m)
+            msg = m.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=timeout)
     if msg is None:
         return None
     return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
@@ -991,10 +1054,12 @@ def get_local_pose():
         return None
     north = (pos[0] - origin[0]) * 111320.0
     east = (pos[1] - origin[1]) * 111320.0 * math.cos(math.radians(origin[0]))
-    with _mavlink_lock:
-        m = _connect()
-        att = m.recv_match(type='ATTITUDE', blocking=True, timeout=1.0) \
-            or m.messages.get('ATTITUDE')
+    att = _fc_cached('ATTITUDE', max_age=1.0)
+    if att is None:
+        with _mavlink_lock:
+            m = _connect()
+            _ensure_streams(m)
+            att = m.recv_match(type='ATTITUDE', blocking=True, timeout=2.0)
     if att is None:
         # Without a heading "forward" would silently mean north; say so instead.
         return None
@@ -1144,9 +1209,25 @@ def _save_last_flight(consumed_mah):
         _log(f"Could not record flight mAh: {e}")
 
 
-def _set_mode_confirmed(mode, timeout=3):
-    _mav_send(lambda m: m.set_mode(mode))
-    return _wait_for_mode(mode, timeout=timeout)
+def _set_mode_confirmed(mode, timeout=8):
+    """Request `mode` until the autopilot's own heartbeat shows it.
+
+    Resends every 1.5 s: a single request right after arming was observed
+    (ArduCopter SITL, the drone's real mission path) to go unanswered, and the
+    old one-shot wait then failed the whole takeoff.
+    """
+    deadline = time.time() + timeout
+    attempts = 0
+    while time.time() < deadline:
+        attempts += 1
+        _mav_send(lambda m: m.set_mode(mode))
+        if _wait_for_mode(mode, timeout=min(1.5, max(0.1, deadline - time.time())), quiet=True):
+            print(f"Mode confirmed: {mode}" + (f" (after {attempts} requests)" if attempts > 1 else ""))
+            return True
+    _log(f"Mode change to {mode} refused/unanswered after {attempts} requests over {timeout}s")
+    for text in _drain_statustext(timeout=1.0, print_msgs=False) or []:
+        _log(f"  FC: {text}")
+    return False
 
 
 def _battery_guard_loop(interval_s):
@@ -1191,6 +1272,9 @@ def _battery_guard_loop(interval_s):
                 # calibration, then stop - the next takeoff starts a new guard.
                 if estimator.last_flight_consumed_mah is not None:
                     _save_last_flight(estimator.last_flight_consumed_mah)
+                if _battery_guard_trip:
+                    _log(f"Battery guard: flight ended ({_battery_guard_trip['action']}); cleared")
+                _battery_guard_trip = None
                 break
             elif time.time() - started > 120:
                 break  # never armed (takeoff refused or failed)
@@ -1405,36 +1489,23 @@ def calibrate_current(charger_mah, fc_consumed_mah=None):
 
 
 def is_armed():
-    """Check if the vehicle is armed using a fresh heartbeat.
+    """Is the FLIGHT CONTROLLER armed, from its own fresh heartbeat.
 
-    Drains any stale queued heartbeats first, then waits for the next one
-    from the FC so the result reflects current state, not buffered state.
+    Reads pymavlink's per-system cache, so a heartbeat another thread consumed
+    still counts, and a heartbeat from any other MAVLink component (the
+    quadcopter has one on sys 0 that never reports armed) is ignored - taking
+    whichever heartbeat arrived last is how "Arm ACK'd but not armed" happened.
     """
     try:
-        with _mavlink_lock:
-            conn = _connect()
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            msg = _fc_cached('HEARTBEAT', max_age=1.5)
+            if msg is not None:
+                return (msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
+            _pump(0.3)
     except Exception:
         return False
-    # Drain anything already in the buffer so we read a fresh heartbeat
-    deadline = time.time() + 3.0
-    last = None
-    while time.time() < deadline:
-        msg = conn.recv_match(type='HEARTBEAT', blocking=False)
-        if msg is None:
-            if last is not None:
-                # Buffer drained — last heartbeat is the freshest we have
-                break
-            # Nothing queued yet — block briefly for the next one
-            msg = conn.recv_match(type='HEARTBEAT', blocking=True, timeout=0.5)
-            if msg:
-                last = msg
-                # Keep draining in case more are queued
-                continue
-        else:
-            last = msg
-    if last is None:
-        return False
-    return (last.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
+    return False
 
 
 def get_flight_mode():
@@ -1553,6 +1624,9 @@ def _set_param(name, value):
     while time.time() - start < 2:
         msg = _mav_recv('PARAM_VALUE', timeout=0.5)
         if msg and msg.param_id.rstrip('\x00') == name:
+            return True
+        cached = _fc_cached('PARAM_VALUE', max_age=time.time() - start + 0.05)
+        if cached and cached.param_id.rstrip('\x00') == name:
             return True
     return False
 

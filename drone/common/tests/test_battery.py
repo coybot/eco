@@ -403,3 +403,29 @@ def test_a_sagging_pack_is_still_trusted():
     for k in range(30):
         e = est.update(_fly(3.95 - k * 0.002, t=1 + k))
     assert e.pct is not None and e.voltage_trusted
+
+
+
+def test_armed_idle_on_the_ground_does_not_condemn_the_sensors():
+    """SITL end-to-end run: 20 s armed on the ground (arm, a mode timeout, a
+    retry) read as "current dead" and "voltage never sags", and the guard sent
+    the aircraft home the moment it took off."""
+    est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS))
+    est.update(_rest(4.10, t=0))
+    e = None
+    for k in range(30):   # armed, on the ground, idle current, flat voltage
+        e = est.update(bt.BatterySample(voltage=4.10 * CELLS, current_a=0.8, armed=True,
+                                        flying=False, t=1 + k))
+    assert e.pct is not None and e.voltage_trusted
+    assert not any("sensor" in w or "has not moved" in w for w in e.warnings)
+
+
+def test_a_flat_reading_after_landing_is_still_not_trusted_until_it_changes():
+    est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS))
+    est.update(_rest(4.11, t=0))
+    for k in range(30):
+        est.update(bt.BatterySample(voltage=16.446, armed=True, flying=True, t=1 + k))
+    landed = est.update(bt.BatterySample(voltage=16.446, armed=False, t=40))
+    assert landed.pct is None, "the constant must not come back as 90% on the ground"
+    swapped = est.update(bt.BatterySample(voltage=16.1, armed=False, t=60))
+    assert swapped.pct is not None, "a different reading (new pack) is judged afresh"
