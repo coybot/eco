@@ -1847,11 +1847,19 @@ struct BatteryReadinessView: View {
                             ? "About \(budget.actionsLeft ?? 0) more actions before returning home"
                             : (budget.reason ?? "Returning home for battery"))
                 } else if let pre = status.preflight {
-                    row(icon: pre.canTakeoff ? "checkmark.seal.fill" : "xmark.octagon.fill",
-                        color: pre.canTakeoff ? .green : .red,
-                        text: pre.canTakeoff
-                            ? "Battery OK for takeoff"
-                            : (pre.reason ?? "Not safe to take off"))
+                    // Allowed WITH a reason means allowed on an override (e.g. a
+                    // battery that cannot be read): never show that as a green OK.
+                    let caveat = (pre.reason ?? "").isEmpty ? nil : pre.reason
+                    if !pre.canTakeoff {
+                        row(icon: "xmark.octagon.fill", color: .red,
+                            text: pre.reason ?? "Not safe to take off")
+                    } else if let caveat {
+                        row(icon: "exclamationmark.triangle.fill", color: .orange,
+                            text: "Takeoff allowed, but " + caveat)
+                    } else {
+                        row(icon: "checkmark.seal.fill", color: .green,
+                            text: "Battery OK for takeoff")
+                    }
                 }
                 if let v = status.voltage {
                     Text(String(format: "Pack %.2f V", v) + (status.batterySource.map { " · from \($0.replacingOccurrences(of: "_", with: " "))" } ?? ""))
