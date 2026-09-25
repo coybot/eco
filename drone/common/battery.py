@@ -60,6 +60,17 @@ PLAUSIBLE_CELL_V = (3.0, 4.35)
 # What a charger terminates a LiPo at. The no-multimeter voltage reference.
 FULL_CHARGE_CELL_V = 4.20
 
+# A flight-controller analog input at or above this is pinned at the ADC's
+# 3.3 V ceiling: nothing (or the wrong thing) is wired to that pin, and
+# reading x multiplier is a constant that only looks like a voltage. Found on
+# the quadcopter: 3.289 V x BATT_VOLT_MULT 5.0 = a permanent "16.446 V".
+ADC_RAIL_V = 3.25
+
+# A pack that has not sagged this much after this long in the air is not
+# being measured at all.
+MIN_FLIGHT_SAG_V = 0.05
+SAG_PROOF_AFTER_S = 20.0
+
 
 def pct_from_cell_voltage(cell_v: float) -> float:
     """Resting cell voltage (V) -> state of charge (%), linearly interpolated."""
@@ -176,6 +187,10 @@ class BatterySample:
     fc_remaining: Optional[float] = None  # the FC's own %, -1/None if unknown
     armed: bool = False
     t: float = field(default_factory=time.time)
+    # Raw analog-input volts behind voltage/current_a (reading / FC scale), when
+    # the FC scale is known. Used only to spot a pin pinned at the ADC rail.
+    volt_adc_v: Optional[float] = None
+    curr_adc_v: Optional[float] = None
 
 
 @dataclass
@@ -235,6 +250,11 @@ class BatteryEstimator:
         # disarm: what calibrate_current() compares a charger's mAh against.
         self._arm_consumed_mah: Optional[float] = None
         self.last_flight_consumed_mah: Optional[float] = None
+        # Voltage range seen while armed, and whether the voltage has been
+        # caught not sagging in flight (sticky until the next arm).
+        self._flight_v_min: Optional[float] = None
+        self._flight_v_max: Optional[float] = None
+        self._voltage_flat = False
 
     @property
     def last(self) -> Optional[BatteryEstimate]:
@@ -255,6 +275,8 @@ class BatteryEstimator:
             self._armed_since = s.t
             self._flight_min_pct = None
             self._window.clear()
+            self._flight_v_min = self._flight_v_max = None
+            self._voltage_flat = False
             self._arm_consumed_mah = s.consumed_mah
             # Anchor at arm time from the last resting estimate.
             if self._last is not None and self._last.source == "voltage_rest":
@@ -270,7 +292,34 @@ class BatteryEstimator:
 
         voltage_ok = self._voltage_ok(s.voltage)
         cell_v = (s.voltage / cfg.cells) if (s.voltage and s.voltage > 0) else None
-        if s.voltage is not None and not voltage_ok:
+        current_a = s.current_a
+        if s.curr_adc_v is not None and s.curr_adc_v >= ADC_RAIL_V:
+            warnings.append(
+                f"current input is pinned at the {s.curr_adc_v:.2f} V ADC limit - nothing "
+                f"is wired to BATT_CURR_PIN; the {s.current_a:.0f} A it shows is not real")
+            current_a = None
+        voltage_railed = s.volt_adc_v is not None and s.volt_adc_v >= ADC_RAIL_V
+        if voltage_railed:
+            warnings.append(
+                f"voltage input is pinned at the {s.volt_adc_v:.2f} V ADC limit - nothing "
+                f"is wired to BATT_VOLT_PIN; the {s.voltage:.2f} V it shows is a constant, "
+                f"not the pack")
+        # A real pack sags under flight load. One that stays flat after
+        # SAG_PROOF_AFTER_S in the air is not being measured.
+        if s.armed and s.voltage:
+            self._flight_v_min = s.voltage if self._flight_v_min is None else min(self._flight_v_min, s.voltage)
+            self._flight_v_max = s.voltage if self._flight_v_max is None else max(self._flight_v_max, s.voltage)
+            if (self._armed_since is not None and s.t - self._armed_since >= SAG_PROOF_AFTER_S
+                    and self._flight_v_max - self._flight_v_min < MIN_FLIGHT_SAG_V
+                    and not self._current_proven):
+                self._voltage_flat = True
+        if self._voltage_flat:
+            warnings.append(
+                f"pack voltage has not moved ({self._flight_v_min:.2f}-{self._flight_v_max:.2f} V) "
+                f"in {SAG_PROOF_AFTER_S:.0f} s of flight - the FC is not measuring the battery")
+        if voltage_railed or self._voltage_flat:
+            voltage_ok = False
+        elif s.voltage is not None and not voltage_ok:
             if not s.voltage or s.voltage <= 0.5:
                 warnings.append(
                     "FC reports no pack voltage - BATT_MONITOR is off or BATT_VOLT_PIN "
@@ -283,13 +332,13 @@ class BatteryEstimator:
 
         # Current sensor plausibility. Only judgeable while armed: on the
         # ground the companion computer's draw alone can be well under 1 A.
-        if s.armed and s.current_a is not None and s.current_a >= cfg.min_flight_current_a:
+        if s.armed and current_a is not None and current_a >= cfg.min_flight_current_a:
             self._current_proven = True
             self._current_dead = False
         if (s.armed and not self._current_proven and self._armed_since is not None
                 and s.t - self._armed_since >= self.CURRENT_DEAD_AFTER_S):
             self._current_dead = True
-        if s.current_a is None:
+        if current_a is None:
             warnings.append("FC has no current sensor configured - using voltage only")
         elif self._current_dead:
             warnings.append(
@@ -353,7 +402,7 @@ class BatteryEstimator:
 
         est = BatteryEstimate(
             pct=pct, source=source, voltage=s.voltage, cell_voltage=cell_v,
-            current_a=s.current_a,
+            current_a=current_a,
             fc_remaining=s.fc_remaining if (s.fc_remaining is not None and s.fc_remaining >= 0) else None,
             voltage_trusted=voltage_ok, current_trusted=current_trusted,
             warnings=warnings,
