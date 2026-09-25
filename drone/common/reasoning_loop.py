@@ -1261,7 +1261,12 @@ class MissionLoop:
             return {'failed': True, 'reason': str(e), 'actions': 1}
 
     def _exec_return_home(self, phase: Dict[str, Any]) -> Dict[str, Any]:
-        alt_m = phase.get('alt_m', 5.0)
+        # Come home at the altitude the operator chose (e.g. "take off to 3 m")
+        # unless the mission says otherwise - defaulting to 5 m climbed a 3 m
+        # flight to 5 m just to come back.
+        alt_m = phase.get('alt_m')
+        if alt_m is None:
+            alt_m = max(self._here()[2], 2.0)
         self._report_progress("Returning home")
         try:
             ok = self._get_backend().rtl(alt_m)

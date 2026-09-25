@@ -220,6 +220,9 @@ class PosLink:
         self.path = list(path)
         self.last = self.path[0]
         self.messages = {}
+        self.sysid_state = {}
+        self.target_system = self.target_component = 1
+        self.mav = SimpleNamespace(request_data_stream_send=lambda *a: None)
 
     def recv_match(self, type=None, blocking=False, timeout=None):
         if self.path:
