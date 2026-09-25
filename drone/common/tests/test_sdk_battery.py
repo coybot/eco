@@ -39,16 +39,20 @@ class FakeLink:
 
     def __init__(self, volts, amps, consumed, fc_pct, armed):
         self.target_system = self.target_component = 1
-        self.mav = SimpleNamespace(request_data_stream_send=lambda *a: None)
+        self.mav = SimpleNamespace(request_data_stream_send=lambda *a: None,
+                                   param_request_read_send=lambda *a: None)
         sys_status = _msg("SYS_STATUS", voltage_battery=int(volts * 1000),
                           current_battery=int(amps * 100) if amps is not None else -1,
                           battery_remaining=fc_pct)
         self.messages = {
             "SYS_STATUS": sys_status,
             "BATTERY_STATUS": _msg("BATTERY_STATUS", current_consumed=consumed),
-            "HEARTBEAT": _msg("HEARTBEAT", base_mode=ARMED if armed else 0),
+            "HEARTBEAT": _msg("HEARTBEAT", base_mode=ARMED if armed else 0,
+                              autopilot=mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA),
         }
         self._queue = [sys_status]
+        # pymavlink also caches per source system; the SDK reads the FC's.
+        self.sysid_state = {1: SimpleNamespace(messages=self.messages)}
 
     def recv_match(self, blocking=False, timeout=None, type=None):
         return self._queue.pop(0) if self._queue else None
@@ -62,6 +66,8 @@ def fresh(monkeypatch):
     monkeypatch.setattr(sdk, "_load_config", lambda: {"battery": {"cells": 4}})
     monkeypatch.setattr(sdk, "start_battery_guard", lambda *a, **k: None)
     monkeypatch.setattr(sdk, "_position_relative", lambda: (37.0, -122.0, 0.0))
+    # No FC to answer parameter reads: behave as "scales unknown", fast.
+    monkeypatch.setattr(sdk, "_battery_scale_cache", {'t': time.time(), 'values': {}})
     return monkeypatch
 
 
@@ -209,3 +215,17 @@ def test_the_quadcopters_fake_voltage_blocks_takeoff(fresh):
     assert any("ADC limit" in w for w in b["warnings"])
     ok, reason = sdk._battery_preflight(3)
     assert not ok and "cannot be determined" in reason
+
+
+def test_a_heartbeat_from_another_component_is_not_the_fc(fresh):
+    """The quadcopter has a second MAVLink source (sys 0, not an autopilot).
+    Taking whichever heartbeat came last read "not armed" while the FC was
+    armed - the aircraft's "Arm ACK'd but not armed" failures."""
+    link = _link(fresh, volts=16.0, amps=10.0, consumed=0, fc_pct=80, armed=True)
+    link.sysid_state[0] = SimpleNamespace(messages={
+        "HEARTBEAT": _msg("HEARTBEAT", base_mode=0, autopilot=8)})
+    link.messages["HEARTBEAT"] = link.sysid_state[0].messages["HEARTBEAT"]  # arrived last
+    link.sysid_state[1] = SimpleNamespace(messages={
+        "HEARTBEAT": _msg("HEARTBEAT", base_mode=ARMED,
+                          autopilot=mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA)})
+    assert sdk.is_armed() is True
