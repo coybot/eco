@@ -194,3 +194,18 @@ def test_configure_battery_monitoring_writes_pins_only_when_given(fresh):
 def test_battery_gates_skip_non_multirotors(fresh):
     fresh.setattr(sdk, "_load_config", lambda: {"vehicle_type": "fixedwing"})
     assert sdk.check_battery_for("goto", 99.0) == (True, "")
+
+
+def test_the_quadcopters_fake_voltage_blocks_takeoff(fresh):
+    """End to end with the aircraft's real params: BATT_VOLT_MULT 5.0 and a
+    16.446 V reading. Before the rail check this read as 90% and 'OK'."""
+    _link(fresh, volts=16.446, amps=-0.01, consumed=15749, fc_pct=-1, armed=False)
+    fresh.setattr(sdk, "_battery_scale_cache", {'t': 0.0, 'values': {}})
+    fresh.setattr(sdk, "_get_param", lambda n: {'BATT_VOLT_MULT': 5.0,
+                                               'BATT_AMP_PERVLT': 17.0,
+                                               'BATT_AMP_OFFSET': 0.0}[n])
+    b = sdk.get_battery()
+    assert b["remaining"] == -1
+    assert any("ADC limit" in w for w in b["warnings"])
+    ok, reason = sdk._battery_preflight(3)
+    assert not ok and "cannot be determined" in reason

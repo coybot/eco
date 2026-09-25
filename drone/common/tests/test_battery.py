@@ -55,6 +55,7 @@ def test_frozen_fc_counter_is_ignored_in_favour_of_voltage():
     The estimate must fall with the voltage and say why it is not using the FC."""
     est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS))
     est.update(_rest(4.10, fc_remaining=87, current_a=0.1, t=0))
+    est.update(_fly(4.10, t=0.5, current_a=0.1))  # armed, idling on the ground
     last = None
     for i, cell_v in enumerate([3.95, 3.85, 3.75, 3.62, 3.50]):
         # Several readings per voltage step so the smoothing settles.
@@ -146,6 +147,7 @@ def test_sustained_drop_comes_through_after_the_window():
 def test_estimate_never_rises_while_armed():
     est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS))
     est.update(_rest(4.0, t=0))
+    est.update(_fly(4.0, t=0.5))  # armed, idling on the ground
     low = None
     for k in range(30):
         low = est.update(_fly(3.70, t=1 + k))
@@ -354,3 +356,50 @@ def test_fixed_wing_is_not_priced_with_the_quad_model():
     b = Backend(pct=22)
     loop = _loop(b, vehicle="fixedwing")
     assert loop._battery_gate_phase({"type": "arm_and_takeoff", "altitude_m": 40}) is None
+
+
+# --- readings that are not the pack at all -------------------------------- #
+
+def test_the_quadcopters_railed_voltage_is_rejected():
+    """Measured on the aircraft: 16.446 V = 3.289 V x BATT_VOLT_MULT 5.0, the
+    ADC's ceiling. A plausible-looking 4.11 V/cell that must NOT read as 90%."""
+    est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS)).update(
+        bt.BatterySample(voltage=16.446, volt_adc_v=16.446 / 5.0, fc_remaining=-1))
+    assert est.pct is None
+    assert not est.voltage_trusted
+    assert any("ADC limit" in w and "BATT_VOLT_PIN" in w for w in est.warnings)
+    assert not GOV.preflight(est.pct, 3).ok
+
+
+def test_a_railed_current_input_is_not_131_amps():
+    est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS)).update(
+        bt.BatterySample(voltage=16.0, volt_adc_v=16.0 / 12.02, current_a=131.16,
+                         curr_adc_v=131.16 / 39.877, armed=False))
+    assert est.current_a is None
+    assert any("BATT_CURR_PIN" in w for w in est.warnings)
+
+
+def test_a_real_divided_voltage_is_accepted():
+    est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS)).update(
+        bt.BatterySample(voltage=16.0, volt_adc_v=16.0 / 12.02))
+    assert est.voltage_trusted and est.pct is not None
+
+
+def test_voltage_that_never_sags_in_flight_stops_being_trusted():
+    est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS))
+    est.update(_rest(4.11, t=0))
+    e = None
+    for k in range(30):
+        e = est.update(_fly(4.1115 + (k % 2) * 0.0005, t=1 + k))
+    assert e.pct is None
+    assert any("has not moved" in w for w in e.warnings)
+    assert GOV.in_flight(e.pct, 30, 5).action == "return_home"
+
+
+def test_a_sagging_pack_is_still_trusted():
+    est = bt.BatteryEstimator(bt.BatteryConfig(cells=CELLS))
+    est.update(_rest(4.10, t=0))
+    e = None
+    for k in range(30):
+        e = est.update(_fly(3.95 - k * 0.002, t=1 + k))
+    assert e.pct is not None and e.voltage_trusted
