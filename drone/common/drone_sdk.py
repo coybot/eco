@@ -897,7 +897,29 @@ def _read_battery_raw(max_wait=1.5):
         sample.armed = (hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
     else:
         sample.armed = is_armed()
+    scales = _battery_scales()
+    if scales.get('BATT_VOLT_MULT') and sample.voltage:
+        sample.volt_adc_v = sample.voltage / scales['BATT_VOLT_MULT']
+    if scales.get('BATT_AMP_PERVLT') and sample.current_a is not None:
+        sample.curr_adc_v = sample.current_a / scales['BATT_AMP_PERVLT'] + (scales.get('BATT_AMP_OFFSET') or 0.0)
     return sample
+
+
+_battery_scale_cache = {'t': 0.0, 'values': {}}
+
+
+def _battery_scales(max_age_s=300.0):
+    """The FC's battery input scales (cached): what turns a reading back into
+    the raw pin voltage, so a pin pinned at the ADC rail can be recognised."""
+    c = _battery_scale_cache
+    if not c['values'] or time.time() - c['t'] > max_age_s:
+        try:
+            values = {n: _get_param(n) for n in ('BATT_VOLT_MULT', 'BATT_AMP_PERVLT', 'BATT_AMP_OFFSET')}
+            if any(v is not None for v in values.values()):
+                c['values'], c['t'] = values, time.time()
+        except Exception:
+            pass
+    return c['values']
 
 
 def get_battery():
