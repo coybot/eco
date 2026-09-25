@@ -10,6 +10,7 @@ Uses AWS IoT Device SDK v2 for Python.
 """
 
 import json
+from typing import Optional
 import os
 import time
 import uuid
@@ -30,7 +31,7 @@ CERTS_DIR = DRONE_DIR / 'certs'
 CONFIG_PATH = DRONE_DIR / "config.yaml"
 TEMPLATE_NAME = 'DroneFleetProvisioning'
 
-def load_iot_endpoint() -> str | None:
+def load_iot_endpoint() -> Optional[str]:
     """Load IoT Data-ATS endpoint from env or config.yaml."""
     env_endpoint = os.environ.get("IOT_ENDPOINT")
     if env_endpoint:
