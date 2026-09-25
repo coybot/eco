@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -105,6 +106,20 @@ def test_is_armed_ignores_other_sources_and_holds_receive_lock(
             assert lock.held, "is_armed() released the MAVLink lock during receive"
             queue = self.fresh if blocking else self.stale
             return queue.pop(0) if queue else None
+
+        @property
+        def sysid_state(self):
+            # pymavlink's per-source-system cache of the last message of each
+            # type, which drone_sdk.is_armed reads so that a heartbeat another
+            # thread consumed still counts. Same contract either way: only the
+            # autopilot's own heartbeat decides, and only under the lock.
+            assert lock.held, "is_armed() read the MAVLink cache without the lock"
+            now = time.time()
+            autopilot = Heartbeat(1, 1, armed=True, autopilot=3)
+            elsewhere = Heartbeat(42, 42, armed=False)
+            autopilot._timestamp = elsewhere._timestamp = now
+            return {1: types.SimpleNamespace(messages={"HEARTBEAT": autopilot}),
+                    42: types.SimpleNamespace(messages={"HEARTBEAT": elsewhere})}
 
     connection = Connection()
     monkeypatch.setattr(mavlink_module, "_mavlink_lock", lock)
