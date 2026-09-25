@@ -210,8 +210,10 @@ if [ -d "$COMMON_DIR/certs" ]; then
     cp -r "$COMMON_DIR/certs/"* "$INSTALL_DIR/certs/" 2>/dev/null || true
 fi
 
-# Copy the camera package. This is drone/camera, NOT drone/common/camera -- the
-# latter is a partial duplicate holding only the base classes. The flat
+# Copy the camera package, drone/camera. There used to be a second, partial
+# package at drone/common/camera; any recursive copy of drone/common landed it
+# on top of this one in $INSTALL_DIR/camera, replacing the __init__ that
+# provides get_camera, and every photo failed. It is gone. The flat
 # "cp common/*.py" above cannot pick this up because it is a package, and
 # drone_sdk.py, perception.py, video_producer.py and video_stream.py all import
 # `camera` at runtime. Without it a fresh install looks fine until the first

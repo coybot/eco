@@ -770,8 +770,11 @@ Context for future sessions working on this codebase:
 | `drone/common/fleet_provisioning.py` | AWS IoT Fleet Provisioning client |
 | `drone/common/wifi_manager.py` | WiFi config + hostapd-based hotspot |
 | `drone/installer/install.sh` | One-liner installer (hosted on S3) |
-| `drone/common/camera/base.py` | Abstract Camera class, CameraFrame dataclass |
+| `drone/camera/common/base.py` | Abstract Camera class, CameraFrame dataclass |
+| `drone/camera/common/auto.py` | `get_camera()`: picks the first camera that actually delivers a colour frame |
 | `drone/camera/oakdlite/camera.py` | OAK-D Lite implementation (DepthAI 3.x) |
+| `drone/camera/intelD435i/camera.py` | Intel RealSense implementation |
+| `drone/camera/v4l2/camera.py` | Any V4L2 camera: USB/UVC webcams, v4l2loopback shares |
 
 ### Key Behaviors
 

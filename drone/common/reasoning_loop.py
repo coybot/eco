@@ -240,9 +240,14 @@ class MissionResult:
     duration_seconds: float = 0.0
     actions_taken: int = 0
     failure_reason: Optional[str] = None
+    # Photos or recordings that were asked for and not delivered. They do not
+    # fail the mission -- the aircraft still has to fly home -- but they must
+    # not vanish either: the quadcopter flew two photo missions with no working
+    # camera and both came back to the operator as a bare "Done!".
+    media_warnings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out = {
             'success': self.success,
             'summary': self.summary,
             'phases_completed': self.phases_completed,
@@ -254,7 +259,18 @@ class MissionResult:
             'duration_seconds': self.duration_seconds,
             'actions_taken': self.actions_taken,
             'failure_reason': self.failure_reason,
+            'media_warnings': self.media_warnings,
         }
+        if self.media_warnings:
+            # The cloud already appends a result's stdout to its "Done!", so
+            # this reaches the chat with no cloud change.
+            out['stdout'] = " ".join(w[0].upper() + w[1:] + "." for w in self.media_warnings)
+        return out
+
+
+def _is_uploaded(url: str) -> bool:
+    """Whether capture_photo returned a URL rather than a local file path."""
+    return url.startswith(("http://", "https://", "s3://"))
 
 
 class MissionLoop:
@@ -268,6 +284,7 @@ class MissionLoop:
     
     # Safety limits
     MAX_ACTIONS = 200           # Maximum actions before forced termination
+    MAX_CONSECUTIVE_MISSING_FRAMES = 5  # ~5 s blind before a perception phase fails
     MAX_DURATION_SECONDS = 1800  # Maximum duration (30 minutes)
     MAX_PHASE_ACTIONS = 50      # Maximum actions per phase
     # Search legs flown per VLM decision. Waypoints are a turn radius apart so
@@ -450,7 +467,9 @@ class MissionLoop:
                 {"message": mission.original_message, "phases": len(mission.phases)}
             )
 
+        self._media_warnings = []
         result = self._run_impl(mission)
+        result.media_warnings = list(self._media_warnings)
 
         if recorder is not None and recorder.enabled:
             try:
@@ -1165,8 +1184,9 @@ class MissionLoop:
         if not urls:
             # A recording that produced nothing is worth saying out loud, but
             # it must not fail the mission: the flight itself succeeded and
-            # aborting here would throw away everything after this phase.
-            self._report_progress("Recording produced no media")
+            # aborting here would throw away everything after this phase --
+            # including the flight home. Said as a media warning instead.
+            self._media_warning(f"nothing was recorded: {self._camera_problem()}")
             return {'success': True, 'actions': 1}
         self._report_progress(f"Recording finished: {len(urls)} file(s)")
         return {'success': True, 'actions': 1}
@@ -1254,11 +1274,34 @@ class MissionLoop:
             return {'failed': True, 'reason': 'drone_sdk not available', 'actions': 0}
         try:
             url = sdk.capture_photo(upload=True)
-            if url:
-                self._photos.append(url)
-            return {'success': True, 'actions': 1}
         except Exception as e:
             return {'failed': True, 'reason': str(e), 'actions': 1}
+        if url and _is_uploaded(url):
+            self._photos.append(url)
+        elif url:
+            # capture_photo falls back to the local path when the upload
+            # fails; filed as a photo it would reach the app as a broken image.
+            self._media_warning(f"a photo was taken but not uploaded (it is on the aircraft at {url})")
+        else:
+            self._media_warning(f"no photo was taken: {self._camera_problem()}")
+        return {'success': True, 'actions': 1}
+
+    def _media_warning(self, text: str) -> None:
+        """Record a photo/video the operator asked for and will not get."""
+        if not hasattr(self, "_media_warnings"):
+            self._media_warnings = []
+        self._media_warnings.append(text)
+        self._report_progress(f"WARNING: {text}")
+
+    @staticmethod
+    def _camera_problem() -> str:
+        """The camera package's own account of why there is no camera."""
+        try:
+            from camera import last_camera_error
+            why = last_camera_error()
+        except Exception:
+            why = None
+        return why or "the camera produced no image"
 
     def _exec_return_home(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         # Come home at the altitude the operator chose (e.g. "take off to 3 m")
@@ -1350,6 +1393,7 @@ class MissionLoop:
         backend = self._get_backend()
 
         phase_actions = 0
+        missing_frames = 0
         consecutive_vlm_failures = 0
         already_reported_grounded_finding = False
         count_recorded_this_phase = False
@@ -1370,10 +1414,23 @@ class MissionLoop:
                 frame = None
             
             if frame is None:
+                missing_frames += 1
                 self._report_progress("Warning: No camera frame available")
+                if missing_frames >= self.MAX_CONSECUTIVE_MISSING_FRAMES:
+                    # A perception phase cannot make progress blind. Carrying on
+                    # only spent the whole action budget hovering: observed as
+                    # 151 frameless "actions" over 316 s before "Phase action
+                    # limit reached", a reason that hides the actual problem.
+                    # The vehicle ends up in the same place either way, since a
+                    # failed phase leaves it holding position -- just sooner,
+                    # and with the camera's own reason.
+                    return {'failed': True,
+                            'reason': f'no camera frames: {self._camera_problem()}',
+                            'actions': phase_actions}
                 time.sleep(1)
                 phase_actions += 1
                 continue
+            missing_frames = 0
 
             # 2. Detect objects via the backend and update world-frame memory. Gate
             # out anything beyond this vehicle's sense range as a safety net — sim
