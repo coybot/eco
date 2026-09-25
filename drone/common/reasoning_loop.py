@@ -477,6 +477,7 @@ class MissionLoop:
         self._search_plan = []
         self._search_idx = 0
         self._search_target = None
+        self._nav_cursor = None
         actions_taken = 0
 
         self._report_progress(f"Starting mission: {mission.original_message or 'Unknown'}", phase=0)
@@ -765,9 +766,11 @@ class MissionLoop:
             a = float(phase.get('altitude_m', 5.0))
             return 'takeoff', gov.takeoff_cost(a), 0.0, a
         if t == 'nav':
-            n, e = float(phase.get('north_m', 0.0)), float(phase.get('east_m', 0.0))
-            a = float(phase.get('min_clearance_alt') or phase.get('alt_m', 5.0))
-            return 'nav', gov.move_cost(math.hypot(n, e), a - alt), math.hypot(n, e), a
+            n, e, a = self._nav_target(phase)
+            a = max(a, float(phase.get('min_clearance_alt') or 0.0))
+            here_n, here_e, _ = self._here()
+            leg = math.hypot(n - here_n, e - here_e)
+            return 'nav', gov.move_cost(leg, a - alt), math.hypot(n, e), a
         if t == 'go_to_gps' and self._home_lat is not None and phase.get('lat') is not None:
             n, e = self._gps_to_home_offset(phase['lat'], phase['lon'])
             a = float(phase.get('min_clearance_alt') or phase.get('alt_m', 15.0))
@@ -921,6 +924,7 @@ class MissionLoop:
             return {'failed': True, 'reason': str(e), 'actions': 1}
         if not ok:
             return {'failed': True, 'reason': 'takeoff did not report reaching altitude', 'actions': 1}
+        self._nav_cursor = (0.0, 0.0, float(alt))
         return {'success': True, 'actions': 1}
 
     def _apply_clearance(self, alt_m: float, phase: Dict[str, Any]) -> float:
@@ -941,11 +945,48 @@ class MissionLoop:
             return min_clearance
         return alt_m
 
+    # Any of these makes a nav phase a MOVE from where the aircraft is now,
+    # rather than a destination measured from home. That is what "go forward
+    # 5 m, then left 3 m" means, and it lets every direction be expressed:
+    # body-relative (forward/right, negative = back/left), any compass
+    # bearing (0 = north, 45 = northeast, 202.5 = south-southwest), and up/down.
+    _NAV_RELATIVE_FIELDS = ('forward_m', 'right_m', 'bearing_deg', 'distance_m', 'up_m')
+
+    def _here(self):
+        """(north_m, east_m, alt_m) from home: live pose, else the last target."""
+        try:
+            pose = self._get_backend().get_pose()
+        except Exception:
+            pose = None
+        if pose is not None:
+            return float(pose[1]), float(pose[0]), float(pose[2])
+        return getattr(self, '_nav_cursor', None) or (0.0, 0.0, 5.0)
+
+    def _nav_target(self, phase: Dict[str, Any]):
+        """Resolve a nav phase to the (north_m, east_m, alt_m)-from-home that
+        backend.goto() speaks."""
+        def f(key, default=0.0):
+            v = phase.get(key)
+            return float(v) if v is not None else default
+
+        if not any(phase.get(k) is not None for k in self._NAV_RELATIVE_FIELDS):
+            return f('north_m'), f('east_m'), f('alt_m', 5.0)
+        here_n, here_e, here_alt = self._here()
+        dn, de = self._body_to_home_offset(f('forward_m'), f('right_m'))
+        if phase.get('distance_m') is not None:
+            bearing = math.radians(f('bearing_deg'))
+            dn += f('distance_m') * math.cos(bearing)
+            de += f('distance_m') * math.sin(bearing)
+        # In a move, north_m/east_m are part of the move too.
+        dn += f('north_m')
+        de += f('east_m')
+        alt = f('alt_m') if phase.get('alt_m') is not None else here_alt + f('up_m')
+        return here_n + dn, here_e + de, alt
+
     def _exec_nav(self, phase: Dict[str, Any]) -> Dict[str, Any]:
-        north_m = phase.get('north_m', 0.0)
-        east_m = phase.get('east_m', 0.0)
-        alt_m = self._apply_clearance(phase.get('alt_m', 5.0), phase)
-        desc = phase.get('description', f'N={north_m}m E={east_m}m')
+        north_m, east_m, alt_m = self._nav_target(phase)
+        alt_m = self._apply_clearance(alt_m, phase)
+        desc = phase.get('description', f'N={north_m:.1f}m E={east_m:.1f}m')
         self._report_progress(f"Navigating: {desc}")
         try:
             result = self._get_backend().goto(north_m, east_m, alt_m)
@@ -954,6 +995,7 @@ class MissionLoop:
         if not self._goto_ok(result):
             reason = getattr(result, 'message', 'goto() did not succeed')
             return {'failed': True, 'reason': reason, 'actions': 1}
+        self._nav_cursor = (north_m, east_m, alt_m)
         return {'success': True, 'actions': 1}
 
     def _exec_go_to_gps(self, phase: Dict[str, Any]) -> Dict[str, Any]:

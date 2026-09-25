@@ -98,7 +98,29 @@ at import time, so keep this section in sync with it if either changes)
 
 1. TYPED PRIMITIVES (use for metric/GPS commands):
    {"type": "arm_and_takeoff", "altitude_m": 5}
-   {"type": "nav", "north_m": 10.0, "east_m": 0.0, "alt_m": 5, "description": "fly 10m north"}
+   {"type": "nav", "forward_m": 5, "description": "fly 5m forward"}
+   — "nav" flies a straight line in ANY direction, as a move from wherever the
+   drone is now; consecutive nav phases chain, each starting where the last
+   ended. Pick the fields that match the user's words:
+     forward/back/left/right  -> forward_m / right_m  (back = negative
+                                 forward_m, left = negative right_m; relative
+                                 to the way the drone faced at mission start)
+     a compass direction      -> bearing_deg + distance_m  (0=north,
+                                 45=northeast, 90=east, 135=southeast,
+                                 180=south, 225=southwest, 270=west,
+                                 315=northwest; any angle works)
+     up/down, higher/lower    -> up_m (down = negative); alt_m sets an
+                                 absolute altitude instead. With neither, the
+                                 drone keeps its current altitude.
+   Combine freely in one phase: "5m forward and 2m up" is
+   {"type": "nav", "forward_m": 5, "up_m": 2}; "10m northeast" is
+   {"type": "nav", "bearing_deg": 45, "distance_m": 10}; "back 3m" is
+   {"type": "nav", "forward_m": -3}.
+   NEVER translate forward/back/left/right into a compass direction: the drone
+   is not necessarily facing north.
+   {"type": "nav", "north_m": 10.0, "east_m": 0.0, "alt_m": 5, "description": "the point 10m north of home"}
+   — with ONLY north_m/east_m (none of the move fields above), nav is instead a
+   DESTINATION measured from home, not a move. Use it for world coordinates.
    {"type": "go_to_gps", "lat": 37.7749, "lon": -122.4194, "alt_m": 15, "description": "123 Main St"}
    — both "nav" and "go_to_gps" accept an optional "min_clearance_alt": if you
    know this leg needs to clear something (a tree line, a ridge, a building)
@@ -118,8 +140,7 @@ at import time, so keep this section in sync with it if either changes)
    — the rectangle is sized and placed in the drone's OWN body frame, using
    the heading it had at mission start: forward_m runs straight ahead,
    right_m runs to its right. This is the phase for "the rectangle 10 meters
-   ahead and 5 to the right" (forward_m: 10, right_m: 5) — "nav" and
-   "fly_circle" are north/east-from-home and cannot express "ahead".
+   ahead and 5 to the right" (forward_m: 10, right_m: 5).
    Optional "origin_forward_m"/"origin_right_m" move the near corner off the
    start point; "waypoints_per_side" adds intermediate points for smoother
    tracking. Same fixed-wing caveat as fly_circle, for the same reason: the
@@ -198,7 +219,9 @@ at import time, so keep this section in sync with it if either changes)
 
 RULES:
 - Always start with arm_and_takeoff, always end with return_home then land
-- Use "nav" for any explicit distance/direction ("go 10m north", "move 5m east")
+- Use "nav" for any explicit distance/direction move ("go forward 5m",
+  "back up 3m", "go 10m northeast", "move left 2m and climb 3m") - with the
+  move fields, never by converting a relative direction to north/east
 - Use "fly_circle" for radius/orbit commands ("look around a 10m radius", "circle the area")
 - Use "fly_rect" for box/rectangle/perimeter commands, and for anything
   phrased relative to the drone itself ("10 meters ahead and 5 to the right",

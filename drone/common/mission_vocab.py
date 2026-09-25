@@ -57,12 +57,24 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
         fields={"altitude_m": FieldSpec("float", 5.0, description="Target altitude, meters AGL")},
     ),
     "nav": PhaseSpec(
-        description="Fly to a point given as a north/east offset in meters "
-                     "from home.",
+        description="Fly in a straight line, in any direction. As a MOVE from "
+                     "where the aircraft is now: forward_m/right_m (negative = "
+                     "back/left, relative to the heading at mission start), "
+                     "bearing_deg+distance_m for any compass direction (0=N, "
+                     "45=NE, 90=E, 180=S, 270=W), and up_m (negative = down; "
+                     "altitude is kept if neither up_m nor alt_m is given). "
+                     "Moves chain: each starts where the last ended. Without "
+                     "any of those fields, north_m/east_m is instead a "
+                     "DESTINATION measured from home.",
         fields={
+            "forward_m": FieldSpec("float", None, description="Move ahead (negative = back), meters"),
+            "right_m": FieldSpec("float", None, description="Move right (negative = left), meters"),
+            "bearing_deg": FieldSpec("float", None, description="Compass direction of the move, degrees (0=N, 90=E)"),
+            "distance_m": FieldSpec("float", None, description="Length of a bearing_deg move, meters"),
+            "up_m": FieldSpec("float", None, description="Climb (negative = descend), meters"),
             "north_m": FieldSpec("float", 0.0),
             "east_m": FieldSpec("float", 0.0),
-            "alt_m": FieldSpec("float", 5.0),
+            "alt_m": FieldSpec("float", 5.0, description="Absolute altitude, meters; overrides up_m"),
             "description": FieldSpec("str", None, description="Human-readable label for progress reporting"),
             "min_clearance_alt": FieldSpec("float", None, description="Climb-to-clear: never fly this leg below this altitude (e.g. a known tree line/obstacle on the route). Only ever raises alt_m, never lowers it — the real guarantee is still the FC-enforced altitude floor set once at mission start, this just lets a mission express a known obstacle explicitly."),
         },
@@ -101,9 +113,7 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
                      "heading the aircraft had at mission start, right_m runs "
                      "90 deg clockwise from it. This is what makes an operator "
                      "phrase like \"the rectangle 10 meters ahead and 5 to the "
-                     "right\" expressible (forward_m=10, right_m=5) — the other "
-                     "positional phases are all north/east-from-home and cannot "
-                     "say \"ahead\". A bounded, finite pattern, not a loiter. "
+                     "right\" expressible (forward_m=10, right_m=5). A bounded, finite pattern, not a loiter. "
                      "IMPORTANT for a fixed-wing, for the same reason fly_circle "
                      "has a radius floor: the corners are flown as arcs of the "
                      "airframe's own minimum turn radius (roughly max_speed_mps "

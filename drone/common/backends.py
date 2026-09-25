@@ -129,6 +129,19 @@ class HardwareBackend:
     def _is_fixedwing(self) -> bool:
         return self._vehicle_class == "fixedwing" and self._plane is not None
 
+    def _fc_nav(self) -> bool:
+        """Fly offsets through the flight controller instead of Nav2.
+
+        Nav2Bridge without ROS is a SIMULATION: it sleeps, moves an imaginary
+        pose and reports success, so on a real quad with no Nav2 running a
+        "fly 5m forward" phase completed without the aircraft moving. When the
+        SDK can fly offsets itself (drone_sdk.goto_offset), that wins over a
+        simulated bridge.
+        """
+        if self._is_fixedwing() or self._sdk is None or not hasattr(self._sdk, "goto_offset"):
+            return False
+        return self._nav is None or not getattr(self._nav, "use_ros", True)
+
     def _plane_offset_to_latlon(self, north_m: float, east_m: float):
         """Convert a north/east offset (meters) to absolute (lat, lon), using the
         position captured at the first such call this session as the origin —
@@ -198,6 +211,11 @@ class HardwareBackend:
             # (goto() takes north-then-east, the opposite order, hence the
             # landmark.y/landmark.x swap at that call site).
             return (east_m, north_m, alt_m, math.radians(yaw_deg))
+        if self._fc_nav():
+            try:
+                return self._sdk.get_local_pose()
+            except Exception:
+                return None
         if self._nav is not None:
             pose = self._nav.get_pose()
             if pose is not None:
@@ -245,6 +263,11 @@ class HardwareBackend:
             # this call exists to provide, with only an easy-to-miss log line
             # ("SAFETY: ... clamped to maximum 20.0") as a symptom.
             return self._plane.goto(lat, lon, alt_m, max_alt=self._plane.MAX_ALTITUDE)
+        if self._fc_nav():
+            try:
+                return bool(self._sdk.goto_offset(north_m, east_m, alt_m))
+            except Exception:
+                return False
         if self._nav is None:
             return None
         return self._nav.navigate_to_offset(north_m, east_m, alt_m)
@@ -346,6 +369,11 @@ class HardwareBackend:
                 return False
         # Quad/rover path: unchanged from what _exec_return_home did directly
         # before this seam existed (Nav2 offset back to home/origin).
+        if self._fc_nav():
+            try:
+                return bool(self._sdk.goto_offset(0.0, 0.0, alt_m if alt_m is not None else 5.0))
+            except Exception:
+                return False
         if self._nav is None:
             return False
         result = self._nav.navigate_to_offset(0.0, 0.0, alt_m if alt_m is not None else 5.0)

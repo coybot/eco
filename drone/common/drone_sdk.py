@@ -69,6 +69,7 @@ _camera = None
 # Ceiling guard state
 _ceiling_guard_thread = None
 _ceiling_guard_stop = threading.Event()
+_ceiling_guard_holding = None  # clearance (m) while the guard is freezing altitude, else None
 
 
 # =============================================================================
@@ -552,7 +553,7 @@ def takeoff(altitude_m):
         _log("Armed confirmed!")
     
     global _flight_home
-    pos = _position_relative()
+    pos = _fresh_position(timeout=2.0) or _position_relative()
     _flight_home = (pos[0], pos[1]) if pos else None
     start_battery_guard()
 
@@ -570,11 +571,30 @@ def takeoff(altitude_m):
         _drain_statustext()
         return False
     
-    wait_time = max(altitude_m * 2, 3)
-    _log(f"Climbing... (waiting {wait_time}s)")
-    time.sleep(wait_time)
-    _log(f"Reached {altitude_m}m")
-    return True
+    # Wait for the altitude to be REACHED, not for a timer: a climb blocked by
+    # the ceiling guard (or anything else) used to report "Reached" anyway, and
+    # the mission then flew its remaining phases from wherever it was stuck.
+    timeout = max(altitude_m * 3, 10)
+    _log(f"Climbing... (up to {timeout:.0f}s)")
+    target = max(altitude_m - 0.5, altitude_m * 0.85)
+    alt = None
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        pos = _fresh_position()
+        if pos is not None:
+            alt = pos[2]
+            if alt >= target:
+                _log(f"Reached {alt:.1f}m")
+                return True
+        time.sleep(0.5)
+    why = ""
+    if _ceiling_guard_holding is not None:
+        why = (f" - the ceiling guard is holding altitude: the upward rangefinder reads "
+               f"{_ceiling_guard_holding:.2f}m clearance")
+    got = f"{alt:.1f}m" if alt is not None else "unknown altitude"
+    _log(f"TAKEOFF FAILED: only reached {got} of {altitude_m}m{why}. Landing.")
+    land()
+    return False
 
 
 def land():
@@ -701,7 +721,7 @@ def get_ceiling_distance():
 
 def _ceiling_guard_loop(min_clearance):
     """Background thread: if clearance drops below threshold, freeze altitude in place."""
-    global _ceiling_guard_stop
+    global _ceiling_guard_stop, _ceiling_guard_holding
     _log(f"Ceiling guard started (min clearance={min_clearance}m)")
     clamped = False
 
@@ -721,12 +741,14 @@ def _ceiling_guard_loop(min_clearance):
 
                 if dist_msg is None:
                     clamped = False
+                    _ceiling_guard_holding = None
                     time.sleep(0.1)
                     continue
 
                 clearance = dist_msg.current_distance / 100.0
 
                 if clearance < min_clearance:
+                    _ceiling_guard_holding = clearance
                     if not clamped:
                         _log(f"CEILING GUARD: {clearance:.2f}m clearance — holding altitude")
                         clamped = True
@@ -742,6 +764,7 @@ def _ceiling_guard_loop(min_clearance):
                             0, 0, 0, 0, 0, 0, 0, 0
                         )
                 else:
+                    _ceiling_guard_holding = None
                     if clamped:
                         _log(f"CEILING GUARD: clearance restored ({clearance:.2f}m), resuming")
                         clamped = False
@@ -912,6 +935,93 @@ def _position_relative():
         return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
     except Exception:
         return None
+
+
+def _fresh_position(timeout=1.0):
+    """(lat, lon, rel_alt_m) from a NEW GLOBAL_POSITION_INT, or None.
+    Unlike get_position() this never returns a (0, 0, 0) placeholder."""
+    with _mavlink_lock:
+        m = _connect()
+        msg = m.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=timeout)
+    if msg is None:
+        return None
+    return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
+
+
+def _offset_origin():
+    """Where north/east offsets are measured from: the takeoff point."""
+    global _flight_home
+    if _flight_home is None:
+        pos = _fresh_position(timeout=2.0)
+        if pos is None:
+            return None
+        _flight_home = (pos[0], pos[1])
+    return _flight_home
+
+
+def get_local_pose():
+    """(east_m, north_m, up_m, yaw_rad) relative to the takeoff point, or None.
+    The Backend seam's ENU pose, straight from the flight controller - for
+    flying without Nav2."""
+    origin = _offset_origin()
+    pos = _fresh_position()
+    if origin is None or pos is None:
+        return None
+    north = (pos[0] - origin[0]) * 111320.0
+    east = (pos[1] - origin[1]) * 111320.0 * math.cos(math.radians(origin[0]))
+    with _mavlink_lock:
+        m = _connect()
+        att = m.recv_match(type='ATTITUDE', blocking=True, timeout=1.0) \
+            or m.messages.get('ATTITUDE')
+    if att is None:
+        # Without a heading "forward" would silently mean north; say so instead.
+        return None
+    return east, north, pos[2], att.yaw  # ATTITUDE.yaw: 0 = north, clockwise
+
+
+def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None):
+    """Fly to a north/east offset (m) from the takeoff point at alt_m and WAIT
+    until the aircraft is actually there. Returns True only on arrival.
+
+    Without Nav2 this is the only real way to move to an offset: the Nav2
+    bridge's fallback when ROS is absent merely sleeps and reports success.
+    Returns False if refused (battery), stopped by the battery guard, or not
+    arrived within timeout_s (default: generous for the distance).
+    """
+    origin = _offset_origin()
+    start = _fresh_position(timeout=2.0)
+    if origin is None or start is None:
+        _log("GOTO FAILED: no position from the flight controller")
+        return False
+    lat = origin[0] + north_m / 111320.0
+    lon = origin[1] + east_m / (111320.0 * math.cos(math.radians(origin[0])))
+    dist = _flat_dist_m(start[0], start[1], lat, lon)
+    if timeout_s is None:
+        timeout_s = 15.0 + 3.0 * (dist + abs(alt_m - start[2])) / 2.0
+    if goto(lat, lon, alt_m) is False:
+        return False
+    alt_target = _clamp(alt_m, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
+    deadline = time.time() + timeout_s
+    pos = start
+    while time.time() < deadline:
+        if _battery_guard_trip:
+            _log(f"GOTO STOPPED: {_battery_guard_trip['reason']}")
+            return False
+        p = _fresh_position()
+        if p is not None:
+            pos = p
+            if (_flat_dist_m(p[0], p[1], lat, lon) <= tol_m
+                    and abs(p[2] - alt_target) <= max(1.0, tol_m)):
+                _log(f"Arrived at N={north_m:.1f} E={east_m:.1f} alt={p[2]:.1f}m")
+                return True
+        time.sleep(0.5)
+    left = _flat_dist_m(pos[0], pos[1], lat, lon)
+    why = ""
+    if _ceiling_guard_holding is not None:
+        why = f" (ceiling guard holding: {_ceiling_guard_holding:.2f}m clearance)"
+    _log(f"GOTO FAILED: still {left:.1f}m from N={north_m:.1f} E={east_m:.1f} "
+         f"after {timeout_s:.0f}s{why}")
+    return False
 
 
 def _flat_dist_m(lat1, lon1, lat2, lon2):
