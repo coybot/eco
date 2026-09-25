@@ -1,7 +1,7 @@
 """
 VLM Service - Vision-Language Model for drone perception and reasoning.
 
-Uses Qwen3-VL to:
+Uses a Qwen-VL model (Qwen2.5-VL on the aircraft today) to:
 1. Understand what the drone sees (scene description)
 2. Make decisions about what to do next (action selection)
 3. Handle subjective judgments (e.g., "prettiest tree")
@@ -28,6 +28,213 @@ MODELS_DIR = _script_dir / "models" if (_script_dir / "models").exists() else _s
 # Symlinks created by setup_models.py
 VLM_MODEL_PATH = MODELS_DIR / "vlm.gguf"
 VLM_MMPROJ_PATH = MODELS_DIR / "vlm_mmproj.gguf"
+
+
+# Vision projectors are not interchangeable, and picking the wrong one is not a
+# loud failure. The mmproj GGUF names its own family in `clip.projector_type`,
+# and llama-cpp-python ships a separate chat handler per family; driving a
+# Qwen2.5-VL projector through Llava16ChatHandler loads without complaint and
+# then answers about an image it never encoded correctly. This file hardcoded
+# Llava16 while the weights actually flown on the quadcopter
+# (`Vlm_Lora_V1_Merged`) declare `qwen2.5vl_merger`, so the handler is now read
+# off the file instead of assumed.
+_PROJECTOR_HANDLERS = {
+    # Qwen3-VL has no dedicated handler; MTMDChatHandler is llama.cpp's generic
+    # multimodal path, which takes the projector from the mmproj and the prompt
+    # format from the model's own chat template. Needs llama-cpp-python >= 0.3.20.
+    "qwen3vl_merger": "MTMDChatHandler",
+    "qwen2.5vl_merger": "Qwen25VLChatHandler",
+    "qwen2vl_merger": "Qwen25VLChatHandler",
+    "minicpmv-2.6": "MiniCPMv26ChatHandler",
+    "mlp": "Llava15ChatHandler",
+}
+_DEFAULT_PROJECTOR_HANDLER = "Llava16ChatHandler"
+
+# How much context to give the model. 8192 costs ~290 MB of KV cache on a
+# 36-layer Qwen2.5-VL, which is most of the headroom on a 4 GB Orin Nano once
+# the weights are mapped, so the aircraft needs to be able to ask for less
+# without a code change.
+VLM_N_CTX = int(os.environ.get("VLM_N_CTX", "8192"))
+
+
+def _read_gguf_metadata(path: Path, wanted: set) -> Dict[str, Any]:
+    """Read a few string-valued keys out of a GGUF header without loading it.
+
+    Only enough of the format to walk the key/value block: every value has to be
+    skipped in full to reach the next key, so all the types are handled even
+    though only strings are returned.
+    """
+    import struct
+
+    STR, ARR = 8, 9
+    fixed = {0: "<B", 1: "<b", 2: "<H", 3: "<h", 4: "<I", 5: "<i",
+             6: "<f", 7: "<B", 10: "<Q", 11: "<q", 12: "<d"}
+    out: Dict[str, Any] = {}
+
+    with open(path, "rb") as f:
+        def take(fmt):
+            return struct.unpack(fmt, f.read(struct.calcsize(fmt)))[0]
+
+        def take_str():
+            return f.read(take("<Q")).decode("utf-8", "replace")
+
+        def skip(vtype):
+            if vtype in fixed:
+                f.read(struct.calcsize(fixed[vtype]))
+            elif vtype == STR:
+                take_str()
+            elif vtype == ARR:
+                elem = take("<I")
+                for _ in range(take("<Q")):
+                    skip(elem)
+            else:
+                raise ValueError(f"unknown GGUF value type {vtype}")
+
+        if f.read(4) != b"GGUF":
+            raise ValueError("not a GGUF file")
+        take("<I")  # version
+        take("<Q")  # tensor count
+        for _ in range(take("<Q")):
+            key = take_str()
+            vtype = take("<I")
+            if vtype == STR and key in wanted:
+                out[key] = take_str()
+            else:
+                skip(vtype)
+    return out
+
+
+def check_vlm_runtime(model_path: Path = None,
+                      mmproj_path: Path = None) -> Tuple[bool, str]:
+    """Can this machine actually run the onboard VLM? Returns (ok, reason).
+
+    Weights on disk are not the same thing as a VLM. The quadcopter had both
+    GGUFs downloaded and no `llama_cpp` in its venv at all, but the daemon
+    advertised vlm=True on the strength of the model file existing — so the app
+    offered a perception mission, the aircraft took off, and it failed 26 s in
+    at phase 3 of 5 with "VLM not available". Everything that has to be true for
+    inference is checked here, cheaply and without loading the model, so the
+    answer is known on the ground.
+    """
+    base_url = (os.environ.get("VLM_BASE_URL") or "").strip().rstrip("/")
+    if base_url:
+        model = os.environ.get("VLM_MODEL", "").strip()
+        if not model:
+            return False, "VLM_BASE_URL is set but VLM_MODEL is empty"
+        # An endpoint is only a VLM if it is up and serving this model. "The
+        # variable is set" is the endpoint version of "the weights file exists",
+        # the check that let a VLM-less aircraft advertise vlm=True.
+        served, err = _served_models(base_url)
+        if served is None:
+            return False, f"vision endpoint {base_url} unreachable: {err}"
+        if model not in served:
+            return False, (f"vision endpoint {base_url} does not serve {model!r} "
+                           f"(serves {sorted(served) or 'nothing'})")
+        return True, f"vision endpoint {base_url} ({model})"
+
+    model_path = model_path or VLM_MODEL_PATH
+    mmproj_path = mmproj_path or VLM_MMPROJ_PATH
+    if not model_path.exists():
+        return False, f"VLM weights missing ({model_path}); run setup_models.py"
+    if not mmproj_path.exists():
+        return False, f"vision encoder missing ({mmproj_path}); run setup_models.py"
+    try:
+        import llama_cpp  # noqa: F401
+    except ImportError:
+        return False, ("llama-cpp-python not installed in this interpreter "
+                       f"({sys.executable}); see drone/platforms/orin/install.sh")
+
+    # The weights have to fit, and this is not a performance question. The
+    # model loads inside the flight daemon, so running out of memory hands the
+    # kernel's OOM killer a choice of processes that includes the one flying
+    # the aircraft. Measured on the 4 GB Orin Nano quadcopter: the 1.8 GiB
+    # language model took MemAvailable from 2223 MB to 134 MB at load, and the
+    # first image then pulled in the 1.3 GiB vision encoder and was OOM-killed.
+    # With GPU offload the weights are copied into CUDA buffers, which cannot be
+    # paged back to the file the way mmap'd weights can, so the file sizes are
+    # a floor on what is needed rather than an overestimate.
+    need_mb = (model_path.stat().st_size + mmproj_path.stat().st_size) // 2**20 \
+        + VLM_MEMORY_MARGIN_MB
+    have_mb = _mem_available_mb()
+    if have_mb is not None and have_mb < need_mb:
+        return False, (f"not enough memory for the onboard VLM: needs ~{need_mb} MB, "
+                       f"{have_mb} MB available")
+    return True, "local llama.cpp"
+
+
+# Headroom on top of the two weight files: KV cache, compute buffers, and the
+# vision encoder's per-image activations. 512 was tried first and is too little:
+# Qwen3-VL-2B (1480 MB of weights) passed with it on the 4 GB Orin Nano and was
+# then OOM-killed decoding its first image, having used ~450 MB beyond the
+# model file at load and needing more than the ~450 MB still free at decode.
+# 1024 is the measured floor, not a comfortable figure. Overridable for a
+# build known to need less.
+VLM_MEMORY_MARGIN_MB = int(os.environ.get("VLM_MEMORY_MARGIN_MB", "1024"))
+
+
+def _served_models(base_url: str, attempts: int = 5):
+    """Model ids an OpenAI-compatible endpoint serves, or (None, error).
+
+    Retries only while the connection is refused: on boot the daemon and a
+    local ollama start together and the daemon can ask first. Anything else
+    (timeouts, HTTP errors) is answered immediately.
+    """
+    import urllib.request
+    import urllib.error
+    err = ""
+    for i in range(attempts):
+        try:
+            with urllib.request.urlopen(base_url + "/models", timeout=3) as r:
+                data = json.load(r).get("data", [])
+            return {m.get("id") for m in data if m.get("id")}, ""
+        except urllib.error.URLError as e:
+            err = str(getattr(e, "reason", e))
+            if "refused" not in err.lower() or i == attempts - 1:
+                break
+            time.sleep(1)
+        except Exception as e:
+            err = str(e)
+            break
+    return None, err
+
+
+def _mem_available_mb() -> Optional[int]:
+    """MemAvailable from /proc/meminfo, or None where there is no such file
+    (macOS dev machines), so the check never blocks off-Linux."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except OSError:
+        pass
+    return None
+
+
+def _projector_handler(mmproj_path: Path):
+    """The chat handler class matching this mmproj's declared projector type."""
+    from llama_cpp import llama_chat_format
+
+    name = _DEFAULT_PROJECTOR_HANDLER
+    try:
+        meta = _read_gguf_metadata(mmproj_path, {"clip.projector_type"})
+        declared = meta.get("clip.projector_type")
+        if declared:
+            name = _PROJECTOR_HANDLERS.get(declared, _DEFAULT_PROJECTOR_HANDLER)
+            if declared not in _PROJECTOR_HANDLERS:
+                print(f"Unknown projector type {declared!r}; "
+                      f"falling back to {name}")
+    except Exception as e:
+        print(f"Could not read projector type from {mmproj_path.name}: {e}")
+
+    handler = getattr(llama_chat_format, name, None)
+    if handler is None:
+        # An older llama-cpp-python that predates this handler.
+        print(f"{name} not available in llama-cpp-python "
+              f"{getattr(__import__('llama_cpp'), '__version__', '?')}; "
+              f"using {_DEFAULT_PROJECTOR_HANDLER}")
+        handler = getattr(llama_chat_format, _DEFAULT_PROJECTOR_HANDLER)
+    return handler
 
 
 class ActionType(str, Enum):
@@ -315,6 +522,7 @@ class VLMService:
 
         self._llm = None
         self._available = False
+        self.unavailable_reason = ""
         # Serialises inference. Two aircraft fly concurrently in the two-drone
         # demo, each with its own MissionLoop on its own thread, but they share
         # one loaded model because a second 5 GB instance will not fit alongside
@@ -370,47 +578,40 @@ class VLMService:
             print(f"VLM via OpenAI endpoint: {self._model} @ {self._base_url}")
             self._available = True
             return
-        if not self.model_path.exists():
-            print(f"VLM model not found at {self.model_path}")
-            print("Run setup_models.py to download Qwen3-VL")
+        ok, reason = check_vlm_runtime(self.model_path, self.mmproj_path)
+        if not ok:
+            print(f"VLM unavailable: {reason}")
+            self.unavailable_reason = reason
             self._available = False
             return
-        
-        if not self.mmproj_path.exists():
-            print(f"VLM vision encoder not found at {self.mmproj_path}")
-            self._available = False
-            return
-        
+
         try:
             from llama_cpp import Llama
-            from llama_cpp.llama_chat_format import Llava16ChatHandler
-            
-            print(f"Loading VLM: {self.model_path.name}...")
-            
-            # Create chat handler for vision
-            chat_handler = Llava16ChatHandler(
+
+            handler_cls = _projector_handler(self.mmproj_path)
+            print(f"Loading VLM: {self.model_path.name} "
+                  f"({handler_cls.__name__}, n_ctx={VLM_N_CTX})...")
+
+            chat_handler = handler_cls(
                 clip_model_path=str(self.mmproj_path),
                 verbose=False,
             )
-            
-            # Load model
+
             self._llm = Llama(
                 model_path=str(self.model_path),
                 chat_handler=chat_handler,
-                n_ctx=8192,  # Context window
+                n_ctx=VLM_N_CTX,
                 n_threads=4,
                 n_gpu_layers=-1,  # Use all GPU layers
                 verbose=False,
             )
-            
+
             self._available = True
             print(f"VLM loaded successfully: {self.model_path.name}")
-            
-        except ImportError:
-            print("llama-cpp-python not installed. Install with: pip install llama-cpp-python")
-            self._available = False
+
         except Exception as e:
             print(f"Failed to load VLM: {e}")
+            self.unavailable_reason = f"failed to load: {e}"
             self._available = False
     
     def is_available(self) -> bool:

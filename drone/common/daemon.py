@@ -1616,10 +1616,20 @@ def detect_capabilities():
         variant = detect_orin_variant()
         capabilities['variant'] = variant
 
-        # Check for VLM model
-        vlm_path = _models_dir / 'vlm.gguf'
-        if vlm_path.exists():
-            capabilities['vlm_available'] = True
+        # VLM: the same test the model loader applies, not just "a weights file
+        # exists". The file check alone reported vlm=True on an aircraft with no
+        # llama_cpp installed, so the app offered a perception mission that
+        # could only fail once airborne. Nav2 below already checks by import.
+        try:
+            from vlm import check_vlm_runtime
+            vlm_ok, vlm_reason = check_vlm_runtime(
+                _models_dir / 'vlm.gguf', _models_dir / 'vlm_mmproj.gguf')
+        except Exception as e:
+            vlm_ok, vlm_reason = False, f"runtime check failed: {e}"
+        capabilities['vlm_available'] = vlm_ok
+        capabilities['vlm_reason'] = vlm_reason
+        if not vlm_ok:
+            logger.warning(f"VLM unavailable: {vlm_reason}")
         
         # Check for Nav2 (ROS 2)
         try:
