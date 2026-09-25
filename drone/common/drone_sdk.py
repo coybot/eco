@@ -1809,6 +1809,30 @@ def _get_camera():
     return _camera
 
 
+def _drone_identity(config=None):
+    """(drone_id, iot_thing_name) for this aircraft.
+
+    The drone ID is resolved exactly as daemon.py resolves it, via
+    provisioning.get_or_create_drone_id, so photo keys carry the same identity
+    as the MQTT topics. Reading config.yaml's drone_id alone found nothing on
+    the quadcopter (its ID lives in /etc/drone-id): every S3 upload stopped at
+    "Missing drone_id in config" and every photo key said drones/unknown/.
+
+    The thing name is not always the drone ID. It is whatever the device
+    certificate is attached to -- config.yaml's iot_thing_name when present
+    ("aircraft-thing-01" there, while the drone ID is drone-0123456789ab) --
+    and only falls back to the drone ID.
+    """
+    config = _load_config() if config is None else config
+    try:
+        from provisioning import get_or_create_drone_id
+        drone_id = get_or_create_drone_id(config.get('drone_id'))
+    except Exception:
+        drone_id = config.get('drone_id')
+    thing_name = config.get('iot_thing_name') or config.get('thing_name') or drone_id
+    return drone_id, thing_name
+
+
 def _get_iot_credentials():
     """Get temporary AWS credentials from IoT credential provider."""
     import requests
@@ -1823,15 +1847,11 @@ def _get_iot_credentials():
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f) or {}
     
-    drone_id = config.get('drone_id')
+    _, thing_name = _drone_identity(config)
     region = config.get('region', 'us-west-2')
     role_alias = config.get('s3_role_alias', 'drone-s3-access-role-alias-dev')
     credentials_endpoint = config.get('credentials_endpoint')
-    
-    if not drone_id:
-        print("Error: Missing drone_id in config")
-        return None
-    
+
     if not credentials_endpoint:
         print("Error: Missing credentials_endpoint in config")
         print("  Get it with: aws iot describe-endpoint --endpoint-type iot:CredentialProvider")
@@ -1861,14 +1881,25 @@ def _get_iot_credentials():
     # IoT Credential Provider endpoint
     credential_endpoint = f"https://{credentials_endpoint}/role-aliases/{role_alias}/credentials"
     
-    try:
-        response = requests.get(
+    def _request(headers):
+        return requests.get(
             credential_endpoint,
             cert=(str(cert_path), str(key_path)),
             verify=str(ca_path),
-            headers={'x-amzn-iot-thingname': drone_id}
+            headers=headers,
+            timeout=15,
         )
-        
+
+    try:
+        response = _request({'x-amzn-iot-thingname': thing_name} if thing_name else {})
+        if response.status_code == 403 and thing_name and 'thing name' in response.text.lower():
+            # The header only matters to a role policy that uses
+            # credentials-iot:ThingName; for one that does not, a wrong name is
+            # the only way to fail. Measured on the quadcopter: the drone ID
+            # got "403 Invalid thing name", no header got credentials.
+            print(f"IoT credentials refused thing name {thing_name!r}; retrying without it")
+            response = _request({})
+
         if response.status_code == 200:
             creds = response.json()['credentials']
             return {
@@ -2064,8 +2095,7 @@ def _media_key(conversation_id, filename):
     parses it back into bucket+key by string splitting. Change it in one place
     only and the app silently gets dead links.
     """
-    config = _load_config()
-    drone_id = config.get('drone_id', 'unknown')
+    drone_id = _drone_identity()[0] or 'unknown'
     from datetime import datetime
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     return f'drones/{drone_id}/conversations/{conversation_id}/{timestamp}_{filename}'
