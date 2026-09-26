@@ -60,6 +60,11 @@ var doors: Dictionary = {}
 var DOOR_PANELS: Dictionary = {}
 var props: Array = []
 
+## raycast_structures() below takes Godot-frame vectors (y up, -z north), unlike
+## env_manhattan's ENU. fixedwing_manager's strike sweep reads this to call it
+## in the right frame.
+var RAYCAST_FRAME := "godot"
+
 # Buildings, parallel arrays exactly as env_manhattan holds them.
 var _rects: Array[Rect2] = []
 var _heights: PackedFloat32Array = PackedFloat32Array()

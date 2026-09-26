@@ -264,7 +264,8 @@ func _dispatch(line: String) -> String:
 				# get_state() wholesale, so anything added there must be added
 				# here too or it silently never reaches a client.
 				"payload_remaining": st["payload_remaining"],
-				"sensor_yaw_offset": st["sensor_yaw_offset"]
+				"sensor_yaw_offset": st["sensor_yaw_offset"],
+				"crashed": st["crashed"]
 			})
 
 		"fw_detect":

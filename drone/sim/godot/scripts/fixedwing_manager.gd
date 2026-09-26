@@ -132,6 +132,13 @@ class FixedWingState:
 	var sensor_yaw_offset := 0.0
 	var payload_remaining := 1
 	var alive := true
+	## Set by _crash() when the swept path hit structure. A crashed airframe
+	## ignores drive()/stop(), falls under gravity to whatever is below it and
+	## stays there until the client spawn()s the id again. Reported in
+	## fw_state/fw_all_states so a guidance client can see the strike.
+	var crashed := false
+	var crash_time := 0.0
+	var wreck_at_rest := false
 	var last_pose_trace: float = 0.0
 	var drain_mult: float = 1.0
 	var viewport: SubViewport = null   # forward-facing camera readback (fw_grab_frame)
@@ -176,6 +183,9 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 		st.yaw = yaw
 		st.velocity = Vector3.ZERO
 		st.airspeed = MIN_AIRSPEED
+		st.crashed = false
+		st.crash_time = 0.0
+		st.wreck_at_rest = false
 		st.climb_rate = 0.0
 		st.cmd_climb_rate = 0.0
 		st.pitch = 0.0
@@ -334,6 +344,11 @@ func _floor_at(x: float, y: float) -> float:
 
 
 func _step(st: FixedWingState, dt: float) -> void:
+	if st.crashed:
+		_step_crashed(st, dt)
+		return
+	var prev_pos := st.position
+
 	# Apply flight dynamics
 	_apply_flight_dynamics(st, dt)
 	
@@ -344,7 +359,31 @@ func _step(st: FixedWingState, dt: float) -> void:
 	# fraction of a tick that carried the aircraft past the limit. Without this
 	# the altitude floor leaks by a few centimetres and "z never below the floor"
 	# stops being a checkable invariant.
-	st.position.z = clamp(st.position.z, _floor_at(st.position.x, st.position.y), ALT_CEILING_M)
+	# Collision response. Fixed-wing bodies carry no collision shape, so until
+	# this check nothing stopped an aircraft flying straight through a massif or
+	# a building — a guidance failure looked exactly like a success. Sweep the
+	# segment this tick actually flew against scene structure and props (layers
+	# 1 and 2); a hit is a strike, and the airframe crashes rather than passes.
+	#
+	# Swept BEFORE the altitude clamp below, and terrain is checked directly as
+	# well as by ray. Clamping first to the terrain floor lifted an aircraft in
+	# level flight up the face of any slope it met — it climbed a cliff at
+	# 2 m clearance instead of hitting it.
+	var hit := _sweep_structure(prev_pos, st.position)
+	if hit.is_empty() and _env != null and _env.has_method("collision_height"):
+		var gz: float = _env.collision_height(st.position.x, st.position.y)
+		if st.position.z < gz:
+			hit = {"position": Vector3(st.position.x, gz, -st.position.y),
+				"normal": Vector3.UP, "label": "terrain"}
+	if not hit.is_empty():
+		_crash(st, hit, prev_pos)
+		return
+
+	# Only the flat envelope floor in POSITION now. Terrain-relative protection
+	# still acts on commanded DESCENT (the climb-rate cut in
+	# _apply_flight_dynamics, logged as envelope_protection), but flying level
+	# into rising ground is a strike, not something the airframe quietly climbs.
+	st.position.z = clamp(st.position.z, ALT_FLOOR_M, ALT_CEILING_M)
 	st.altitude = st.position.z
 	
 	# Apply pose
@@ -361,6 +400,124 @@ func _step(st: FixedWingState, dt: float) -> void:
 	if _sim_time - st.last_pose_trace >= 1.0:
 		st.last_pose_trace = _sim_time
 		_log_event("pose_trace", {"id": st.id, "x": st.position.x, "y": st.position.y, "z": st.position.z})
+
+
+## Raycast the path flown this tick (ENU endpoints) against structure + props.
+## Empty dictionary when clear. Layer mask 3 = LAYER_STRUCTURE | LAYER_PROPS,
+## matching the env scripts' own constants.
+const STRIKE_MASK := 3
+
+func _sweep_structure(from_enu: Vector3, to_enu: Vector3) -> Dictionary:
+	if from_enu.is_equal_approx(to_enu):
+		return {}
+	var from3 := Vector3(from_enu.x, from_enu.z, -from_enu.y)
+	var to3 := Vector3(to_enu.x, to_enu.z, -to_enu.y)
+	var hit := _raycast(from3, to3, STRIKE_MASK, [])
+	if not hit.is_empty():
+		return hit
+	# Envs with too much structure for physics bodies (manhattan's ~45k
+	# buildings, baylands) answer rays analytically instead; without this a
+	# strike there would pass straight through, exactly as before.
+	#
+	# The two envs that implement raycast_structures disagree on its contract:
+	# env_manhattan takes ENU and returns -1 on a miss; env_baylands takes
+	# Godot-frame vectors and returns max_dist on a miss. An env declares the
+	# Godot frame with `var RAYCAST_FRAME := "godot"`; a hit is only a distance
+	# strictly inside this tick's segment, which covers both miss conventions.
+	if _env.has_method("raycast_structures"):
+		var seg := to_enu - from_enu
+		var length := seg.length()
+		var dir_enu := seg / length
+		var d: float
+		if str(_env.get("RAYCAST_FRAME")) == "godot":
+			d = _env.raycast_structures(Vector3(from_enu.x, from_enu.z, -from_enu.y),
+				Vector3(dir_enu.x, dir_enu.z, -dir_enu.y), length)
+		else:
+			d = _env.raycast_structures(from_enu, dir_enu, length)
+		if d >= 0.0 and d < length - 1e-3:
+			var p := from_enu + dir_enu * d
+			return {"position": Vector3(p.x, p.z, -p.y), "normal": Vector3.UP,
+				"label": "building"}
+	return {}
+
+
+func _crash(st: FixedWingState, hit: Dictionary, prev_pos: Vector3) -> void:
+	var hp: Vector3 = hit.get("position", Vector3.ZERO)
+	var impact_enu := Vector3(hp.x, -hp.z, hp.y)
+	# Rest the wreck a metre short of the surface so it does not z-fight it.
+	var back := (prev_pos - impact_enu)
+	if back.length() > 0.001:
+		impact_enu += back.normalized() * 1.0
+	var speed := st.velocity.length()
+	var collider = hit.get("collider")
+	var what: String = hit.get("label", "structure")
+	if collider != null and is_instance_valid(collider):
+		what = str(collider.name)
+		var groups: Array = collider.get_groups()
+		if not groups.is_empty():
+			what += " (" + str(groups[0]) + ")"
+	st.crashed = true
+	st.crash_time = _sim_time
+	st.position = impact_enu
+	st.altitude = impact_enu.z
+	# Most of the energy goes into the wall; what is left carries the wreck on
+	# a little as it drops, which reads as a strike rather than a freeze.
+	st.velocity = st.velocity * 0.15
+	st.airspeed = 0.0
+	st.climb_rate = 0.0
+	st.cmd_airspeed = 0.0
+	st.cmd_yaw_rate = 0.0
+	st.cmd_climb_rate = 0.0
+	_log_event("collision", {"id": st.id, "x": impact_enu.x, "y": impact_enu.y,
+		"z": impact_enu.z, "speed": speed, "collider": what})
+	print("[FixedWingManager] %s STRUCK %s at ENU (%.1f, %.1f, %.1f) at %.1f m/s — crashed"
+		% [st.id, what, impact_enu.x, impact_enu.y, impact_enu.z, speed])
+	_apply_pose(st)
+
+
+## A crashed airframe: no lift, no control. Falls under gravity, tumbling,
+## until it meets something below (ground plane, terrace, rooftop) or z=0 for
+## envs whose ground has no collider, then lies there until respawned.
+func _step_crashed(st: FixedWingState, dt: float) -> void:
+	if st.wreck_at_rest:
+		return
+	var prev_pos := st.position
+	st.velocity.z -= 9.81 * dt
+	var drag := exp(-1.5 * dt)
+	st.velocity.x *= drag
+	st.velocity.y *= drag
+	st.position += st.velocity * dt
+	var hit := _sweep_structure(prev_pos, st.position)
+	var landed := false
+	if not hit.is_empty():
+		# Stop at the surface, pushed half a metre out along its normal so the
+		# next sweep does not start ON the face and re-hit it every tick (which
+		# made the wreck climb the wall at 30 m/s, seen in the first test).
+		var hp: Vector3 = hit["position"]
+		var nrm: Vector3 = hit.get("normal", Vector3.UP)
+		var rest3 := hp + nrm * 0.5
+		st.position = Vector3(rest3.x, -rest3.z, rest3.y)
+		if nrm.y > 0.5:
+			landed = true          # something roughly level: ground, roof, terrace
+		else:
+			st.velocity.x = 0.0    # a wall: lose the carry, keep falling beside it
+			st.velocity.y = 0.0
+	elif st.position.z <= 0.0:
+		st.position.z = 0.0
+		landed = true
+	if landed:
+		st.velocity = Vector3.ZERO
+		st.climb_rate = 0.0
+		st.wreck_at_rest = true
+		print("[FixedWingManager] %s wreck at rest at ENU (%.1f, %.1f, %.1f)"
+			% [st.id, st.position.x, st.position.y, st.position.z])
+	else:
+		st.climb_rate = st.velocity.z
+		# Nose drops and the wreck rolls as it falls.
+		st.pitch = lerpf(st.pitch, deg_to_rad(-70.0), minf(1.0, dt * 1.5))
+		st.roll = wrapf(st.roll + 4.0 * dt, -PI, PI)
+	st.altitude = st.position.z
+	_apply_pose(st)
 
 
 func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
@@ -553,7 +710,8 @@ func get_state(id: String) -> Variant:
 		"altitude": st.altitude,
 		"battery_level": st.battery_level,
 		"payload_remaining": st.payload_remaining,
-		"sensor_yaw_offset": st.sensor_yaw_offset
+		"sensor_yaw_offset": st.sensor_yaw_offset,
+		"crashed": st.crashed
 	}
 
 
@@ -976,7 +1134,7 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 ## altitude, rather than silently starting to descend.
 func drive(id: String, airspeed: float, yaw_rate: float, climb: float = 0.0) -> void:
 	var st: FixedWingState = _fw.get(id)
-	if st == null:
+	if st == null or st.crashed:
 		return
 	st.cmd_airspeed = clamp(airspeed, -MAX_AIRSPEED, MAX_AIRSPEED)
 	st.cmd_yaw_rate = clamp(yaw_rate, -MAX_YAW_RATE, MAX_YAW_RATE)
@@ -986,7 +1144,7 @@ func drive(id: String, airspeed: float, yaw_rate: float, climb: float = 0.0) -> 
 func stop(id: String) -> void:
 	# Set airspeed to minimum, zero yaw and climb rate (loiter, not true stop)
 	var st: FixedWingState = _fw.get(id)
-	if st == null:
+	if st == null or st.crashed:
 		return
 	st.cmd_airspeed = MIN_AIRSPEED
 	st.cmd_yaw_rate = 0.0
@@ -1155,6 +1313,7 @@ func all_states() -> Array:
 			"position": [st.position.x, st.position.y, st.position.z],
 			"yaw": st.yaw,
 			"altitude": st.altitude,
+			"crashed": st.crashed,
 		})
 	return out
 
