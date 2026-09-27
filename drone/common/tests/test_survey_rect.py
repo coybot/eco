@@ -191,7 +191,8 @@ def test_progress_is_published_under_the_drone_id(monkeypatch):
     sent = []
 
     class MQTT:
-        def publish(self, topic, payload):
+        """awscrt's Connection.publish: qos is required."""
+        def publish(self, topic, payload, qos, retain=False):
             sent.append(topic)
 
     loop, _ = _loop()
