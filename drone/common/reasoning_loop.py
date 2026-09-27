@@ -497,6 +497,14 @@ class MissionLoop:
         self._search_idx = 0
         self._search_target = None
         self._nav_cursor = None
+        self._chain_from = None
+        self._aborted = False
+        try:
+            backend = self._get_backend()
+            if hasattr(backend, "clear_abort"):
+                backend.clear_abort()
+        except Exception:
+            pass
         actions_taken = 0
 
         self._report_progress(f"Starting mission: {mission.original_message or 'Unknown'}", phase=0)
@@ -581,6 +589,8 @@ class MissionLoop:
 
                     if not phase_result.get('failed'):
                         break
+                    if self._aborted or phase_result.get('aborted'):
+                        return self._stopped_result(mission, actions_taken)
                     if self._time_up():
                         # A retry could not finish inside the limit either:
                         # the limit ends the phase, as it would have mid-run.
@@ -635,6 +645,12 @@ class MissionLoop:
                 if phase_result.get('time_limit_reached'):
                     self._note_time_limit(phase)
                 self._phase_deadline = None
+                if self._aborted:
+                    return self._stopped_result(mission, actions_taken)
+                if phase.get('type') not in self._PHASES_THAT_STAY_PUT:
+                    # The next move is measured from where this one left the
+                    # aircraft, not from the last nav target.
+                    self._chain_from = None
 
                 # Check safety limits
                 elapsed = time.time() - mission.start_time
@@ -749,6 +765,29 @@ class MissionLoop:
     # on the operator's terms.                                             #
     # ------------------------------------------------------------------ #
     _phase_deadline: Optional[float] = None
+    _aborted = False                       # set by abort(); reset when run() starts
+    _chain_from: Optional[tuple] = None    # last nav target, while moves chain
+
+    # Phases that end where they began, so a nav after one still chains from
+    # the previous nav's target.
+    _PHASES_THAT_STAY_PUT = ("nav", "capture_photo", "hold", "look_around",
+                             "start_recording", "stop_recording")
+
+    def _stopped_result(self, mission: Mission, actions_taken: int) -> MissionResult:
+        self._report_progress("Stopped on your command")
+        return MissionResult(
+            success=False,
+            summary="Stopped on your command",
+            phases_completed=mission.current_phase,
+            total_phases=len(mission.phases),
+            findings=self._findings,
+            photos=self._photos,
+            videos=self._videos,
+            landmarks=self._landmarks_out,
+            duration_seconds=time.time() - mission.start_time,
+            actions_taken=actions_taken,
+            failure_reason="Stopped on your command",
+        )
 
     def _start_phase_clock(self, phase: Dict[str, Any]) -> None:
         limit = phase.get('time_limit_s')
@@ -1049,7 +1088,11 @@ class MissionLoop:
 
         if not any(phase.get(k) is not None for k in self._NAV_RELATIVE_FIELDS):
             return f('north_m'), f('east_m'), f('alt_m', 5.0)
-        here_n, here_e, here_alt = self._here()
+        # Chain from where the previous nav was sent, not from where the
+        # aircraft was when goto() called it "arrived" (up to 1 m short): that
+        # error added up leg by leg, and "forward 4 m then right 3 m" ended
+        # 1.2 m off. Any other movement resets it (see _PHASES_THAT_STAY_PUT).
+        here_n, here_e, here_alt = self._chain_from or self._here()
         dn, de = self._body_to_home_offset(f('forward_m'), f('right_m'))
         if phase.get('distance_m') is not None:
             bearing = math.radians(f('bearing_deg'))
@@ -1074,6 +1117,7 @@ class MissionLoop:
             reason = getattr(result, 'message', 'goto() did not succeed')
             return {'failed': True, 'reason': reason, 'actions': 1}
         self._nav_cursor = (north_m, east_m, alt_m)
+        self._chain_from = (north_m, east_m, alt_m)
         return {'success': True, 'actions': 1}
 
     def _exec_go_to_gps(self, phase: Dict[str, Any]) -> Dict[str, Any]:
@@ -1126,6 +1170,8 @@ class MissionLoop:
         # position), so this traces the same circle for the quad path exactly
         # as before (backend.goto() delegates straight to the same Nav2 call).
         for i in range(n_waypoints):
+            if self._aborted:
+                return {'failed': True, 'reason': 'Stopped on your command', 'actions': i, 'aborted': True}
             if self._time_up():
                 return self._time_limit_result(i)
             angle = (2 * math.pi * i) / n_waypoints
@@ -1204,6 +1250,8 @@ class MissionLoop:
         )
         backend = self._get_backend()
         for i, (east_m, north_m) in enumerate(pts):
+            if self._aborted:
+                return {'failed': True, 'reason': 'Stopped on your command', 'actions': i, 'aborted': True}
             if self._time_up():
                 return self._time_limit_result(i)
             self._report_progress(f"Rectangle waypoint {i + 1}/{len(pts)}")
@@ -1277,6 +1325,8 @@ class MissionLoop:
         backend = self._get_backend()
         missed, problem = 0, None
         for i, (east_m, north_m) in enumerate(pts):
+            if self._aborted:
+                return {'failed': True, 'reason': 'Stopped on your command', 'actions': i, 'aborted': True}
             if self._time_up():
                 self._media_warning(f"the survey stopped at its time limit after {i} of {len(pts)} photos")
                 return self._time_limit_result(i)
@@ -1544,8 +1594,18 @@ class MissionLoop:
         a drone credited with 6 decisions and a failed search had in fact been
         cut off mid-run, and its thread went on printing into a torn-down
         harness (OSError: Bad file descriptor).
+
+        Also how the operator's "stop" and a newer command end a mission: the
+        backend is told too, so a move or climb in progress ends now rather
+        than at arrival. What the aircraft does next is the caller's choice.
         """
         self._aborted = True
+        try:
+            backend = self._get_backend()
+            if hasattr(backend, "abort"):
+                backend.abort()
+        except Exception as e:
+            print(f"backend abort failed: {e}")
 
     def _phase_action_budget(self) -> int:
         """How many decisions this phase may take before it is cut off.

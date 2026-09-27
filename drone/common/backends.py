@@ -361,6 +361,16 @@ class HardwareBackend:
         except Exception:
             return False
 
+    def abort(self) -> None:
+        for sdk in (self._sdk, getattr(self, "_plane", None)):
+            if sdk is not None and hasattr(sdk, "request_abort"):
+                sdk.request_abort()
+
+    def clear_abort(self) -> None:
+        for sdk in (self._sdk, getattr(self, "_plane", None)):
+            if sdk is not None and hasattr(sdk, "clear_abort"):
+                sdk.clear_abort()
+
     def rtl(self, alt_m: Optional[float] = None) -> bool:
         if self._is_fixedwing():
             try:
@@ -757,9 +767,17 @@ class FleetSimBackend:
     def _ground(self) -> bool:
         return self._vtype == "rover"
 
+    _stop = False
+
+    def abort(self) -> None:
+        self._stop = True
+
+    def clear_abort(self) -> None:
+        self._stop = False
+
     def _wait(self, target, timeout_s: float, tol_m: float) -> bool:
         deadline = time.time() + timeout_s
-        while time.time() < deadline:
+        while time.time() < deadline and not self._stop:
             pose = self.get_pose()
             if pose is not None and math.dist(pose[:3], target) <= tol_m:
                 return True

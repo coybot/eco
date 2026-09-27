@@ -676,6 +676,8 @@ def takeoff(altitude_m):
         True if takeoff command succeeded, False otherwise
     """
     altitude_m = _clamp(altitude_m, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
+    if is_flying():
+        return _airborne_takeoff(altitude_m)
     _log(f"Taking off to {altitude_m}m...")
     
     _drain_statustext(timeout=0.5, print_msgs=False)
@@ -756,6 +758,10 @@ def takeoff(altitude_m):
     alt = None
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if _abort_event.is_set():
+            _log("TAKEOFF STOPPED: the operator stopped the flight")
+            hold_here()
+            return False
         pos = _fresh_position()
         if pos is not None:
             alt = pos[2]
@@ -770,6 +776,30 @@ def takeoff(altitude_m):
     got = f"{alt:.1f}m" if alt is not None else "unknown altitude"
     _log(f"TAKEOFF FAILED: only reached {got} of {altitude_m}m{why}. Landing.")
     land()
+    return False
+
+
+def _airborne_takeoff(altitude_m):
+    """A mission's first phase is always a takeoff, and a follow-up sent
+    mid-flight ("hover here for 30 s") starts with one too. A real takeoff
+    then would re-take "home" as this mid-air point, so the flight home went
+    back here instead of to the ground, and send NAV_TAKEOFF, which the FC
+    refuses in flight. Already up: keep home, hold the position, go to the
+    altitude asked for."""
+    pos = _fresh_position(timeout=2.0) or _position_relative()
+    _log(f"Already airborne at {pos[2]:.1f}m: holding position, going to {altitude_m}m, home unchanged")
+    if goto(pos[0], pos[1], altitude_m) is False:
+        return False
+    deadline = time.time() + max(10.0, abs(altitude_m - pos[2]) * 3)
+    while time.time() < deadline:
+        if _abort_event.is_set():
+            hold_here()
+            return False
+        p = _fresh_position()
+        if p is not None and abs(p[2] - altitude_m) <= max(0.5, altitude_m * 0.1):
+            return True
+        time.sleep(0.5)
+    _log(f"Did not reach {altitude_m}m from the air")
     return False
 
 
@@ -1213,6 +1243,84 @@ def get_local_pose():
     return east, north, pos[2], att.yaw  # ATTITUDE.yaw: 0 = north, clockwise
 
 
+# ---------------------------------------------------------------------------
+# Stopping a flight in progress. The operator's "stop" used to reach nothing:
+# the daemon had no abort, a second mission ran alongside the first, and every
+# wait in here ran to arrival. request_abort() ends the waits below; the
+# caller then decides what the aircraft does (hold_here(), land(), home).
+# ---------------------------------------------------------------------------
+_abort_event = threading.Event()
+
+
+def request_abort():
+    _abort_event.set()
+
+
+def clear_abort():
+    _abort_event.clear()
+
+
+def abort_requested():
+    return _abort_event.is_set()
+
+
+def is_flying():
+    """Armed and more than 1 m up: a takeoff now would be a mid-air one."""
+    pos = _fresh_position(timeout=1.0) or _position_relative()
+    return bool(is_armed() and pos is not None and pos[2] > 1.0)
+
+
+def _ground_speed():
+    _fresh_position(timeout=0.5)   # pump the link: the cached message is otherwise stale
+    try:
+        with _mavlink_lock:
+            msg = _connect().messages.get('GLOBAL_POSITION_INT')
+        return math.hypot(msg.vx, msg.vy) / 100.0 if msg is not None else None
+    except Exception:
+        return None
+
+
+def brake(timeout_s=8.0):
+    """Stop now: ArduCopter's BRAKE mode, until ground speed is under 0.3 m/s.
+    A new GUIDED position target alone decelerates along the normal waypoint
+    curve; in SITL a stop at cruise speed ran 15 m past the point it was told
+    to hold before coming back to it. True if it stopped."""
+    if not _set_mode_confirmed('BRAKE', timeout=3):
+        return False
+    end = time.time() + timeout_s
+    while time.time() < end:
+        v = _ground_speed()
+        if v is not None and v < 0.3:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def hold_here(brake_first=True):
+    """Stop where it is and hold position and altitude, then stay in GUIDED so
+    the next mission can fly on. Deliberately not battery-gated: this is the
+    stop, and refusing it would leave the aircraft flying the old command."""
+    if brake_first:
+        brake()
+    if get_flight_mode() != 'GUIDED' and not _set_mode_confirmed('GUIDED'):
+        _log("HOLD: could not return to GUIDED - left in its current mode")
+        return get_flight_mode() in ('BRAKE', 'LOITER', 'POSHOLD')
+    pos = _fresh_position(timeout=2.0) or _position_relative()
+    if pos is None:
+        _log("HOLD FAILED: no position from the flight controller")
+        return False
+    alt = max(pos[2], MIN_ALTITUDE)
+    _log(f"Holding position at {alt:.1f}m")
+    _mav_send(lambda m: m.mav.set_position_target_global_int_send(
+        0, 1, 1,
+        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+        0b0000111111111000,
+        int(pos[0] * 1e7), int(pos[1] * 1e7), alt,
+        0, 0, 0, 0, 0, 0, 0, 0
+    ))
+    return True
+
+
 def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None):
     """Fly to a north/east offset (m) from the takeoff point at alt_m and WAIT
     until the aircraft is actually there. Returns True only on arrival.
@@ -1240,6 +1348,9 @@ def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None):
     while time.time() < deadline:
         if _battery_guard_trip:
             _log(f"GOTO STOPPED: {_battery_guard_trip['reason']}")
+            return False
+        if _abort_event.is_set():
+            _log("GOTO STOPPED: the operator stopped the flight")
             return False
         p = _fresh_position()
         if p is not None:
@@ -1699,6 +1810,7 @@ def get_telemetry():
                 'longitude': msg.lon / 1e7,
                 'altitude': msg.alt / 1000.0
             }
+            telemetry['altitude_agl'] = msg.relative_alt / 1000.0
             collected.add('position')
         elif msg_type == 'ATTITUDE' and 'attitude' not in collected:
             telemetry['attitude'] = {

@@ -253,7 +253,17 @@ at import time, so keep this section in sync with it if either changes)
    {"objective": "Orbit the parking area and count the cars", "success": "Count reported"}
 
 RULES:
-- Always start with arm_and_takeoff, always end with return_home then land
+- Start with arm_and_takeoff and end with return_home then land. DRONE STATE
+  (below) says whether it is already flying: if it is, a mission REPLACES the
+  one it is flying, straight away - so "Land" or "hover here" is just that
+  phase, and a "return home" follow-up is just return_home. An arm_and_takeoff
+  sent while flying keeps position and home and only sets the altitude, so it
+  is harmless, but leave it out unless you want a new altitude.
+- To stop what the drone is doing without giving it a new plan ("stop",
+  "cancel that", "stop following me", "abort and land"), reply
+  {"action": "abort", "then": "hold" | "land" | "return_home", "message": "..."}.
+  It takes effect at once. Never tell the operator the drone is stopped, landed
+  or on the ground unless DRONE STATE says so.
 - Use "nav" for any explicit distance/direction move ("go forward 5m",
   "back up 3m", "go 10m northeast", "move left 2m and climb 3m") - with the
   move fields, never by converting a relative direction to north/east
@@ -315,6 +325,7 @@ RULES:
 
 RESPONSE FORMAT:
 {"action": "mission", "mission": {"phases": [...]}, "message": "Brief message to user"}
+OR: {"action": "abort", "then": "hold", "message": "..."}  — stop now (see RULES)
 OR: {"action": "respond", "message": "..."}
 OR: {"action": "ask", "message": "..."}  — use when the mission objective is ambiguous
     in a way that changes what phases to plan (see fixed-wing note above); ask ONE
@@ -579,9 +590,54 @@ MISSION_VEHICLE_NOTES = {
 }
 
 
-def mission_system_prompt(vehicle_type=None):
+def describe_drone_state(item):
+    """The planner's view of the aircraft right now, from its last heartbeat.
+    Without it the planner could only guess from the chat, and answered a
+    mid-flight "Stop" with "the drone is on the ground"."""
+    import time as _time
+    if not item:
+        return "DRONE STATE: unknown (no heartbeat)."
+    try:
+        age = _time.time() - float(item.get('lastUpdate', 0)) / 1000.0
+    except (TypeError, ValueError):
+        age = None
+    if age is not None and age > 60:
+        return f"DRONE STATE: unknown (last heartbeat {age:.0f} s ago)."
+    armed = bool(item.get('armed'))
+    agl = item.get('altitudeAgl')
+    try:
+        agl = float(agl) if agl is not None else None
+    except (TypeError, ValueError):
+        agl = None
+    if armed and agl is not None and agl > 1.0:
+        where = f"FLYING at {agl:.1f} m above the takeoff point"
+    elif armed:
+        where = "armed, on or near the ground"
+    else:
+        where = "on the ground, disarmed"
+    m = item.get('mission') or {}
+    if m.get('running'):
+        doing = f"mission running, on step {m.get('phase')} of {m.get('of')} ({m.get('step')})"
+    else:
+        doing = "no mission running"
+    extra = f"; battery {item['battery']}%" if item.get('battery') is not None else ""
+    return f"DRONE STATE (live): {where}; {doing}{extra}."
+
+
+def get_drone_state(drone_id):
+    try:
+        return dynamodb.Table(STATUS_TABLE).get_item(Key={'droneId': drone_id}).get('Item')
+    except Exception as e:
+        print(f"Error reading drone state: {e}")
+        return None
+
+
+def mission_system_prompt(vehicle_type=None, drone_state=None):
     note = MISSION_VEHICLE_NOTES.get(vehicle_type)
-    return MISSION_SYSTEM_PROMPT + ("\n\n" + note if note else "")
+    out = MISSION_SYSTEM_PROMPT + ("\n\n" + note if note else "")
+    if drone_state:
+        out += "\n\n" + drone_state
+    return out
 
 
 def get_user_id(event):
@@ -616,7 +672,8 @@ def json_response(status_code, body):
     }
 
 
-def save_message(conversation_id, drone_id, sender, content_type, content, image_urls=None, media=None):
+def save_message(conversation_id, drone_id, sender, content_type, content, image_urls=None, media=None,
+                 sent=None):
     """Save a message to the conversation history."""
     table = dynamodb.Table(CONVERSATIONS_TABLE)
     
@@ -642,7 +699,10 @@ def save_message(conversation_id, drone_id, sender, content_type, content, image
         # Stored UNSIGNED, like imageUrls: presigned URLs expire in 24h but the
         # message lives for 7 days, so history has to re-sign on read.
         item['media'] = media
-    
+    if sent:
+        # What actually went to the drone, for the planner's history (not shown in the app).
+        item['sent'] = sent
+
     table.put_item(Item=item)
     
     return {
@@ -677,15 +737,69 @@ def get_conversation_history(drone_id, conversation_id, limit=20):
 
     messages = []
     for item in reversed(response.get('Items', [])):
+        content = item['content']
+        if item.get('sent'):
+            # Without this the planner saw only its own words and could not
+            # tell a mission that went out from one that did not.
+            content = f"{content}\n[Sent to the drone: {item['sent']}]"
         msg = {
             'role': 'user' if item['sender'] == 'user' else 'assistant',
-            'content': item['content']
+            'content': content
         }
         if item.get('imageUrls'):
             msg['images'] = item['imageUrls']
         messages.append(msg)
     
     return messages
+
+
+def summarize_phases(phases):
+    """One line per mission for the history: what the drone was told to do."""
+    out = []
+    for p in phases or []:
+        extra = {k: v for k, v in p.items() if k not in ('type', 'objective', 'success', 'description')}
+        name = p.get('type') or p.get('objective', 'vision phase')
+        args = ", ".join(f"{k}={v}" for k, v in extra.items())
+        out.append(f"{name}({args})" if args else name)
+    return "mission: " + " -> ".join(out)
+
+
+# Plain stop/land/home words skip the planner: they are the ones that must not
+# wait on a model, and they mean one thing. The drone checks its own state, so
+# "stop" on the ground does nothing.
+_FAST_ABORT = {
+    'hold': {'stop', 'halt', 'abort', 'freeze', 'hold', 'pause', 'cancel', 'stop now',
+             'emergency stop', 'hold position', 'stay there', 'stop stop', 'hover here'},
+    'land': {'land', 'land now', 'land here', 'land immediately'},
+    'return_home': {'return home', 'come back', 'come home', 'go home', 'rtl',
+                    'return to home', 'return to launch', 'come back home'},
+}
+
+
+def fast_abort(message):
+    import re as _re
+    words = _re.sub(r"[^a-z ]", " ", (message or "").lower())
+    words = " ".join(w for w in words.split() if w not in ('please', 'now', 'drone', 'the'))
+    if not words:
+        words = (message or "").strip().lower()
+    for then, phrases in _FAST_ABORT.items():
+        if words in phrases or words + " now" in phrases:
+            return then
+    return None
+
+
+def send_abort(drone_id, conversation_id, then, message, reply):
+    """Stop the drone's current mission, then hold / land / go home."""
+    loading = save_message(conversation_id, drone_id, 'drone', 'loading', reply,
+                           sent=f"STOP, then {then}")
+    publish_to_app(drone_id, conversation_id, 'ack', reply)
+    publish_to_drone(drone_id, conversation_id, {
+        'action': 'abort', 'then': then, 'conversation_id': conversation_id,
+        'original_message': message,
+    })
+    publish_log(drone_id, "INFO", f"Abort sent (then {then})")
+    return json_response(200, {'status': 'sent', 'message_id': loading['id'],
+                               'immediate_response': loading})
 
 
 def fetch_image_as_base64(url: str) -> tuple[str, str]:
@@ -1023,7 +1137,7 @@ def get_drone_capabilities(drone_id):
         return {'has_vlm': False, 'variant': 'unknown', 'nav2_available': False}
 
 
-_KNOWN_ACTIONS = {'mission', 'respond', 'ask', 'set_goal', 'execute', 'look'}
+_KNOWN_ACTIONS = {'mission', 'respond', 'ask', 'set_goal', 'execute', 'look', 'abort'}
 
 
 def _extract_last_json_action(text: str):
@@ -1072,7 +1186,8 @@ def _extract_last_json_action(text: str):
     return None
 
 
-def call_mission_agent(conversation_history, user_message, pending_images=None, vehicle_type=None):
+def call_mission_agent(conversation_history, user_message, pending_images=None, vehicle_type=None,
+                       drone_state=None):
     """
     Call the AI agent for mission planning (AGX drones with VLM).
     
@@ -1108,7 +1223,7 @@ def call_mission_agent(conversation_history, user_message, pending_images=None, 
     messages.append({'role': 'user', 'content': user_content})
     
     try:
-        result = llm.invoke(mission_system_prompt(vehicle_type), messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
+        result = llm.invoke(mission_system_prompt(vehicle_type, drone_state), messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
         response_text = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -1379,6 +1494,12 @@ def message_handler(event, context):
     
     # Save user message
     save_message(conversation_id, drone_id, 'user', 'text', message)
+
+    then = fast_abort(message)
+    if then is not None:
+        replies = {'hold': "Stopping — holding position.", 'land': "Landing now.",
+                   'return_home': "Coming back home."}
+        return send_abort(drone_id, conversation_id, then, message, replies[then])
     
     # Get conversation history
     history = get_conversation_history(drone_id, conversation_id)
@@ -1394,7 +1515,8 @@ def message_handler(event, context):
     if has_vlm:
         # AGX drone with VLM - use mission-based approach
         agent_response = call_mission_agent(history, message,
-                                            vehicle_type=get_vehicle_type(drone_id))
+                                            vehicle_type=get_vehicle_type(drone_id),
+                                            drone_state=describe_drone_state(get_drone_state(drone_id)))
     else:
         # Legacy drone (Nano/NX) - use goal-based approach
         agent_response = call_agent(history, message)
@@ -1432,6 +1554,11 @@ def message_handler(event, context):
         publish_log(drone_id, "WARNING", "Drone appears offline (no recent heartbeat)")
     
     # Handle different agent actions
+    if action == 'abort':
+        then = agent_response.get('then') if agent_response.get('then') in ('hold', 'land', 'return_home') else 'hold'
+        return send_abort(drone_id, conversation_id, then, message,
+                          agent_response.get('message') or "Stopping.")
+
     if action == 'mission':
         # New mission-based approach for AGX drones with VLM
         if not drone_online:
@@ -1455,7 +1582,8 @@ def message_handler(event, context):
         # Save loading message
         loading_msg = save_message(
             conversation_id, drone_id, 'drone', 'loading',
-            agent_response.get('message', 'Starting mission...')
+            agent_response.get('message', 'Starting mission...'),
+            sent=summarize_phases(phases)
         )
         
         # Send ack via MQTT so app knows request is being processed

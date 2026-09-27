@@ -114,6 +114,18 @@ class DroneDaemon:
                 self._start_video()
             return
         conv = parts[3] if len(parts) >= 5 and parts[2] == "chat" else data.get("conversation_id", "c")
+        if data.get("action") == "abort":
+            # Straight to the vehicle, not behind the code queue. Code already
+            # running keeps its own later setpoints (sim_control has no stop hook).
+            then = data.get("then", "hold")
+            pos = self.engine.state(self.id)["position"]
+            goal = {"hold": pos, "land": [pos[0], pos[1], 0.0],
+                    "return_home": [0.0, 0.0, max(pos[2], 2.0)]}.get(then, pos)
+            self.engine.set_goal(self.id, goal)
+            self._respond(conv, data.get("original_message", ""),
+                          {"success": True, "stdout": f"Stopped ({then}, sim).", "error": None,
+                           "image_urls": []})
+            return
         # Carry follow_up so the cloud's image-analysis loop (response_handler) fires after a
         # `look`/capture. The IRL daemon echoes this; without it, sim `look` returns a raw image
         # with no Claude analysis.

@@ -1068,6 +1068,96 @@ def on_command(topic, payload, **kwargs):
 _recent_command_ids = deque(maxlen=100)  # Track recently processed command IDs
 _command_dedup_lock = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# One mission at a time. A mission that arrived while another was flying used
+# to start a second MissionLoop alongside it - both commanding the aircraft -
+# so the operator's "Land" during a follow ran a landing while the follow kept
+# steering. The newest command wins: the running mission is stopped first.
+# ---------------------------------------------------------------------------
+_active_lock = threading.Lock()
+# Serialises stop-then-start, so two commands in quick succession still end
+# with only the newer one flying. Held off the MQTT thread (the stop can wait
+# seconds for a move to end).
+_dispatch_lock = threading.Lock()
+_active = {'thread': None, 'loop': None, 'mission': None, 'cancel': None}
+
+
+def _signal_stop():
+    """Tell the running mission to stop. Returns its thread (to join), or None."""
+    with _active_lock:
+        thread, loop, cancel = _active['thread'], _active['loop'], _active['cancel']
+    if thread is None or not thread.is_alive():
+        return None
+    logger.info("Stopping the running mission")
+    if cancel is not None:
+        cancel.set()
+    if loop is not None:
+        loop.abort()
+    return thread
+
+
+def _join_stopped(thread, timeout_s=20.0):
+    if thread is None:
+        return False
+    thread.join(timeout_s)
+    if thread.is_alive():
+        logger.error(f"Mission thread still running {timeout_s:.0f}s after the stop")
+    return True
+
+
+def _stop_active_mission(timeout_s=20.0):
+    """Stop the running mission, if any, and wait for its thread. True if one was running."""
+    return _join_stopped(_signal_stop(), timeout_s)
+
+
+def active_mission_status():
+    """What the heartbeat reports, so the planner knows whether a mission is flying."""
+    with _active_lock:
+        thread, mission = _active['thread'], _active['mission']
+    if thread is None or not thread.is_alive() or mission is None:
+        return {'running': False}
+    k = min(mission.current_phase, len(mission.phases) - 1) if mission.phases else 0
+    phase = mission.phases[k] if mission.phases else {}
+    return {'running': True, 'id': mission.mission_id, 'phase': k + 1, 'of': len(mission.phases),
+            'step': phase.get('type') or (phase.get('objective') or '')[:80]}
+
+
+def _abort_then(then):
+    """The operator's stop: end the mission, then hold, land or go home. Acts on
+    the aircraft's real state - a stop on the ground does nothing."""
+    import drone_sdk as sdk
+    thread = _signal_stop()
+    braked = False
+    if then == 'hold' and VEHICLE_TYPE not in ('fixedwing', 'rover') and sdk.is_flying():
+        # Brake the moment the stop arrives, not after the mission thread has
+        # wound down: at cruise speed every second of that is metres travelled.
+        braked = sdk.brake()
+    stopped = _join_stopped(thread)
+    sdk.clear_abort()   # the stop was for the mission, not for what follows
+    prefix = "Stopped the mission. " if stopped else ""
+    if VEHICLE_TYPE == 'fixedwing':
+        # It cannot stop in the air; the safe stop is the flight controller's RTL.
+        import plane_sdk
+        ok = bool(plane_sdk.rtl())
+        return ok, prefix + ("Returning to launch (a fixed-wing cannot stop in the air)."
+                             if ok else "RTL failed.")
+    if VEHICLE_TYPE == 'rover':
+        ok = sdk._set_mode_confirmed('HOLD')
+        return ok, prefix + ("Holding." if ok else "Could not switch to HOLD.")
+    if not sdk.is_flying():
+        return True, prefix + "The drone is not flying."
+    if then == 'land':
+        ok = sdk.land() is not False
+        return ok, prefix + ("Landing." if ok else "Landing failed.")
+    if then == 'return_home':
+        ok = sdk.return_home()
+        return ok, prefix + ("Back over home." if ok else "Could not get home.")
+    ok = sdk.hold_here(brake_first=not braked)
+    pos = sdk._position_relative()
+    alt = f" at {pos[2]:.1f} m" if pos else ""
+    return ok, prefix + (f"Holding position{alt}." if ok else "Could not hold position.")
+
+
 def on_chat_command(topic, payload, **kwargs):
     """Handle incoming chat command from IoT Core."""
     global _mqtt_connection
@@ -1098,6 +1188,30 @@ def on_chat_command(topic, payload, **kwargs):
         logger.info(f"Received chat command: {action}")
         logger.info(f"Conversation: {conversation_id}")
         
+        if action == 'abort':
+            then = data.get('then', 'hold')
+            logger.info(f"Abort requested (then: {then})")
+
+            def abort_async():
+                with _dispatch_lock:
+                    try:
+                        ok, msg = _abort_then(then)
+                    except Exception as e:
+                        ok, msg = False, f"Stop failed: {e}"
+                        logger.error(msg)
+                logger.info(msg)
+                _mqtt_connection.publish(
+                    topic=f"drone/{DRONE_ID}/chat/{conversation_id}/response",
+                    payload=json.dumps({
+                        'droneId': DRONE_ID, 'conversation_id': conversation_id,
+                        'original_message': original_message,
+                        'result': {'success': ok, 'stdout': msg, 'error': None if ok else msg},
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                    }),
+                    qos=mqtt.QoS.AT_LEAST_ONCE)
+            threading.Thread(target=abort_async, daemon=True).start()
+            return
+
         # Handle mission-based action (Nano / NX / AGX with VLM)
         if action == 'mission':
             mission_id = data.get('mission_id', 'unknown')
@@ -1110,6 +1224,8 @@ def on_chat_command(topic, payload, **kwargs):
             for _i, _phase in enumerate(phases, 1):
                 logger.info(f"  phase {_i}/{len(phases)}: {json.dumps(_phase, default=str)[:2000]}")
             
+            cancel = threading.Event()
+
             # Run mission execution in a separate thread to not block MQTT
             def execute_mission_async():
                 try:
@@ -1155,7 +1271,11 @@ def on_chat_command(topic, payload, **kwargs):
 
                     # Create mission loop with MQTT client for communication
                     loop = MissionLoop(**loop_kwargs)
-                    
+                    with _active_lock:
+                        _active['loop'], _active['mission'] = loop, mission
+                    if cancel.is_set():
+                        return   # replaced before it began
+
                     # Execute the mission
                     result = loop.run(mission)
                     
@@ -1226,7 +1346,15 @@ def on_chat_command(topic, payload, **kwargs):
                         qos=mqtt.QoS.AT_LEAST_ONCE
                     )
             
-            threading.Thread(target=execute_mission_async, daemon=True).start()
+            def dispatch():
+                # The newest command wins: stop the one in flight first.
+                with _dispatch_lock:
+                    _stop_active_mission()
+                    with _active_lock:
+                        _active.update(thread=threading.current_thread(), loop=None,
+                                       mission=None, cancel=cancel)
+                execute_mission_async()
+            threading.Thread(target=dispatch, daemon=True).start()
             return
         
         # Code execution
@@ -1675,6 +1803,8 @@ def publish_heartbeat():
         'lastUpdate': now_ms,  # Epoch milliseconds
         'ttl': ttl,
         'armed': False,  # Default - will be updated from telemetry if available
+        # Lets the planner tell "stop" mid-mission from "stop" on the ground.
+        'mission': active_mission_status(),
         'capabilities': capabilities,
         'variant': capabilities.get('variant', 'unknown'),
     }
@@ -1731,6 +1861,8 @@ def publish_heartbeat():
         # Include position if available
         if telemetry.get('position') is not None:
             heartbeat['position'] = telemetry['position']
+        if telemetry.get('altitude_agl') is not None:
+            heartbeat['altitudeAgl'] = round(telemetry['altitude_agl'], 1)
         
         # Include attitude if available
         if telemetry.get('attitude') is not None:
