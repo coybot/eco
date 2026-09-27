@@ -1127,8 +1127,18 @@ def _abort_then(then):
     the aircraft's real state - a stop on the ground does nothing."""
     import drone_sdk as sdk
     thread = _signal_stop()
+    try:
+        flying = sdk.is_flying() if VEHICLE_TYPE not in ('fixedwing', 'rover') else None
+    except Exception as e:
+        # No flight controller: nothing can be flying. Say so plainly - on
+        # thorin (no FC) a stop used to read "There was an issue: Stop failed".
+        stopped = _join_stopped(thread)
+        sdk.clear_abort()
+        logger.info(f"Stop with no flight controller: {e}")
+        return True, ("Stopped the mission. " if stopped else "") + \
+            "No flight controller is connected, so nothing is flying."
     braked = False
-    if then == 'hold' and VEHICLE_TYPE not in ('fixedwing', 'rover') and sdk.is_flying():
+    if then == 'hold' and flying:
         # Brake the moment the stop arrives, not after the mission thread has
         # wound down: at cruise speed every second of that is metres travelled.
         braked = sdk.brake()
@@ -1144,7 +1154,7 @@ def _abort_then(then):
     if VEHICLE_TYPE == 'rover':
         ok = sdk._set_mode_confirmed('HOLD')
         return ok, prefix + ("Holding." if ok else "Could not switch to HOLD.")
-    if not sdk.is_flying():
+    if not flying:
         return True, prefix + "The drone is not flying."
     if then == 'land':
         ok = sdk.land() is not False

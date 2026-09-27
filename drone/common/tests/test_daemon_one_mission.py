@@ -143,3 +143,18 @@ def test_stop_on_the_ground_does_nothing(daemon, monkeypatch):
     _send(daemon, action="abort", then="return_home")
     assert _wait(lambda: conn.published)
     assert moved == [] and conn.published[-1][1]["result"]["stdout"] == "The drone is not flying."
+
+
+def test_stop_with_no_flight_controller_says_so_plainly(daemon, monkeypatch):
+    """thorin has no FC: the stop used to come back as "There was an issue: Stop failed"."""
+    conn = Conn()
+    monkeypatch.setattr(daemon, "_mqtt_connection", conn)
+
+    def no_fc():
+        raise RuntimeError("Flight controller not found at /dev/ttyACM0")
+    fake_sdk = types.SimpleNamespace(is_flying=no_fc, clear_abort=lambda: None)
+    monkeypatch.setitem(sys.modules, "drone_sdk", fake_sdk)
+    _send(daemon, action="abort", then="hold")
+    assert _wait(lambda: conn.published)
+    result = conn.published[-1][1]["result"]
+    assert result["success"] and result["stdout"] == "No flight controller is connected, so nothing is flying."
