@@ -574,11 +574,17 @@ class MissionLoop:
                 # so e.g. a VLM phase that ran out of actions searching blind can
                 # choose SEARCH_AREA/RETURN_TO_LANDMARK on the next attempt.
                 replans_used = 0
+                self._start_phase_clock(phase)
                 while True:
                     phase_result = self._execute_phase(phase, mission)
                     actions_taken += phase_result.get('actions', 0)
 
                     if not phase_result.get('failed'):
+                        break
+                    if self._time_up():
+                        # A retry could not finish inside the limit either:
+                        # the limit ends the phase, as it would have mid-run.
+                        phase_result = self._time_limit_result(phase_result.get('actions', 0))
                         break
 
                     reason = phase_result.get('reason', 'Unknown')
@@ -625,6 +631,10 @@ class MissionLoop:
 
                     replans_used += 1
                     self._replan(phase, reason, replans_used)
+
+                if phase_result.get('time_limit_reached'):
+                    self._note_time_limit(phase)
+                self._phase_deadline = None
 
                 # Check safety limits
                 elapsed = time.time() - mission.start_time
@@ -721,6 +731,7 @@ class MissionLoop:
         "fly_circle": "_exec_fly_circle",
         "fly_rect": "_exec_fly_rect",
         "survey_rect": "_exec_survey_rect",
+        "hold": "_exec_hold",
         "look_around": "_exec_look_around",
         "capture_photo": "_exec_capture_photo",
         "start_recording": "_exec_start_recording",
@@ -728,6 +739,42 @@ class MissionLoop:
         "return_home": "_exec_return_home",
         "land": "_exec_land",
     }
+
+    # ------------------------------------------------------------------ #
+    # Time limits: any phase may carry time_limit_s. When it runs out the  #
+    # phase stops where it is and the mission goes on to the next one, so #
+    # "follow me, then come home after 60 seconds" is a follow phase with  #
+    # time_limit_s 60 and a return_home. Before this, the same request     #
+    # ended in "Phase action limit reached" and the follow never stopped   #
+    # on the operator's terms.                                             #
+    # ------------------------------------------------------------------ #
+    _phase_deadline: Optional[float] = None
+
+    def _start_phase_clock(self, phase: Dict[str, Any]) -> None:
+        limit = phase.get('time_limit_s')
+        try:
+            limit = float(limit) if limit is not None else None
+        except (TypeError, ValueError):
+            limit = None
+        self._phase_deadline = time.time() + limit if limit and limit > 0 else None
+
+    def _time_left(self) -> Optional[float]:
+        if self._phase_deadline is None:
+            return None
+        return max(0.0, self._phase_deadline - time.time())
+
+    def _time_up(self) -> bool:
+        return self._phase_deadline is not None and time.time() >= self._phase_deadline
+
+    @staticmethod
+    def _time_limit_result(actions: int) -> Dict[str, Any]:
+        return {'success': True, 'actions': actions, 'time_limit_reached': True}
+
+    def _note_time_limit(self, phase: Dict[str, Any]) -> None:
+        what = phase.get('objective') or phase.get('description') or phase.get('type') or 'phase'
+        note = f"{what}: stopped at its {float(phase['time_limit_s']):g} s time limit"
+        self._report_progress(note)
+        self._findings.append(note)
 
     def _execute_phase(self, phase: Dict[str, Any], mission: Mission) -> Dict[str, Any]:
         """Dispatch a phase to the appropriate executor based on its type field.
@@ -815,6 +862,8 @@ class MissionLoop:
             return 'survey_rect', cost + gov.hover_cost(self.SURVEY_SECONDS_PER_PHOTO * len(pts)), dist_home, a
         if t == 'look_around':
             return 'look_around', gov.hover_cost(8.0 * float(phase.get('directions', 4))), dist_home, alt
+        if t == 'hold':
+            return 'hold', gov.hover_cost(float(phase.get('seconds') or 0.0)), dist_home, alt
         if t == 'capture_photo':
             return 'capture_photo', gov.hover_cost(5.0), dist_home, alt
         if t == 'start_recording':
@@ -1077,6 +1126,8 @@ class MissionLoop:
         # position), so this traces the same circle for the quad path exactly
         # as before (backend.goto() delegates straight to the same Nav2 call).
         for i in range(n_waypoints):
+            if self._time_up():
+                return self._time_limit_result(i)
             angle = (2 * math.pi * i) / n_waypoints
             north_m = radius_m * math.cos(angle)
             east_m = radius_m * math.sin(angle)
@@ -1153,6 +1204,8 @@ class MissionLoop:
         )
         backend = self._get_backend()
         for i, (east_m, north_m) in enumerate(pts):
+            if self._time_up():
+                return self._time_limit_result(i)
             self._report_progress(f"Rectangle waypoint {i + 1}/{len(pts)}")
             try:
                 result = backend.goto(north_m, east_m, alt_m)
@@ -1224,6 +1277,9 @@ class MissionLoop:
         backend = self._get_backend()
         missed, problem = 0, None
         for i, (east_m, north_m) in enumerate(pts):
+            if self._time_up():
+                self._media_warning(f"the survey stopped at its time limit after {i} of {len(pts)} photos")
+                return self._time_limit_result(i)
             self._report_progress(f"Survey photo {i + 1}/{len(pts)}")
             try:
                 result = backend.goto(north_m, east_m, alt_m)
@@ -1241,6 +1297,25 @@ class MissionLoop:
             # One line for the whole survey, not one per cell.
             self._media_warning(f"{missed} of {len(pts)} survey photos were not taken: {problem}")
         return {'success': True, 'actions': len(pts)}
+
+    def _exec_hold(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        """Stay where it is for `seconds` ("hover for 30 s", "wait 10 s then
+        land"). A multirotor hovers; a fixed-wing, which cannot, circles."""
+        seconds = float(phase.get('seconds') or phase.get('time_limit_s') or 0.0)
+        if seconds <= 0:
+            return {'failed': True, 'reason': 'hold needs seconds > 0', 'actions': 0}
+        self._report_progress(f"Holding for {seconds:g} s")
+        backend = self._get_backend()
+        if not self.vehicle_class.can_hover:
+            pose = backend.get_pose()
+            backend.loiter((pose[0], pose[1], pose[2]) if pose is not None else None,
+                           self.vehicle_class.sense_range_m)
+        end = time.time() + seconds
+        while time.time() < end and not self._time_up():
+            if getattr(self, "_aborted", False):
+                return {'failed': True, 'reason': 'aborted by the harness', 'actions': 1, 'aborted': True}
+            time.sleep(min(0.5, max(0.0, end - time.time())))
+        return {'success': True, 'actions': 1}
 
     def _exec_start_recording(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         mode = phase.get('mode', 'video')
@@ -1518,7 +1593,13 @@ class MissionLoop:
         already_reported_grounded_finding = False
         count_recorded_this_phase = False
 
-        while phase_actions < self._phase_action_budget():
+        # A phase with a time limit runs until it (or success) ends it: the
+        # action budget exists to stop an unbounded loop, and a limit already
+        # bounds this one. Following for 60 s at 15 s a leg used to be cut by
+        # the budget, or run on past the time the operator gave.
+        while self._phase_deadline is not None or phase_actions < self._phase_action_budget():
+            if self._time_up():
+                return self._time_limit_result(phase_actions)
             if getattr(self, "_aborted", False):
                 return {'failed': True, 'reason': 'aborted by the harness',
                         'actions': phase_actions, 'aborted': True}
@@ -2737,7 +2818,9 @@ class MissionLoop:
         executor = FollowExecutor(backend, self.vehicle_class, target,
                                   seed=seed, altitude=alt)
         try:
-            card = executor.run(duration_s=self.FOLLOW_LEG_SECONDS, tick_hz=4.0)
+            left = self._time_left()
+            leg = self.FOLLOW_LEG_SECONDS if left is None else max(1.0, min(self.FOLLOW_LEG_SECONDS, left))
+            card = executor.run(duration_s=leg, tick_hz=4.0)
         finally:
             executor.stop()
 
@@ -2759,7 +2842,7 @@ class MissionLoop:
             "in_band_fraction": held,
             "lost_ticks": card["lost_ticks"],
             "unverified_reacquisitions": card["unverified_reacquisitions"],
-            "seconds": self.FOLLOW_LEG_SECONDS,
+            "seconds": leg,
         })
 
     def _exec_drop_payload(self, action, backend) -> None:

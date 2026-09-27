@@ -43,6 +43,12 @@ class PhaseSpec:
 
 
 # ---------------------------------------------------------------------------
+# Fields any phase, typed or VLM, may carry.
+# ---------------------------------------------------------------------------
+COMMON_PHASE_FIELDS: Dict[str, "FieldSpec"] = {}
+
+
+# ---------------------------------------------------------------------------
 # Typed phases — deterministic geometry/actuation, executed by
 # reasoning_loop.py's _execute_phase dispatch table (backends.py Backend
 # seam under the hood — see change A). Every key here MUST have a matching
@@ -132,6 +138,11 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
             "waypoints_per_side": FieldSpec("int", 1, description="Intermediate points along each side, for smoother tracking"),
             "min_clearance_alt": FieldSpec("float", None, description="Same climb-to-clear semantics as the nav phase's field."),
         },
+    ),
+    "hold": PhaseSpec(
+        description="Stay where it is for a while: hover (a fixed-wing circles). "
+                     "For \"hover for 30 seconds\", \"wait 10 s then land\".",
+        fields={"seconds": FieldSpec("float", None, required=True, description="How long, seconds")},
     ),
     "survey_rect": PhaseSpec(
         description="Photograph an AREA: split a rectangle (placed exactly as "
@@ -286,6 +297,12 @@ def render_phase_wording_rules() -> str:
     return "\n".join(lines)
 
 
+COMMON_PHASE_FIELDS["time_limit_s"] = FieldSpec(
+    "float|None", None,
+    description="Stop this phase after this many seconds and go on to the next "
+                "one. Checked between waypoints and photos, and between VLM decisions.")
+
+
 def render_phase_prompt_section() -> str:
     """Render PHASE_SCHEMAS as the prose block conversations.py's
     MISSION_SYSTEM_PROMPT pastes in (regenerate + re-paste by hand when the
@@ -299,6 +316,8 @@ def render_phase_prompt_section() -> str:
             field_bits.append(f"{fname} ({fspec.type}, {tag})")
         fields_str = ", ".join(field_bits) if field_bits else "no fields"
         lines.append(f'- "{name}": {spec.description} [{fields_str}]')
+    for fname, fspec in COMMON_PHASE_FIELDS.items():
+        lines.append(f'- any phase may add "{fname}" ({fspec.type}): {fspec.description}')
     return "\n".join(lines)
 
 

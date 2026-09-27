@@ -184,6 +184,22 @@ at import time, so keep this section in sync with it if either changes)
    estimate, and will refuse to land rather than guess a heading if neither is
    available (never worth guessing wrong on a real aircraft).
 
+   {"type": "hold", "seconds": 30}
+   — stays where it is (hovers; a fixed-wing circles). For "hover for 30
+   seconds", "wait 10 s, then land".
+
+   TIME LIMITS — ANY phase, typed or VLM, may carry "time_limit_s". When it
+   runs out, that phase stops where it is and the mission goes on to the NEXT
+   phase. Use it whenever the operator gives a duration:
+   "follow me, then return home after 60 seconds" ->
+     [..., {"objective": "Follow the person", "success": "...", "time_limit_s": 60},
+      {"type": "return_home"}, {"type": "land"}]
+   "keep searching for 30s then return home" -> the search phase gets
+   "time_limit_s": 30, then return_home. "Give up after 2 minutes" is
+   "time_limit_s": 120 on the phase it applies to. A limit is not a failure:
+   the mission carries on with the phase after it. Typed phases stop between
+   waypoints/photos, so a limit shorter than one leg still finishes that leg.
+
 2. VLM PHASES (use for visual/search/reasoning tasks — drone's AI figures out
    how). The on-device VLM, inside an untyped (objective/success) phase, can:
    - Fly toward a point or a named object it currently sees.
@@ -201,7 +217,8 @@ at import time, so keep this section in sync with it if either changes)
      something that has gone out of sight somewhere it may plausibly reappear
      (under cover, inside a structure). It flies one lap per decision and
      re-evaluates each lap, so don't specify how long to wait — say what it is
-     waiting for and let it judge.
+     waiting for and let it judge — unless the operator gave a duration: then
+     set time_limit_s.
    - Release a carried payload for a target it has confirmed and closed on. It
      refuses to release unless the target is visible in the current frame and
      within range, because a payload cannot be recovered once dropped.
@@ -638,21 +655,28 @@ def save_message(conversation_id, drone_id, sender, content_type, content, image
 
 
 def get_conversation_history(drone_id, conversation_id, limit=20):
-    """Get recent messages from a conversation."""
+    """Get the most recent `limit` messages of a conversation, oldest first.
+
+    Queried newest-first and reversed: an oldest-first query with a Limit
+    returns the conversation's FIRST messages. In a ~90-message conversation
+    the planner never saw its own question "what should the drone do if it
+    loses sight of you?", so the operator's answer, "keep searching for 30s
+    then return home", came back as "what would you like me to search for?".
+    """
     table = dynamodb.Table(CONVERSATIONS_TABLE)
-    
+
     response = table.query(
         KeyConditionExpression='PK = :pk AND begins_with(SK, :sk_prefix)',
         ExpressionAttributeValues={
             ':pk': f'CONV#{drone_id}#{conversation_id}',
             ':sk_prefix': 'MSG#'
         },
-        ScanIndexForward=True,  # Oldest first
+        ScanIndexForward=False,  # newest first, so Limit keeps the latest
         Limit=limit
     )
-    
+
     messages = []
-    for item in response.get('Items', []):
+    for item in reversed(response.get('Items', [])):
         msg = {
             'role': 'user' if item['sender'] == 'user' else 'assistant',
             'content': item['content']
