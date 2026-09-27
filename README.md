@@ -87,12 +87,12 @@ iOS App → API Gateway → Lambda → Claude 3.5 Sonnet → IoT Core → Drone 
 
 ## Recommended Models
 
-Benchmarked 2026-09-27. Recommendations, not yet the configured defaults.
+Benchmarked 2026-09-27.
 
 | Role | Recommended | Currently configured |
 |------|-------------|----------------------|
-| Cloud mission planner | **Claude Opus 5.5, medium effort** (`us.anthropic.claude-opus-5-5`) | Claude Sonnet 4.6 (`BEDROCK_MODEL_ID` default in `aws/src/conversations.py`) |
-| On-drone vision model | **Qwen3.5-4B** (Q4_K_M GGUF + F16 mmproj), Qwen3.5-2B as the smaller fallback | `vlm_lora_v1` (fine-tuned Qwen2-VL) |
+| Cloud mission planner | **Claude Opus 5.5, medium effort** (`us.anthropic.claude-opus-5-5`) | Same: `MISSION_MODEL_ID` / `MISSION_EFFORT` in `aws/src/conversations.py` (override by env). The code planner and agent stay on `BEDROCK_MODEL_ID` (Sonnet 4.6) |
+| On-drone vision model | **Qwen3.5-4B** (Q4_K_M GGUF + F16 mmproj), Qwen3.5-2B as the smaller fallback | `vlm_lora_v1` (fine-tuned Qwen2-VL) - not yet switched |
 
 **Cloud planner.** 27 scenarios, 3 runs each, taken mostly from the operator's real chat
 log (takeoff/move/photo, area surveys, follow-me with time limits, mid-flight stop / land /
@@ -106,10 +106,8 @@ third model against yes/no criteria written in advance.
 | Median reply | 1.9 s | 3.3 s | 4.3 s | 4.4 s |
 
 Medium matches high at fewer tokens; Sonnet's misses were conditional plans whose first phase
-could fail the mission on a "no", and one survey placed on the wrong patch. Switching needs
-the effort setting (`output_config.effort: "medium"`, with adaptive thinking) passed in
-`aws/src/llm.py` and a larger `max_tokens`, neither of which is wired yet - setting
-`BEDROCK_MODEL_ID` alone runs Opus at its default effort.
+could fail the mission on a "no", and one survey placed on the wrong patch. Only the mission
+planner uses Opus: on the code path (rover, sims) Sonnet did better in an earlier run.
 
 **On-drone VLM.** 60 Godot frames of people at 15-40 m, some in red jackets; each model was
 asked whether a red jacket is visible and for the drone's mission decision (`VLMService.decide`)

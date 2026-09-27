@@ -33,6 +33,14 @@ STATUS_TTL_SECONDS = int(os.environ.get("STATUS_TTL_SECONDS", "30"))
 BEDROCK_MODEL_ID = os.environ.get(
     "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"
 )
+# The mission planner (drones with an on-device VLM - the quadcopter). Chosen
+# by benchmark on 27 scenarios mostly from the real chat log (see README,
+# "Recommended Models"): Opus 5.5 at medium effort passed 81/81, Sonnet 4.6
+# 77/81, at 4.3 s vs 1.9 s median. The other planners stay on BEDROCK_MODEL_ID.
+MISSION_MODEL_ID = os.environ.get("MISSION_MODEL_ID", "us.anthropic.claude-opus-5-5")
+MISSION_EFFORT = os.environ.get("MISSION_EFFORT", "medium") or None
+# Room for thinking as well as the plan; 2048 was sized for a plan alone.
+MISSION_MAX_TOKENS = int(os.environ.get("MISSION_MAX_TOKENS", "16000" if MISSION_EFFORT else "2048"))
 # Fallback model for code generation (faster, cheaper)
 BEDROCK_CODE_MODEL_ID = os.environ.get(
     "BEDROCK_CODE_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0"
@@ -1223,7 +1231,8 @@ def call_mission_agent(conversation_history, user_message, pending_images=None, 
     messages.append({'role': 'user', 'content': user_content})
     
     try:
-        result = llm.invoke(mission_system_prompt(vehicle_type, drone_state), messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
+        result = llm.invoke(mission_system_prompt(vehicle_type, drone_state), messages,
+                            max_tokens=MISSION_MAX_TOKENS, model=MISSION_MODEL_ID, effort=MISSION_EFFORT)
         response_text = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'

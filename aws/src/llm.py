@@ -39,7 +39,7 @@ def _provider_name() -> str:
     return os.environ.get("LLM_PROVIDER", "bedrock").strip().lower()
 
 
-def invoke(system, messages, *, max_tokens, tools=None, tool_choice=None, model=None):
+def invoke(system, messages, *, max_tokens, tools=None, tool_choice=None, model=None, effort=None):
     """Invoke the configured LLM provider.
 
     `model` is the caller's BEDROCK_MODEL_ID (or BEDROCK_CODE_MODEL_ID) — used
@@ -51,7 +51,7 @@ def invoke(system, messages, *, max_tokens, tools=None, tool_choice=None, model=
         return _invoke_openai(system, messages, max_tokens=max_tokens,
                                tools=tools, tool_choice=tool_choice)
     return _invoke_bedrock(system, messages, max_tokens=max_tokens,
-                            tools=tools, tool_choice=tool_choice, model=model)
+                            tools=tools, tool_choice=tool_choice, model=model, effort=effort)
 
 
 # --- Bedrock provider ---------------------------------------------------------
@@ -69,7 +69,7 @@ def _bedrock():
     return _bedrock_client
 
 
-def _invoke_bedrock(system, messages, *, max_tokens, tools, tool_choice, model):
+def _invoke_bedrock(system, messages, *, max_tokens, tools, tool_choice, model, effort=None):
     body = {
         "anthropic_version": ANTHROPIC_VERSION,
         "system": system,
@@ -80,6 +80,12 @@ def _invoke_bedrock(system, messages, *, max_tokens, tools, tool_choice, model):
     if tool_choice is not None:
         body["tool_choice"] = tool_choice
     body["max_tokens"] = max_tokens
+    if effort:
+        # Adaptive thinking at the given effort ("low" | "medium" | "high").
+        # Thinking comes back as "thinking" blocks, which every caller already
+        # skips by reading only "text" blocks.
+        body["thinking"] = {"type": "adaptive"}
+        body["output_config"] = {"effort": effort}
     try:
         response = _bedrock().invoke_model(modelId=model, body=json.dumps(body))
         return json.loads(response["body"].read())
