@@ -806,24 +806,21 @@ def generate_code(instruction, conversation_id, drone_id=None, vehicle_type=None
                         break
                 code = '\n'.join(lines[start:end]).strip()
         
-        # Remove any preamble text before actual code (lines not starting with valid Python)
+        # Drop any prose before the code: the first line from which the rest
+        # parses as Python. This used to cut at the first line starting with a
+        # known SDK call, which also cut real code - `urls = survey_rect(...)`,
+        # `if ...:` and `try:` start no such line - and sent a survey as just
+        # `land()`.
+        import ast as _ast
         lines = code.split('\n')
-        code_start = 0
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            # Skip empty lines at start
-            if not stripped:
+        for i in range(len(lines)):
+            candidate = '\n'.join(lines[i:]).strip()
+            try:
+                _ast.parse(candidate)
+            except SyntaxError:
                 continue
-            # Check if line looks like Python code (starts with identifier, keyword, or comment)
-            if (stripped.startswith('#') or 
-                stripped.startswith('import ') or
-                stripped.startswith('from ') or
-                any(stripped.startswith(f'{func}(') for func in ['motor_test', 'arm', 'safe_disarm', 'disarm', 'takeoff', 'land', 'goto', 'wait', 'get_position', 'capture_photo', 'set_velocity', 'set_yaw', 'start_recording', 'stop_recording', 'record_video']) or
-                stripped.startswith('CONVERSATION_ID')):
-                code_start = i
-                break
-
-        code = '\n'.join(lines[code_start:]).strip()
+            code = candidate
+            break
 
         # If the user said "disarm" (but not "land"), replace any land() the LLM
         # generated with safe_disarm() — the LLM stubbornly maps disarm→land().
