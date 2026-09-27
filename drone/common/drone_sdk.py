@@ -132,7 +132,7 @@ def _on_message(conn, msg):
     try:
         t = msg.get_type()
         if t == 'DISTANCE_SENSOR':
-            if msg.orientation == mavutil.mavlink.MAV_SENSOR_ROTATION_PITCH_90:
+            if msg.orientation == UPWARD:
                 _upward_range = msg
         elif t == 'HEARTBEAT':
             if (msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
@@ -154,7 +154,7 @@ def _fc_said(fragment, since):
     return any(ts >= since and fragment in text.lower() for ts, text in list(_fc_text_history))
 
 
-def _drain_backlog(m, limit=2000):
+def _drain_backlog(m, limit=2000, max_s=0.2):
     """Parse everything already waiting on the link. Caller holds the lock.
 
     recv_match(type=X, blocking=True) returns the OLDEST queued X, and
@@ -165,8 +165,11 @@ def _drain_backlog(m, limit=2000):
     for 17 s (an independent MAVLink link showed it there) and was abandoned.
     Draining leaves the newest of each type in pymavlink's cache instead.
     """
+    # Bounded in time as well as count: a link that never goes quiet must not
+    # hold the lock (see test_is_armed_bounds_stale_heartbeat_drain).
+    deadline = time.time() + max_s
     for _ in range(limit):
-        if m.recv_match(blocking=False) is None:
+        if m.recv_match(blocking=False) is None or time.time() > deadline:
             return
 
 
@@ -361,8 +364,9 @@ def _connect():
             )
         _master.target_system = fc_heartbeat.get_srcSystem()
         _master.target_component = fc_heartbeat.get_srcComponent()
-        if _on_message not in _master.message_hooks:
-            _master.message_hooks.append(_on_message)
+        hooks = getattr(_master, 'message_hooks', None)
+        if hooks is not None and _on_message not in hooks:
+            hooks.append(_on_message)
         print(f"Connected to flight controller (system {_master.target_system}, comp {_master.target_component})")
     return _master
 
@@ -883,7 +887,7 @@ def get_position():
 # rangefinders (RNGFND1/2_ORIENT=25) and no upward one, and before takeoff it
 # logged "CEILING GUARD: 0.39m clearance - holding altitude" and kept
 # re-issuing a hold at the current altitude while takeoff tried to climb.
-UPWARD = mavutil.mavlink.MAV_SENSOR_ROTATION_PITCH_90
+UPWARD = 24  # MAV_SENSOR_ROTATION_PITCH_90
 
 
 def _is_upward(msg):
