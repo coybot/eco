@@ -2445,6 +2445,22 @@ class MissionLoop:
         self._drone_id_cached = _drone_identity()[0] or 'unknown'
         return self._drone_id_cached
 
+    def _mqtt_publish(self, topic: str, payload: str) -> None:
+        """Publish on whichever MQTT client the daemon handed us.
+
+        The aircraft's is an awscrt Connection, whose publish() requires qos
+        (and reads qos.value); the sims use paho, where it is optional. Every
+        progress update failed on the aircraft with "publish() missing 1
+        required positional argument: 'qos'". awscrt's QoS is an IntEnum, so
+        the same value satisfies paho too.
+        """
+        try:
+            from awscrt import mqtt as crt_mqtt
+            qos = crt_mqtt.QoS.AT_MOST_ONCE
+        except ImportError:
+            qos = 0
+        self.mqtt_client.publish(topic=topic, payload=payload, qos=qos)
+
     def _send_report(self, message: str):
         """Send a report message to the user via MQTT."""
         if self.mqtt_client and self.conversation_id:
@@ -2455,7 +2471,7 @@ class MissionLoop:
                     'message': message,
                     'timestamp': time.time(),
                 }
-                self.mqtt_client.publish(topic, json.dumps(payload))
+                self._mqtt_publish(topic, json.dumps(payload))
             except:
                 pass
     
@@ -2500,7 +2516,7 @@ class MissionLoop:
                     'timestamp': datetime.now(timezone.utc).isoformat(),
                 }
                 
-                self.mqtt_client.publish(topic=topic, payload=json.dumps(payload))
+                self._mqtt_publish(topic, json.dumps(payload))
             except Exception as e:
                 print(f"Failed to publish progress: {e}")
     
