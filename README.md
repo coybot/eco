@@ -193,9 +193,8 @@ Two things that will cost you an hour if you guess: the position key is `p`,
 not `pos`, and a vantage looking straight down is degenerate — nudge the look
 target off true vertical or the camera silently stays horizontal.
 
-`drone/sim/godot_engine.py` wraps the same sim behind `sim_engine.py`'s
-Unix-socket protocol, so `engine_client.py`, `sim_drone_daemon.py` and
-`launch_fleet.py` drive it unmodified.
+`drone/sim/godot_engine.py` also serves the same protocol on a Unix socket,
+so `engine_client.py` and `sim_drone_daemon.py` drive it either way.
 
 ### Building your own real-world scene
 

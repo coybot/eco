@@ -3,7 +3,7 @@
 The sim world is metric and local (x=east, y=north, z=up) while the cloud talks
 GPS, so an arbitrary home is anchored here and converted around.
 
-Consumed by ``sim_control.py``, ``fleet_worker.py`` and
+Consumed by ``sim_control.py`` and
 ``sim_drone_daemon.py``.
 """
 

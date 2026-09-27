@@ -1,8 +1,7 @@
 # Sim hosts
 
-There are **two** simulator backends in this tree, and this file used to
-document only the older one. Read this section first so you pick the right
-one.
+Godot is the simulator. Isaac Sim has been removed (see the end of this file);
+the only other sim code left is the headless kinematic model CI runs.
 
 ## Godot 4 — what the environments run on
 
@@ -16,9 +15,9 @@ godot --path drone/sim/godot -- --fleet= --env=baylands --ipc-port=9978 --seed=0
 ```
 
 It speaks newline-delimited JSON over TCP (`scripts/ipc_server.gd`), and
-`godot_engine.py` wraps that behind `sim_engine.py`'s Unix-socket protocol so
-`engine_client.py`, `sim_drone_daemon.py` and `launch_fleet.py` drive it with
-no changes.
+`godot_engine.py` also serves it on a Unix socket, so `engine_client.py` and
+`sim_drone_daemon.py` drive it either way. `launch_fleet_mac.sh` (this Mac) and
+`godot_launch_fleet.py` (a Linux host) bring up Godot plus one daemon per drone.
 
 Dataset builders for the real-world scenes live in `tools/` — USGS 3DEP
 elevation, USDA NAIP imagery, USGS National Map tiles, OpenStreetMap vectors
@@ -29,87 +28,24 @@ scene of your own.
 Further reading: `README_FIXEDWING.md` (the fixed-wing model and its
 perception gates), `README_SAR_DEMO.md`, `BRINGUP_MAC.md`.
 
-## Isaac Sim — mostly removed
+## Headless kinematic sim (CI)
 
-The Isaac service path has been deleted: `sim_bridge.py` (its entry point,
-which nothing invoked), `sim_mqtt.py` (its MQTT front end, which had no
-`__main__` and no importers), and `SimWorker` / `build_sdk_namespace` from
-`sim_sdk.py`. `sim_sdk.py` kept the parts that were never Isaac-specific —
-`latlon_to_xy`, `xy_to_latlon`, `FrameBus` and the HOME constants — which
-`sim_control.py`, `fleet_worker.py` and `sim_drone_daemon.py` still use.
+`team_world.py`, `scenario.py`, `scorecard.py`, `comms.py`, `localization.py`,
+`sensor_model.py` and `smart_layer.py` are a numpy-only kinematic model of
+quad, rover, fixed-wing and Crazyflie teams, with scripted injects (comms
+blackout, GPS loss, ...). No rendering. CI's `e2e-fast` behaviour gate runs on
+it (`drone/common/tests/test_l5_parity.py` and friends), because Godot cannot
+render cameras headless on a CI runner, and it is the only place the Crazyflie
+is simulated. Replace that gate before removing it.
 
-`isaac_vehicle.py` is deliberately still here. Its remaining consumers are
-three standalone render scripts under `drone/training/` —
-`render_fixedwing_demo.py`, `record_comparison.py` and `render_session1.py` —
-which are tools a human runs rather than dead imports, and `record_comparison`
-is imported by `local_course.py` for its course constants. Retiring Isaac
-completely means porting or dropping those.
+## Isaac Sim — removed
 
-The notes below describe the old Isaac host and are kept for that reason.
-
-## Eco sim host (Isaac Sim)
-
-Runs **one process per simulated vehicle** on the Isaac Sim host (hoopoe) and makes a sim drone
-behave **exactly like an IRL drone**: commands arrive over AWS IoT **MQTT** (outbound, cert-auth —
-no tunnel), live video streams to the app as a KVS WebRTC master (also cert-auth). The vehicle is an
-Isaac-shipped asset driven kinematically.
-
-```
-iOS app ──NL──▶ cloud ──IoT MQTT (drone/{id}/chat/{cid}/command)──▶ sim_bridge ─▶ Isaac Sim
-iOS app ◀── IoT MQTT (…/response, image_urls) ◀── sim_bridge ◀── photo→S3
-iOS app ◀═══ KVS WebRTC video ═══ sim_bridge (master) ◀── vehicle camera
-```
-
-No inbound reachability is needed — identical connection model to the IRL drone (`daemon.py`).
-
-## Vehicles (Isaac assets)
-- **quadcopter** → Crazyflie `Isaac/Robots/Bitcraze/Crazyflie/cf2x.usd`
-- **rover** → NVIDIA Nova Carter `Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd`
-  (falls back to Carter v1 → Jetbot if absent)
-
-Both are moved **kinematically** (pose integrated toward goals; physics timeline not played) — see
-`isaac_vehicle.py`. Pegasus only ships Iris/Pegasus airframes, so we don't use it.
-
-## Files
-- `isaac_vehicle.py` — `IsaacVehicleBridge`: spawn Crazyflie/Carter USD, attach RGB camera, kinematic
-  motion. Same method surface the old Pegasus bridge exposed.
-- `sim_sdk.py` — `SimWorker` (main-thread Isaac owner) + the cloud-generated SDK surface
-  (`arm/takeoff/land/goto/set_velocity/set_yaw/capture_photo/look_around`; rover `drive/turn/goto`).
-  `capture_photo` uploads a JPEG to S3 and returns the URL (IRL parity).
-- `sim_mqtt.py` — AWS IoT MQTT client (mirrors `daemon.py`): subscribes to command topics, runs code
-  via `SimWorker`, publishes `…/response` + heartbeats.
-- `sim_video_producer.py` — KVS WebRTC master on `drone-{id}-dev`, frames from the worker.
-- `cloud_creds.py` — IoT credential-provider auth + S3 upload helpers (shared).
-- `sim_bridge.py` — wires it together; `SimWorker` on main thread, MQTT/video on bg threads.
-
-## Run (Isaac venv on hoopoe — NOT Docker)
-```bash
-PY=/opt/ml/isaac-sim-env/bin/python3
-# one-time deps (then ALWAYS re-pin numpy<2 — av/awsiotsdk pull numpy>=2 which breaks Isaac 5.1):
-uv pip install --python $PY aiortc av awsiotsdk && uv pip install --python $PY "numpy<2"
-
-ISHMAEL_HARNESS=$HOME/code/ishmael/swarm_eval/harness $PY \
-  ~/code/ishmael/eco_sim/sim_bridge.py \
-  --env office --drone-id sim-quadcopter-test --vehicle quadcopter \
-  --certs-dir ~/eco-certs
-# defaults come from IOT_ENDPOINT / CREDENTIALS_ENDPOINT, or ~/.config/coybot/secrets.env
-# (see secrets.env.example); pass --iot-endpoint / --credentials-endpoint to override
-# --vehicle rover  for the Nova Carter.  --http-debug  re-enables a local /execute server.
-```
-Drone-id must match the app's generated id (`sim-{vehicle}-{suffix}`).
-
-## Credentials — same as IRL drones (no static keys)
-The vehicle uses an **IoT device certificate** in `--certs-dir` (`device.pem`/`private.key`/
-`root-ca.pem`) to mint temporary AWS creds via the IoT credential provider — for KVS video
-(`drone-video-role-alias-dev`) and S3 photo upload (`drone-s3-access-role-alias-dev`). The cert's
-thing must have `drone-policy-dev` attached. Provision one like an IRL drone (fleet provisioning) or
-via the IoT control plane. Test thing `sim-quadcopter-test` is already provisioned.
-
-## Environments
-`office`, `warehouse`, `hospital` map to Omniverse USD scenes; `hangar`/`outdoor` currently fall back
-to warehouse (add USDs to `_ENV_USD_MAP` in `isaac_vehicle.py` for distinct scenes).
-
-## Cloud side
-`eco/aws/src/conversations.py` no longer special-cases `droneType=="sim"` — sim commands flow through
-the normal capability-based path and are published to IoT MQTT like any drone. **Deploy with SAM**
-(`cd eco/aws && AWS_PROFILE=coybot sam build && sam deploy`).
+The Isaac path (hoopoe GPU host) is gone: `isaac_vehicle.py`, `sim_engine.py`,
+`fleet_worker.py`, `fleet_bridge.py`, `fleet_mqtt.py`, `launch_fleet.py`,
+`sim_dataset_recorder.py`, `BRINGUP.md`, the `ishmael/` test director and the
+Isaac render scripts `drone/training/render_session1.py` and
+`render_fixedwing_demo.py`. `sim_sdk.py` keeps the non-Isaac helpers
+(`latlon_to_xy`, `xy_to_latlon`, `FrameBus`, HOME constants).
+`drone/training/record_comparison.py` stays because `local_course.py` imports
+its courses; its own `main()` rendered through Isaac and no longer runs.
+Git history has the rest.

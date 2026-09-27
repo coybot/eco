@@ -8,9 +8,8 @@ that raises between start and stop, leaves it running. So the bounds
 stop() always finalises are the things under test - not the codec.
 
 av and cv2 are stubbed throughout: CI installs only pyyaml/numpy/pytest (see
-.github/workflows/e2e-fast.yml), and the existing sim-side test of this code
-(drone/sim/ishmael/tests/test_office_chair.py) likewise covers the polling
-logic rather than the encoder.
+.github/workflows/e2e-fast.yml), so these cover the polling logic rather than
+the encoder.
 """
 
 import sys

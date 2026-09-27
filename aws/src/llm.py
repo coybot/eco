@@ -8,9 +8,8 @@ calls this replaces — same body shape, same key order, same client.
 
 GCS (local ground control station) mode: set LLM_PROVIDER=openai to route
 through an OpenAI-compatible /v1/chat/completions endpoint (vLLM, Ollama, ...)
-instead. No AWS credentials needed. Stdlib-only (urllib, like
-drone/sim/ishmael/nlp.py's vLLM client) so the Lambda bundle gains no new
-dependency when this branch is unused.
+instead. No AWS credentials needed. Stdlib-only (urllib) so the Lambda
+bundle gains no new dependency when this branch is unused.
 
 Call sites pass Anthropic-messages-shaped input (system str, messages list,
 optional tools/tool_choice) and always get back an Anthropic-messages-shaped

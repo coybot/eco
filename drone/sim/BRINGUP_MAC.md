@@ -6,7 +6,7 @@ and drive it through the real AWS pipeline (IoT MQTT commands, DynamoDB registry
 photos, KVS WebRTC video). No code paths are sim-special: the same `sim_drone_daemon.py` that
 runs on the GPU host runs here, only the engine is local Godot instead of Isaac.
 
-For the **Isaac / GPU** path (hoopoe), see [`BRINGUP.md`](BRINGUP.md). This file is the Mac path.
+This is the only sim bring-up: the Isaac / GPU path has been removed.
 
 > **Region note:** the `coybot` AWS profile defaults to `us-east-1`, but the entire IoT/Lambda/
 > DynamoDB stack is in **`us-west-2`**. Every `aws` call here pins `--region us-west-2`.
@@ -129,4 +129,4 @@ adb wait-for-device
 - **Video** uses aiortc + PyAV (no GStreamer on Mac). On-demand only: the daemon starts the KVS
   master when the app opens the viewer (`drone/<id>/video/command` start).
 - **One drone = one process / one MQTT connection**, identical to IRL. Scale by launching more
-  ids (provision a cert each) — see `BRINGUP.md` for the GPU-host fleet/orchestrator design.
+  ids (provision a cert each) — see `godot_launch_fleet.py` for a Linux-host fleet.
