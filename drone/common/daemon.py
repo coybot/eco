@@ -1195,10 +1195,15 @@ def on_chat_command(topic, payload, **kwargs):
                         )
 
                     response_topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
+                    # QoS 1: the result is the one message the operator is waiting
+                    # for. At QoS 0 one published while the connection was being
+                    # re-established was simply gone (seen in a cloud test: 25
+                    # photos uploaded, no answer in the chat). QoS 1 is queued and
+                    # re-sent on reconnect.
                     _mqtt_connection.publish(
                         topic=response_topic,
                         payload=json.dumps(response_payload),
-                        qos=mqtt.QoS.AT_MOST_ONCE
+                        qos=mqtt.QoS.AT_LEAST_ONCE
                     )
                     
                 except Exception as e:
@@ -1218,7 +1223,7 @@ def on_chat_command(topic, payload, **kwargs):
                     _mqtt_connection.publish(
                         topic=response_topic,
                         payload=json.dumps(error_payload),
-                        qos=mqtt.QoS.AT_MOST_ONCE
+                        qos=mqtt.QoS.AT_LEAST_ONCE
                     )
             
             threading.Thread(target=execute_mission_async, daemon=True).start()
@@ -1257,7 +1262,7 @@ def on_chat_command(topic, payload, **kwargs):
                 _mqtt_connection.publish(
                     topic=response_topic,
                     payload=json.dumps(response_payload),
-                    qos=mqtt.QoS.AT_MOST_ONCE
+                    qos=mqtt.QoS.AT_LEAST_ONCE
                 )
                 logger.info(f"Published response successfully")
             except Exception as pub_err:
@@ -1301,7 +1306,7 @@ def on_chat_command(topic, payload, **kwargs):
                 _mqtt_connection.publish(
                     topic=response_topic,
                     payload=json.dumps(error_payload),
-                    qos=mqtt.QoS.AT_MOST_ONCE
+                    qos=mqtt.QoS.AT_LEAST_ONCE
                 )
             except Exception as pub_err:
                 logger.error(f"Failed to publish error response: {pub_err}")

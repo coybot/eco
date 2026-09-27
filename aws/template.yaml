@@ -1494,6 +1494,10 @@ Resources:
             Resource: 
               - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/status'
               - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/chat/*/response'
+              # Live mission progress, which the apps subscribe to. Without it AWS IoT
+              # drops the drone's connection on every progress update, and a mission
+              # result published during the reconnect is lost.
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/chat/*/progress'
               - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/logs'
               - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*/video/status'
               - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/$aws/things/*/shadow/*'
