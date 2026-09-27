@@ -516,9 +516,10 @@ class MissionLoop:
         # pointing when the phase began is unpredictable to the operator and
         # un-replannable after a failed leg.
         try:
-            pose = self._get_backend().get_pose()
+            backend = self._get_backend()
+            pose = backend.get_pose()
             if pose is not None and pose[3] is not None:
-                self._home_yaw_rad = float(pose[3])
+                self._home_yaw_rad = self._compass_yaw(backend, float(pose[3]))
         except Exception:
             pass
         if self._home_yaw_rad is None:
@@ -1088,6 +1089,17 @@ class MissionLoop:
                 reason = getattr(result, 'message', 'blocked')
                 return {'failed': True, 'reason': f'Waypoint {i + 1} blocked: {reason}', 'actions': i + 1}
         return {'success': True, 'actions': n_waypoints}
+
+    @staticmethod
+    def _compass_yaw(backend, yaw_rad: float) -> float:
+        """The pose's yaw as a compass heading (0 = north, clockwise), which is
+        what the flight controller reports and what the body-frame phases
+        rotate by. The Godot sims report radians CCW from east instead
+        (YAW_CONVENTION = "enu"); read unconverted, a quad facing east
+        surveyed the patch to its left, all 25 photos outside their cells."""
+        if getattr(backend, "YAW_CONVENTION", "compass") == "enu":
+            return (math.pi / 2 - yaw_rad) % (2 * math.pi)
+        return yaw_rad
 
     def _body_to_home_offset(self, forward_m: float, right_m: float) -> tuple:
         """Body-frame (forward, right) -> the (north_m, east_m) offset-from-home

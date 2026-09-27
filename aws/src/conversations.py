@@ -147,9 +147,15 @@ at import time, so keep this section in sync with it if either changes)
    corners are flown as arcs of the airframe's minimum turn radius, so a side
    under twice that radius (commonly 85m+) is unflyable and the box collapses
    into a circle. Use sides of 100m+ for a fixed-wing if unsure.
-   {"type": "survey_rect", "forward_m": 5, "right_m": 5, "origin_forward_m": 5, "spacing_m": 1, "altitude_m": 5}
+   {"type": "survey_rect", "forward_m": 5, "right_m": 5, "spacing_m": 1, "altitude_m": 5}
    — photographs an AREA. The rectangle is placed exactly as fly_rect places
-   one; it is split into spacing_m x spacing_m cells and the drone stops over
+   one. "The rectangle that is 5 meters ahead of you and 5 meters to the
+   right" is this example: when the operator gives only two distances, they
+   ARE the sides, and the near corner is the drone (origin 0) - do not also
+   invent a 5 x 5 m size and move it out to (5, 5). Add origin_forward_m/
+   origin_right_m only when a size and a separate start are both given ("the
+   4 x 3 m patch starting 10 m ahead" -> forward_m 4, right_m 3,
+   origin_forward_m 10). The area is split into spacing_m x spacing_m cells and the drone stops over
    the centre of each and takes ONE photo, flying a serpentine between them.
    The number of photos is the number of cells: the example above is 25. Use
    it for "photograph every square meter of ...", "take a picture of every
@@ -515,8 +521,9 @@ Output ONLY Python code. No markdown, no comments unless necessary."""
 CODE_SYSTEM_PROMPT = QUADCOPTER_CODE_SYSTEM_PROMPT
 
 
-def get_code_system_prompt(drone_id):
-    """Return the appropriate code generation prompt based on vehicle type."""
+def get_vehicle_type(drone_id):
+    """The vehicleType the drone was registered with ('quadcopter', 'rover',
+    'fixedwing'), or None when the registry has none."""
     table = dynamodb.Table(os.environ.get('DRONE_TABLE', 'drone-registry-dev'))
     try:
         resp = table.scan(
@@ -524,11 +531,40 @@ def get_code_system_prompt(drone_id):
             ExpressionAttributeValues={':d': drone_id}
         )
         items = resp.get('Items', [])
-        if items and items[0].get('vehicleType') == 'rover':
-            return ROVER_CODE_SYSTEM_PROMPT
+        if items:
+            return items[0].get('vehicleType')
     except Exception:
         pass
+    return None
+
+
+def get_code_system_prompt(drone_id):
+    """Return the appropriate code generation prompt based on vehicle type."""
+    if get_vehicle_type(drone_id) == 'rover':
+        return ROVER_CODE_SYSTEM_PROMPT
     return QUADCOPTER_CODE_SYSTEM_PROMPT
+
+
+# Appended to MISSION_SYSTEM_PROMPT when the registry knows the vehicle: the
+# mission planner is otherwise told nothing about it, and planned a rover's
+# area survey as "take off to 5 m ... land".
+MISSION_VEHICLE_NOTES = {
+    'rover': ("THIS DRONE IS A GROUND ROVER. It drives and cannot fly: give no "
+              "altitude_m, alt_m or min_clearance_alt, and never tell the operator "
+              "it will take off, fly or land. Keep the usual first and last phases "
+              "(on a rover they arm and stop it)."),
+    'fixedwing': ("THIS DRONE IS A FIXED-WING. It cannot stop in the air, so it "
+                  "cannot fly survey_rect. Asked to photograph every part of an "
+                  "area, do not plan a mission: respond that it cannot stop over "
+                  "each spot, and offer to photograph the area while flying over "
+                  "it instead. Apply every fixed-wing size limit above."),
+    'quadcopter': "THIS DRONE IS A QUADCOPTER.",
+}
+
+
+def mission_system_prompt(vehicle_type=None):
+    note = MISSION_VEHICLE_NOTES.get(vehicle_type)
+    return MISSION_SYSTEM_PROMPT + ("\n\n" + note if note else "")
 
 
 def get_user_id(event):
@@ -1015,7 +1051,7 @@ def _extract_last_json_action(text: str):
     return None
 
 
-def call_mission_agent(conversation_history, user_message, pending_images=None):
+def call_mission_agent(conversation_history, user_message, pending_images=None, vehicle_type=None):
     """
     Call the AI agent for mission planning (AGX drones with VLM).
     
@@ -1051,7 +1087,7 @@ def call_mission_agent(conversation_history, user_message, pending_images=None):
     messages.append({'role': 'user', 'content': user_content})
     
     try:
-        result = llm.invoke(MISSION_SYSTEM_PROMPT, messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
+        result = llm.invoke(mission_system_prompt(vehicle_type), messages, max_tokens=2048, model=BEDROCK_MODEL_ID)  # Missions can be longer
         response_text = ''.join(
             block.get('text', '') for block in result.get('content', [])
             if block.get('type') == 'text'
@@ -1336,7 +1372,8 @@ def message_handler(event, context):
     # Call appropriate agent based on drone capabilities
     if has_vlm:
         # AGX drone with VLM - use mission-based approach
-        agent_response = call_mission_agent(history, message)
+        agent_response = call_mission_agent(history, message,
+                                            vehicle_type=get_vehicle_type(drone_id))
     else:
         # Legacy drone (Nano/NX) - use goal-based approach
         agent_response = call_agent(history, message)

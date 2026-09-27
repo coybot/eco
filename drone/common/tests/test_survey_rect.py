@@ -114,6 +114,28 @@ def test_the_grid_is_placed_in_the_drones_own_frame():
     assert first_e == pytest.approx(5.5) and first_n == pytest.approx(-0.5)
 
 
+def test_a_sim_heading_is_read_as_the_sim_means_it():
+    """The Godot sims report yaw in radians CCW from east; the flight
+    controller, and the body-frame phases, use a compass heading. Flown in
+    Godot unconverted, a quad facing east surveyed the patch to its left:
+    all 25 photos outside their own cells."""
+    import backends
+    assert backends.FleetSimBackend.YAW_CONVENTION == "enu"
+    assert backends.SimBackend.YAW_CONVENTION == "enu"
+
+    class SimFacingEast(Backend):
+        YAW_CONVENTION = "enu"
+    loop, _ = _loop()
+    backend = SimFacingEast()
+    loop.backend = backend
+    loop._home_yaw_rad = rl.MissionLoop._compass_yaw(backend, 0.0)  # yaw 0 = east here
+    loop._exec_survey_rect(THE_MISSION)
+    first_n, first_e, _ = backend.gotos[0]
+    assert first_e == pytest.approx(5.5) and first_n == pytest.approx(-0.5), "forward is east"
+    # An aircraft's pose is already a compass heading and is left alone.
+    assert rl.MissionLoop._compass_yaw(Backend(), 0.3) == 0.3
+
+
 def test_the_photo_waits_until_the_vehicle_is_over_the_cell():
     """goto() reports arrival at 1 m; the SITL flight shot 7 of 25 photos
     outside their own cell until the survey waited to be over it."""

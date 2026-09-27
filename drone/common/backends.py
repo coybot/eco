@@ -437,6 +437,10 @@ class SimBackend:
     Coordinates are ENU (x=east, y=north, z=up), matching fixedwing_manager.gd.
     """
 
+    # get_pose()'s yaw is the sim's: radians CCW from east. The flight
+    # controller's is a compass heading; see MissionLoop._compass_yaw.
+    YAW_CONVENTION = "enu"
+
     def __init__(self, client, agent_id: str):
         self._client = client
         self._id = agent_id
@@ -695,6 +699,8 @@ class FleetSimBackend:
     Coordinates are ENU (x=east, y=north, z=up), matching fleet_manager.gd.
     """
 
+    YAW_CONVENTION = "enu"   # as SimBackend: radians CCW from east
+
     def __init__(self, client, agent_id: str, vtype: str = "quadcopter"):
         self._client = client
         self._id = agent_id
@@ -748,16 +754,25 @@ class FleetSimBackend:
         self._client.set_velocity(
             self._id, (math.cos(yaw) * airspeed, math.sin(yaw) * airspeed, climb))
 
-    def goto(self, north_m: float, east_m: float, alt_m: float,
-             timeout_s: float = 60.0, tol_m: float = 1.0) -> bool:
-        self._client.set_goal(self._id, (east_m, north_m, alt_m))
+    def _ground(self) -> bool:
+        return self._vtype == "rover"
+
+    def _wait(self, target, timeout_s: float, tol_m: float) -> bool:
         deadline = time.time() + timeout_s
         while time.time() < deadline:
             pose = self.get_pose()
-            if pose is not None and math.dist(pose[:3], (east_m, north_m, alt_m)) <= tol_m:
+            if pose is not None and math.dist(pose[:3], target) <= tol_m:
                 return True
             time.sleep(0.1)
         return False
+
+    def goto(self, north_m: float, east_m: float, alt_m: float,
+             timeout_s: float = 60.0, tol_m: float = 1.0) -> bool:
+        # A rover stays on the ground whatever altitude a phase carries;
+        # waiting for it to reach 5 m up would time out every leg.
+        target = (east_m, north_m, 0.0 if self._ground() else alt_m)
+        self._client.set_goal(self._id, target)
+        return self._wait(target, timeout_s, tol_m)
 
     def loiter(self, center: Optional[tuple], radius: float) -> None:
         # Present for protocol completeness. A fixed-wing — the only class whose follow
@@ -774,23 +789,29 @@ class FleetSimBackend:
         self.events.append({"kind": kind, "data": data})
 
     # -- lifecycle (no-ops: a kinematic sim vehicle is always "flying") ------
+    # takeoff/land/rtl wait for the vehicle, as the aircraft's do. Returning
+    # at once let the next phase overwrite the goal: return_home then land
+    # set down 6.3 m from home, wherever the vehicle had got to.
     def takeoff(self, alt_m: float) -> bool:
         pose = self.get_pose()
         if pose is None:
             return False
-        self._client.set_goal(self._id, (pose[0], pose[1], alt_m))
-        return True
+        if self._ground():
+            return True
+        target = (pose[0], pose[1], alt_m)
+        self._client.set_goal(self._id, target)
+        return self._wait(target, 30.0, 0.3)
 
     def land(self, heading_deg: Optional[float] = None) -> bool:
         pose = self.get_pose()
         if pose is None:
             return False
-        self._client.set_goal(self._id, (pose[0], pose[1], 0.0))
-        return True
+        target = (pose[0], pose[1], 0.0)
+        self._client.set_goal(self._id, target)
+        return self._wait(target, 30.0, 0.2)
 
     def rtl(self, alt_m: Optional[float] = None) -> bool:
-        self._client.set_goal(self._id, (0.0, 0.0, alt_m if alt_m is not None else 5.0))
-        return True
+        return self.goto(0.0, 0.0, alt_m if alt_m is not None else 5.0)
 
     def configure_safety(self, fence_radius_m: Optional[float] = None,
                          fence_max_alt_m: Optional[float] = None,
