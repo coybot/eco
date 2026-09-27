@@ -106,9 +106,46 @@ def _mav_recv(msg_type, timeout=1.0):
         return None
 
 
-# STATUSTEXT read while draining, kept for _drain_statustext: they are the
-# FC's own explanation of a refusal and must not be thrown away with the rest.
+# STATUSTEXT seen by any reader, kept for _drain_statustext: they are the
+# FC's own explanation of a refusal ("Mode change to GUIDED failed: requires
+# position") and a type-filtered recv_match used to throw them away unseen.
 _pending_statustext = collections.deque(maxlen=20)
+_fc_text_history = collections.deque(maxlen=50)   # (time, text)
+
+# The flight controller's own latest HEARTBEAT. pymavlink caches one HEARTBEAT
+# per SYSTEM id, and on the quadcopter system 1 has two components sending
+# them back to back: the FC (comp 1, autopilot=3) and an ADS-B receiver
+# (comp 0, autopilot=8, type=27). The ADS-B one nearly always overwrote the
+# FC's, so is_armed() and the mode wait saw "no autopilot heartbeat" and
+# reported "Arm ACK'd but not armed" and "Mode change to GUIDED
+# refused/unanswered" while the FC had armed and switched (the daemon's own
+# heartbeat said armed=True in the same second). Measured on the aircraft.
+_fc_heartbeat = None
+
+
+def _on_message(conn, msg):
+    """pymavlink message hook: runs for every message any thread parses."""
+    global _fc_heartbeat
+    try:
+        t = msg.get_type()
+        if t == 'HEARTBEAT':
+            if (msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
+                    and msg.get_srcSystem() == getattr(conn, 'target_system', msg.get_srcSystem())):
+                _fc_heartbeat = msg
+        elif t == 'STATUSTEXT':
+            text = getattr(msg, 'text', '') or ''
+            _pending_statustext.append(msg)
+            if not _fc_text_history or _fc_text_history[-1][1] != text:
+                print(f"FC: {text}")
+            _fc_text_history.append((time.time(), text))
+    except Exception:
+        pass
+
+
+def _fc_said(fragment, since):
+    """Did the FC send a STATUSTEXT containing `fragment` after `since`?"""
+    fragment = fragment.lower()
+    return any(ts >= since and fragment in text.lower() for ts, text in list(_fc_text_history))
 
 
 def _drain_backlog(m, limit=2000):
@@ -123,11 +160,8 @@ def _drain_backlog(m, limit=2000):
     Draining leaves the newest of each type in pymavlink's cache instead.
     """
     for _ in range(limit):
-        msg = m.recv_match(blocking=False)
-        if msg is None:
+        if m.recv_match(blocking=False) is None:
             return
-        if msg.get_type() == 'STATUSTEXT':
-            _pending_statustext.append(msg)
 
 
 def _mav_recv_any(timeout=0.5):
@@ -175,8 +209,11 @@ def _fc_cached(msg_type, max_age=1.5):
     """
     with _mavlink_lock:
         m = _connect()
-        st = getattr(m, 'sysid_state', {}).get(m.target_system)
-        msg = st.messages.get(msg_type) if st is not None else None
+        if msg_type == 'HEARTBEAT' and _on_message in getattr(m, 'message_hooks', ()):
+            msg = _fc_heartbeat
+        else:
+            st = getattr(m, 'sysid_state', {}).get(m.target_system)
+            msg = st.messages.get(msg_type) if st is not None else None
     if msg is None or time.time() - getattr(msg, '_timestamp', 0) > max_age:
         return None
     if msg_type == 'HEARTBEAT' and msg.autopilot != mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
@@ -190,6 +227,7 @@ def _pump(seconds=0.2):
     with _mavlink_lock:
         m = _connect()
         _ensure_streams(m)
+        _drain_backlog(m)
         while time.time() < end:
             if m.recv_match(blocking=True, timeout=0.05) is None:
                 continue
@@ -317,6 +355,8 @@ def _connect():
             )
         _master.target_system = fc_heartbeat.get_srcSystem()
         _master.target_component = fc_heartbeat.get_srcComponent()
+        if _on_message not in _master.message_hooks:
+            _master.message_hooks.append(_on_message)
         print(f"Connected to flight controller (system {_master.target_system}, comp {_master.target_component})")
     return _master
 
@@ -614,6 +654,9 @@ def safe_disarm():
     return disarm()
 
 
+POSITION_WAIT_S = 45.0
+
+
 def takeoff(altitude_m):
     """Take off to specified altitude in meters. Arms automatically if needed.
 
@@ -629,7 +672,16 @@ def takeoff(altitude_m):
     
     # Set GUIDED mode
     _log("Setting GUIDED mode...")
-    if not _set_mode_confirmed('GUIDED'):
+    asked = time.time()
+    ok = _set_mode_confirmed('GUIDED')
+    if not ok and _fc_said('requires position', asked):
+        # GUIDED needs the EKF's position estimate, which arrives some
+        # seconds after the GPS fix (15 s after boot in SITL). Waiting for it
+        # is the takeoff the operator asked for; failing hands it to a
+        # replan that hits the same wall.
+        _log(f"FC has no position estimate yet - waiting up to {POSITION_WAIT_S:.0f}s for it")
+        ok = _set_mode_confirmed('GUIDED', timeout=POSITION_WAIT_S)
+    if not ok:
         _log("ERROR: Failed to enter GUIDED mode")
         _drain_statustext()
         return False
@@ -1558,8 +1610,9 @@ def is_armed():
 
     Reads pymavlink's per-system cache, so a heartbeat another thread consumed
     still counts, and a heartbeat from any other MAVLink component (the
-    quadcopter has one on sys 0 that never reports armed) is ignored - taking
+    quadcopter's ADS-B receiver shares system id 1) is ignored - taking
     whichever heartbeat arrived last is how "Arm ACK'd but not armed" happened.
+    See _fc_heartbeat.
     """
     try:
         deadline = time.time() + 3.0
@@ -1577,12 +1630,13 @@ def get_flight_mode():
     """Get current flight mode as string."""
     start = time.time()
     while time.time() - start < 3:
-        msg = _mav_recv('HEARTBEAT', timeout=0.5)
+        msg = _fc_cached('HEARTBEAT', max_age=1.5)
         if msg:
             try:
                 return mavutil.mode_string_v10(msg)
             except Exception:
                 return f"MODE_{msg.custom_mode}"
+        _pump(0.3)
     return "UNKNOWN"
 
 
