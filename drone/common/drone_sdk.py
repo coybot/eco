@@ -110,14 +110,20 @@ _fc_text_history = collections.deque(maxlen=50)   # (time, text)
 # refused/unanswered" while the FC had armed and switched (the daemon's own
 # heartbeat said armed=True in the same second). Measured on the aircraft.
 _fc_heartbeat = None
+# Latest reading from an UPWARD rangefinder, for the same reason: pymavlink
+# keeps one DISTANCE_SENSOR per system, and the downward ones would hide it.
+_upward_range = None
 
 
 def _on_message(conn, msg):
     """pymavlink message hook: runs for every message any thread parses."""
-    global _fc_heartbeat
+    global _fc_heartbeat, _upward_range
     try:
         t = msg.get_type()
-        if t == 'HEARTBEAT':
+        if t == 'DISTANCE_SENSOR':
+            if msg.orientation == mavutil.mavlink.MAV_SENSOR_ROTATION_PITCH_90:
+                _upward_range = msg
+        elif t == 'HEARTBEAT':
             if (msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
                     and msg.get_srcSystem() == getattr(conn, 'target_system', msg.get_srcSystem())):
                 _fc_heartbeat = msg
@@ -840,6 +846,19 @@ def get_position():
     return (0, 0, 0)
 
 
+# An upward-facing rangefinder. MAVLink's MAV_SENSOR_ORIENTATION 24 is
+# PITCH_90 (up); 25 is PITCH_270 (DOWN). This used to test for 25, so the
+# ceiling guard measured the ground: the quadcopter has two downward
+# rangefinders (RNGFND1/2_ORIENT=25) and no upward one, and before takeoff it
+# logged "CEILING GUARD: 0.39m clearance - holding altitude" and kept
+# re-issuing a hold at the current altitude while takeoff tried to climb.
+UPWARD = mavutil.mavlink.MAV_SENSOR_ROTATION_PITCH_90
+
+
+def _is_upward(msg):
+    return msg is not None and msg.orientation == UPWARD
+
+
 def get_ceiling_distance():
     """Distance from drone to ceiling via upward-facing rangefinder, in meters.
 
@@ -847,8 +866,9 @@ def get_ceiling_distance():
     """
     start = time.time()
     while time.time() - start < 2:
-        msg = _mav_recv('DISTANCE_SENSOR', timeout=0.5)
-        if msg and msg.orientation == 25:  # MAV_SENSOR_ROTATION_PITCH_90 = upward
+        _pump(0.2)
+        msg = _upward_range
+        if _is_upward(msg) and time.time() - msg._timestamp < 1.0:
             if msg.current_distance < msg.max_distance:
                 return msg.current_distance / 100.0  # cm → m
     return None
@@ -859,6 +879,8 @@ def _ceiling_guard_loop(min_clearance):
     global _ceiling_guard_stop, _ceiling_guard_holding
     _log(f"Ceiling guard started (min clearance={min_clearance}m)")
     clamped = False
+    started = time.time()
+    said_absent = False
 
     while not _ceiling_guard_stop.is_set():
         try:
@@ -871,13 +893,17 @@ def _ceiling_guard_loop(min_clearance):
                     if conn.recv_match(blocking=False) is None:
                         break
                 st = getattr(conn, 'sysid_state', {}).get(conn.target_system)
-                m = st.messages.get('DISTANCE_SENSOR') if st is not None else None
+                m = _upward_range
                 dist_msg = None
-                if (m is not None and time.time() - m._timestamp < 0.5 and m.orientation == 25
+                if (_is_upward(m) and time.time() - m._timestamp < 0.5
                         and m.current_distance < m.max_distance):
                     dist_msg = m
 
                 if dist_msg is None:
+                    if _upward_range is None and not said_absent and time.time() - started > 3.0:
+                        _log("Ceiling guard: no upward rangefinder reporting - inactive "
+                             "(downward rangefinders are not a ceiling)")
+                        said_absent = True
                     clamped = False
                     _ceiling_guard_holding = None
                     time.sleep(0.1)

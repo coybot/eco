@@ -308,7 +308,7 @@ def get_ceiling_distance():
     start = time.time()
     while time.time() - start < 2:
         msg = _mav_recv('DISTANCE_SENSOR', timeout=0.5)
-        if msg and msg.orientation == 25:  # MAV_SENSOR_ROTATION_PITCH_90
+        if msg and msg.orientation == 24:  # MAV_SENSOR_ROTATION_PITCH_90 (up); 25 is down
             if msg.current_distance < msg.max_distance:
                 return msg.current_distance / 100.0
     return None
@@ -327,7 +327,7 @@ def _ceiling_guard_loop(min_clearance):
                 deadline = time.time() + 0.3
                 while time.time() < deadline:
                     m = conn.recv_match(type='DISTANCE_SENSOR', blocking=False)
-                    if m and m.orientation == 25 and m.current_distance < m.max_distance:
+                    if m and m.orientation == 24 and m.current_distance < m.max_distance:
                         dist_msg = m
                         break
                     time.sleep(0.01)
