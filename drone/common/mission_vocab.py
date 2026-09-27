@@ -133,6 +133,29 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
             "min_clearance_alt": FieldSpec("float", None, description="Same climb-to-clear semantics as the nav phase's field."),
         },
     ),
+    "survey_rect": PhaseSpec(
+        description="Photograph an AREA: split a rectangle (placed exactly as "
+                     "fly_rect places one) into spacing_m x spacing_m cells "
+                     "and take one photo over the centre of each, flying a "
+                     "serpentine between them. The photo count is the cell "
+                     "count - a 5 x 5 m rectangle at spacing_m 1 is 25 photos "
+                     "- so this is the phase for \"photograph every square "
+                     "meter of ...\", \"map/cover/survey the area ...\". "
+                     "Takes its own photos: do not wrap it in "
+                     "start_recording/stop_recording, and do not use "
+                     "fly_rect (outline only) with timed photos for this. "
+                     "Capped at 100 photos; a larger grid is widened to fit "
+                     "and the operator is told. Quad/rover only.",
+        fields={
+            "forward_m": FieldSpec("float", 10.0, description="Area extent along the start heading, meters"),
+            "right_m": FieldSpec("float", 10.0, description="Area extent 90 deg right of the start heading, meters"),
+            "origin_forward_m": FieldSpec("float", 0.0, description="Near corner's forward offset from home, meters"),
+            "origin_right_m": FieldSpec("float", 0.0, description="Near corner's rightward offset from home, meters"),
+            "spacing_m": FieldSpec("float", 1.0, description="Cell size: one photo per spacing_m x spacing_m, meters"),
+            "altitude_m": FieldSpec("float", 5.0),
+            "min_clearance_alt": FieldSpec("float", None, description="Same climb-to-clear semantics as the nav phase's field."),
+        },
+    ),
     "look_around": PhaseSpec(
         description="Pan and capture photos in N directions (quad/rover — "
                      "no fixed-wing equivalent yet).",

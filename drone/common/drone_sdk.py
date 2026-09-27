@@ -7,6 +7,7 @@ called from LLM-generated code. Includes camera capture and cloud upload.
 SAFETY: All movement commands are clamped to safe limits defined below.
 """
 
+import collections
 import time
 import math
 import os
@@ -103,6 +104,30 @@ def _mav_recv(msg_type, timeout=1.0):
             if msg_type != 'HEARTBEAT' or _is_target_heartbeat(m, msg):
                 return msg
         return None
+
+
+# STATUSTEXT read while draining, kept for _drain_statustext: they are the
+# FC's own explanation of a refusal and must not be thrown away with the rest.
+_pending_statustext = collections.deque(maxlen=20)
+
+
+def _drain_backlog(m, limit=2000):
+    """Parse everything already waiting on the link. Caller holds the lock.
+
+    recv_match(type=X, blocking=True) returns the OLDEST queued X, and
+    pymavlink stamps a message when it parses it, not when it was sent, so a
+    backlog looks fresh. A goto loop reading one position per 0.5 s against a
+    4 Hz stream falls further behind every second: in ArduCopter SITL a survey
+    leg reported "still 1.2 m from" a point the aircraft had been hovering on
+    for 17 s (an independent MAVLink link showed it there) and was abandoned.
+    Draining leaves the newest of each type in pymavlink's cache instead.
+    """
+    for _ in range(limit):
+        msg = m.recv_match(blocking=False)
+        if msg is None:
+            return
+        if msg.get_type() == 'STATUSTEXT':
+            _pending_statustext.append(msg)
 
 
 def _mav_recv_any(timeout=0.5):
@@ -346,6 +371,12 @@ def _drain_statustext(timeout=2.0, print_msgs=True):
     """
     start = time.time()
     seen = set()
+    while _pending_statustext:
+        text = getattr(_pending_statustext.popleft(), "text", None)
+        if text and text not in seen:
+            seen.add(text)
+            if print_msgs:
+                print(f"STATUSTEXT: {text}")
     while time.time() - start < timeout:
         try:
             msg = _mav_recv('STATUSTEXT', timeout=0.1)
@@ -1053,11 +1084,14 @@ def _position_relative():
 def _fresh_position(timeout=1.0):
     """(lat, lon, rel_alt_m) from a NEW GLOBAL_POSITION_INT, or None.
     Unlike get_position() this never returns a (0, 0, 0) placeholder."""
+    with _mavlink_lock:
+        m = _connect()
+        _ensure_streams(m)
+        _drain_backlog(m)
     msg = _fc_cached('GLOBAL_POSITION_INT', max_age=0.4)
     if msg is None:
         with _mavlink_lock:
             m = _connect()
-            _ensure_streams(m)
             msg = m.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=timeout)
     if msg is None:
         return None
@@ -2369,6 +2403,69 @@ def record_video(seconds=10.0, fps=6.0):
     wait(seconds)
     urls = stop_recording()
     return urls[0] if urls else None
+
+
+def return_home(alt_m=None):
+    """Fly back over the takeoff point and WAIT until there. True on arrival.
+
+    goto() only sends the setpoint and returns at once, so the obvious
+    "goto(home_lat, home_lon, 5); land()" lands wherever the aircraft has got
+    to by then: in ArduCopter SITL, 6.5 m from home after a survey.
+    """
+    if alt_m is None:
+        pos = _fresh_position(timeout=2.0)
+        alt_m = max(pos[2], MIN_ALTITUDE) if pos else 5.0
+    return goto_offset(0.0, 0.0, float(alt_m))
+
+
+def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
+                spacing_m=1.0, altitude_m=None, settle_s=0.5):
+    """Photograph an area: one photo over the centre of every spacing_m x
+    spacing_m cell of a rectangle, flying a serpentine between them.
+
+    The rectangle is in the drone's own frame at the moment of the call:
+    forward_m straight ahead, right_m to its right, the near corner
+    origin_forward_m ahead and origin_right_m to the right of where it is now.
+    A 5 x 5 m area at spacing_m=1 is 25 photos. Capped at 100 photos (the
+    spacing is widened to fit, and said). Returns the list of photo URLs;
+    stops early and returns what it has if a leg is refused.
+    """
+    import search_patterns
+    pose = get_local_pose()
+    if pose is None:
+        print("SURVEY FAILED: no position/heading from the flight controller")
+        return []
+    east0, north0, up0, yaw = pose
+    alt = float(altitude_m) if altitude_m is not None else up0
+    rel, used = search_patterns.capped_photo_grid(
+        (float(forward_m), float(right_m)), (float(origin_forward_m), float(origin_right_m)),
+        float(spacing_m or 1.0), heading_deg=math.degrees(yaw))
+    if used > float(spacing_m or 1.0) + 1e-6:
+        print(f"Survey: a photo every {spacing_m} m would be over "
+              f"{search_patterns.MAX_SURVEY_PHOTOS} photos; taking one every {used:.1f} m")
+    print(f"Survey: {len(rel)} photos, one per {used:g} m cell")
+    urls, missed = [], 0
+    for i, (e, n) in enumerate(rel):
+        if not goto_offset(north0 + n, east0 + e, alt):
+            print(f"Survey stopped at photo {i + 1}/{len(rel)}: leg refused or not reached")
+            break
+        # goto_offset reports arrival at 1 m, a whole cell of a 1 m survey:
+        # wait until it is really over the cell centre (or give up and shoot).
+        time.sleep(settle_s)
+        deadline = time.time() + 6.0
+        while time.time() < deadline:
+            p = get_local_pose()
+            if p is None or math.hypot(p[1] - (north0 + n), p[0] - (east0 + e)) <= 0.35 * used:
+                break
+            time.sleep(0.2)
+        url = capture_photo(upload=True)
+        if url and str(url).startswith(("http://", "https://", "s3://")):
+            urls.append(url)
+        else:
+            missed += 1
+    if missed:
+        print(f"Survey: {missed} of {len(rel)} photos were not taken or not uploaded")
+    return urls
 
 
 def is_recording():

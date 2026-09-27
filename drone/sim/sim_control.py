@@ -193,8 +193,32 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
             print(f"[{did}] record_vantage upload failed: {e}", flush=True)
             return ""
 
+    def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
+                    spacing_m=1.0, altitude_m=None, settle_s=0.5):
+        """One photo over the centre of every spacing_m cell of a rectangle in
+        the vehicle's own frame; mirrors drone_sdk.survey_rect."""
+        import search_patterns
+        p = _pos()
+        # Engine yaw is maths-convention (0 = east, counter-clockwise);
+        # photo_grid wants a compass heading.
+        heading = 90.0 - math.degrees(_yaw())
+        alt = ROVER_ALT if is_rover else (float(altitude_m) if altitude_m is not None else float(p[2]))
+        rel, used = search_patterns.capped_photo_grid(
+            (float(forward_m), float(right_m)), (float(origin_forward_m), float(origin_right_m)),
+            float(spacing_m or 1.0), heading_deg=heading)
+        print(f"Survey: {len(rel)} photos, one per {used:g} m cell")
+        urls = []
+        for e, n in rel:
+            _goto_xyz(float(p[0]) + e, float(p[1]) + n, alt)
+            time.sleep(settle_s)
+            u = capture_photo()
+            if u:
+                urls.append(u)
+        return urls
+
     ns = {
         "arm": arm, "safe_disarm": safe_disarm, "wait": wait,
+        "survey_rect": survey_rect,
         "get_position": get_position, "get_attitude": get_attitude,
         "set_velocity": set_velocity, "set_yaw": set_yaw,
         "capture_photo": capture_photo, "look_around": look_around,
@@ -230,7 +254,11 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
             x, y = latlon_to_xy(lat, lon)
             _goto_xyz(x, y, ROVER_ALT)
 
-        ns.update({"drive": drive, "turn": turn, "goto": goto,
+        def return_home(*_, **__):
+            _goto_xyz(0.0, 0.0, ROVER_ALT)
+            return True
+
+        ns.update({"drive": drive, "turn": turn, "goto": goto, "return_home": return_home,
                    "move_forward": move_forward, "move_backward": move_backward,
                    "forward": move_forward, "go_forward": move_forward,
                    "move": move_forward, "backward": move_backward,
@@ -252,7 +280,12 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
             x, y = latlon_to_xy(lat, lon)
             _goto_xyz(x, y, float(alt))
 
-        ns.update({"takeoff": takeoff, "land": land, "goto": goto,
+        def return_home(alt_m=None, *_, **__):
+            z = float(alt_m) if alt_m is not None else float(_pos()[2])
+            _goto_xyz(0.0, 0.0, z)
+            return True
+
+        ns.update({"takeoff": takeoff, "land": land, "goto": goto, "return_home": return_home,
                    "motor_test": lambda *a, **k: time.sleep(1),
                    "move_forward": lambda d=1.0, *a, **k: _goto_xyz(
                        _pos()[0] + math.cos(_yaw()) * float(d),

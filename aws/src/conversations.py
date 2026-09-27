@@ -147,6 +147,18 @@ at import time, so keep this section in sync with it if either changes)
    corners are flown as arcs of the airframe's minimum turn radius, so a side
    under twice that radius (commonly 85m+) is unflyable and the box collapses
    into a circle. Use sides of 100m+ for a fixed-wing if unsure.
+   {"type": "survey_rect", "forward_m": 5, "right_m": 5, "origin_forward_m": 5, "spacing_m": 1, "altitude_m": 5}
+   — photographs an AREA. The rectangle is placed exactly as fly_rect places
+   one; it is split into spacing_m x spacing_m cells and the drone stops over
+   the centre of each and takes ONE photo, flying a serpentine between them.
+   The number of photos is the number of cells: the example above is 25. Use
+   it for "photograph every square meter of ...", "take a picture of every
+   2 m of the field", "map / cover / survey the area ...". spacing_m is the
+   operator's unit ("every square meter" = 1, "every 2 meters" = 2; if no
+   unit is given, pick spacing_m so the whole area is about 10-30 photos). It
+   takes its own photos: never wrap it in start_recording/stop_recording.
+   Capped at 100 photos; a larger grid is widened to fit and the operator is
+   told. Quadcopter/rover only.
    {"type": "look_around", "directions": 4}
    {"type": "capture_photo"}
    {"type": "start_recording", "mode": "video", "fps": 6, "max_seconds": 120}
@@ -226,6 +238,13 @@ RULES:
 - Use "fly_rect" for box/rectangle/perimeter commands, and for anything
   phrased relative to the drone itself ("10 meters ahead and 5 to the right",
   "fly a box around the yard in front of you")
+- Use "survey_rect" whenever the photos are meant to COVER an area
+  ("photograph every square meter of the rectangle 5 meters ahead" ->
+  survey_rect with spacing_m 1). Never plan that as start_recording in
+  photos mode around a fly_rect: fly_rect only traces the outline, and a
+  timed photo every interval_s gives a count set by how long the flight
+  takes, not by the area. Observed: that plan for a 5 x 5 m area returned
+  100 photos of the perimeter and none of the inside.
 - Wrap flight phases in "start_recording"/"stop_recording" whenever the user
   asks for a video, or for photos taken while flying a pattern ("take a video
   of flying a 10 meter circle" -> start_recording, fly_circle, stop_recording)
@@ -423,7 +442,8 @@ AVAILABLE FUNCTIONS:
 - arm() - Arm motors (spin up)
 - land() - Controlled stop: descends if airborne, then cuts motors. ALWAYS use this to stop motors.
 - takeoff(altitude_m) - Fly to altitude (ONLY use outdoors when explicitly asked to fly)
-- goto(lat, lon, alt)
+- goto(lat, lon, alt) - sends the target and returns AT ONCE, without waiting to arrive
+- return_home(alt_m=None) - Fly back over the takeoff point and wait until there. For "return home"/"come back" use return_home() then land() - never goto(home_lat, home_lon, ...) then land(), which lands wherever the drone has got to
 - set_velocity(vx, vy, vz)
 - set_yaw(angle_deg, relative=False)
 - wait(seconds)
@@ -433,6 +453,7 @@ AVAILABLE FUNCTIONS:
 - start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
 - stop_recording() - Stop, upload, and return the list of media URLs (print them)
 - record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
+- survey_rect(forward_m, right_m, origin_forward_m=0, origin_right_m=0, spacing_m=1, altitude_m=None) - Photograph an AREA: one photo over the centre of every spacing_m x spacing_m cell of the rectangle placed in the vehicle's own frame (forward_m ahead, right_m to its right, near corner origin_forward_m ahead and origin_right_m right of where it is now). Returns the photo URLs (print them). 5 x 5 m at spacing_m=1 is 25 photos. Capped at 100
 - battery_status() - Battery %, pack voltage, can_takeoff/takeoff_reason, actions_left, and any battery-sensor warnings. Print it when asked about battery, status or readiness
 - battery_diagnostics() - Reads the flight controller's battery-monitor setup and returns findings on what is misconfigured (print it)
 - calibrate_voltage(full_charge=True | use_esc=True | reference_v=V) - Fix the battery voltage reading without a meter; disarmed only
@@ -451,6 +472,7 @@ RULES:
 6. Keep altitude under 20m
 7. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
 8. takeoff(), goto() and start_recording() REFUSE (return False and print why) when the battery cannot cover them plus the trip home. Check the result: if takeoff() returns False, stop and print battery_status(); if goto() returns False while flying, land(). The drone also returns home or lands by itself when the battery runs low - do not fight it.
+9. To photograph an AREA ("photograph every square meter of the rectangle 5 m ahead", "cover/map/survey the field") call print(survey_rect(...)) with spacing_m in the operator's unit ("every square meter" = 1). Never use start_recording(mode="photos") around a flight for this: timed photos are counted by seconds of flight, not by area (observed: 100 photos of a 5 x 5 m area's outline, none of its inside).
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
@@ -464,6 +486,7 @@ AVAILABLE FUNCTIONS:
 - turn(angle_deg, speed_rad_s=0.5) - Turn in place by degrees (positive=left/CCW)
 - set_velocity(vx, vy=0.0, omega=0.0) - Set continuous velocity: vx=forward m/s, omega=angular rad/s
 - goto(lat, lon) - Navigate to GPS coordinates using Nav2 (blocks until arrived)
+- return_home() - Drive back to where the rover started and wait until there. Use it for "return home"/"come back"
 - wait(seconds) - Pause execution
 - get_position() - Returns (lat, lon, alt_m) from GPS or odometry
 - get_attitude() - Returns (roll, pitch, yaw) degrees
@@ -471,6 +494,7 @@ AVAILABLE FUNCTIONS:
 - start_recording(mode="video", fps=6, interval_s=3, max_seconds=120) - Begin recording in the BACKGROUND and return immediately; flight commands after this run while it records
 - stop_recording() - Stop, upload, and return the list of media URLs (print them)
 - record_video(seconds=10, fps=6) - Blocking one-shot clip, uploads and returns the URL
+- survey_rect(forward_m, right_m, origin_forward_m=0, origin_right_m=0, spacing_m=1, altitude_m=None) - Photograph an AREA: one photo over the centre of every spacing_m x spacing_m cell of the rectangle placed in the vehicle's own frame (forward_m ahead, right_m to its right, near corner origin_forward_m ahead and origin_right_m right of where it is now). Returns the photo URLs (print them). 5 x 5 m at spacing_m=1 is 25 photos. Capped at 100
 
 PRE-DEFINED VARIABLES (always available, do NOT redefine):
 - home_lat, home_lon, home_alt — GPS position at command time
@@ -483,6 +507,7 @@ RULES:
 4. Do NOT use takeoff(), land(), set_yaw(), motor_test(), disarm() — those are either quadcopter-only or blocked
 5. "stop" or "halt" means stop(). "disarm" always means safe_disarm() — never use disarm() directly
 6. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
+7. To photograph an AREA ("photograph every square meter of the rectangle 5 m ahead", "cover/map/survey the field") call print(survey_rect(...)) with spacing_m in the operator's unit ("every square meter" = 1). Never use start_recording(mode="photos") around a flight for this: timed photos are counted by seconds of flight, not by area (observed: 100 photos of a 5 x 5 m area's outline, none of its inside).
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
