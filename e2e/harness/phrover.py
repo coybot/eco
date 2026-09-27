@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.request
@@ -97,8 +98,34 @@ def _run_swift_tests() -> tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, f"xcodebuild test did not finish within {timeout_s}s (E2E_SWIFT_TIMEOUT_S)"
     ok = proc.returncode == 0
-    tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-15:])
-    return ok, tail
+    if ok:
+        return ok, "\n".join(proc.stdout.splitlines()[-3:])
+    return ok, _swift_failure_detail(proc.stdout, proc.stderr)
+
+
+# What xcodebuild says about a failing test, on stdout. The old report was the last
+# 15 lines of stdout+stderr joined, which on a failure is all stderr bookkeeping
+# ("IDETestOperationsObserverDebug ... -- end") and an empty "Failing tests:" list:
+# CI said the tests failed and never which one, or why.
+_FAILURE_LINE = re.compile(
+    r"(: error:|Test Case .* failed|failed \(|Restarting after unexpected exit|"
+    r"crash|Fatal error|exited with|Early unexpected exit|timed out|"
+    r"Test runner .* (failed|exited)|Testing failed)", re.IGNORECASE)
+
+
+def _swift_failure_detail(stdout: str, stderr: str, limit: int = 40) -> str:
+    lines = stdout.splitlines()
+    picked = [ln for ln in lines if _FAILURE_LINE.search(ln)]
+    # xcodebuild lists the failing tests after "Failing tests:"; keep that block.
+    if "Failing tests:" in stdout:
+        i = next(n for n, ln in enumerate(lines) if ln.strip() == "Failing tests:")
+        picked += lines[i:i + 20]
+    out = []
+    for ln in picked:
+        if ln not in out:
+            out.append(ln)
+    detail = out[:limit] or lines[-20:]
+    return "\n".join(detail + ["--- stderr (last 10) ---"] + stderr.splitlines()[-10:])
 
 
 def _dialog_fast(utterance: str) -> dict[str, Any]:
