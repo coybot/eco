@@ -223,6 +223,58 @@ def rectangle(
     return out
 
 
+def photo_grid(
+    size: Point,
+    origin: Point,
+    spacing_m: float,
+    heading_deg: float = 0.0,
+) -> List[Point]:
+    """One point per spacing_m x spacing_m cell of a rectangle, at each cell's
+    centre, in serpentine order. The survey counterpart of rectangle(): same
+    body-frame `size`/`origin` and the same world-ENU output.
+
+    Coverage is a count of cells, not of seconds. "Photograph every square
+    meter of the 5 x 5 m rectangle" is 25 photos wherever the aircraft is and
+    however fast it flies. Planned instead as a timed photo every second while
+    tracing the rectangle's outline, it came back as 100 photos of the
+    perimeter and none of the inside (observed on the quadcopter).
+
+    A side that is not a whole number of cells is split into equal cells
+    slightly smaller than spacing_m, never larger, so no strip is left out.
+    """
+    fwd, right = abs(float(size[0])), abs(float(size[1]))
+    spacing = max(float(spacing_m), 1e-3)
+    # The epsilon keeps 5.0 / 1.0 from rounding up to 6 cells.
+    n_f = max(1, math.ceil(fwd / spacing - 1e-9))
+    n_r = max(1, math.ceil(right / spacing - 1e-9))
+    step_f, step_r = fwd / n_f, right / n_r
+    o_f, o_r = float(origin[0]), float(origin[1])
+    body_pts: List[Point] = []
+    for i in range(n_f):
+        cols = range(n_r) if i % 2 == 0 else range(n_r - 1, -1, -1)
+        for j in cols:
+            body_pts.append((o_f + (i + 0.5) * step_f, o_r + (j + 0.5) * step_r))
+    return [_body_to_enu(f, rt, heading_deg) for f, rt in body_pts]
+
+
+MAX_SURVEY_PHOTOS = 100
+
+
+def capped_photo_grid(size: Point, origin: Point, spacing_m: float,
+                      heading_deg: float = 0.0,
+                      max_photos: int = MAX_SURVEY_PHOTOS) -> Tuple[List[Point], float]:
+    """photo_grid(), with the spacing widened until it is at most max_photos
+    points. Returns (points, spacing actually used). A hundred photos is
+    already more than a chat can usefully show, and each is a stop that
+    spends battery."""
+    spacing = max(float(spacing_m or 1.0), 0.1)
+    while True:
+        pts = photo_grid(size, origin, spacing, heading_deg=heading_deg)
+        if len(pts) <= max_photos:
+            return pts, spacing
+        spacing *= 1.1
+
+
 def _along(frm: Point, toward: Point, dist: float) -> Point:
     """Point `dist` from `frm` along the segment toward `toward`."""
     dx, dy = toward[0] - frm[0], toward[1] - frm[1]

@@ -225,6 +225,8 @@ class PosLink:
         self.mav = SimpleNamespace(request_data_stream_send=lambda *a: None)
 
     def recv_match(self, type=None, blocking=False, timeout=None):
+        if not blocking:
+            return None  # nothing queued: each blocking read is the next fix
         if self.path:
             self.last = self.path.pop(0)
         lat, lon, alt = self.last

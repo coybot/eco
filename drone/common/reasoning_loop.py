@@ -719,6 +719,7 @@ class MissionLoop:
         "go_to_gps": "_exec_go_to_gps",
         "fly_circle": "_exec_fly_circle",
         "fly_rect": "_exec_fly_rect",
+        "survey_rect": "_exec_survey_rect",
         "look_around": "_exec_look_around",
         "capture_photo": "_exec_capture_photo",
         "start_recording": "_exec_start_recording",
@@ -803,6 +804,14 @@ class MissionLoop:
             f, rt = float(phase.get('forward_m', 10.0)), float(phase.get('right_m', 10.0))
             a = float(phase.get('min_clearance_alt') or phase.get('altitude_m', 5.0))
             return 'fly_rect', gov.move_cost(2 * (f + rt) + math.hypot(f, rt), a - alt), dist_home, a
+        if t == 'survey_rect':
+            pts, _ = self._survey_points(phase)
+            a = float(phase.get('min_clearance_alt') or phase.get('altitude_m', 5.0))
+            f, rt = float(phase.get('forward_m', 10.0)), float(phase.get('right_m', 10.0))
+            o = math.hypot(float(phase.get('origin_forward_m', 0.0)), float(phase.get('origin_right_m', 0.0)))
+            path = sum(math.hypot(b[0] - a_[0], b[1] - a_[1]) for a_, b in zip(pts, pts[1:]))
+            cost = gov.move_cost(path + o + math.hypot(f, rt), a - alt)
+            return 'survey_rect', cost + gov.hover_cost(self.SURVEY_SECONDS_PER_PHOTO * len(pts)), dist_home, a
         if t == 'look_around':
             return 'look_around', gov.hover_cost(8.0 * float(phase.get('directions', 4))), dist_home, alt
         if t == 'capture_photo':
@@ -1142,6 +1151,85 @@ class MissionLoop:
                 return {'failed': True, 'reason': f'Waypoint {i + 1} blocked: {reason}', 'actions': i + 1}
         return {'success': True, 'actions': len(pts)}
 
+    # A survey stops over every cell: long enough to stop swinging, then the
+    # capture and upload (about 1 s each on the quadcopter).
+    MAX_SURVEY_PHOTOS = search_patterns.MAX_SURVEY_PHOTOS
+    SURVEY_SETTLE_S = 0.5
+    SURVEY_SETTLE_TIMEOUT_S = 6.0
+    SURVEY_SECONDS_PER_PHOTO = 3.0
+
+    def _settle_over(self, backend, north_m: float, east_m: float, tol_m: float) -> None:
+        """Wait until the vehicle is really over the point, not just "arrived".
+
+        goto() calls a waypoint reached at 1 m, which is a whole cell of a 1 m
+        survey. Flown in ArduCopter SITL, 7 of 25 photos were taken outside
+        their own cell. Gives up after SURVEY_SETTLE_TIMEOUT_S and takes the
+        photo anyway: a slightly-off photo beats a hole in the survey.
+        """
+        time.sleep(self.SURVEY_SETTLE_S)
+        deadline = time.time() + self.SURVEY_SETTLE_TIMEOUT_S
+        while time.time() < deadline:
+            try:
+                pose = backend.get_pose()
+            except Exception:
+                return
+            if pose is None or math.hypot(pose[1] - north_m, pose[0] - east_m) <= tol_m:
+                return
+            time.sleep(0.2)
+
+    def _survey_points(self, phase: Dict[str, Any]):
+        """(world-ENU cell centres, spacing actually used) for a survey_rect."""
+        return search_patterns.capped_photo_grid(
+            (float(phase.get('forward_m', 10.0)), float(phase.get('right_m', 10.0))),
+            (float(phase.get('origin_forward_m', 0.0)), float(phase.get('origin_right_m', 0.0))),
+            float(phase.get('spacing_m') or 1.0),
+            heading_deg=math.degrees(self._home_yaw_rad or 0.0),
+            max_photos=self.MAX_SURVEY_PHOTOS,
+        )
+
+    def _exec_survey_rect(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.vehicle_class.can_hover:
+            # Not a failure to retry: no replan can make a fixed-wing stop,
+            # and failing the phase would abort the mission before the
+            # flight home. Skip it and say so, like any photo not taken.
+            self._media_warning("the area survey was not flown: it stops over every "
+                                "cell, and this aircraft cannot stop in the air")
+            return {'success': True, 'actions': 0}
+        forward_m = phase.get('forward_m', 10.0)
+        right_m = phase.get('right_m', 10.0)
+        alt_m = self._apply_clearance(phase.get('altitude_m', 5.0), phase)
+        asked = float(phase.get('spacing_m') or 1.0)
+        pts, spacing = self._survey_points(phase)
+        if spacing > asked + 1e-6:
+            self._media_warning(
+                f"a photo every {asked:g} m would have been more than "
+                f"{self.MAX_SURVEY_PHOTOS} photos, so the survey took one every {spacing:.1f} m"
+            )
+        self._report_progress(
+            f"Surveying {forward_m}m ahead x {right_m}m right, altitude={alt_m}m: "
+            f"{len(pts)} photos, one per {spacing:g} m cell"
+        )
+        backend = self._get_backend()
+        missed, problem = 0, None
+        for i, (east_m, north_m) in enumerate(pts):
+            self._report_progress(f"Survey photo {i + 1}/{len(pts)}")
+            try:
+                result = backend.goto(north_m, east_m, alt_m)
+            except Exception as e:
+                return {'failed': True, 'reason': f'Survey point {i + 1}: {e}', 'actions': i + 1}
+            if not self._goto_ok(result):
+                reason = getattr(result, 'message', 'blocked')
+                return {'failed': True, 'reason': f'Survey point {i + 1} blocked: {reason}', 'actions': i + 1}
+            self._settle_over(backend, north_m, east_m, tol_m=0.35 * spacing)
+            url, why = self._take_photo()
+            if url is None:
+                missed += 1
+                problem = problem or why
+        if missed:
+            # One line for the whole survey, not one per cell.
+            self._media_warning(f"{missed} of {len(pts)} survey photos were not taken: {problem}")
+        return {'success': True, 'actions': len(pts)}
+
     def _exec_start_recording(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         mode = phase.get('mode', 'video')
         fps = phase.get('fps', 6.0)
@@ -1276,15 +1364,35 @@ class MissionLoop:
             url = sdk.capture_photo(upload=True)
         except Exception as e:
             return {'failed': True, 'reason': str(e), 'actions': 1}
+        if not self._file_photo(url):
+            self._media_warning(self._photo_problem(url))
+        return {'success': True, 'actions': 1}
+
+    def _take_photo(self):
+        """Capture and file one photo. (url, "") or (None, why not)."""
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        if sdk is None:
+            return None, 'drone_sdk not available'
+        try:
+            url = sdk.capture_photo(upload=True)
+        except Exception as e:
+            return None, str(e) or type(e).__name__
+        if self._file_photo(url):
+            return url, ""
+        return None, self._photo_problem(url)
+
+    def _file_photo(self, url) -> bool:
         if url and _is_uploaded(url):
             self._photos.append(url)
-        elif url:
+            return True
+        return False
+
+    def _photo_problem(self, url) -> str:
+        if url:
             # capture_photo falls back to the local path when the upload
             # fails; filed as a photo it would reach the app as a broken image.
-            self._media_warning(f"a photo was taken but not uploaded (it is on the aircraft at {url})")
-        else:
-            self._media_warning(f"no photo was taken: {self._camera_problem()}")
-        return {'success': True, 'actions': 1}
+            return f"a photo was taken but not uploaded (it is on the aircraft at {url})"
+        return f"no photo was taken: {self._camera_problem()}"
 
     def _media_warning(self, text: str) -> None:
         """Record a photo/video the operator asked for and will not get."""
@@ -2323,12 +2431,25 @@ class MissionLoop:
         except:
             return None
     
+    def _drone_id(self) -> str:
+        """The ID the daemon publishes under (/etc/drone-id on an aircraft).
+
+        drone_sdk has no DRONE_ID constant; importing one made every progress
+        update and report fail with ImportError, so the app saw nothing
+        between "mission started" and the final answer.
+        """
+        cached = getattr(self, '_drone_id_cached', None)
+        if cached:
+            return cached
+        from drone_sdk import _drone_identity
+        self._drone_id_cached = _drone_identity()[0] or 'unknown'
+        return self._drone_id_cached
+
     def _send_report(self, message: str):
         """Send a report message to the user via MQTT."""
         if self.mqtt_client and self.conversation_id:
             try:
-                from drone_sdk import DRONE_ID
-                topic = f"drone/{DRONE_ID}/chat/{self.conversation_id}/response"
+                topic = f"drone/{self._drone_id()}/chat/{self.conversation_id}/response"
                 payload = {
                     'type': 'report',
                     'message': message,
@@ -2359,15 +2480,15 @@ class MissionLoop:
         
         if self.mqtt_client and self.conversation_id:
             try:
-                from drone_sdk import DRONE_ID
                 from datetime import datetime, timezone
                 import json
                 
                 # Publish to progress topic in proper format for iOS client
-                topic = f"drone/{DRONE_ID}/chat/{self.conversation_id}/progress"
+                drone_id = self._drone_id()
+                topic = f"drone/{drone_id}/chat/{self.conversation_id}/progress"
                 
                 payload = {
-                    'droneId': DRONE_ID,
+                    'droneId': drone_id,
                     'conversation_id': self.conversation_id,
                     'message_type': 'mission_progress',
                     'mission_id': self._current_mission.mission_id if self._current_mission else 'unknown',
