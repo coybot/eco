@@ -572,6 +572,8 @@ func detect(id: String) -> Array:
 		var label: String = node.get_meta("label", "person")
 		if st.blur_sigma >= COLOR_BLUR_THRESHOLD and (label == "red_toolbox" or label == "blue_toolbox"):
 			label = "toolbox"
+		elif st.blur_sigma >= COLOR_BLUR_THRESHOLD and label.begins_with("person_"):
+			label = "person"  # a blurred camera can't make out the hat either
 		var range_penalty: float = clamp((dist - 4.0) / 4.0, 0.0, 1.0) * 0.3
 		var confidence: float = clamp(0.9 - range_penalty - st.blur_sigma * 0.15, 0.05, 0.95)
 		var nx: float = clamp(0.5 + (angle / FOV_HALF) * 0.5, 0.0, 1.0)
@@ -760,6 +762,12 @@ func inject(name: String, params: Dictionary) -> void:
 				person.visible = on
 				if params.has("speed"):
 					person.speed = float(params["speed"])
+				# What detect() reports for this actor, e.g. "person_hat": the same
+				# attribute-in-label convention as red_toolbox, so a follow test can make
+				# one walker describable ("the guy with the hat") and the other not.
+				# reset_to_home() clears it.
+				if params.has("label"):
+					person.set_meta("label", str(params["label"]))
 				if params.has("waypoints"):
 					var wps: Array = []
 					for wp in params["waypoints"]:

@@ -42,6 +42,9 @@ func reset_to_home() -> void:
 	if not home_waypoints.is_empty():
 		waypoints = home_waypoints.duplicate()
 	speed = home_speed
+	# A scenario's attribute label (person_walk {label: ...}) is scenario state too.
+	if has_meta("label"):
+		remove_meta("label")
 	_target_idx = 1
 	velocity = Vector3.ZERO
 	if not waypoints.is_empty():
