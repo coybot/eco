@@ -371,6 +371,12 @@ class HardwareBackend:
             if sdk is not None and hasattr(sdk, "clear_abort"):
                 sdk.clear_abort()
 
+    def pilot_control(self) -> Optional[str]:
+        """Why the pilot has taken the aircraft back with the transmitter, or None."""
+        if self._sdk is not None and hasattr(self._sdk, "pilot_control"):
+            return self._sdk.pilot_control()
+        return None
+
     def rtl(self, alt_m: Optional[float] = None) -> bool:
         if self._is_fixedwing():
             try:

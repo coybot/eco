@@ -158,3 +158,21 @@ def test_stop_with_no_flight_controller_says_so_plainly(daemon, monkeypatch):
     assert _wait(lambda: conn.published)
     result = conn.published[-1][1]["result"]
     assert result["success"] and result["stdout"] == "No flight controller is connected, so nothing is flying."
+
+
+def test_stop_while_the_pilot_flies_leaves_the_aircraft_to_them(daemon, monkeypatch):
+    """Holding, landing or going home would each take the aircraft off the pilot."""
+    conn = Conn()
+    monkeypatch.setattr(daemon, "_mqtt_connection", conn)
+    moved = []
+    fake_sdk = types.SimpleNamespace(
+        pilot_control=lambda: "the pilot moved the pitch stick on the transmitter (-300 us)",
+        is_flying=lambda: True, clear_abort=lambda: None,
+        brake=lambda: moved.append("brake"), hold_here=lambda **k: moved.append("hold"),
+        land=lambda: moved.append("land"), return_home=lambda: moved.append("home"))
+    monkeypatch.setitem(sys.modules, "drone_sdk", fake_sdk)
+    _send(daemon, action="abort", then="land")
+    assert _wait(lambda: conn.published)
+    result = conn.published[-1][1]["result"]
+    assert moved == []
+    assert result["success"] and "The pilot has control from the transmitter" in result["stdout"]

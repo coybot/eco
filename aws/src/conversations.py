@@ -629,6 +629,9 @@ def describe_drone_state(item):
     else:
         doing = "no mission running"
     extra = f"; battery {item['battery']}%" if item.get('battery') is not None else ""
+    if item.get('pilotControl'):
+        extra += ("; THE PILOT HAS CONTROL from the transmitter, so the drone refuses every "
+                  "command until it lands or the transmitter selects GUIDED")
     return f"DRONE STATE (live): {where}; {doing}{extra}."
 
 
