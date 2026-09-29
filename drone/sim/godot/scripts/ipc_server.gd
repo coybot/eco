@@ -238,7 +238,9 @@ func _dispatch(line: String) -> String:
 		"fw_spawn":
 			var p: Array = req.get("p", [0.0, 0.0, 0.0])
 			var yaw: float = float(req.get("yaw", 0.0))
-			FixedWingManager.spawn(did, Vector3(p[0], p[1], p[2]), yaw)
+			# Optional per-airframe altitude ceiling, metres (default 120).
+			var ceiling: float = float(req.get("ceiling", -1.0))
+			FixedWingManager.spawn(did, Vector3(p[0], p[1], p[2]), yaw, ceiling)
 			return JSON.stringify({"ok": true})
 
 		"fw_despawn":
@@ -265,7 +267,8 @@ func _dispatch(line: String) -> String:
 				# here too or it silently never reaches a client.
 				"payload_remaining": st["payload_remaining"],
 				"sensor_yaw_offset": st["sensor_yaw_offset"],
-				"crashed": st["crashed"]
+				"crashed": st["crashed"],
+				"ceiling": st["ceiling"]
 			})
 
 		"fw_detect":

@@ -119,6 +119,9 @@ class FixedWingState:
 	var cmd_airspeed := 0.0
 	var cmd_yaw_rate := 0.0
 	var cmd_climb_rate := 0.0
+	## This airframe's altitude ceiling, env metres. ALT_CEILING_M unless the
+	## client asked for another at fw_spawn (see _ceiling).
+	var ceiling := ALT_CEILING_M
 	var observed: PackedByteArray = PackedByteArray()
 	## Where the sensor points relative to the airframe's nose, in radians.
 	##
@@ -168,7 +171,7 @@ func register_env(env_node: Node3D) -> void:
 # ------------------------------------------------------------------
 # Spawn / despawn
 # ------------------------------------------------------------------
-func spawn(id: String, pos: Vector3, yaw: float) -> void:
+func spawn(id: String, pos: Vector3, yaw: float, ceiling: float = -1.0) -> void:
 	if _env == null:
 		return
 	if id in _fw:
@@ -190,6 +193,8 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 		st.cmd_climb_rate = 0.0
 		st.pitch = 0.0
 		st.roll = 0.0
+		if ceiling > 0.0:
+			st.ceiling = ceiling
 		_apply_pose(st)
 		return
 	var body := Node3D.new()
@@ -239,6 +244,8 @@ func spawn(id: String, pos: Vector3, yaw: float) -> void:
 	st.yaw = yaw
 	st.airspeed = MIN_AIRSPEED
 	st.climb_rate = 0.0
+	if ceiling > 0.0:
+		st.ceiling = ceiling
 	st.pitch = 0.0
 	st.roll = 0.0
 	st.altitude = pos.z
@@ -330,6 +337,15 @@ func _physics_process(delta: float) -> void:
 ## noise into repeated envelope events.
 const TERRAIN_CLEARANCE_M := 2.0
 
+## Altitude ceiling for this airframe, in metres of the env frame.
+## ALT_CEILING_M unless the client set one at fw_spawn. The flat 120 m default
+## is a ground-level rule; over a scene whose terrain or towers stand higher
+## than that it leaves an aircraft no way over anything, only around, so a
+## client that avoids by climbing raises it for its own aircraft. Every other
+## client keeps exactly the envelope it had.
+func _ceiling(st: FixedWingState) -> float:
+	return st.ceiling
+
 func _floor_at(x: float, y: float) -> float:
 	if _env == null:
 		return ALT_FLOOR_M
@@ -383,7 +399,7 @@ func _step(st: FixedWingState, dt: float) -> void:
 	# still acts on commanded DESCENT (the climb-rate cut in
 	# _apply_flight_dynamics, logged as envelope_protection), but flying level
 	# into rising ground is a strike, not something the airframe quietly climbs.
-	st.position.z = clamp(st.position.z, ALT_FLOOR_M, ALT_CEILING_M)
+	st.position.z = clamp(st.position.z, ALT_FLOOR_M, _ceiling(st))
 	st.altitude = st.position.z
 	
 	# Apply pose
@@ -587,11 +603,11 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 		_log_event("envelope_protection", {"id": st.id,
 			"limit": "terrain_floor" if floor_m > ALT_FLOOR_M else "alt_floor",
 			"alt": st.position.z, "floor": floor_m})
-	elif st.position.z >= ALT_CEILING_M and st.climb_rate > 0.0:
+	elif st.position.z >= _ceiling(st) and st.climb_rate > 0.0:
 		st.climb_rate = 0.0
 		st.cmd_climb_rate = 0.0
 		_log_event("envelope_protection", {"id": st.id, "limit": "alt_ceiling",
-			"alt": st.position.z, "ceiling": ALT_CEILING_M})
+			"alt": st.position.z, "ceiling": _ceiling(st)})
 	
 	# Convert to velocity vector in ENU coordinates.
 	#
@@ -711,6 +727,7 @@ func get_state(id: String) -> Variant:
 		"battery_level": st.battery_level,
 		"payload_remaining": st.payload_remaining,
 		"sensor_yaw_offset": st.sensor_yaw_offset,
+		"ceiling": st.ceiling,
 		"crashed": st.crashed
 	}
 
