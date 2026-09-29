@@ -54,6 +54,13 @@ def test_on_the_ground_and_stale_heartbeats_are_said_plainly():
     assert "unknown" in c.describe_drone_state(None)
 
 
+def test_the_planner_is_told_when_the_pilot_has_the_aircraft():
+    s = c.describe_drone_state(_hb(armed=True, altitudeAgl=6.0,
+                                   pilotControl="the pilot moved the pitch stick"))
+    assert "PILOT HAS CONTROL" in s
+    assert "PILOT HAS CONTROL" not in c.describe_drone_state(_hb(armed=True, altitudeAgl=6.0))
+
+
 def test_the_state_reaches_the_planner_prompt():
     assert c.mission_system_prompt(None, "DRONE STATE (live): FLYING").endswith("DRONE STATE (live): FLYING")
     assert '"action": "abort"' in c.MISSION_SYSTEM_PROMPT

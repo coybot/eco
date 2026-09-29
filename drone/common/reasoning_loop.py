@@ -591,6 +591,9 @@ class MissionLoop:
                         break
                     if self._aborted or phase_result.get('aborted'):
                         return self._stopped_result(mission, actions_taken)
+                    pilot = self._pilot_control()
+                    if pilot:
+                        return self._pilot_result(mission, actions_taken, pilot)
                     if self._time_up():
                         # A retry could not finish inside the limit either:
                         # the limit ends the phase, as it would have mid-run.
@@ -647,6 +650,9 @@ class MissionLoop:
                 self._phase_deadline = None
                 if self._aborted:
                     return self._stopped_result(mission, actions_taken)
+                pilot = self._pilot_control()
+                if pilot:
+                    return self._pilot_result(mission, actions_taken, pilot)
                 if phase.get('type') not in self._PHASES_THAT_STAY_PUT:
                     # The next move is measured from where this one left the
                     # aircraft, not from the last nav target.
@@ -787,6 +793,32 @@ class MissionLoop:
             duration_seconds=time.time() - mission.start_time,
             actions_taken=actions_taken,
             failure_reason="Stopped on your command",
+        )
+
+    def _pilot_control(self) -> Optional[str]:
+        """Why the pilot took the aircraft back with the transmitter, or None.
+        drone_sdk then refuses every command, so replanning would only fail."""
+        try:
+            check = getattr(self._get_backend(), "pilot_control", None)
+            return check() if check else None
+        except Exception:
+            return None
+
+    def _pilot_result(self, mission: Mission, actions_taken: int, why: str) -> MissionResult:
+        reason = f"The pilot took control from the transmitter: {why}"
+        self._report_progress(reason)
+        return MissionResult(
+            success=False,
+            summary="The pilot took control",
+            phases_completed=mission.current_phase,
+            total_phases=len(mission.phases),
+            findings=self._findings,
+            photos=self._photos,
+            videos=self._videos,
+            landmarks=self._landmarks_out,
+            duration_seconds=time.time() - mission.start_time,
+            actions_taken=actions_taken,
+            failure_reason=reason,
         )
 
     def _start_phase_clock(self, phase: Dict[str, Any]) -> None:
