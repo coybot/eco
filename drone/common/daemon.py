@@ -1127,6 +1127,13 @@ def _abort_then(then):
     the aircraft's real state - a stop on the ground does nothing."""
     import drone_sdk as sdk
     thread = _signal_stop()
+    pilot = sdk.pilot_control() if hasattr(sdk, 'pilot_control') else None
+    if pilot:
+        # Holding, landing or flying home would all take the aircraft off them.
+        stopped = _join_stopped(thread)
+        sdk.clear_abort()
+        return True, ("Stopped the mission. " if stopped else "") + \
+            f"The pilot has control from the transmitter ({pilot}), so coybot is not flying it."
     try:
         flying = sdk.is_flying() if VEHICLE_TYPE not in ('fixedwing', 'rover') else None
     except Exception as e:
@@ -1867,6 +1874,11 @@ def publish_heartbeat():
         # Include flight mode
         if telemetry.get('mode') is not None:
             heartbeat['mode'] = telemetry['mode']
+
+        # The pilot took the aircraft back with the transmitter.
+        from drone_sdk import pilot_control
+        if pilot_control():
+            heartbeat['pilotControl'] = pilot_control()
         
         # Include position if available
         if telemetry.get('position') is not None:

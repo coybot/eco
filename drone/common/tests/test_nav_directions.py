@@ -271,6 +271,7 @@ def test_takeoff_that_cannot_climb_lands_and_fails(sdk_env):
     sdk_env.setattr(sdk_mod, "_check_preflight_status", lambda: (True, []))
     sdk_env.setattr(sdk_mod, "is_armed", lambda: True)
     sdk_env.setattr(sdk_mod, "start_battery_guard", lambda *a, **k: None)
+    sdk_env.setattr(sdk_mod, "_start_pilot_watch", lambda: None)
     sdk_env.setattr(sdk_mod, "_mav_command", lambda f, cid, timeout=3: (True, 0))
     landed = []
     sdk_env.setattr(sdk_mod, "land", lambda: landed.append(1))

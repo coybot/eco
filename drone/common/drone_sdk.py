@@ -23,6 +23,10 @@ try:
     import battery as _battery
 except ImportError:  # installed as a package
     from . import battery as _battery
+try:
+    import pilot_override as _pilot_override
+except ImportError:  # installed as a package
+    from . import pilot_override as _pilot_override
 
 # Set up logging to go to both stdout (captured by daemon) and stderr (goes to journald)
 _logger = logging.getLogger('drone_sdk')
@@ -138,6 +142,15 @@ def _on_message(conn, msg):
             if (msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
                     and msg.get_srcSystem() == getattr(conn, 'target_system', msg.get_srcSystem())):
                 _fc_heartbeat = msg
+                if _pilot_watch_on:
+                    _pilot_watch_heartbeat(msg)
+        elif t == 'RC_CHANNELS':
+            if (_pilot_watch_on and _pilot_control is None and msg.chancount
+                    and msg.get_srcSystem() == getattr(conn, 'target_system', msg.get_srcSystem())):
+                why = _pilot_watch.on_rc(
+                    {n: getattr(msg, f'chan{n}_raw') for n in _pilot_watch.sticks}, time.time())
+                if why:
+                    _pilot_took_over(why, sticks=True)
         elif t == 'STATUSTEXT':
             text = getattr(msg, 'text', '') or ''
             _pending_statustext.append(msg)
@@ -256,6 +269,10 @@ def _ensure_streams(m):
                    mavutil.mavlink.MAV_DATA_STREAM_EXTRA1,
                    mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS):
         m.mav.request_data_stream_send(m.target_system, m.target_component, stream, 4, 1)
+    # The pilot watch reads the sticks from RC_CHANNELS: faster, so a pilot
+    # grabbing the aircraft is noticed in ~0.2 s rather than ~0.5 s.
+    m.mav.request_data_stream_send(m.target_system, m.target_component,
+                                   mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 10, 1)
     _last_stream_request = time.time()
 
 
@@ -588,7 +605,7 @@ def arm():
         b"DISARM_DELAY", 30.0, mavutil.mavlink.MAV_PARAM_TYPE_INT8))
 
     # Set STABILIZE mode first (required for arming)
-    _mav_send(lambda m: m.set_mode(0))  # 0 = STABILIZE
+    _mav_send(lambda m: _request_mode(m, 0, 'STABILIZE'))
     time.sleep(0.5)
     
     # Send arm command and wait for ACK atomically (prevents heartbeat thread from stealing ACK)
@@ -675,6 +692,8 @@ def takeoff(altitude_m):
     Returns:
         True if takeoff command succeeded, False otherwise
     """
+    if _pilot_refuses("TAKEOFF"):
+        return False
     altitude_m = _clamp(altitude_m, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
     if is_flying():
         return _airborne_takeoff(altitude_m)
@@ -734,6 +753,7 @@ def takeoff(altitude_m):
     pos = _fresh_position(timeout=2.0) or _position_relative()
     _flight_home = (pos[0], pos[1]) if pos else None
     start_battery_guard()
+    _start_pilot_watch()
 
     # Send takeoff command atomically
     _log(f"Sending takeoff to {altitude_m}m...")
@@ -758,6 +778,9 @@ def takeoff(altitude_m):
     alt = None
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if _pilot_control is not None:
+            _log("TAKEOFF STOPPED: the pilot took control")
+            return False
         if _abort_event.is_set():
             _log("TAKEOFF STOPPED: the operator stopped the flight")
             hold_here()
@@ -788,10 +811,13 @@ def _airborne_takeoff(altitude_m):
     altitude asked for."""
     pos = _fresh_position(timeout=2.0) or _position_relative()
     _log(f"Already airborne at {pos[2]:.1f}m: holding position, going to {altitude_m}m, home unchanged")
+    _start_pilot_watch()
     if goto(pos[0], pos[1], altitude_m) is False:
         return False
     deadline = time.time() + max(10.0, abs(altitude_m - pos[2]) * 3)
     while time.time() < deadline:
+        if _pilot_control is not None:
+            return False
         if _abort_event.is_set():
             hold_here()
             return False
@@ -804,10 +830,13 @@ def _airborne_takeoff(altitude_m):
 
 
 def land():
-    """Land the drone. Sets LAND mode and lets FC handle landing and auto-disarm."""
+    """Land the drone. Sets LAND mode and lets FC handle landing and auto-disarm.
+    Refused (False) while the pilot has control: they are the ones landing it."""
+    if _pilot_refuses("LAND"):
+        return False
     print("Landing...")
     def send_land(m):
-        m.set_mode('LAND')
+        _request_mode(m, 'LAND')
         try:
             m.mav.command_long_send(
                 m.target_system, m.target_component,
@@ -842,6 +871,8 @@ def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
     with no error or warning surfaced beyond a "SAFETY: ... clamped" log line
     easy to miss.
     """
+    if _pilot_refuses("GOTO"):
+        return False
     alt = _clamp(alt, MIN_ALTITUDE, max_alt, "altitude")
     if _battery_gates_apply():
         _, _, gov = _battery_models()
@@ -868,6 +899,8 @@ def set_velocity(vx, vy, vz):
     
     SAFETY: All velocities are clamped to ±MAX_VELOCITY.
     """
+    if _pilot_refuses("VELOCITY"):
+        return False
     vx = _clamp(vx, -MAX_VELOCITY, MAX_VELOCITY, "vx")
     vy = _clamp(vy, -MAX_VELOCITY, MAX_VELOCITY, "vy")
     vz = _clamp(vz, -MAX_VELOCITY, MAX_VELOCITY, "vz")
@@ -882,6 +915,8 @@ def set_velocity(vx, vy, vz):
 
 def set_yaw(angle_deg, relative=False):
     """Set yaw angle in degrees."""
+    if _pilot_refuses("YAW"):
+        return False
     print(f"Setting yaw to {angle_deg}° {'(relative)' if relative else '(absolute)'}")
     _mav_send(lambda m: m.mav.command_long_send(
         1, 1, mavutil.mavlink.MAV_CMD_CONDITION_YAW, 0,
@@ -983,7 +1018,7 @@ def _ceiling_guard_loop(min_clearance):
                         clamped = True
                     # Read current position and re-issue it as a hold target (stops ascent)
                     pos = st.messages.get('GLOBAL_POSITION_INT') if st is not None else None
-                    if pos:
+                    if pos and _pilot_control is None:
                         conn.mav.set_position_target_global_int_send(
                             0,
                             conn.target_system, conn.target_component,
@@ -1264,6 +1299,132 @@ def abort_requested():
     return _abort_event.is_set()
 
 
+# ---------------------------------------------------------------------------
+# The pilot's transmitter wins. The moment the pilot moves a stick or changes
+# the flight mode (see pilot_override.py), coybot stops flying: every move,
+# mode change, hold, land and battery-guard action is refused until the
+# aircraft lands and disarms, or the transmitter itself selects GUIDED. A
+# pilot landing by hand used to fight coybot: ArduCopter ignores the sticks in
+# GUIDED, and coybot's next stop/hold put a mode switch back to GUIDED.
+# ---------------------------------------------------------------------------
+PILOT_MODE = 'LOITER'              # what grabbing the sticks hands the pilot
+PILOT_MODE_FALLBACK = 'ALT_HOLD'   # LOITER needs a position estimate
+# Modes in which coybot or the FC, not the pilot, is flying. Grabbing the
+# sticks in one of these switches to PILOT_MODE; in any other (LOITER,
+# ALT_HOLD, STABILIZE, ...) the sticks already fly it.
+_AUTOMATIC_MODES = ('GUIDED', 'GUIDED_NOGPS', 'BRAKE', 'RTL', 'SMART_RTL', 'LAND', 'AUTO')
+
+_pilot_watch = _pilot_override.PilotWatch()
+_pilot_watch_on = False    # from coybot's takeoff until the aircraft disarms
+_pilot_control = None      # {'reason', 'since'} while the pilot is flying
+_pilot_handover = False    # the sticks took over: still to switch to PILOT_MODE
+_pilot_watch_thread = None
+_pilot_watch_stop = threading.Event()
+
+
+def pilot_control():
+    """Why the pilot has control from the transmitter, or None if coybot has it."""
+    c = _pilot_control
+    return c['reason'] if c else None
+
+
+def _pilot_refuses(what):
+    """True, and says so, if the pilot has control and `what` must not happen."""
+    if _pilot_control is None:
+        return False
+    _log(f"{what} REFUSED: the pilot has control from the transmitter "
+         f"({_pilot_control['reason']})")
+    return True
+
+
+def _pilot_took_over(why, sticks):
+    """Runs inside the message hook, so it only records: the watch thread acts."""
+    global _pilot_control, _pilot_handover
+    _pilot_control = {'reason': why, 'since': time.time()}
+    _pilot_handover = sticks
+    _log(f"PILOT HAS CONTROL: {why}. coybot has stopped flying the aircraft and will not "
+         f"command it again until it lands, or the transmitter selects GUIDED.")
+
+
+def _pilot_watch_heartbeat(msg):
+    """Every FC heartbeat while the watch is on (from the message hook)."""
+    global _pilot_control, _pilot_handover, _pilot_watch_on
+    try:
+        mode = mavutil.mode_string_v10(msg)
+    except Exception:
+        return
+    if not msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
+        if _pilot_control is not None:
+            _log("PILOT: landed and disarmed - coybot can fly the next mission")
+        _pilot_control, _pilot_handover, _pilot_watch_on = None, False, False
+        return
+    now = time.time()
+    if _pilot_control is None:
+        why = _pilot_watch.on_mode(mode, now)
+        if why:
+            _pilot_took_over(why, sticks=False)
+        return
+    if _pilot_watch.handed_back(mode):
+        _log("PILOT: the transmitter selected GUIDED - control handed back to coybot")
+        _pilot_control, _pilot_handover = None, False
+        _pilot_watch.rebaseline()   # the sticks now rest wherever the pilot left them
+    _pilot_watch.on_mode(mode, now)
+
+
+def _hand_to_pilot():
+    """The pilot grabbed the sticks: put the FC in a mode they actually fly."""
+    mode = get_flight_mode()
+    if mode not in _AUTOMATIC_MODES:
+        _log(f"PILOT: already in {mode}, which the sticks fly - leaving it")
+        return
+    for target in (PILOT_MODE, PILOT_MODE_FALLBACK):
+        if _switch_mode(target, timeout=3):
+            _log(f"PILOT: switched {mode} -> {target}; the sticks fly the aircraft")
+            return
+    _log(f"PILOT: the FC refused {PILOT_MODE} and {PILOT_MODE_FALLBACK} and is still in "
+         f"{mode} - use the transmitter's mode switch")
+
+
+def _pilot_watch_loop():
+    """Keep the link read (nothing else does during a hold or a wait(), and the
+    sticks are only seen when RC_CHANNELS is parsed), and do the handover."""
+    global _pilot_handover
+    said = None
+    while _pilot_watch_on and not _pilot_watch_stop.is_set():
+        pause = 0.1
+        try:
+            with _mavlink_lock:
+                m = _connect()
+                _ensure_streams(m)
+                _drain_backlog(m, max_s=0.02)
+            if _pilot_handover:
+                _pilot_handover = False
+                _hand_to_pilot()
+            said = None
+        except Exception as e:
+            if str(e) != said:   # a lost link would otherwise say so 10 times a second
+                _log(f"Pilot watch error: {e}")
+                said = str(e)
+            pause = 1.0
+        _pilot_watch_stop.wait(pause)
+
+
+def _start_pilot_watch():
+    """coybot is taking command of an armed aircraft: watch the transmitter
+    until it disarms. Private, like anything that could switch it off: the
+    generated code gets every public name in this module."""
+    global _pilot_watch_on, _pilot_watch_thread
+    if _pilot_watch_on and _pilot_watch_thread and _pilot_watch_thread.is_alive():
+        return
+    _pilot_watch.rebaseline()
+    _pilot_watch.on_mode(get_flight_mode(), time.time())
+    _pilot_watch_stop.clear()
+    _pilot_watch_on = True
+    _pilot_watch_thread = threading.Thread(target=_pilot_watch_loop, daemon=True)
+    _pilot_watch_thread.start()
+
+
+
 def is_flying():
     """Armed and more than 1 m up: a takeoff now would be a mid-air one."""
     pos = _fresh_position(timeout=1.0) or _position_relative()
@@ -1299,7 +1460,10 @@ def brake(timeout_s=8.0):
 def hold_here(brake_first=True):
     """Stop where it is and hold position and altitude, then stay in GUIDED so
     the next mission can fly on. Deliberately not battery-gated: this is the
-    stop, and refusing it would leave the aircraft flying the old command."""
+    stop, and refusing it would leave the aircraft flying the old command.
+    Refused while the pilot has control: that would take the aircraft off them."""
+    if _pilot_refuses("HOLD"):
+        return False
     if brake_first:
         brake()
     if get_flight_mode() != 'GUIDED' and not _set_mode_confirmed('GUIDED'):
@@ -1348,6 +1512,9 @@ def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None):
     while time.time() < deadline:
         if _battery_guard_trip:
             _log(f"GOTO STOPPED: {_battery_guard_trip['reason']}")
+            return False
+        if _pilot_control is not None:
+            _log("GOTO STOPPED: the pilot took control")
             return False
         if _abort_event.is_set():
             _log("GOTO STOPPED: the operator stopped the flight")
@@ -1467,7 +1634,22 @@ def _save_last_flight(consumed_mah):
         _log(f"Could not record flight mAh: {e}")
 
 
+def _request_mode(m, mode, name=None):
+    """Every mode coybot asks for goes through here, so the pilot watch can
+    tell coybot's mode changes from the transmitter's. Caller holds the lock."""
+    _pilot_watch.requested(name or mode, time.time())
+    m.set_mode(mode)
+
+
 def _set_mode_confirmed(mode, timeout=8):
+    """Request `mode` until the autopilot's own heartbeat shows it. Refused
+    while the pilot has control from the transmitter."""
+    if _pilot_refuses(f"MODE {mode}"):
+        return False
+    return _switch_mode(mode, timeout, yield_to_pilot=True)
+
+
+def _switch_mode(mode, timeout=8, yield_to_pilot=False):
     """Request `mode` until the autopilot's own heartbeat shows it.
 
     Resends every 1.5 s: a single request right after arming was observed
@@ -1477,8 +1659,11 @@ def _set_mode_confirmed(mode, timeout=8):
     deadline = time.time() + timeout
     attempts = 0
     while time.time() < deadline:
+        if yield_to_pilot and _pilot_control is not None:
+            _log(f"Mode change to {mode} abandoned: the pilot took control")
+            return False
         attempts += 1
-        _mav_send(lambda m: m.set_mode(mode))
+        _mav_send(lambda m: _request_mode(m, mode))
         if _wait_for_mode(mode, timeout=min(1.5, max(0.1, deadline - time.time())), quiet=True):
             print(f"Mode confirmed: {mode}" + (f" (after {attempts} requests)" if attempts > 1 else ""))
             return True
@@ -1501,6 +1686,7 @@ def _battery_guard_loop(interval_s):
     strikes = 0
     was_armed = False
     started = time.time()
+    _battery_guard_told_pilot = None
     while not _battery_guard_stop.is_set():
         try:
             b = get_battery()
@@ -1516,7 +1702,13 @@ def _battery_guard_loop(interval_s):
                 strikes = strikes + 1 if not v.ok else 0
                 current = (_battery_guard_trip or {}).get('action')
                 rank = {'ok': 0, 'return_home': 1, 'land_now': 2}
-                if strikes >= 2 and rank.get(v.action, 0) > rank.get(current, 0):
+                if strikes >= 2 and _pilot_control is not None:
+                    # Not overriding the pilot: they can see the aircraft, and
+                    # a forced RTL is exactly the fight they took it back from.
+                    if v.reason != _battery_guard_told_pilot:
+                        _log(f"BATTERY GUARD: {v.reason} - the pilot has control, not overriding them")
+                        _battery_guard_told_pilot = v.reason
+                elif strikes >= 2 and rank.get(v.action, 0) > rank.get(current, 0):
                     _log(f"BATTERY GUARD: {v.reason}")
                     if v.action == 'return_home' and _set_mode_confirmed('RTL'):
                         _battery_guard_trip = {'action': 'return_home', 'reason': v.reason}
