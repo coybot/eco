@@ -101,6 +101,13 @@ struct MainTabView: View {
                     Label("Missions", systemImage: "paperplane")
                 }
 
+            // Fleet planning: draw the area and no-fly zones, pick one of the
+            // planner's ranked options, go.
+            MissionStoryboardView()
+                .tabItem {
+                    Label("Plan", systemImage: "map")
+                }
+
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")

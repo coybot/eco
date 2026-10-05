@@ -56,12 +56,31 @@ struct DroneStatus: Codable {
         let reason: String?
     }
     
+    // Sim fixed-wing heartbeat additions (fw_gcs_daemon.build_heartbeat) — a
+    // compass bearing (degrees, clockwise from north) for rotating a map
+    // marker to face the way the aircraft is actually flying, the local ENU
+    // fix (metres) for a sim that has no real GPS underneath its lat/lon, and
+    // airspeed. All optional: absent whenever the daemon couldn't reach
+    // Godot for a pose that beat, or on hardware that doesn't send them yet.
+    var headingDeg: Double?
+    var airspeedMps: Double?
+    var positionEnu: PositionEnu?
+
     struct Position: Codable {
         let latitude: Double
         let longitude: Double
         let altitude: Double
     }
-    
+
+    struct PositionEnu: Codable {
+        let eastM: Double
+        let northM: Double
+        let altM: Double
+        enum CodingKeys: String, CodingKey {
+            case eastM = "east_m"; case northM = "north_m"; case altM = "alt_m"
+        }
+    }
+
     struct Attitude: Codable {
         let roll: Double
         let pitch: Double
@@ -80,8 +99,11 @@ struct DroneStatus: Codable {
         case droneId, status, position, attitude, battery, armed, mode
         case lastUpdate, result, isOnline, ttl
         case voltage, batterySource, batteryWarnings, preflight, batteryBudget
+        case headingDeg = "heading_deg"
+        case airspeedMps = "airspeed_mps"
+        case positionEnu = "position_enu"
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         droneId = try container.decode(String.self, forKey: .droneId)
@@ -100,6 +122,9 @@ struct DroneStatus: Codable {
         batteryWarnings = try? container.decodeIfPresent([String].self, forKey: .batteryWarnings)
         preflight = try? container.decodeIfPresent(Preflight.self, forKey: .preflight)
         batteryBudget = try? container.decodeIfPresent(BatteryBudget.self, forKey: .batteryBudget)
+        headingDeg = try? container.decodeIfPresent(Double.self, forKey: .headingDeg)
+        airspeedMps = try? container.decodeIfPresent(Double.self, forKey: .airspeedMps)
+        positionEnu = try? container.decodeIfPresent(PositionEnu.self, forKey: .positionEnu)
         
         // Handle lastUpdate as either Double (epoch ms) or String (ISO8601)
         if let doubleValue = try? container.decodeIfPresent(Double.self, forKey: .lastUpdate) {
@@ -142,6 +167,9 @@ struct DroneStatus: Codable {
         try container.encodeIfPresent(batteryWarnings, forKey: .batteryWarnings)
         try container.encodeIfPresent(preflight, forKey: .preflight)
         try container.encodeIfPresent(batteryBudget, forKey: .batteryBudget)
+        try container.encodeIfPresent(headingDeg, forKey: .headingDeg)
+        try container.encodeIfPresent(airspeedMps, forKey: .airspeedMps)
+        try container.encodeIfPresent(positionEnu, forKey: .positionEnu)
     }
     
     var lastUpdateDate: Date? {

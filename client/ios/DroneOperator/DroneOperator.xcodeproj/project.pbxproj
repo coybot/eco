@@ -10,11 +10,13 @@
 		0226CF272345B9DFD323A207 /* MQTTClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852D4B7A3590B029C16F8846 /* MQTTClientProtocol.swift */; };
 		057D8408E4CAE9411D0DFFCB /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F7EF5F138BEA331DC60973C2 /* WebRTC */; };
 		0C7CD6C64F1A964DCFDEFEA7 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 108E6D9254DA11DE44020D09 /* Foundation.framework */; };
+		0FA2EFE7563401B657E5526D /* MissionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD893A742A6E51C157E7E0CE /* MissionMapView.swift */; };
 		0FC3E19D38EBA507B5C49A0D /* MediaAlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0989F22FDDFFC1229AAE1E5C /* MediaAlbumView.swift */; };
 		108C2B667CC25044DED0793F /* DroneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5513F6C0B302ECD6EC0549 /* DroneListView.swift */; };
 		1F4E6B2D9A3C4F1E8B7A6C5D /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */; };
 		2080601FFA5F70674A60C87A /* DroneSetupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */; };
 		2202266A5D33F3407FB64060 /* CocoaMQTTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E496565EA262A8F546E62B /* CocoaMQTTClient.swift */; };
+		29C4DB79C9606930ABA66F89 /* MissionStoryboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8772BB5AB92D0D4BDC39B7B5 /* MissionStoryboardView.swift */; };
 		2A7B6C5D4E3F2A1B9C8D7E6F /* VisionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */; };
 		2C1645D0F8DB6DA0DD08FBAB /* AWSIoTMQTTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55CCB63A64DAE5C3D1F6842 /* AWSIoTMQTTClient.swift */; };
 		3015A7361563077FBC2FAE44 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB16DB863897C31CEF2CACE /* APIClient.swift */; };
@@ -26,6 +28,7 @@
 		45DEDDB47F4ACB8F4F995F3E /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57BAEA30533FDEB9448F8BF6 /* Logger.swift */; };
 		46C67D8D6CB2EB8DB3C5AB47 /* DroneOperatorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0EAFFDB470AFDBE1D79345 /* DroneOperatorUITests.swift */; };
 		5E2E62FFFCA6F635DFC011CA /* AWSConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC36C1D389152F4ACBBAFEDD /* AWSConfig.swift */; };
+		6CDE7213D79F4F445C6E8E22 /* StoryboardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B9D553AAD3110FE596DC93 /* StoryboardController.swift */; };
 		8E784835F0405EA03CD8C65B /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F92BA31E0CFB629DD79C76 /* AuthView.swift */; };
 		8F5DDE243D4076B597744222 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACB1AA8F7570A095FAED7A1 /* AuthService.swift */; };
 		94D6C905AB0BBD269EB7BCE7 /* VideoStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */; };
@@ -39,8 +42,10 @@
 		B97A51BA48BF59FE6DF221DA /* SetupDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100B1A7A36761E30F2A4500A /* SetupDroneView.swift */; };
 		CA1BD0798DEB15CFA164D9F2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3D6B513489F9D8A7BE23A7EE /* Assets.xcassets */; };
 		CB99DDB4A3E4088F2B737E59 /* DroneOperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */; };
+		CFFDBBDEDF1B7532C3452E07 /* DroneVideoStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1E22CB322E9D5FF8EEB122 /* DroneVideoStream.swift */; };
 		D025012D892BA99D526B1A60 /* AddDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */; };
 		D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E698CDF3450F25420AF98 /* DroneChatView.swift */; };
+		DBFCE4F62FD1EC95E4520726 /* MissionSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202506501BD84295F9B1D80C /* MissionSidebarView.swift */; };
 		E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5478F74C272118CF0A0A4F37 /* Drone.swift */; };
 		ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */; };
 		EFE4D03AADB2D8BD393682F3 /* GCSSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F4D80EAA990A4DBAD204F0 /* GCSSettings.swift */; };
@@ -62,7 +67,9 @@
 		0989F22FDDFFC1229AAE1E5C /* MediaAlbumView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MediaAlbumView.swift; sourceTree = "<group>"; };
 		100B1A7A36761E30F2A4500A /* SetupDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDroneView.swift; sourceTree = "<group>"; };
 		108E6D9254DA11DE44020D09 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		202506501BD84295F9B1D80C /* MissionSidebarView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MissionSidebarView.swift; sourceTree = "<group>"; };
 		24F92BA31E0CFB629DD79C76 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		27B9D553AAD3110FE596DC93 /* StoryboardController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StoryboardController.swift; sourceTree = "<group>"; };
 		2B3E698CDF3450F25420AF98 /* DroneChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneChatView.swift; sourceTree = "<group>"; };
 		2F33830C83E2B6CDB0424034 /* VideoStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStreamView.swift; sourceTree = "<group>"; };
 		39B9FFEEFA8B2F4B91EED008 /* DroneOperator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DroneOperator.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -77,6 +84,7 @@
 		778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DroneOperator.entitlements; sourceTree = "<group>"; };
 		852D4B7A3590B029C16F8846 /* MQTTClientProtocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MQTTClientProtocol.swift; sourceTree = "<group>"; };
 		85D3CDBF14C7FA275224809B /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
+		8772BB5AB92D0D4BDC39B7B5 /* MissionStoryboardView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MissionStoryboardView.swift; sourceTree = "<group>"; };
 		8B6A5D4C3E2F1A0B9C8D7E6F /* VisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionService.swift; sourceTree = "<group>"; };
 		97F4D80EAA990A4DBAD204F0 /* GCSSettings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GCSSettings.swift; sourceTree = "<group>"; };
 		9A0D5C3E4D8B4F20A1F2C3D4 /* ConfigureTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigureTabView.swift; sourceTree = "<group>"; };
@@ -86,8 +94,10 @@
 		AA11BB22CC33DD44EE55FF69 /* GroupChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF71 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
 		AA7A2A9A0DB8DD0DB4730849 /* ControlPlaneSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ControlPlaneSettingsView.swift; sourceTree = "<group>"; };
+		AF1E22CB322E9D5FF8EEB122 /* DroneVideoStream.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DroneVideoStream.swift; sourceTree = "<group>"; };
 		B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddDroneView.swift; sourceTree = "<group>"; };
 		B8E496565EA262A8F546E62B /* CocoaMQTTClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CocoaMQTTClient.swift; sourceTree = "<group>"; };
+		BD893A742A6E51C157E7E0CE /* MissionMapView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MissionMapView.swift; sourceTree = "<group>"; };
 		BF736D36C9A0D91760FFD0BF /* DroneSetupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneSetupService.swift; sourceTree = "<group>"; };
 		C2A0F830F35166FC9063A78D /* DroneOperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneOperatorApp.swift; sourceTree = "<group>"; };
 		CB0EAFFDB470AFDBE1D79345 /* DroneOperatorUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DroneOperatorUITests.swift; path = DroneOperatorUITests/DroneOperatorUITests.swift; sourceTree = "<group>"; };
@@ -198,6 +208,19 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		6A78A55BD6687B8ACC548B15 /* Storyboard */ = {
+			isa = PBXGroup;
+			children = (
+				AF1E22CB322E9D5FF8EEB122 /* DroneVideoStream.swift */,
+				BD893A742A6E51C157E7E0CE /* MissionMapView.swift */,
+				202506501BD84295F9B1D80C /* MissionSidebarView.swift */,
+				8772BB5AB92D0D4BDC39B7B5 /* MissionStoryboardView.swift */,
+				27B9D553AAD3110FE596DC93 /* StoryboardController.swift */,
+			);
+			name = Storyboard;
+			path = Storyboard;
+			sourceTree = "<group>";
+		};
 		7BB606F0CBD7E9BCCE3D8BAD /* Settings */ = {
 			isa = PBXGroup;
 			children = (
@@ -271,6 +294,7 @@
 				56A3539E966CCEAFEE52AF88 /* Drones */,
 				7BB606F0CBD7E9BCCE3D8BAD /* Settings */,
 				07AC6683914D75948D344E30 /* Media */,
+				6A78A55BD6687B8ACC548B15 /* Storyboard */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -431,6 +455,11 @@
 				2202266A5D33F3407FB64060 /* CocoaMQTTClient.swift in Sources */,
 				B623500CC83A610DB774B0BA /* ControlPlaneSettingsView.swift in Sources */,
 				0FC3E19D38EBA507B5C49A0D /* MediaAlbumView.swift in Sources */,
+				CFFDBBDEDF1B7532C3452E07 /* DroneVideoStream.swift in Sources */,
+				0FA2EFE7563401B657E5526D /* MissionMapView.swift in Sources */,
+				DBFCE4F62FD1EC95E4520726 /* MissionSidebarView.swift in Sources */,
+				29C4DB79C9606930ABA66F89 /* MissionStoryboardView.swift in Sources */,
+				6CDE7213D79F4F445C6E8E22 /* StoryboardController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

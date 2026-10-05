@@ -47,6 +47,8 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Drone Operator uses your location to center the mission map on the operating area you draw.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Drone Operator needs local network access to communicate with your drone during setup.</string>
     <key>NSAppTransportSecurity</key>
