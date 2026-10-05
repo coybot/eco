@@ -296,24 +296,72 @@ export PATH="/usr/local/cuda/bin:$PATH"
 export CUDACXX="/usr/local/cuda/bin/nvcc"
 export CMAKE_CUDA_COMPILER="/usr/local/cuda/bin/nvcc"
 
-# Check for pre-built wheel first (saves ~45 min of compilation)
+# A flashed JetPack image carries the CUDA *runtime* but not always the
+# toolkit, and without nvcc the CUDA build below fails and quietly falls back
+# to CPU — where the vision encoder takes tens of seconds a frame. Install the
+# toolkit that matches this L4T release from NVIDIA's own repo rather than
+# guessing a version (JetPack 5 is 11.4, JetPack 6 is 12.x).
+if [ ! -x /usr/local/cuda/bin/nvcc ]; then
+    CUDA_PKG=$(apt-cache search --names-only '^cuda-toolkit-[0-9]+-[0-9]+$' 2>/dev/null \
+        | awk '{print $1}' | sort -V | tail -1)
+    if [ -n "$CUDA_PKG" ]; then
+        echo "  nvcc not found; installing $CUDA_PKG..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$CUDA_PKG" \
+            || echo "  ⚠️  $CUDA_PKG install failed - llama.cpp will build CPU-only"
+    else
+        echo "  ⚠️  nvcc not found and no cuda-toolkit package in apt - llama.cpp will build CPU-only"
+    fi
+fi
+
+# Orin is sm_87. Naming it keeps the build to one architecture instead of the
+# default fan-out, which is most of the ~45 min.
+LLAMA_CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87"
+
+# Check for pre-built wheel first (saves ~45 min of compilation). The wheel has
+# to match this venv's interpreter: the one in the README is cp310, which is
+# Ubuntu 22.04 / JetPack 6, and pip rejects it outright on JetPack 5's Python 3.8.
 WHEEL_DIR="$DRONE_DIR/wheels"
-LLAMA_WHEEL=$(find "$WHEEL_DIR" -name "llama_cpp_python-*-linux_aarch64.whl" 2>/dev/null | head -1)
+PY_TAG=$(python -c 'import sys; print("cp%d%d" % sys.version_info[:2])')
+LLAMA_WHEEL=$(find "$WHEEL_DIR" -name "llama_cpp_python-*-${PY_TAG}-${PY_TAG}-linux_aarch64.whl" 2>/dev/null | sort -V | tail -1)
+# setup_models.py fetches Qwen3-VL for every variant, and llama.cpp only learned
+# that architecture in the release llama-cpp-python 0.3.20 vendors. The 0.3.16
+# wheel the README describes loads nothing setup_models.py downloads.
+LLAMA_MIN="0.3.20"
+if [ -n "$LLAMA_WHEEL" ]; then
+    WHEEL_VER=$(basename "$LLAMA_WHEEL" | cut -d- -f2)
+    if [ "$(printf '%s\n%s\n' "$LLAMA_MIN" "$WHEEL_VER" | sort -V | head -1)" != "$LLAMA_MIN" ]; then
+        echo "  Ignoring $(basename "$LLAMA_WHEEL"): older than $LLAMA_MIN, cannot load Qwen3-VL"
+        LLAMA_WHEEL=""
+    fi
+fi
 
 if [ -n "$LLAMA_WHEEL" ]; then
     echo "  Found pre-built wheel: $(basename $LLAMA_WHEEL)"
     pip install "$LLAMA_WHEEL" --force-reinstall
 else
     echo "  No pre-built wheel found in $WHEEL_DIR, building from source (~30-45 min)..."
-    CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python --force-reinstall --no-cache-dir || {
+    CMAKE_ARGS="$LLAMA_CMAKE_ARGS" pip install "llama-cpp-python>=$LLAMA_MIN" --force-reinstall --no-cache-dir || {
         echo "  ⚠️  CUDA build failed, trying CPU-only llama-cpp-python..."
-        pip install llama-cpp-python --force-reinstall --no-cache-dir || echo "  ⚠️  llama-cpp-python install failed - VLM will be unavailable"
+        pip install "llama-cpp-python>=$LLAMA_MIN" --force-reinstall --no-cache-dir || echo "  ⚠️  llama-cpp-python install failed - VLM will be unavailable"
     }
     # Save the wheel for future installs
     echo "  Saving wheel for future installs..."
     mkdir -p "$WHEEL_DIR"
-    CMAKE_ARGS="-DGGML_CUDA=on" pip wheel llama-cpp-python==$(pip show llama-cpp-python 2>/dev/null | grep Version | cut -d' ' -f2) \
+    CMAKE_ARGS="$LLAMA_CMAKE_ARGS" pip wheel llama-cpp-python==$(pip show llama-cpp-python 2>/dev/null | grep Version | cut -d' ' -f2) \
         --wheel-dir "$WHEEL_DIR" --no-deps 2>/dev/null || true
+fi
+
+# Say plainly whether the aircraft can run its VLM. Every failure above is
+# tolerated so the rest of the install completes, which is right, but it used
+# to end with the weights downloaded, no runtime, and nothing on screen.
+if python -c "import llama_cpp" 2>/dev/null; then
+    echo "  ✅ llama-cpp-python $(python -c 'import llama_cpp; print(llama_cpp.__version__)')"
+else
+    echo ""
+    echo "  ❌ llama-cpp-python is NOT importable in $INSTALL_DIR/venv."
+    echo "     The daemon will report vlm_available=false and the cloud will not"
+    echo "     dispatch perception missions to this aircraft until it is fixed."
+    echo ""
 fi
 
 # For AGX, install ROS 2 and Nav2 dependencies

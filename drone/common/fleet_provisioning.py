@@ -8,6 +8,11 @@ ONLY be used for provisioning, not for normal MQTT operations.
 
 Uses AWS IoT Device SDK v2 for Python.
 """
+# Signatures below use PEP 604 unions (str | None). Python 3.8 evaluates
+# annotations eagerly and raises "unsupported operand type(s) for |" on import,
+# so this script died the moment install.sh invoked it on a JetPack 5 board.
+# Same reason as the guard in perception.py; keep until every image is on 3.10+.
+from __future__ import annotations
 
 import json
 from typing import Optional
