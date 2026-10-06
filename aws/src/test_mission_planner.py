@@ -8,6 +8,7 @@ import json
 from unittest.mock import patch
 
 import conversations
+import planning
 
 
 # A no-fly zone: a small square. Two candidate plans — one routes north of it
@@ -55,34 +56,79 @@ def _fake_invoke_result(plans):
                          "input": {"plans": plans}}]}
 
 
-def test_planner_flags_and_demotes_nfz_crossing_plan():
+def _fleet(vehicle_type="fixedwing", battery=95):
+    # These plans fly ~7 km out; give the fixed-wing the range for it.
+    return [planning.Vehicle("alpha", planning.Platform.for_vehicle(
+        vehicle_type, limits={"max_range_m": 20000}), HOME, battery_pct=battery)]
+
+
+def _ctx(**kw):
+    return dict({"area": [], "no_fly": [NFZ], "wind": None, "margin_m": 10.0}, **kw)
+
+
+# A plan that parks its waypoint inside the zone: no detour can fix that.
+INSIDE_PLAN = {
+    "label": "Straight line",
+    "rationale": "flies to a point in the zone",
+    "per_drone": [
+        {"drone_id": "alpha", "phases": [
+            {"type": "arm_and_takeoff", "altitude_m": 30},
+            _leg(37.005, -121.995),
+            {"type": "return_home"}, {"type": "land"}]},
+    ],
+}
+
+
+def test_a_crossing_leg_is_rerouted_round_the_zone():
     with patch.object(conversations.llm, "invoke",
                       return_value=_fake_invoke_result([CROSSING_PLAN, CLEAN_PLAN])):
         plans = conversations.call_mission_planner(
-            [], "search the area", operating_area=[], no_fly_zones=[NFZ],
-            drone_ids=["alpha"], home=HOME)["plans"]
+            [], "search the area", _fleet(), _ctx())["plans"]
+    straight = next(p for p in plans if p["label"] == "Straight line")
+    assert straight["nfz_clear"] and straight["dispatchable"]
+    assert any("detour" in a for a in straight["per_drone"][0]["adjustments"])
 
-    assert len(plans) == 2
+
+def test_an_unfixable_crossing_is_blocked_and_never_recommended():
+    with patch.object(conversations.llm, "invoke",
+                      return_value=_fake_invoke_result([INSIDE_PLAN, CLEAN_PLAN])):
+        plans = conversations.call_mission_planner(
+            [], "search the area", _fleet(), _ctx())["plans"]
     by_label = {p["label"]: p for p in plans}
-    assert by_label["Straight line"]["nfz_clear"] is False
+    assert by_label["Straight line"]["dispatchable"] is False
     assert by_label["Straight line"]["nfz_violations"] >= 1
-    assert by_label["North detour"]["nfz_clear"] is True
-
-    # Exactly one recommendation, and it must be the NFZ-clear plan even though
-    # the model recommended the crossing one.
     recommended = [p for p in plans if p["recommended"]]
-    assert len(recommended) == 1
-    assert recommended[0]["label"] == "North detour"
+    assert len(recommended) == 1 and recommended[0]["label"] == "North detour"
 
 
 def test_planner_assigns_ids_and_eta():
     with patch.object(conversations.llm, "invoke",
                       return_value=_fake_invoke_result([CLEAN_PLAN, CROSSING_PLAN])):
-        plans = conversations.call_mission_planner(
-            [], "search", operating_area=[], no_fly_zones=[NFZ],
-            drone_ids=["alpha"], home=HOME)["plans"]
-    assert [p["plan_id"] for p in plans] == ["plan-1", "plan-2"]
+        plans = conversations.call_mission_planner([], "search", _fleet(), _ctx())["plans"]
+    assert sorted(p["plan_id"] for p in plans) == ["plan-1", "plan-2"]
     assert all(p["est_minutes"] > 0 for p in plans)
+
+
+def test_a_model_error_still_leaves_the_geometry_built_plans():
+    area = [{"lat": 37.02, "lon": -122.02}, {"lat": 37.02, "lon": -122.01},
+            {"lat": 37.03, "lon": -122.01}, {"lat": 37.03, "lon": -122.02}]
+    with patch.object(conversations.llm, "invoke", side_effect=RuntimeError("boom")):
+        result = conversations.call_mission_planner(
+            [], "find the pickup truck", _fleet(), _ctx(area=area))
+    assert result["ask"] is None and result["plans"]
+    assert all(p["source"] == "planner" for p in result["plans"])
+    with patch.object(conversations.llm, "invoke", side_effect=RuntimeError("boom")):
+        result = conversations.call_mission_planner([], "search", _fleet(), _ctx())
+    assert result["plans"] == []
+
+
+def test_planner_surfaces_clarifying_question():
+    ask_result = {"content": [{"type": "tool_use", "name": "propose_plans",
+                               "input": {"ask": "What should I look for?"}}]}
+    with patch.object(conversations.llm, "invoke", return_value=ask_result):
+        result = conversations.call_mission_planner([], "go do something", _fleet(), _ctx())
+    assert result["plans"] == []
+    assert result["ask"] == "What should I look for?"
 
 
 def test_extract_tool_input_from_text_fallback():
@@ -91,26 +137,6 @@ def test_extract_tool_input_from_text_fallback():
         json.dumps({"plans": [CLEAN_PLAN]})}]}
     got = conversations._extract_tool_input(text_result, "propose_plans")
     assert "plans" in got and len(got["plans"]) == 1
-
-
-def test_planner_returns_empty_on_model_error():
-    with patch.object(conversations.llm, "invoke", side_effect=RuntimeError("boom")):
-        result = conversations.call_mission_planner(
-            [], "search", operating_area=[], no_fly_zones=[NFZ],
-            drone_ids=["alpha"], home=HOME)
-    assert result["plans"] == [] and result["ask"] is None
-
-
-def test_planner_surfaces_clarifying_question():
-    # Model asks instead of planning (vague tasking).
-    ask_result = {"content": [{"type": "tool_use", "name": "propose_plans",
-                               "input": {"ask": "What should I look for?"}}]}
-    with patch.object(conversations.llm, "invoke", return_value=ask_result):
-        result = conversations.call_mission_planner(
-            [], "go do something", operating_area=[], no_fly_zones=[],
-            drone_ids=["alpha"], home=HOME)
-    assert result["plans"] == []
-    assert result["ask"] == "What should I look for?"
 
 
 # --- _render_mission_context caps/budget ------------------------------------

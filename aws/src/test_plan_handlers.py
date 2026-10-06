@@ -7,6 +7,7 @@ dispatches the chosen plan's phases to each aircraft over the command topic.
 Run: python3 -m pytest control/test_plan_handlers.py -v
 """
 import json
+import time
 from unittest.mock import patch
 
 import conversations
@@ -40,12 +41,18 @@ class FakeTable:
 
     def query(self, **kwargs):
         vals = kwargs.get("ExpressionAttributeValues", {})
+        if ":uid" in vals:   # the drone registry, by owner
+            return {"Items": [dict(it) for it in self.items if it.get("userId") == vals[":uid"]]}
         pk = vals.get(":pk")
         prefix = vals.get(":sk_prefix", "")
         rows = [it for it in self.items
                 if it.get("PK") == pk and str(it.get("SK", "")).startswith(prefix)]
         rows.sort(key=lambda it: it.get("SK", ""))
         return {"Items": rows}
+
+    def scan(self, **kwargs):   # get_vehicle_type: FilterExpression droneId = :d
+        d = kwargs.get("ExpressionAttributeValues", {}).get(":d")
+        return {"Items": [dict(it) for it in self.items if it.get("droneId") == d]}
 
 
 class FakeDynamo:
@@ -86,13 +93,21 @@ def _event(drone_id, conv_id, body):
             "body": json.dumps(body)}
 
 
+def heartbeat(drone_id, lat, lon, battery=90, vehicle_type="quadcopter", vlm=True, **extra):
+    """A fresh status-table item, shaped like daemon.py's heartbeat."""
+    item = {"droneId": drone_id, "lastUpdate": int(time.time() * 1000), "battery": battery,
+            "position": {"latitude": lat, "longitude": lon}, "armed": False,
+            "capabilities": {"vlm_available": vlm, "vehicle_type": vehicle_type}}
+    item.update(extra)
+    return item
+
+
 def _seed(dynamo):
-    # user u1 owns alpha; alpha has a last-known GPS position (home).
+    # user u1 owns alpha; alpha has a fresh heartbeat with its GPS position (home).
     dynamo.Table(conversations.DRONE_TABLE).put_item(
         Item={"userId": "u1", "droneId": "alpha"})
     dynamo.Table(conversations.STATUS_TABLE).put_item(
-        Item={"droneId": "alpha",
-              "position": {"latitude": 37.005, "longitude": -122.030}})
+        Item=heartbeat("alpha", 37.005, -122.030, battery=95, vehicle_type="fixedwing"))
 
 
 def test_plan_then_select_dispatches_recommended_plan():
@@ -105,7 +120,6 @@ def test_plan_then_select_dispatches_recommended_plan():
              {"type": "tool_use", "name": "propose_plans",
               "input": {"plans": [CROSSING, CLEAN]}}]}):
 
-        # Step 4: request plans.
         resp = conversations.plan_handler(
             _event("alpha", "c1", {"message": "find the pickup truck",
                                    "no_fly_zones": [NFZ], "drone_ids": ["alpha"]}),
@@ -113,24 +127,29 @@ def test_plan_then_select_dispatches_recommended_plan():
         assert resp["statusCode"] == 200
         out = json.loads(resp["body"])
         assert len(out["plans"]) == 2
-        # The NFZ-clear plan is recommended despite the model picking the other.
+        # The crossing plan is not just flagged: its leg is rerouted round the zone.
+        straight = next(p for p in out["plans"] if p["label"] == "Straight")
+        assert straight["nfz_clear"] and len(straight["per_drone"][0]["phases"]) > 4
         rec_id = out["recommended_plan_id"]
         rec = next(p for p in out["plans"] if p["plan_id"] == rec_id)
-        assert rec["label"] == "North detour" and rec["nfz_clear"]
+        assert rec["dispatchable"]
 
-        # Step 5: "go" with the recommended plan.
+        # "Go" without acknowledging the warnings (assumed energy model, no
+        # wind given) is held for approval; acknowledged, it flies.
+        held = conversations.plan_select_handler(_event("alpha", "c1", {"plan_id": rec_id}), None)
+        assert held["statusCode"] == 409
+        assert json.loads(held["body"])["status"] == "needs_approval"
         sel = conversations.plan_select_handler(
-            _event("alpha", "c1", {"plan_id": rec_id}), None)
+            _event("alpha", "c1", {"plan_id": rec_id, "acknowledge_warnings": True}), None)
         assert sel["statusCode"] == 200
         assert json.loads(sel["body"])["dispatched"] == ["alpha"]
 
-    # A mission command hit the command topic with the clean plan's phases.
-    cmds = [p for p in iot.published
-            if p["topic"] == "drone/alpha/chat/c1/command"]
+    cmds = [p for p in iot.published if p["topic"] == "drone/alpha/chat/c1/command"]
     assert len(cmds) == 1
-    assert cmds[0]["payload"]["action"] == "mission"
-    gps = [ph for ph in cmds[0]["payload"]["phases"] if ph.get("type") == "go_to_gps"]
-    assert gps and gps[0]["lat"] == 37.050  # the north-detour waypoint
+    payload = cmds[0]["payload"]
+    assert payload["action"] == "mission"
+    assert payload["phases"] == rec["per_drone"][0]["phases"]
+    assert payload["geofence"]["no_fly"] == [NFZ]
 
 
 def test_select_unknown_plan_id_404s():

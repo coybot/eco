@@ -989,16 +989,26 @@ def reroute_phases(phases: List[dict], home: Coord, area_xy: Optional[List[XY]],
         if area_xy and not is_home and not inside_xy(target, area_xy):
             issues.append(_issue("outside_area", "block",
                                  "waypoint is outside the search area", i))
+        zone = next((k for k, z in enumerate(nfz_xy) if inside_xy(target, z)), None)
+        if zone is not None:
+            issues.append(_issue("nfz", "block", f"waypoint is inside no-fly zone {zone}", i))
+            out.append(ph)
+            pos = target
+            continue
+        if pos is not None and any(inside_xy(pos, z) for z in nfz_xy):
+            out.append(ph)   # already reported: the leg out of a zone is not a new fault
+            pos = target
+            continue
         if pos is not None:
             keep = area_xy if (area_xy and not transit(pos) and not transit(target)
                                and inside_xy(pos, area_xy) and inside_xy(target, area_xy)) else None
             if not leg_ok(pos, target, nfz_xy, keep):
                 path = route(pos, target, nfz_xy, keep, margin_m)
                 if path is None:
-                    issues.append(_issue("nfz" if any(seg_enters(pos, target, z) for z in nfz_xy)
-                                         else "leaves_area", "block",
+                    crosses = any(seg_enters(pos, target, z) for z in nfz_xy)
+                    issues.append(_issue("nfz" if crosses else "leaves_area", "block",
                                          "no route to this waypoint that avoids the no-fly "
-                                         "zones and stays in the area", i))
+                                         "zones" + (" and stays in the area" if keep else ""), i))
                 else:
                     for k, q in enumerate(path[:-1]):
                         out.append(_waypoint(q, home, ph, f"detour {k + 1} around a no-fly zone"))
@@ -1336,7 +1346,8 @@ def build_sector_mission(v: Vehicle, sector: List[Coord], style: str, *,
         goto(to, note)
         return True
 
-    pos = (0.0, 0.0)
+    # A retask catches it in the air: it starts from where it is.
+    pos = to_xy(v.position, home) if (v.airborne and v.position) else (0.0, 0.0)
     if style == "sweep":
         lanes = sweep_lanes(sector_xy, sp, nfz_xy, margin_m)
         if lane_fraction < 1.0:

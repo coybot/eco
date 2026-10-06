@@ -378,27 +378,29 @@ Output ONLY the JSON object, no markdown or extra text."""
 PLANNING_SYSTEM_ADDENDUM = """
 --- MISSION PLANNING MODE (multiple alternatives) ---
 
-You are now planning a mission flown by a NAMED FLEET of aircraft, and you must
-propose SEVERAL DISTINCT alternative plans for the operator to choose between —
-not one mission. Call the `propose_plans` tool with 2 or 3 plans.
+You are now planning a mission for a FLEET of vehicles - any mix of rovers,
+quadcopters and fixed-wings - and you must propose SEVERAL DISTINCT alternative
+plans for the operator to choose between, not one mission. Give 2 or 3 plans.
 
-Each plan covers the WHOLE fleet: it contains one per-aircraft mission (a phases
-array, same vocabulary and rules as above) for EVERY drone id listed below. The
-alternatives should genuinely differ — e.g. one that splits the search area
-between the aircraft for speed, one that has both sweep the whole area for
-thoroughness, one that trades a longer but more cautious route. For each plan
-give a one-line rationale naming its tradeoff (e.g. "fastest — splits the area
-east/west so each aircraft covers half"), and mark exactly one plan
-`recommended: true` (your best default for this tasking).
+Each plan assigns one mission (a phases array, same vocabulary and rules as
+above) to each vehicle it uses. A plan need not use every vehicle: leave one
+out when it would not help. The alternatives should genuinely differ - e.g.
+split the area for speed, double coverage for thoroughness, a longer but more
+cautious route. Give each a one-line rationale naming its tradeoff.
 
-HARD CONSTRAINTS:
-- Stay OUT of the no-fly zones. Route transit legs around them. A plan whose legs
-  cut through a no-fly zone will be rejected.
-- Use `go_to_gps` with REAL lat/lon (inside the operating area, outside every
-  no-fly zone) for transit and search anchors, so the route can be checked. The
-  operating area and no-fly zones are given to you as lat/lon polygons below.
-- Every drone id listed MUST appear exactly once in each plan's per_drone list.
-- Keep every aircraft's plan self-contained (they fly with no radio link).
+Each vehicle below has its OWN home: it takes off from there and its
+return_home goes there. Respect what each vehicle is: a rover drives (no
+altitudes), a fixed-wing cannot stop (no survey_rect, wide circles only), a
+vehicle with NO vision model cannot fly open-ended objective phases - give it
+go_to_gps legs instead.
+
+HARD CONSTRAINTS (every plan is checked; a plan that breaks one is not flown):
+- Every waypoint inside the SEARCH AREA; every leg clear of the NO-FLY ZONES.
+- Use go_to_gps with REAL lat/lon for transit and search anchors, so the route
+  can be checked.
+- Stay within each vehicle's battery and range. You need not set time limits on
+  search phases: they are sized from each vehicle's battery after you plan.
+- Keep every vehicle's plan self-contained (they fly with no radio link).
 """
 
 PLAN_TOOL = {
@@ -451,7 +453,6 @@ prose, no markdown fences, exactly this shape:
 {"plans": [
   {"label": "Fastest split",
    "rationale": "splits the area east/west so each aircraft covers half",
-   "recommended": true,
    "per_drone": [
      {"drone_id": "<id>", "phases": [
         {"type": "arm_and_takeoff", "altitude_m": 35},
@@ -462,9 +463,8 @@ prose, no markdown fences, exactly this shape:
    ]}
 ]}
 
-Give 2 or 3 plans. EVERY plan must include a phases list for EVERY drone id
-listed above, and every phases list must start with arm_and_takeoff and end with
-return_home then land. Mark exactly one plan "recommended": true.
+Give 2 or 3 plans, each using only vehicles listed in the FLEET above. Every
+phases list must start with arm_and_takeoff and end with return_home then land.
 
 IF — and only if — the tasking is missing something essential that changes what
 you would plan (for example it never says WHAT to look for), then instead of
@@ -1376,10 +1376,101 @@ def call_mission_agent(conversation_history, user_message, pending_images=None, 
         return {'action': 'respond', 'message': f'Error processing request: {str(e)}'}
 
 
-# Cruise speed used for ETA ranking when the fleet is fixed-wing. The sim
-# fixed-wing cruises at 25 m/s (drone/sim/vehicle_class.py FIXEDWING). Callers
-# may override per request; this is only a ranking input, not a flight command.
-DEFAULT_CRUISE_MPS = 25.0
+# --- Fleet mission planner ---------------------------------------------------
+# The model proposes plans; nothing it writes is trusted. Every plan, the
+# model's and the ones built here from geometry (planning.plan_split), is
+# assessed per vehicle against the drawn search area, the no-fly zones, the
+# vehicle's own battery model, range and wind, and what the vehicle physically
+# is - a rover, a quadcopter, a fixed-wing, anything with a planning.Platform.
+# A plan with a blocking issue cannot be dispatched; one with warnings only
+# after the operator acknowledges them (plan_select_handler).
+
+HEARTBEAT_FRESH_S = 60
+
+
+def _fnum(v):
+    try:
+        return None if v is None else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _latlon(d):
+    """{'lat','lon'} from either key style, or None."""
+    if not isinstance(d, dict):
+        return None
+    lat = _fnum(d.get('lat', d.get('latitude')))
+    lon = _fnum(d.get('lon', d.get('longitude')))
+    return {'lat': lat, 'lon': lon} if lat is not None and lon is not None else None
+
+
+def _heartbeat_age_s(item):
+    import time as _time
+    ts = _fnum((item or {}).get('lastUpdate'))
+    if ts is None:
+        return None
+    # Epoch ms from the daemons; tolerate seconds.
+    return _time.time() - (ts / 1000.0 if ts > 1e11 else ts)
+
+
+def _owned_drone_ids(user_id):
+    try:
+        resp = dynamodb.Table(DRONE_TABLE).query(
+            KeyConditionExpression='userId = :uid',
+            ExpressionAttributeValues={':uid': user_id})
+        return [it['droneId'] for it in resp.get('Items', []) if it.get('droneId')]
+    except Exception as e:
+        print(f"⚠️ could not list the operator's drones: {e}")
+        return []
+
+
+def build_vehicle(drone_id, homes=None, home=None, limits=None, limits_by_drone=None):
+    """A planning.Vehicle from the drone's last heartbeat and registry entry.
+    Home is, in order: the request's per-drone `homes`, the request's single
+    `home`, the home the drone reports, its last position. Returns
+    (vehicle, warnings) - vehicle is None when there is nothing to plan from."""
+    item = get_drone_state(drone_id) or {}
+    caps = item.get('capabilities') or {}
+    vtype = get_vehicle_type(drone_id) or caps.get('vehicle_type') or item.get('vehicleType')
+    lim = dict(limits or {})
+    lim.update((limits_by_drone or {}).get(drone_id) or {})
+    platform = planning.Platform.for_vehicle(vtype, item.get('energyModel'), lim)
+    notes = []
+    if 'vlm' not in lim:
+        if 'vlm_available' in caps:
+            platform.vlm = bool(caps.get('vlm_available'))
+        else:
+            notes.append({'kind': 'capability', 'severity': 'warn',
+                          'detail': 'has not reported whether it has a vision model'})
+    pos = _latlon(item.get('position'))
+    h = _latlon((homes or {}).get(drone_id)) or _latlon(home) or _latlon(item.get('home')) or pos
+    if h is None:
+        return None, [{'kind': 'home', 'severity': 'block',
+                       'detail': 'no home: it has reported no position and none was given'}]
+    age = _heartbeat_age_s(item)
+    pre = item.get('preflight') or {}
+    mission = item.get('mission') or {}
+    v = planning.Vehicle(
+        drone_id=drone_id, platform=platform, home=h,
+        battery_pct=_fnum(item.get('battery')),
+        position=pos, altitude_m=_fnum(item.get('altitudeAgl')) or 0.0,
+        online=age is not None and age <= HEARTBEAT_FRESH_S,
+        can_takeoff=pre.get('canTakeoff') if 'canTakeoff' in pre else None,
+        takeoff_reason=pre.get('reason'),
+        pilot_control=item.get('pilotControl') or None,
+        mission_running=mission.get('id') if mission.get('running') else None)
+    return v, notes
+
+
+_SWEEP_WORDS = ('photograph', 'photo', 'map ', 'mapping', 'survey', 'cover', 'scan',
+                'sweep', 'record', 'film', 'video', 'inspect every', 'whole area')
+
+
+def _plan_style(message):
+    """"sweep" for coverage taskings (photograph/map/survey the area), else
+    "search" (find something)."""
+    low = f" {(message or '').lower()} "
+    return 'sweep' if any(w in low for w in _SWEEP_WORDS) else 'search'
 
 
 def _fmt_polygon(poly):
@@ -1388,27 +1479,48 @@ def _fmt_polygon(poly):
         f"({p['lat']:.6f}, {p['lon']:.6f})" for p in poly) + "]"
 
 
-def _render_planning_context(operating_area, no_fly_zones, drone_ids):
-    """The situational block the planner reads alongside the operator's tasking:
-    the fleet, the operating-area boundary, and the no-fly zones — all as lat/lon
-    so the model plans go_to_gps legs in the same frame we validate them in."""
+def _render_planning_context(operating_area, no_fly_zones, fleet, wind=None,
+                             suggested=None, excluded=None):
+    """The situational block the planner reads alongside the operator's
+    tasking: each vehicle (what it is, its own home, its battery and what that
+    buys), the search area, the no-fly zones, the wind, and the sector split
+    the geometry suggests - all in lat/lon, the frame the plans are checked in."""
     lines = [PLANNING_SYSTEM_ADDENDUM, "", "FLEET (plan one mission for each):"]
-    lines.append("  " + ", ".join(drone_ids))
+    for v in fleet:
+        p = v.platform
+        batt = f"{v.battery_pct:.0f}%" if v.battery_pct is not None else "unknown"
+        state = (f"airborne at {v.altitude_m:.0f} m" if v.airborne else
+                 "on the ground")
+        lines.append(f"  {v.drone_id}: {p.vehicle_type} ({p.describe()}; "
+                     f"{'has' if p.vlm else 'NO'} vision model), battery {batt}, {state}, "
+                     f"home ({v.home['lat']:.6f}, {v.home['lon']:.6f}), "
+                     f"range limit {p.max_range_m:.0f} m from home")
+    if excluded:
+        lines.append("NOT AVAILABLE (do not plan for these): " + "; ".join(
+            f"{did} - {why}" for did, why in excluded.items()))
     lines.append("")
     if operating_area:
-        lines.append("OPERATING AREA boundary (lat, lon vertices) — keep all "
-                     "waypoints inside this:")
+        lines.append("SEARCH AREA boundary (lat, lon vertices) - every waypoint must be "
+                     "inside this:")
         lines.append("  " + _fmt_polygon(operating_area))
     else:
-        lines.append("OPERATING AREA: not specified.")
+        lines.append("SEARCH AREA: not specified.")
     lines.append("")
     if no_fly_zones:
-        lines.append(f"NO-FLY ZONES ({len(no_fly_zones)}) — every leg must stay "
+        lines.append(f"NO-FLY ZONES ({len(no_fly_zones)}) - every leg must stay "
                      "clear of these:")
         for i, z in enumerate(no_fly_zones):
             lines.append(f"  zone {i}: {_fmt_polygon(z)}")
     else:
         lines.append("NO-FLY ZONES: none.")
+    lines.append("")
+    lines.append(f"WIND: from {wind.from_deg:.0f} deg at {wind.speed_mps:g} m/s." if wind
+                 else "WIND: not given.")
+    if suggested:
+        lines.append("")
+        lines.append("SUGGESTED SPLIT (sectors sized so all finish together; use or improve):")
+        for d in suggested:
+            lines.append(f"  {d['drone_id']}: {_fmt_polygon(d['sector'])}")
     return "\n".join(lines)
 
 
@@ -1483,90 +1595,238 @@ def _target_noun(message):
     return "target"
 
 
-def _default_surveillance_phases(target_noun, sector):
-    """A standard, flyable surveillance mission, synthesized when a (weak local)
-    planner leaves a drone's phases empty. Keeps the fleet from ever being
-    dispatched an empty mission. Uses the literal detector noun so the on-device
-    grounding guard accepts the sighting."""
-    where = {0: "the northern half of", 1: "the southern half of"}.get(
-        sector, "")
-    return [
-        {"type": "arm_and_takeoff", "altitude_m": 35},
-        {"objective": f"Search {where} the area for the {target_noun}, "
-                      f"routing around anything in the way".replace("  ", " "),
-         "success": f"{target_noun} located and its position reported"},
-        {"type": "return_home", "alt_m": 35},
-        {"type": "land"},
-    ]
+def _plan_context(body, defaults=None):
+    """The planning inputs a request carries, with `defaults` (the running
+    plan's stored context, for a retask) filling anything it leaves out. Stored
+    with the options so /plan/select re-checks a plan against the same area,
+    zones, wind and limits it was made for."""
+    d = defaults or {}
+
+    def pick(name, *request_keys, default=None):
+        for k in request_keys or (name,):
+            if body.get(k) not in (None, [], {}):
+                return body[k]
+        return d.get(name, default)
+
+    max_aircraft = pick('max_aircraft')
+    return {
+        'area': pick('area', 'operating_area', 'search_area', default=[]) or [],
+        'no_fly': pick('no_fly', 'no_fly_zones', default=[]) or [],
+        'wind': pick('wind'),
+        'altitude_m': _fnum(pick('altitude_m')),
+        'spacing_m': _fnum(pick('spacing_m')),
+        'max_aircraft': int(max_aircraft) if max_aircraft else None,
+        'margin_m': _fnum(pick('margin_m')) or 10.0,
+        'homes': pick('homes', default={}) or {},
+        'home': pick('home'),
+        'limits': pick('limits', default={}) or {},
+        'limits_by_drone': pick('limits_by_drone', default={}) or {},
+    }
 
 
-def _finalize_plans(raw_plans, no_fly_zones, home, cruise_mps, message="",
-                    drone_ids=None):
-    """Enrich the model's raw plans: assign ids, compute per-fleet ETA (the
-    mission ends when the SLOWEST aircraft lands), validate every drone's legs
-    against the no-fly zones, and re-pick the recommendation so it is always an
-    NFZ-clear plan when one exists. Returns the list the app renders."""
-    finalized = []
-    noun = _target_noun(message)
-    for i, plan in enumerate(raw_plans or []):
-        per_drone = plan.get('per_drone', []) or []
-        # Ensure every requested drone appears; a weak model sometimes drops one.
-        if drone_ids:
-            present = {e.get('drone_id') for e in per_drone}
-            for did in drone_ids:
-                if did not in present:
-                    per_drone.append({'drone_id': did, 'phases': []})
-        # Never dispatch an empty mission: synthesize a flyable surveillance
-        # sequence for any drone the planner left without usable phases.
-        for si, entry in enumerate(per_drone):
-            if not (entry.get('phases') or []):
-                entry['phases'] = _default_surveillance_phases(noun, si)
-        fleet_seconds = 0.0
-        violations = []
-        for entry in per_drone:
-            phases = entry.get('phases', []) or []
-            fleet_seconds = max(
-                fleet_seconds,
-                planning.estimate_plan_seconds(phases, cruise_mps, home=home))
-            for v in planning.validate_plan_against_nfz(phases, no_fly_zones, home=home):
-                violations.append({**v, 'drone_id': entry.get('drone_id')})
-        finalized.append({
-            'plan_id': f'plan-{i + 1}',
-            'label': plan.get('label', f'Plan {i + 1}'),
-            'rationale': plan.get('rationale', ''),
-            'est_minutes': round(fleet_seconds / 60.0, 1),
-            'nfz_clear': len(violations) == 0,
-            'nfz_violations': len(violations),
-            'per_drone': per_drone,
-            'recommended': False,
+def _assemble_fleet(pool, ctx, retask=False):
+    """Vehicles from `pool` that can be sent, and why each other one cannot.
+    Returns (fleet, excluded {id: [detail]}, notes {id: [warn issues]})."""
+    wind = planning.Wind.parse(ctx.get('wind'))
+    fleet, excluded, notes = [], {}, {}
+    for did in pool:
+        v, extra = build_vehicle(did, ctx.get('homes'), ctx.get('home'),
+                                 ctx.get('limits'), ctx.get('limits_by_drone'))
+        issues = list(extra)
+        if v is not None:
+            issues += planning.eligibility(v, wind, ctx.get('area') or None)
+        if retask:
+            issues = [i for i in issues if i['kind'] != 'busy']
+        blocks = planning.blocking(issues)
+        if v is None or blocks:
+            excluded[did] = [i['detail'] for i in blocks] or ['unavailable']
+            continue
+        fleet.append(v)
+        notes[did] = planning.warnings(issues)
+    return fleet, excluded, notes
+
+
+def _assess_entry(v, phases, ctx):
+    return planning.assess_mission(
+        phases, v.platform, v.home, battery_pct=v.battery_pct,
+        area=ctx.get('area') or None, no_fly=ctx.get('no_fly') or [],
+        wind=planning.Wind.parse(ctx.get('wind')),
+        start=v.position if v.airborne else None,
+        start_alt_m=v.altitude_m if v.airborne else 0.0,
+        margin_m=ctx.get('margin_m') or 10.0)
+
+
+def _plan_record(label, rationale, per_drone, ctx, *, source, notes=None,
+                 extra_issues=None, coverage=None):
+    """One option as the app renders it and /plan/select dispatches it.
+    `per_drone` items carry drone_id, phases, assessment and optionally sector
+    and style. Keeps the keys the app already reads (est_minutes, nfz_clear,
+    nfz_violations, per_drone) and adds dispatchable/blocking/warnings."""
+    issues = list(extra_issues or [])
+    out = []
+    for d in per_drone:
+        a = d['assessment']
+        did = d['drone_id']
+        issues += [dict(i, drone_id=did) for i in a['issues']]
+        issues += [dict(i, drone_id=did) for i in (notes or {}).get(did, [])]
+        out.append({
+            'drone_id': did,
+            'phases': a['phases'],
+            'style': d.get('style'),
+            'sector': d.get('sector'),
+            'coverage': d.get('coverage'),
+            'costing': a['costing'],
+            'adjustments': a['adjustments'],
+            'geofence': {'keep_in': d.get('sector') or ctx.get('area') or [],
+                         'no_fly': ctx.get('no_fly') or []},
         })
-    if not finalized:
-        return finalized
-    # Recommendation: prefer NFZ-clear, then shortest ETA. Never recommend a plan
-    # that clips a zone if a clean one exists.
-    clear = [p for p in finalized if p['nfz_clear']]
-    pool = clear if clear else finalized
-    best = min(pool, key=lambda p: p['est_minutes'])
-    best['recommended'] = True
-    return finalized
+    blocks = planning.blocking(issues)
+    geo = [i for i in blocks if i['kind'] in ('nfz', 'outside_area', 'leaves_area')]
+    return {
+        'label': label,
+        'rationale': rationale,
+        'source': source,
+        'est_minutes': max((d['costing']['est_minutes'] for d in out), default=0.0),
+        'nfz_clear': not geo,
+        'nfz_violations': len(geo),
+        'dispatchable': bool(out) and not blocks,
+        'blocking': blocks,
+        'warnings': planning.warnings(issues),
+        'coverage': coverage,
+        'per_drone': out,
+        'recommended': False,
+    }
 
 
-def call_mission_planner(conversation_history, user_message, operating_area,
-                         no_fly_zones, drone_ids, home=None,
-                         cruise_mps=DEFAULT_CRUISE_MPS):
-    """Turn an operator's NL tasking + drawn area/NFZ into 2-3 ranked fleet
-    plans. Reuses MISSION_SYSTEM_PROMPT (phase vocabulary/rules) plus the
-    planning addendum. Post-validates against the no-fly zones — the model is
-    asked to avoid them, and we enforce it here rather than trusting it.
+def _not_used(why):
+    return ("; ".join(f"{did} not used: {r}" for did, r in why.items())) if why else ""
+
+
+def _generated_plans(fleet, ctx, target, style, notes):
+    """Plans built from geometry alone: the area split between the vehicles
+    choose_fleet picks, in the tasking's style, plus the other style and a
+    single-vehicle option. A sweep the batteries cannot finish is replaced by
+    its partial version, which says how much it covers."""
+    area = ctx.get('area')
+    if not fleet or not area or len(area) < 3:
+        return []
+    wind = planning.Wind.parse(ctx.get('wind'))
+    chosen, why = planning.choose_fleet(fleet, area, ctx.get('spacing_m'),
+                                        max_vehicles=ctx.get('max_aircraft'))
+    combos = [(chosen, why)]
+    if len(chosen) > 1:
+        single, why1 = planning.choose_fleet(fleet, area, ctx.get('spacing_m'), max_vehicles=1)
+        combos.append((single, why1))
+    styles = [style] + (['sweep'] if style == 'search' else ['search'])
+    plans = []
+    for k, (vs, skipped) in enumerate(combos):
+        for st in (styles if k == 0 else styles[:1]):
+            if st == 'search' and not any(v.platform.vlm for v in vs):
+                continue
+            r = planning.plan_split(vs, area, st, target=target, no_fly=ctx.get('no_fly') or [],
+                                    wind=wind, altitude_m=ctx.get('altitude_m'),
+                                    spacing_m=ctx.get('spacing_m'),
+                                    margin_m=ctx.get('margin_m') or 10.0)
+            coverage = None
+            if st == 'sweep' and any(any(i['kind'] == 'energy' for i in
+                                         planning.blocking(d['assessment']['issues']))
+                                     for d in r['per_drone']):
+                r = planning.plan_split(vs, area, st, target=target,
+                                        no_fly=ctx.get('no_fly') or [], wind=wind,
+                                        altitude_m=ctx.get('altitude_m'),
+                                        spacing_m=ctx.get('spacing_m'),
+                                        margin_m=ctx.get('margin_m') or 10.0, partial=True)
+                coverage = r.get('coverage')
+            n = len(vs)
+            who = vs[0].drone_id if n == 1 else f"{n} vehicles"
+            if st == 'search':
+                label = f"Split search, {who}" if n > 1 else f"Search with {who}"
+                rationale = (f"each searches its own sector of the area for the {target}, "
+                             f"sectors sized so all finish together; every search is "
+                             f"time-limited to what its battery leaves")
+            elif coverage is not None and coverage < 1:
+                label = f"Partial sweep, {who} ({coverage * 100:.0f}% of the area)"
+                rationale = ("sweeps lanes over as much of the area as the batteries "
+                             "cover, and reports exactly how much that is")
+            else:
+                label = f"Split sweep, {who}" if n > 1 else f"Sweep with {who}"
+                rationale = ("flies every lane of the area while recording: full "
+                             "coverage, no vision model needed")
+            extra = _not_used(skipped)
+            if extra:
+                rationale = f"{rationale}. {extra}"
+            plans.append(_plan_record(label, rationale, r['per_drone'], ctx, source='planner',
+                                      notes=notes, coverage=coverage))
+    return plans
+
+
+def _model_plans(raw_plans, fleet, ctx, notes):
+    """The model's plans, every vehicle's mission assessed and repaired. A
+    plan that names a vehicle that is not available keeps the rest but is
+    blocked, and says which."""
+    by_id = {v.drone_id: v for v in fleet}
+    plans = []
+    for i, plan in enumerate(raw_plans or []):
+        if not isinstance(plan, dict):
+            continue
+        per, extra, seen = [], [], set()
+        for e in plan.get('per_drone') or []:
+            did = (e or {}).get('drone_id')
+            phases = (e or {}).get('phases') or []
+            if did in seen or not phases:
+                continue
+            seen.add(did)
+            v = by_id.get(did)
+            if v is None:
+                extra.append({'kind': 'vehicle', 'severity': 'block', 'drone_id': did,
+                              'detail': f"plans for {did}, which is not available"})
+                continue
+            per.append({'drone_id': did, 'phases': phases, 'assessment': _assess_entry(v, phases, ctx)})
+        if not per and not extra:
+            continue
+        plans.append(_plan_record(plan.get('label') or f"Plan {i + 1}",
+                                  plan.get('rationale') or '', per, ctx, source='model',
+                                  notes=notes, extra_issues=extra))
+    return plans
+
+
+def _rank(plans):
+    """Number the options and recommend one: dispatchable first, then full
+    coverage over partial, then fewest warnings, then soonest finished. A plan
+    that cannot be dispatched is never recommended."""
+    def key(p):
+        return (not p['dispatchable'], (p.get('coverage') or 1.0) < 1.0,
+                len(p['warnings']), p['est_minutes'])
+    plans = sorted(plans, key=key)
+    for i, p in enumerate(plans):
+        p['plan_id'] = f'plan-{i + 1}'
+        p['recommended'] = False
+    if plans and plans[0]['dispatchable']:
+        plans[0]['recommended'] = True
+    return plans
+
+
+def call_mission_planner(conversation_history, user_message, fleet, ctx,
+                         excluded=None, notes=None):
+    """Turn an operator's tasking plus the drawn area and no-fly zones into
+    ranked fleet plans: the model's (repaired and checked) and the
+    geometry-built split plans (always offered when there is an area, so a
+    model that fails or plans badly still leaves the operator something
+    sound). Returns {'plans', 'ask'}.
 
     Output is requested as a plain JSON object rather than via the tools API:
     small local models served through Ollama/vLLM handle a forced tool_choice
     unreliably (observed live: empty completions or empty argument objects),
     whereas a direct "emit this JSON" instruction is parsed robustly by
-    _extract_tool_input's text path. The cloud/Bedrock model handles either;
-    this keeps one code path that works for both."""
+    _extract_tool_input's text path."""
+    target = _target_noun(user_message)
+    style = _plan_style(user_message)
+    generated = _generated_plans(fleet, ctx, target, style, notes or {})
+    suggested = next((p['per_drone'] for p in generated if p['source'] == 'planner'), None)
     system = (MISSION_SYSTEM_PROMPT + "\n\n"
-              + _render_planning_context(operating_area, no_fly_zones, drone_ids)
+              + _render_planning_context(ctx.get('area'), ctx.get('no_fly'), fleet,
+                                         planning.Wind.parse(ctx.get('wind')),
+                                         suggested, excluded)
               + "\n\n" + _PLAN_JSON_INSTRUCTION)
     messages = []
     for msg in conversation_history:
@@ -1576,63 +1836,59 @@ def call_mission_planner(conversation_history, user_message, operating_area,
                          'content': [{'type': 'text', 'text': text or ''}]})
     messages.append({'role': 'user', 'content': [{'type': 'text', 'text': user_message}]})
 
+    raw_plans = []
     try:
         # Local models occasionally return an unparseable / empty completion for
         # this structured ask; a plain retry usually lands (confirmed live with
         # qwen2.5 via Ollama). Bounded so a truly broken endpoint still returns.
-        raw_plans = []
-        for attempt in range(4):
-            result = llm.invoke(system, messages, max_tokens=4096,
-                                model=BEDROCK_MODEL_ID)
+        for attempt in range(3):
+            result = llm.invoke(system, messages, max_tokens=4096, model=BEDROCK_MODEL_ID)
             tool_input = _extract_tool_input(result, 'propose_plans', list_key='plans')
             raw_plans = tool_input.get('plans', [])
-            # The model may ask a clarifying question instead of planning.
             ask = tool_input.get('ask') if isinstance(tool_input, dict) else None
             if isinstance(ask, str) and ask.strip() and not raw_plans:
                 return {'plans': [], 'ask': ask.strip()}
             if raw_plans:
                 break
-            print(f"⚠️ planner produced no plans (attempt {attempt + 1}/4), retrying")
-        # Weak local models sometimes over-produce (8+ variants) or assign only
-        # one drone per plan; keep the first few well-formed ones. _finalize
-        # tolerates any count and any per_drone list, backfills missing drones,
-        # and synthesizes phases for any drone left empty.
-        plans = _finalize_plans(raw_plans[:3], no_fly_zones, home, cruise_mps,
-                                message=user_message, drone_ids=drone_ids)
-        return {'plans': plans, 'ask': None}
+            print(f"⚠️ planner produced no plans (attempt {attempt + 1}/3), retrying")
     except Exception as e:
-        print(f"❌ Mission planner error: {e}")
-        return {'plans': [], 'ask': None}
+        # The geometry-built plans still stand on their own.
+        print(f"❌ Mission planner model error: {e}")
+    plans = _model_plans(raw_plans[:3], fleet, ctx, notes or {}) + generated
+    return {'plans': _rank(plans), 'ask': None}
 
 
 def _plan_options_key(drone_id, conversation_id):
     return {'PK': f'CONV#{drone_id}#{conversation_id}', 'SK': 'PLANOPTS'}
 
 
-def _store_plan_options(drone_id, conversation_id, plans):
-    """Persist the last-offered plan set so /plan/select can dispatch the chosen
-    plan's phases server-side rather than trusting the client to echo them back."""
+def _store_plan_options(drone_id, conversation_id, plans, context=None):
+    """Persist the last-offered plan set - and the inputs it was planned from -
+    so /plan/select can re-check and dispatch the chosen plan's phases
+    server-side rather than trusting the client to echo them back."""
     table = dynamodb.Table(CONVERSATIONS_TABLE)
     item = dict(_plan_options_key(drone_id, conversation_id))
     item.update({
         'plans': json.dumps(plans),
+        'context': json.dumps(context or {}),
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'ttl': int(datetime.now(timezone.utc).timestamp()) + (24 * 60 * 60),
     })
     table.put_item(Item=item)
 
 
-def _load_plan_options(drone_id, conversation_id):
+def _load_plan_options(drone_id, conversation_id, with_context=False):
     table = dynamodb.Table(CONVERSATIONS_TABLE)
+    plans, ctx = [], {}
     try:
         resp = table.get_item(Key=_plan_options_key(drone_id, conversation_id))
         item = resp.get('Item')
-        if not item:
-            return []
-        return json.loads(item.get('plans', '[]'))
+        if item:
+            plans = json.loads(item.get('plans', '[]'))
+            ctx = json.loads(item.get('context', '{}'))
     except Exception as e:
         print(f"⚠️ Failed to load plan options: {e}")
-        return []
+    return {'plans': plans, 'context': ctx} if with_context else plans
 
 
 def _mission_records_key(drone_id, conversation_id):
@@ -2324,143 +2580,323 @@ def message_handler(event, context):
         })
 
 
-def _drone_home(drone_id):
-    """Best-effort takeoff origin for a drone: its last reported GPS position.
-    Used to place local-frame `nav` legs into lat/lon for NFZ checks and ETA.
-    Returns {'lat','lon'} or None."""
-    table = dynamodb.Table(STATUS_TABLE)
+def _active_plan_key(drone_id, conversation_id):
+    return {'PK': f'CONV#{drone_id}#{conversation_id}', 'SK': 'ACTIVEPLAN'}
+
+
+def _store_active_plan(drone_id, conversation_id, record):
+    item = dict(_active_plan_key(drone_id, conversation_id))
+    item.update({'plan': json.dumps(record),
+                 'ttl': int(datetime.now(timezone.utc).timestamp()) + (7 * 24 * 60 * 60)})
+    dynamodb.Table(CONVERSATIONS_TABLE).put_item(Item=item)
+
+
+def _load_active_plan(drone_id, conversation_id):
     try:
-        item = table.get_item(Key={'droneId': drone_id}).get('Item') or {}
-        pos = item.get('position') or {}
-        lat = pos.get('latitude', pos.get('lat'))
-        lon = pos.get('longitude', pos.get('lon'))
-        if lat is not None and lon is not None:
-            return {'lat': float(lat), 'lon': float(lon)}
+        item = dynamodb.Table(CONVERSATIONS_TABLE).get_item(
+            Key=_active_plan_key(drone_id, conversation_id)).get('Item')
+        return json.loads(item['plan']) if item else None
     except Exception as e:
-        print(f"⚠️ _drone_home failed for {drone_id}: {e}")
-    return None
+        print(f"⚠️ Failed to load the active plan: {e}")
+        return None
+
+
+def _parse_plan_request(event):
+    """(user_id, drone_id, conversation_id, body) or a ready error response."""
+    user_id = get_user_id(event)
+    if not user_id:
+        return None, json_response(401, {'error': 'Unauthorized'})
+    drone_id = event['pathParameters']['droneId']
+    conversation_id = event['pathParameters']['conversationId']
+    if not verify_ownership(user_id, drone_id):
+        return None, json_response(403, {'error': 'You do not own this drone'})
+    try:
+        body = json.loads(event.get('body') or '{}')
+    except json.JSONDecodeError:
+        return None, json_response(400, {'error': 'Invalid JSON'})
+    return (user_id, drone_id, conversation_id, body), None
+
+
+def _propose(user_id, drone_id, conversation_id, message, pool, ctx, retask_of=None):
+    """Shared by /plan and /plan/retask: assemble the fleet, plan, store the
+    options for /plan/select, and build the response."""
+    for did in pool:
+        if not verify_ownership(user_id, did):
+            return json_response(403, {'error': f'You do not own drone {did}'})
+    fleet, excluded, notes = _assemble_fleet(pool, ctx, retask=retask_of is not None)
+    if not fleet:
+        text = "No vehicle can fly this right now: " + "; ".join(
+            f"{did}: {', '.join(r)}" for did, r in excluded.items())
+        save_message(conversation_id, drone_id, 'drone', 'text', text)
+        publish_to_app(drone_id, conversation_id, 'error', text)
+        return json_response(200, {'status': 'unavailable', 'plans': [], 'excluded': excluded})
+
+    save_message(conversation_id, drone_id, 'user', 'text', message)
+    history = get_conversation_history(drone_id, conversation_id)
+    planner = call_mission_planner(history, message, fleet, ctx,
+                                   excluded={d: ', '.join(r) for d, r in excluded.items()},
+                                   notes=notes)
+    plans, ask = planner.get('plans', []), planner.get('ask')
+    if ask:
+        save_message(conversation_id, drone_id, 'drone', 'text', ask)
+        publish_to_app(drone_id, conversation_id, 'text', ask)
+        return json_response(200, {'status': 'ask', 'question': ask, 'plans': []})
+    if not plans:
+        publish_to_app(drone_id, conversation_id, 'error',
+                       "I couldn't produce a plan for that. Try rephrasing the task, "
+                       "or draw the search area.")
+        return json_response(200, {'status': 'error', 'plans': [], 'excluded': excluded})
+    homes = {v.drone_id: v.home for v in fleet}
+    for p in plans:
+        p['retask_of'] = retask_of
+        for e in p['per_drone']:
+            e['home'] = homes.get(e['drone_id'])
+    _store_plan_options(drone_id, conversation_id, plans, ctx)
+    recommended = next((p['plan_id'] for p in plans if p.get('recommended')), None)
+    ok = sum(1 for p in plans if p['dispatchable'])
+    save_message(conversation_id, drone_id, 'drone', 'text',
+                 f"Proposed {len(plans)} plan option(s), {ok} ready to fly"
+                 + (" (replacing the running plan once approved)." if retask_of else "."))
+    return json_response(200, {'status': 'proposed' if retask_of else 'ok', 'plans': plans,
+                               'recommended_plan_id': recommended, 'excluded': excluded,
+                               'retask_of': retask_of})
 
 
 def plan_handler(event, context):
     """POST /drones/{droneId}/conversations/{conversationId}/plan
 
-    Storyboard step 4: take the operator's NL tasking plus the drawn operating
-    area and no-fly zones and return 2-3 ranked fleet plans (one recommended).
-    Nothing is sent to any aircraft here — that happens on /plan/select."""
-    user_id = get_user_id(event)
-    if not user_id:
-        return json_response(401, {'error': 'Unauthorized'})
-
-    drone_id = event['pathParameters']['droneId']
-    conversation_id = event['pathParameters']['conversationId']
-    if not verify_ownership(user_id, drone_id):
-        return json_response(403, {'error': 'You do not own this drone'})
-
-    try:
-        body = json.loads(event.get('body', '{}'))
-    except json.JSONDecodeError:
-        return json_response(400, {'error': 'Invalid JSON'})
-
+    Take the operator's tasking plus the drawn search area and no-fly zones and
+    return ranked fleet plans. Optional: drone_ids (the pool to choose from -
+    default every drone this operator owns), homes {drone_id: {lat, lon}} or
+    one home for all, wind {from_deg, speed_mps}, altitude_m, spacing_m,
+    max_aircraft, limits / limits_by_drone (max_wind_mps, max_range_m,
+    landing_reserve_pct, min_takeoff_pct, ceiling_m, vlm). Nothing is sent to
+    any vehicle here - that happens on /plan/select."""
+    parsed, err = _parse_plan_request(event)
+    if err:
+        return err
+    user_id, drone_id, conversation_id, body = parsed
     message = body.get('message', '')
     if not message:
         return json_response(400, {'error': 'Missing message'})
+    pool = body.get('drone_ids') or _owned_drone_ids(user_id) or [drone_id]
+    return _propose(user_id, drone_id, conversation_id, message, pool, _plan_context(body))
 
-    operating_area = body.get('operating_area') or []
-    no_fly_zones = body.get('no_fly_zones') or []
-    cruise_mps = float(body.get('cruise_mps', DEFAULT_CRUISE_MPS))
 
-    # Fleet: explicit drone_ids, else the conversation's own drone.
-    drone_ids = body.get('drone_ids') or [drone_id]
-    for did in drone_ids:
-        if not verify_ownership(user_id, did):
-            return json_response(403, {'error': f'You do not own drone {did}'})
-
-    home = body.get('home') or _drone_home(drone_id)
-
-    save_message(conversation_id, drone_id, 'user', 'text', message)
-    history = get_conversation_history(drone_id, conversation_id)
-
-    planner = call_mission_planner(history, message, operating_area, no_fly_zones,
-                                   drone_ids, home=home, cruise_mps=cruise_mps)
-    plans = planner.get('plans', [])
-    ask = planner.get('ask')
-
-    # The planner needs more from the operator: surface the question in the chat
-    # and wait for a reply (the app posts the answer back as another message).
-    if ask:
-        save_message(conversation_id, drone_id, 'drone', 'text', ask)
-        publish_to_app(drone_id, conversation_id, 'text', ask)
-        return json_response(200, {'status': 'ask', 'question': ask, 'plans': []})
-
-    if not plans:
-        publish_to_app(drone_id, conversation_id, 'error',
-                       "I couldn't produce a plan for that. Try rephrasing the task.")
-        return json_response(200, {'status': 'error', 'plans': []})
-
-    _store_plan_options(drone_id, conversation_id, plans)
-    recommended = next((p['plan_id'] for p in plans if p.get('recommended')), None)
-    save_message(conversation_id, drone_id, 'drone', 'text',
-                 f"Proposed {len(plans)} plan option(s).")
-    return json_response(200, {'status': 'ok', 'plans': plans,
-                              'recommended_plan_id': recommended})
+def _recheck(plan, ctx):
+    """Re-assess a stored plan against every vehicle's state now: batteries
+    drain, aircraft go offline, pilots take over between planning and "go".
+    Returns (blocking, warnings) - new ones only, each tagged with drone_id."""
+    retask = plan.get('retask_of') is not None
+    blocks, warns = [], []
+    for e in plan.get('per_drone', []):
+        did = e['drone_id']
+        v, extra = build_vehicle(did, ctx.get('homes'), ctx.get('home'), ctx.get('limits'),
+                                 ctx.get('limits_by_drone'))
+        issues = list(extra)
+        if v is not None:
+            issues += planning.eligibility(v, planning.Wind.parse(ctx.get('wind')),
+                                           ctx.get('area') or None)
+            issues += _assess_entry(v, e['phases'], ctx)['issues']
+        if retask:
+            issues = [i for i in issues if i['kind'] != 'busy']
+        blocks += [dict(i, drone_id=did) for i in planning.blocking(issues)]
+        warns += [dict(i, drone_id=did) for i in planning.warnings(issues)]
+    return blocks, warns
 
 
 def plan_select_handler(event, context):
     """POST /drones/{droneId}/conversations/{conversationId}/plan/select
 
-    Storyboard step 5 ("go"): dispatch the chosen plan's per-aircraft phased
-    missions to each drone over the existing command topic."""
-    user_id = get_user_id(event)
-    if not user_id:
-        return json_response(401, {'error': 'Unauthorized'})
-
-    drone_id = event['pathParameters']['droneId']
-    conversation_id = event['pathParameters']['conversationId']
-    if not verify_ownership(user_id, drone_id):
-        return json_response(403, {'error': 'You do not own this drone'})
-
-    try:
-        body = json.loads(event.get('body', '{}'))
-    except json.JSONDecodeError:
-        return json_response(400, {'error': 'Invalid JSON'})
-
+    The approval route. Dispatches the chosen option - a new plan, or a
+    /plan/retask proposal, which replaces what those vehicles are flying -
+    only if it is still sound: a plan with a blocking issue is refused (409
+    "blocked"), the plan is re-checked against every vehicle's state now, and
+    one with warnings goes only with `acknowledge_warnings: true` (409
+    "needs_approval" lists them otherwise)."""
+    parsed, err = _parse_plan_request(event)
+    if err:
+        return err
+    user_id, drone_id, conversation_id, body = parsed
     plan_id = body.get('plan_id')
     if not plan_id:
         return json_response(400, {'error': 'Missing plan_id'})
 
-    plans = _load_plan_options(drone_id, conversation_id)
+    stored = _load_plan_options(drone_id, conversation_id, with_context=True)
+    plans, ctx = stored['plans'], stored['context']
     plan = next((p for p in plans if p.get('plan_id') == plan_id), None)
     if plan is None:
         return json_response(404, {'error': f'Unknown plan_id {plan_id}'})
+    for e in plan.get('per_drone', []):
+        if not verify_ownership(user_id, e.get('drone_id')):
+            return json_response(403, {'error': f"You do not own drone {e.get('drone_id')}"})
+    if not plan.get('dispatchable', True):
+        return json_response(409, {'status': 'blocked', 'plan_id': plan_id,
+                                   'blocking': plan.get('blocking', [])})
+    blocks, warns = _recheck(plan, ctx)
+    if blocks:
+        return json_response(409, {'status': 'blocked', 'plan_id': plan_id,
+                                   'reason': 'changed since it was planned',
+                                   'blocking': blocks})
+    seen, all_warns = set(), []
+    for w in (plan.get('warnings') or []) + warns:
+        k = (w.get('drone_id'), w.get('kind'), w.get('detail'))
+        if k not in seen:
+            seen.add(k)
+            all_warns.append(w)
+    if all_warns and not body.get('acknowledge_warnings'):
+        return json_response(409, {'status': 'needs_approval', 'plan_id': plan_id,
+                                   'warnings': all_warns})
 
     save_message(conversation_id, drone_id, 'user', 'text',
                  f"Go with {plan.get('label', plan_id)}.")
-
+    active = (_load_active_plan(drone_id, conversation_id) or {}) if plan.get('retask_of') else {}
+    vehicles = dict(active.get('vehicles') or {})
     dispatched = []
     for entry in plan.get('per_drone', []):
         did = entry.get('drone_id')
         phases = entry.get('phases', [])
         if not did or not phases:
             continue
-        if not verify_ownership(user_id, did):
-            return json_response(403, {'error': f'You do not own drone {did}'})
         mission_id = str(uuid.uuid4())[:8]
         publish_to_drone(did, conversation_id, {
             'action': 'mission',
             'mission_id': mission_id,
             'phases': phases,
+            'geofence': entry.get('geofence'),
             'conversation_id': conversation_id,
             'original_message': f"selected {plan.get('label', plan_id)}",
         })
         publish_log(did, "INFO", f"Dispatched {len(phases)}-phase mission "
                     f"(plan {plan_id}, mission {mission_id})")
+        vehicles[did] = {'mission_id': mission_id, 'status': 'dispatched', 'home': entry.get('home'),
+                         'geofence': entry.get('geofence'), 'phases': len(phases)}
         dispatched.append(did)
 
+    # A retask must plan each vehicle back to the home it left from, not to
+    # wherever it happens to be when the retask comes in.
+    ctx = dict(ctx, homes=dict(ctx.get('homes') or {},
+                               **{d: v['home'] for d, v in vehicles.items() if v.get('home')}))
+    _store_active_plan(drone_id, conversation_id, {
+        'plan_id': plan_id, 'label': plan.get('label'),
+        'started_at': datetime.now(timezone.utc).isoformat(),
+        'retask_of': plan.get('retask_of'), 'vehicles': vehicles, 'context': ctx,
+        'acknowledged_warnings': all_warns,
+    })
     publish_to_app(drone_id, conversation_id, 'ack',
                    f"Executing {plan.get('label', plan_id)} on "
-                   f"{len(dispatched)} aircraft.")
+                   f"{len(dispatched)} vehicle(s).")
     return json_response(200, {'status': 'sent', 'dispatched': dispatched,
-                              'plan_id': plan_id})
+                              'plan_id': plan_id,
+                              'mission_ids': {d: vehicles[d]['mission_id'] for d in dispatched}})
+
+
+def plan_status_handler(event, context):
+    """GET /drones/{droneId}/conversations/{conversationId}/plan
+
+    The running plan and each vehicle's live state from its heartbeat."""
+    parsed, err = _parse_plan_request(event)
+    if err:
+        return err
+    _, drone_id, conversation_id, _ = parsed
+    active = _load_active_plan(drone_id, conversation_id)
+    if not active:
+        return json_response(404, {'error': 'No plan has been dispatched in this conversation'})
+    live = {}
+    for did, info in (active.get('vehicles') or {}).items():
+        item = get_drone_state(did) or {}
+        age = _heartbeat_age_s(item)
+        mission = item.get('mission') or {}
+        live[did] = {
+            'online': age is not None and age <= HEARTBEAT_FRESH_S,
+            'battery_pct': _fnum(item.get('battery')),
+            'position': _latlon(item.get('position')),
+            'altitude_m': _fnum(item.get('altitudeAgl')),
+            'pilot_control': item.get('pilotControl') or None,
+            'mission': mission,
+            'flying_this_plan': bool(mission.get('running')
+                                     and mission.get('id') == info.get('mission_id')),
+            'status': info.get('status'),
+        }
+    return json_response(200, {'plan_id': active.get('plan_id'), 'label': active.get('label'),
+                              'started_at': active.get('started_at'), 'vehicles': live})
+
+
+_ABORT_THEN = ('hold', 'land', 'return_home')
+
+
+def plan_abort_handler(event, context):
+    """POST /drones/{droneId}/conversations/{conversationId}/plan/abort
+
+    Stop the running plan on every vehicle in it, or on `drone_ids`, then
+    `then` (hold | land | return_home; default return_home). Never refused for
+    want of a plan: a stop has to work even when the record is gone."""
+    parsed, err = _parse_plan_request(event)
+    if err:
+        return err
+    user_id, drone_id, conversation_id, body = parsed
+    then = body.get('then') or 'return_home'
+    if then not in _ABORT_THEN:
+        return json_response(400, {'error': f"then must be one of {', '.join(_ABORT_THEN)}"})
+    active = _load_active_plan(drone_id, conversation_id) or {}
+    targets = body.get('drone_ids') or list((active.get('vehicles') or {}).keys()) or [drone_id]
+    for did in targets:
+        if not verify_ownership(user_id, did):
+            return json_response(403, {'error': f'You do not own drone {did}'})
+    for did in targets:
+        publish_to_drone(did, conversation_id, {
+            'action': 'abort', 'then': then, 'conversation_id': conversation_id,
+            'original_message': f"abort plan, then {then}"})
+        publish_log(did, "INFO", f"Plan abort sent (then {then})")
+        if did in (active.get('vehicles') or {}):
+            active['vehicles'][did]['status'] = f'aborted ({then})'
+    if active:
+        _store_active_plan(drone_id, conversation_id, active)
+    text = f"Stopping {len(targets)} vehicle(s), then {then.replace('_', ' ')}."
+    save_message(conversation_id, drone_id, 'drone', 'text', text)
+    publish_to_app(drone_id, conversation_id, 'ack', text)
+    return json_response(200, {'status': 'sent', 'aborted': targets, 'then': then})
+
+
+def plan_retask_handler(event, context):
+    """POST /drones/{droneId}/conversations/{conversationId}/plan/retask
+
+    Re-plan the running mission from where the vehicles are now: `message` is
+    the new tasking; drone_ids narrows (or add_drone_ids widens) who is
+    re-planned; any of the /plan inputs overrides the running plan's. Returns
+    proposals and flies nothing - approve one through /plan/select, which
+    re-checks it and replaces what those vehicles are flying."""
+    parsed, err = _parse_plan_request(event)
+    if err:
+        return err
+    user_id, drone_id, conversation_id, body = parsed
+    message = body.get('message', '')
+    if not message:
+        return json_response(400, {'error': 'Missing message'})
+    active = _load_active_plan(drone_id, conversation_id)
+    if not active:
+        return json_response(409, {'error': 'No plan is running in this conversation; '
+                                            'use /plan'})
+    pool = body.get('drone_ids') or list((active.get('vehicles') or {}).keys())
+    pool += [d for d in (body.get('add_drone_ids') or []) if d not in pool]
+    ctx = _plan_context(body, active.get('context'))
+    return _propose(user_id, drone_id, conversation_id, message, pool, ctx,
+                    retask_of=active.get('plan_id'))
+
+
+def plan_control_handler(event, context):
+    """One Lambda for the after-launch routes: GET /plan (status), POST
+    /plan/abort, POST /plan/retask. The GCS maps each route to its own
+    handler directly."""
+    path = (event.get('resource') or event.get('path') or '').rstrip('/')
+    method = (event.get('httpMethod') or 'GET').upper()
+    if method == 'GET':
+        return plan_status_handler(event, context)
+    if path.endswith('/abort'):
+        return plan_abort_handler(event, context)
+    if path.endswith('/retask'):
+        return plan_retask_handler(event, context)
+    return json_response(404, {'error': 'Unknown plan route'})
 
 
 def select_handler(event, context):

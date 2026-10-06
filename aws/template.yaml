@@ -799,6 +799,7 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:Query
+                - dynamodb:Scan
                 - dynamodb:GetItem
               Resource: 
                 - !GetAtt DroneTable.Arn
@@ -838,6 +839,7 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:Query
+                - dynamodb:Scan
                 - dynamodb:GetItem
                 - dynamodb:UpdateItem
               Resource: 
@@ -887,6 +889,7 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:Query
+                - dynamodb:Scan
                 - dynamodb:GetItem
                 - dynamodb:UpdateItem
               Resource: 
@@ -931,6 +934,7 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:Query
+                - dynamodb:Scan
                 - dynamodb:GetItem
                 - dynamodb:UpdateItem
               Resource:
@@ -976,6 +980,7 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:Query
+                - dynamodb:Scan
                 - dynamodb:GetItem
                 - dynamodb:UpdateItem
               Resource:
@@ -992,6 +997,64 @@ Resources:
           Properties:
             RestApiId: !Ref DroneApi
             Path: /drones/{droneId}/conversations/{conversationId}/plan/select
+            Method: POST
+
+  # Mission Plan Control (after launch: status, abort, retask -> approve via /plan/select)
+  MissionPlanControlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-mission-plan-control-${Environment}
+      CodeUri: src/
+      Handler: conversations.plan_control_handler
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          STATUS_TABLE: !Ref DroneStatusTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+          IOT_ENDPOINT: !GetAtt IotEndpoint.IotEndpointAddress
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt DroneTable.Arn
+                - !GetAtt ConversationsTable.Arn
+                - !GetAtt DroneStatusTable.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/drone/*'
+      Events:
+        PlanStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/plan
+            Method: GET
+        PlanAbort:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/plan/abort
+            Method: POST
+        PlanRetask:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /drones/{droneId}/conversations/{conversationId}/plan/retask
             Method: POST
 
   # Get Upload URL for Images
@@ -1457,6 +1520,7 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:Query
+                - dynamodb:Scan
                 - dynamodb:GetItem
                 - dynamodb:UpdateItem
               Resource: !GetAtt ConversationsTable.Arn
