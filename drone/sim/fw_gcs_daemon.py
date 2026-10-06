@@ -336,6 +336,15 @@ class OracleBrain:
         from spatial_memory import SpatialMemory
         self.memory = SpatialMemory(
             merge_radius=1.5 * max(1.0, vehicle_class.sense_range_m / 10.0))
+        self._aborted = False
+
+    def abort(self):
+        """Stop at the next waypoint (an operator abort, or a retask replacing
+        this mission). The oracle flies the scene's own search centre, not the
+        plan's geometry, so a mission geofence is not applied to it."""
+        self._aborted = True
+        if hasattr(self.backend, "abort"):
+            self.backend.abort()
 
     def _p(self, msg):
         if self.on_progress:
@@ -385,6 +394,8 @@ class OracleBrain:
         cruise_alt = 35.0
 
         for i, ph in enumerate(phases):
+            if self._aborted:
+                break
             mission.current_phase = i
             ptype = ph.get("type")
             if ptype == "arm_and_takeoff":
@@ -408,6 +419,8 @@ class OracleBrain:
                     self._p("On station — searching for the target")
                     waypoints = expanding_orbit((cx, cy), self.vc, laps=3)
                     for (wx, wy) in waypoints:
+                        if self._aborted:
+                            break
                         self.backend.goto(north_m=wy, east_m=wx, alt_m=cruise_alt)
                         self.backend.aim_sensor((cx, cy, 0.0))
                         det = self._scan_for_target()
@@ -430,10 +443,15 @@ class OracleBrain:
             done += 1
             _t.sleep(0.05)
 
-        summary = ("Located and localized the target." if found
-                   else "Completed the search; target not localized.")
+        if hasattr(self.backend, "clear_abort"):
+            self.backend.clear_abort()
+        if self._aborted:
+            summary = "Stopped by the operator."
+        else:
+            summary = ("Located and localized the target." if found
+                       else "Completed the search; target not localized.")
         return {
-            "success": True,
+            "success": not self._aborted,
             "summary": summary,
             "phases_completed": done,
             "total_phases": total,
