@@ -25,7 +25,7 @@ import math
 import re
 import threading
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any, List
+from typing import Optional, Callable, Dict, Any, List, Tuple
 from dataclasses import dataclass, field
 
 # Add parent for imports
@@ -189,6 +189,9 @@ class Mission:
     phases: List[Dict[str, Any]]
     conversation_id: Optional[str] = None
     original_message: Optional[str] = None
+    # The planner's fence: {"keep_in": [lat/lon...], "no_fly": [[lat/lon...]]}.
+    # Enforced at every goto()/drive() while the mission runs (see geofence.py).
+    geofence: Optional[Dict[str, Any]] = None
     
     # Tracking
     current_phase: int = 0
@@ -201,6 +204,7 @@ class Mission:
             phases=data.get('phases', []),
             conversation_id=data.get('conversation_id'),
             original_message=data.get('original_message'),
+            geofence=data.get('geofence'),
         )
     
     def get_current_phase(self) -> Optional[Dict[str, Any]]:
@@ -323,6 +327,7 @@ class MissionLoop:
         drone_sdk=None,
         backend: Optional[Backend] = None,
         vehicle_class: Optional[VehicleClass] = None,
+        geo_origin: Optional[Tuple[float, float]] = None,
     ):
         """
         Initialize mission loop.
@@ -338,7 +343,13 @@ class MissionLoop:
                 sim vehicle (e.g. the Godot fixed-wing sim) through this same loop.
             vehicle_class: Capability descriptor (vehicle_class.VehicleClass).
                 Defaults to "quadcopter" to match current on-device behavior.
+            geo_origin: (lat, lon) of the backend's pose origin, for a backend
+                whose frame is not anchored at home (the sim's datum). Without
+                it a mission's geofence is anchored on home and the pose at
+                mission start.
         """
+        self.geo_origin = geo_origin
+        self._unfenced_backend = None
         self.mqtt_client = mqtt_client
         self.conversation_id = conversation_id
         self.on_progress = on_progress
@@ -544,6 +555,8 @@ class MissionLoop:
             except Exception:
                 pass
 
+        self._install_geofence(mission)
+
         # FC-enforced safety envelope (geofence + altitude floor) — the real
         # guarantee behind any "climb over an obstacle" decision downstream;
         # perception/reasoning only ever *trigger* a climb, this is what
@@ -738,7 +751,44 @@ class MissionLoop:
             # duplicating this at every return statement.
             self._findings.extend(self._memory_finding_strings())
             self._landmarks_out.extend(self._landmark_dicts())
+            if self._unfenced_backend is not None:
+                # The fence belongs to this mission, not to the backend.
+                self.backend, self._unfenced_backend = self._unfenced_backend, None
             self._cleanup()
+
+    def _install_geofence(self, mission: Mission) -> None:
+        """Wrap the backend in the mission's geofence, if it has one. The fence
+        is in lat/lon; it is placed in the backend's frame from one point known
+        in both - the sim's datum at (0, 0), or home and the pose right now."""
+        fence = getattr(mission, "geofence", None)
+        if not fence:
+            return
+        try:
+            from geofence import Geofence, GeofencedBackend
+        except Exception as e:
+            self._report_progress(f"WARNING: geofence not active ({e})")
+            return
+        backend = self._get_backend()
+        g = None
+        if self.geo_origin is not None:
+            g = Geofence.from_latlon(fence, self.geo_origin, (0.0, 0.0))
+        elif self._home_lat is not None and self._home_lon is not None:
+            try:
+                pose = backend.get_pose()
+            except Exception:
+                pose = None
+            if pose is not None:
+                g = Geofence.from_latlon(fence, (self._home_lat, self._home_lon),
+                                         (float(pose[0]), float(pose[1])))
+        if g is None:
+            self._report_progress("WARNING: geofence not active - no position to anchor it")
+            return
+        self._unfenced_backend = backend
+        self.backend = GeofencedBackend(backend, g, self._report_progress)
+        self._report_progress("Geofence active: "
+                              + ("search area" if g.keep_in else "")
+                              + (" + " if g.keep_in and g.no_fly else "")
+                              + (f"{len(g.no_fly)} no-fly zone(s)" if g.no_fly else ""))
     
     # Phase-type -> executor-method-name. Keys MUST match mission_vocab.
     # PHASE_SCHEMAS exactly (see _CHECK_PHASE_VOCAB_SYNC below, evaluated once

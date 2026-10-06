@@ -1548,6 +1548,27 @@ def _dist_home_m(lat, lon):
     return _flat_dist_m(_flight_home[0], _flight_home[1], lat, lon)
 
 
+# The fields of battery.BatteryConfig the cloud planner costs a mission with
+# (aws/src/planning.Platform) - the same numbers this aircraft's own governor
+# flies by, so the plan and the aircraft agree on what a mission costs.
+_ENERGY_MODEL_KEYS = ("hover_pct_per_min", "cruise_mult", "climb_mult", "descend_mult",
+                      "cruise_speed_mps", "climb_rate_mps", "descent_rate_mps",
+                      "takeoff_overhead_pct", "landing_overhead_pct",
+                      "landing_reserve_pct", "min_takeoff_pct")
+
+
+def energy_model():
+    """This aircraft's battery cost model, for the heartbeat."""
+    cfg, _, _ = _battery_models()
+    return {k: getattr(cfg, k) for k in _ENERGY_MODEL_KEYS if hasattr(cfg, k)}
+
+
+def flight_home():
+    """Where this flight armed - the home it returns to - or None before the
+    first arm."""
+    return {"lat": _flight_home[0], "lon": _flight_home[1]} if _flight_home else None
+
+
 def battery_status(planned_alt_m=5.0):
     """Everything the operator needs before and during a flight, in one dict.
 

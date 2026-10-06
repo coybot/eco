@@ -1254,6 +1254,7 @@ def on_chat_command(topic, payload, **kwargs):
                         phases=phases,
                         conversation_id=conversation_id,
                         original_message=original_message,
+                        geofence=data.get('geofence'),
                     )
 
                     # Without this, MissionLoop always defaulted to a quadcopter
@@ -1854,6 +1855,10 @@ def publish_heartbeat():
                     'minTakeoffPct': b['min_takeoff_pct'],
                     'reservePct': b['reserve_pct'],
                 }
+            if flies:
+                # The planner costs missions with these instead of guessing.
+                from drone_sdk import energy_model
+                heartbeat['energyModel'] = energy_model()
             if flies and b['armed']:
                 heartbeat['batteryBudget'] = {
                     'actionsLeft': b['actions_left'],
@@ -1883,6 +1888,10 @@ def publish_heartbeat():
         # Include position if available
         if telemetry.get('position') is not None:
             heartbeat['position'] = telemetry['position']
+        # Where it armed: the home a fleet plan returns it to.
+        from drone_sdk import flight_home
+        if flight_home():
+            heartbeat['home'] = flight_home()
         if telemetry.get('altitude_agl') is not None:
             heartbeat['altitudeAgl'] = round(telemetry['altitude_agl'], 1)
         

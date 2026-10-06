@@ -469,6 +469,11 @@ class FwGcsDaemon:
             self.datum = {"lat": args.datum_lat, "lon": args.datum_lon}
         self._q = queue.Queue()
         self._running = True
+        # The mission flying now (MissionLoop or OracleBrain), why it was
+        # stopped, and whether the aircraft was left airborne for the next one.
+        self._current = None
+        self._stop_reason = None
+        self._handoff_airborne = False
         self.client = None          # MQTT
         self.brain_client = None    # Godot DepotClient
         self._armed = False
@@ -519,21 +524,76 @@ class FwGcsDaemon:
         parts = msg.topic.split("/")
         conv = parts[3] if len(parts) >= 5 and parts[2] == "chat" \
             else data.get("conversation_id", "c")
-        if data.get("action") == "mission":
-            self._q.put((conv, data.get("mission_id", "m"),
-                         data.get("phases", []), data.get("original_message", "")))
+        action = data.get("action")
+        if action == "mission":
+            # The newest command wins, as on the aircraft (daemon.py): a
+            # retask replaces what is flying instead of queueing behind it.
+            self._stop_current("superseded")
+            self._q.put({"kind": "mission", "conv": conv,
+                         "mission_id": data.get("mission_id", "m"),
+                         "phases": data.get("phases", []),
+                         "original": data.get("original_message", ""),
+                         "geofence": data.get("geofence")})
             print(f"[{self.id}] queued mission {data.get('mission_id')} "
                   f"({len(data.get('phases', []))} phases) on conv {conv}", flush=True)
+        elif action == "abort":
+            then = data.get("then") or "hold"
+            stopped = self._stop_current(f"abort:{then}")
+            if not stopped:
+                self._q.put({"kind": "abort", "conv": conv, "then": then,
+                             "original": data.get("original_message", "")})
+            print(f"[{self.id}] abort (then {then})", flush=True)
+
+    def _stop_current(self, reason):
+        """Stop the running mission, if any, and drop anything still queued.
+        True if a mission was running."""
+        while True:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                break
+        cur = self._current
+        if cur is None:
+            return False
+        self._stop_reason = reason
+        if hasattr(cur, "abort"):
+            cur.abort()
+        return True
+
+    def _after_stop(self, then, backend):
+        """What an abort asks for once the mission is stopped. A fixed-wing
+        cannot stop in the air: "hold" leaves it to the idle watchdog's loiter."""
+        try:
+            if then == "land":
+                backend.land()
+            elif then == "return_home":
+                home_e, home_n = self.home_enu
+                backend.goto(north_m=home_n, east_m=home_e, alt_m=self.spawn_alt, timeout_s=45.0)
+        except Exception as exc:
+            print(f"[{self.id}] after-stop {then} failed: {exc!r}", flush=True)
 
     def _worker(self):
         # One mission at a time — a fixed-wing can't fly two plans at once.
         while self._running:
             try:
-                conv, mission_id, phases, original = self._q.get(timeout=1.0)
+                item = self._q.get(timeout=1.0)
             except queue.Empty:
                 continue
+            conv, mission_id, phases = item["conv"], item.get("mission_id", "abort"), \
+                item.get("phases", [])
             try:
-                self.run_mission(conv, mission_id, phases, original)
+                if item["kind"] == "abort":
+                    if self._backend is not None:
+                        self._after_stop(item["then"], self._backend)
+                    self._publish(f"drone/{self.id}/chat/{conv}/response", {
+                        "droneId": self.id, "conversation_id": conv,
+                        "original_message": item.get("original", ""),
+                        "result": {"success": True,
+                                   "stdout": f"No mission running; {item['then'].replace('_', ' ')}."},
+                        "timestamp": datetime.now(timezone.utc).isoformat()})
+                    continue
+                self.run_mission(conv, mission_id, phases, item.get("original", ""),
+                                 geofence=item.get("geofence"))
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
@@ -543,7 +603,7 @@ class FwGcsDaemon:
                                   "phases_completed": 0, "total_phases": len(phases),
                                   "failure_reason": repr(exc)}))
 
-    def run_mission(self, conv, mission_id, phases, original):
+    def run_mission(self, conv, mission_id, phases, original, geofence=None):
         from guarded_backend import EnvelopeGuardedSimBackend
         from reasoning_loop import Mission, MissionLoop
         from vehicle_class import get_class
@@ -552,17 +612,21 @@ class FwGcsDaemon:
         # this the 2nd/3rd mission misbehaves: after a landing the fixed-wing is
         # stopped at ~2 m altitude, so the next arm_and_takeoff "does not report
         # reaching altitude" and burns its replans. Re-spawning at home makes
-        # every mission start exactly like the first.
-        try:
-            self.brain_client.fw_spawn(self.id, (self.home_enu[0], self.home_enu[1],
-                                                 self.spawn_alt), 0.0)
-            self.brain_client.fw_reset_camera(self.id)
-        except Exception:
-            pass
+        # every mission start exactly like the first. Not after a retask: then
+        # the aircraft is in the air mid-plan and takes the new one from there.
+        if not self._handoff_airborne:
+            try:
+                self.brain_client.fw_spawn(self.id, (self.home_enu[0], self.home_enu[1],
+                                                     self.spawn_alt), 0.0)
+                self.brain_client.fw_reset_camera(self.id)
+            except Exception:
+                pass
+        self._handoff_airborne = False
 
         phases = self._anchor_phases_to_sim(phases)
         mission = Mission(mission_id=mission_id, phases=phases,
-                          conversation_id=conv, original_message=original)
+                          conversation_id=conv, original_message=original,
+                          geofence=geofence)
         # ONE persistent guarded backend per drone, reused across missions. Its
         # watchdog loiters (circles) the aircraft when no mission is driving it —
         # a fixed-wing can't hover (min airspeed 12 m/s), so without this it flies
@@ -589,18 +653,25 @@ class FwGcsDaemon:
             brain = OracleBrain(backend, self.brain_client, self.id, vc,
                                 self.target_labels, photo=photo,
                                 on_progress=lambda m: self._on_progress(conv, mission, m))
+            self._current = brain
             result = brain.run(mission)
             memory = brain.memory
         else:
+            # The fence is in lat/lon; the sim's ENU origin is the datum.
+            origin = (self.datum["lat"], self.datum["lon"]) if self.datum else None
             loop = MissionLoop(backend=backend, vehicle_class=vc,
                                conversation_id=conv, drone_sdk=photo,
-                               on_progress=lambda m: self._on_progress(conv, mission, m))
+                               on_progress=lambda m: self._on_progress(conv, mission, m),
+                               geo_origin=origin)
+            self._current = loop
             # Camera-driven avoidance withholds the ground-truth OBSTACLES AHEAD
             # block, so the only thing telling the model what is in the way is the
             # image. See MissionLoop._situation_blocks.
             loop.obstacles_from_truth = not self.camera_avoidance
             result = loop.run(mission)
             memory = loop.memory
+        self._current = None
+        reason, self._stop_reason = self._stop_reason, None
         self._armed = False
 
         # Leave station before reporting done: fly back to the home orbit so, on
@@ -609,12 +680,18 @@ class FwGcsDaemon:
         # hover, so the idle watchdog then loiters them at home (off to the side
         # of the action), where they stay until the next tasking. Bounded so a
         # blocked/timed-out return can't wedge the worker.
-        try:
-            home_e, home_n = self.home_enu  # (east, north)
-            backend.goto(north_m=home_n, east_m=home_e, alt_m=self.spawn_alt,
-                         timeout_s=45.0)
-        except Exception:
-            pass
+        if reason == "superseded":
+            # A newer mission is already queued: leave it in the air for it.
+            self._handoff_airborne = True
+        elif reason and reason.startswith("abort:"):
+            self._after_stop(reason.split(":", 1)[1], backend)
+        else:
+            try:
+                home_e, home_n = self.home_enu  # (east, north)
+                backend.goto(north_m=home_n, east_m=home_e, alt_m=self.spawn_alt,
+                             timeout_s=45.0)
+            except Exception:
+                pass
 
         result_dict = result.to_dict() if hasattr(result, "to_dict") else dict(result)
         # Overwrite/enrich rather than trust MissionResult.landmarks verbatim:
