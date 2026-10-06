@@ -365,8 +365,16 @@ private struct PlanCard: View {
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             Text(plan.rationale).font(.subheadline).foregroundStyle(.secondary)
-            if !plan.nfzClear {
+            if !plan.canFly {
+                Label("Can't be flown: " + (plan.blocking ?? []).map(\.text).joined(separator: "; "),
+                      systemImage: "xmark.octagon.fill")
+                    .font(.caption).foregroundStyle(.red).lineLimit(3)
+            } else if !plan.nfzClear {
                 Label("Clips a no-fly zone", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            if let w = plan.warnings, !w.isEmpty, plan.canFly {
+                Label("\(w.count) to confirm before flying", systemImage: "exclamationmark.circle")
                     .font(.caption).foregroundStyle(.orange)
             }
             ForEach(plan.perDrone) { d in

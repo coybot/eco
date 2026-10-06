@@ -207,13 +207,38 @@ final class APIClient {
         )
     }
 
-    /// Storyboard step 5 ("go"): dispatch the chosen plan to the fleet.
-    func selectMissionPlan(droneId: String, conversationId: String,
-                           planId: String) async throws -> PlanSelectResponse {
+    /// Storyboard step 5 ("go"): dispatch the chosen plan to the fleet. The
+    /// server re-checks it first: a plan it will not fly, or one with warnings
+    /// the operator has not acknowledged, throws `APIError.planHeld`.
+    func selectMissionPlan(droneId: String, conversationId: String, planId: String,
+                           acknowledgeWarnings: Bool = false) async throws -> PlanSelectResponse {
         return try await request(
             method: "POST",
             path: "/drones/\(droneId)/conversations/\(conversationId)/plan/select",
-            body: PlanSelectRequest(planId: planId)
+            body: PlanSelectRequest(planId: planId,
+                                    acknowledgeWarnings: acknowledgeWarnings ? true : nil)
+        )
+    }
+
+    /// Stop the running plan on every vehicle in it (or `droneIds`), then
+    /// hold, land or return home.
+    func abortMissionPlan(droneId: String, conversationId: String, then: String = "return_home",
+                          droneIds: [String]? = nil) async throws -> PlanAbortResponse {
+        return try await request(
+            method: "POST",
+            path: "/drones/\(droneId)/conversations/\(conversationId)/plan/abort",
+            body: PlanAbortRequest(then: then, droneIds: droneIds)
+        )
+    }
+
+    /// Re-plan the running mission from where the vehicles are now. Returns
+    /// proposals; nothing flies until one is approved with selectMissionPlan.
+    func retaskMissionPlan(droneId: String, conversationId: String,
+                           message: String) async throws -> MissionPlansResponse {
+        return try await request(
+            method: "POST",
+            path: "/drones/\(droneId)/conversations/\(conversationId)/plan/retask",
+            body: ["message": message]
         )
     }
 
@@ -429,6 +454,10 @@ final class APIClient {
             case 404:
                 throw APIError.notFound
             case 409:
+                if let hold = try? decoder.decode(PlanHold.self, from: data),
+                   hold.status == "needs_approval" || hold.status == "blocked" {
+                    throw APIError.planHeld(hold)
+                }
                 if let errorResponse = try? decoder.decode(ErrorResponse.self, from: data) {
                     throw APIError.conflict(errorResponse.error)
                 }
@@ -522,6 +551,11 @@ struct MissionPlanOption: Codable, Equatable, Identifiable {
     let nfzViolations: Int
     let recommended: Bool
     let perDrone: [PerDronePlan]
+    // From the planner's checks; absent from an older server.
+    let dispatchable: Bool?
+    let warnings: [PlanIssue]?
+    let blocking: [PlanIssue]?
+    let coverage: Double?
 
     var id: String { planId }
 
@@ -532,24 +566,88 @@ struct MissionPlanOption: Codable, Equatable, Identifiable {
         case nfzClear = "nfz_clear"
         case nfzViolations = "nfz_violations"
         case perDrone = "per_drone"
+        case dispatchable, warnings, blocking, coverage
     }
+
+    var canFly: Bool { dispatchable ?? nfzClear }
 }
 
 struct MissionPlansResponse: Decodable {
-    let status: String            // "ok" | "ask" | "error"
+    let status: String            // "ok" | "proposed" (a retask) | "ask" | "unavailable" | "error"
     let plans: [MissionPlanOption]
     let recommendedPlanId: String?
     let question: String?         // present when status == "ask"
+    let excluded: [String: [String]]?   // vehicles left out, and why
+    let retaskOf: String?
 
     enum CodingKeys: String, CodingKey {
-        case status, plans, question
+        case status, plans, question, excluded
         case recommendedPlanId = "recommended_plan_id"
+        case retaskOf = "retask_of"
     }
 }
 
 struct PlanSelectRequest: Encodable {
     let planId: String
-    enum CodingKeys: String, CodingKey { case planId = "plan_id" }
+    let acknowledgeWarnings: Bool?
+    enum CodingKeys: String, CodingKey {
+        case planId = "plan_id"
+        case acknowledgeWarnings = "acknowledge_warnings"
+    }
+}
+
+/// A check the planner ran on a plan: "block" means it will not be flown,
+/// "warn" that it will be once the operator acknowledges it.
+struct PlanIssue: Codable, Equatable, Hashable {
+    let kind: String
+    let severity: String
+    let detail: String
+    let droneId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case kind, severity, detail
+        case droneId = "drone_id"
+    }
+
+    var text: String { droneId.map { "\($0): \(detail)" } ?? detail }
+}
+
+/// Why /plan/select did not fly a plan: it needs the warnings acknowledged
+/// ("needs_approval"), or it cannot be flown ("blocked").
+struct PlanHold: Decodable, Equatable {
+    let status: String
+    let planId: String?
+    let reason: String?
+    let warnings: [PlanIssue]?
+    let blocking: [PlanIssue]?
+
+    enum CodingKeys: String, CodingKey {
+        case status, reason, warnings, blocking
+        case planId = "plan_id"
+    }
+
+    var summary: String {
+        if status == "blocked" {
+            return "This plan can't be flown" + (reason.map { " (\($0))" } ?? "") + ": "
+                + (blocking ?? []).map(\.text).joined(separator: "; ")
+        }
+        return "Needs your OK: " + (warnings ?? []).map(\.text).joined(separator: "; ")
+    }
+}
+
+struct PlanAbortRequest: Encodable {
+    let then: String
+    let droneIds: [String]?
+    enum CodingKeys: String, CodingKey {
+        case then
+        case droneIds = "drone_ids"
+    }
+}
+
+struct PlanAbortResponse: Decodable {
+    let status: String
+    let aborted: [String]
+    let then: String
 }
 
 struct PlanSelectResponse: Decodable {
@@ -764,6 +862,7 @@ enum APIError: LocalizedError {
     case forbidden
     case notFound
     case conflict(String)
+    case planHeld(PlanHold)
     case invalidResponse
     case serverError(String)
     case networkError(String)
@@ -778,6 +877,8 @@ enum APIError: LocalizedError {
             return "Resource not found"
         case .conflict(let message):
             return message
+        case .planHeld(let hold):
+            return hold.summary
         case .invalidResponse:
             return "Invalid response from server"
         case .serverError(let message):

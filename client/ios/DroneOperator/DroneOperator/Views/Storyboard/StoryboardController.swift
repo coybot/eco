@@ -218,11 +218,69 @@ final class StoryboardController {
             handleSelectionUtterance(text)
         case .awaitingArea:
             say("Tap \u{201C}Mark area\u{201D} above to draw the operating area on the map.")
-        case .executing, .done:
+        case .executing:
+            // While the fleet flies: "stop" / "land" / "come home" stops the
+            // whole plan; a question is answered from what it has found so far;
+            // anything else re-plans it from where the vehicles are now, and
+            // flies only once approved.
+            if let then = Self.abortCommand(text) {
+                Task { await abortPlan(then: then) }
+            } else if text.hasSuffix("?") {
+                Task { await sendFollowUp(text) }
+            } else {
+                Task { await retask(text) }
+            }
+        case .done:
             // A follow-up query ("did you also see a car?", "fly back to the
-            // truck and take more angle shots") once a mission has launched
-            // or finished — see sendFollowUp.
+            // truck and take more angle shots") once a mission has finished —
+            // see sendFollowUp.
             Task { await sendFollowUp(text) }
+        }
+    }
+
+    /// "stop" / "abort" / "hold" -> hold, "land" -> land, "come home" -> return_home.
+    static func abortCommand(_ text: String) -> String? {
+        let t = text.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+        if ["land", "land now", "land here", "land everyone", "everyone land"].contains(t) { return "land" }
+        if ["come home", "come back", "go home", "return home", "rtl", "return to home",
+            "everyone home", "abort"].contains(t) { return "return_home" }
+        if ["stop", "halt", "hold", "freeze", "stop now", "hold position", "pause"].contains(t) { return "hold" }
+        return nil
+    }
+
+    func abortPlan(then: String) async {
+        guard !conversationId.isEmpty else { return }
+        isBusy = true; defer { isBusy = false }
+        do {
+            let r = try await api.abortMissionPlan(droneId: leadDroneId,
+                                                   conversationId: conversationId, then: then)
+            say("Stopping \(r.aborted.count) vehicle(s), then \(then.replacingOccurrences(of: "_", with: " ")).")
+        } catch {
+            say("Couldn't send the stop: \(error.localizedDescription)")
+        }
+    }
+
+    /// Re-plan the running mission. The proposals land in the chat like the
+    /// first plans did, and fly only when one is chosen (and confirmed).
+    private func retask(_ text: String) async {
+        guard !conversationId.isEmpty else { return }
+        isBusy = true; defer { isBusy = false }
+        say("Re-planning from where they are now\u{2026}")
+        do {
+            let resp = try await api.retaskMissionPlan(droneId: leadDroneId,
+                                                       conversationId: conversationId, message: text)
+            if resp.status == "ask", let q = resp.question {
+                say(q)
+            } else if !resp.plans.isEmpty {
+                phase = .awaitingSelection
+                say("Here are \(resp.plans.count) new option(s). Nothing changes until you pick "
+                    + "one; the current plan keeps flying.")
+                chat.append(.plans(resp.plans, recommended: resp.recommendedPlanId))
+            } else {
+                say("I couldn't re-plan that. The current plan keeps flying.")
+            }
+        } catch {
+            say("Couldn't re-plan: \(error.localizedDescription)")
         }
     }
 
@@ -304,14 +362,22 @@ final class StoryboardController {
         say("Planning\u{2026}")
         let req = MissionPlanRequest(
             message: missionText, operatingArea: operatingArea, noFlyZones: noFlyZones,
-            droneIds: droneIds, home: areaCentroid, cruiseMps: 25.0)
+            // No single home: each vehicle flies from its own, which the
+            // server takes from its heartbeat. Its speed comes from its own
+            // profile too.
+            droneIds: droneIds, home: nil, cruiseMps: nil)
         do {
             let resp = try await api.requestMissionPlans(
                 droneId: leadDroneId, conversationId: conversationId, request: req)
             if resp.status == "ask", let q = resp.question {
                 phase = .awaitingClarification
                 say(q)
-            } else if resp.plans.count == 1, let only = resp.plans.first {
+            } else if resp.status == "unavailable" {
+                say("Nothing can fly this right now: " + (resp.excluded ?? [:])
+                    .map { "\($0.key) (\($0.value.joined(separator: ", ")))" }
+                    .sorted().joined(separator: "; "))
+                return
+            } else if resp.plans.count == 1, let only = resp.plans.first, only.canFly {
                 // Only one sensible plan — don't make the operator "choose" from
                 // a list of one; show it and launch it.
                 phase = .awaitingSelection
@@ -323,6 +389,10 @@ final class StoryboardController {
                 say("Here are \(resp.plans.count) options — tap one, or say \u{201C}go\u{201D} "
                     + "for the recommended plan.")
                 chat.append(.plans(resp.plans, recommended: resp.recommendedPlanId))
+                if let ex = resp.excluded, !ex.isEmpty {
+                    say("Left out: " + ex.map { "\($0.key) (\($0.value.joined(separator: ", ")))" }
+                        .sorted().joined(separator: "; "))
+                }
             } else {
                 say("I couldn't plan that — try rephrasing the mission.")
             }
@@ -346,6 +416,12 @@ final class StoryboardController {
         let low = text.lowercased()
         let plans = lastPlans
         var chosen: MissionPlanOption?
+        if let pending = pendingApproval,
+           ["go anyway", "yes", "confirm", "fly it", "ok", "okay", "approve"].contains(
+               low.trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))) {
+            Task { await select(pending, acknowledge: true) }
+            return
+        }
         if low.contains("go") || low.contains("recommend") || low.contains("first") {
             chosen = plans.first(where: { $0.planId == recommendedId }) ?? plans.first
         } else if let n = Int(low.filter(\.isNumber)), n >= 1, n <= plans.count {
@@ -355,16 +431,33 @@ final class StoryboardController {
         else { say("Tap a plan card, or say \u{201C}go\u{201D} for the recommended one.") }
     }
 
-    func select(_ plan: MissionPlanOption) async {
+    /// The plan the server is holding for the operator's OK, if any. Choosing
+    /// it again (a tap, or "go anyway") sends the acknowledgement.
+    private var pendingApproval: MissionPlanOption?
+
+    func select(_ plan: MissionPlanOption, acknowledge: Bool = false) async {
         guard phase == .awaitingSelection else { return }
+        let ack = acknowledge || pendingApproval?.planId == plan.planId
         isBusy = true; defer { isBusy = false }
         subscribeToStatus()
         do {
             _ = try await api.selectMissionPlan(
-                droneId: leadDroneId, conversationId: conversationId, planId: plan.planId)
+                droneId: leadDroneId, conversationId: conversationId, planId: plan.planId,
+                acknowledgeWarnings: ack)
+            pendingApproval = nil
+            respondedDrones = []
             phase = .executing
-            say("Launching \(plan.label) on \(plan.perDrone.count) aircraft. I'll post "
-                + "status here as they fly.")
+            say("Launching \(plan.label) on \(plan.perDrone.count) vehicle(s). I'll post "
+                + "status here as they fly. Say \u{201C}stop\u{201D}, \u{201C}land\u{201D} or "
+                + "\u{201C}come home\u{201D} to end it, or give a new instruction to re-plan.")
+        } catch APIError.planHeld(let hold) {
+            if hold.status == "needs_approval" {
+                pendingApproval = plan
+                say(hold.summary + " Tap the plan again or say \u{201C}go anyway\u{201D} to fly it.")
+            } else {
+                pendingApproval = nil
+                say(hold.summary)
+            }
         } catch {
             say("Couldn't start the mission: \(error.localizedDescription)")
         }
