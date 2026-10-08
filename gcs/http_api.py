@@ -208,7 +208,9 @@ def make_handler_class(routes: list, auth_store: AuthStore, images_dir: Path,
                 signed_ok = sign_verify_fn(path_only, query.get("token", ""))
                 auth = self.headers.get("Authorization", "")
                 drone_token = auth.split(" ", 1)[1].strip() if auth.startswith("Bearer ") else ""
-                drone_ok = bool(auth_store.drone_id_for_token(drone_token))
+                # A drone's token writes only under its own drones/<id>/.
+                did = auth_store.drone_id_for_token(drone_token) if drone_token else None
+                drone_ok = bool(did) and path_only.startswith(f"drones/{did}/")
                 if not (signed_ok or drone_ok):
                     self._send_lambda_result(_json_error(403, "invalid or expired token"))
                     return

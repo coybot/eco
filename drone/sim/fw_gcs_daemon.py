@@ -258,12 +258,35 @@ class GcsPhotoUploader:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.status, json.loads(resp.read() or b"{}")
 
-    def _default_put_bytes(self, url, data):
+    def _default_put_bytes(self, url, data, headers=None):
         import urllib.request
         req = urllib.request.Request(url, data=data, method="PUT")
         req.add_header("Content-Type", "image/jpeg")
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.status
+
+    #: Set once the GCS turns the presigned flow away (401/403).
+    _direct = False
+
+    def _upload_direct(self, filename, jpeg_bytes):
+        """PUT straight to /images/drones/<id>/... with the drone's own token.
+        upload_url_handler wants a user (operator) token; a drone registered
+        with a drone token got 401 there, so no photo was ever saved. The GCS
+        accepts a drone token for writes under that drone's own folder."""
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        key = f"drones/{self.drone_id}/conversations/{self.conversation_id}/{stamp}_{filename}"
+        url = f"{self.images_base_url}/images/{key}"
+        try:
+            status = self._http_put_bytes(url, jpeg_bytes, {"Authorization": f"Bearer {self.auth_token}"})
+        except Exception as e:
+            print(f"[{self.drone_id}] photo upload failed: {e}", flush=True)
+            return None
+        if status != 200:
+            print(f"[{self.drone_id}] photo upload HTTP {status}", flush=True)
+            return None
+        return url
 
     def upload_frame(self, jpeg_bytes, tag="photo"):
         if not jpeg_bytes:
@@ -272,6 +295,8 @@ class GcsPhotoUploader:
         # can be captured within the same wall-clock second; upload_url_handler
         # itself prepends the server-side timestamp onto this filename.
         filename = f"{tag}_{uuid.uuid4().hex[:6]}.jpg"
+        if self._direct:
+            return self._upload_direct(filename, jpeg_bytes)
         endpoint = (f"{self.images_base_url}/drones/{self.drone_id}/conversations/"
                    f"{self.conversation_id}/upload-url")
         try:
@@ -279,8 +304,14 @@ class GcsPhotoUploader:
                 endpoint, {"Authorization": f"Bearer {self.auth_token}"},
                 {"filename": filename})
         except Exception as e:
+            if getattr(e, "code", None) in (401, 403):
+                self._direct = True
+                return self._upload_direct(filename, jpeg_bytes)
             print(f"[{self.drone_id}] presigned upload-url request failed: {e}", flush=True)
             return None
+        if status in (401, 403):
+            self._direct = True
+            return self._upload_direct(filename, jpeg_bytes)
         if status != 200 or not resp.get("upload_url") or not resp.get("image_url"):
             print(f"[{self.drone_id}] presigned upload-url request HTTP {status}", flush=True)
             return None

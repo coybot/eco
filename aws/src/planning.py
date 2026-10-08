@@ -349,10 +349,13 @@ def longest_axis(poly: Sequence[XY]) -> XY:
     return best_d
 
 
-def split_polygon(poly: Sequence[XY], weights: Sequence[float]) -> List[List[XY]]:
+def split_polygon(poly: Sequence[XY], weights: Sequence[float],
+                  overlap_m: float = 0.0) -> List[List[XY]]:
     """Cut `poly` into len(weights) strips across its longest axis, strip i
     holding weights[i]/sum(weights) of the area. Weights let a faster or
-    longer-lived aircraft take a bigger share."""
+    longer-lived aircraft take a bigger share. With `overlap_m`, each strip
+    reaches that far past every cut it shares with a neighbour, so an object
+    on a cut is inside both strips rather than on the edge of each."""
     n = len(weights)
     if n <= 1:
         return [list(poly)]
@@ -377,8 +380,10 @@ def split_polygon(poly: Sequence[XY], weights: Sequence[float]) -> List[List[XY]
     cuts.append(hi)
     sectors = []
     for i in range(n):
-        s = clip_halfplane(poly, u, cuts[i + 1], True)
-        s = clip_halfplane(s, u, cuts[i], False)
+        top = cuts[i + 1] + (overlap_m if i < n - 1 else 0.0)
+        bottom = cuts[i] - (overlap_m if i > 0 else 0.0)
+        s = clip_halfplane(poly, u, top, True)
+        s = clip_halfplane(s, u, bottom, False)
         sectors.append(s)
     return sectors
 

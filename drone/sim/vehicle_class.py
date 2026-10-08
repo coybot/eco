@@ -266,6 +266,20 @@ class VehicleClass:
     def planar(self) -> bool:
         return self.kinematics is Kinematics.UNICYCLE_2D
 
+    @property
+    def can_hover(self) -> bool:
+        """True if the vehicle can come to a complete stop and hold position.
+
+        This is the discriminator for "must the geometry be flyable as a
+        continuous curve, or can the vehicle stop and pivot at each waypoint" —
+        a quad hovers and a rover simply stops, so both can take a sharp corner,
+        while a fixed-wing has to arc through it. Keyed off min_speed_mps (the
+        stall/minimum airspeed, 0 == can hover) rather than the kinematics enum,
+        because that is the property that actually matters and it stays correct
+        for a future VTOL that is COORDINATED_TURN_3D but can still hover.
+        """
+        return self.min_speed_mps <= 0.0
+
     def can_fill(self, role: Role) -> bool:
         return role in self.roles
 
