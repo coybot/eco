@@ -23,6 +23,25 @@ try:
     import battery as _battery
 except ImportError:  # installed as a package
     from . import battery as _battery
+def _tolerant_add_message(messages, mtype, msg, _orig=getattr(mavutil, 'add_message', None)):
+    """pymavlink 2.4.49's per-system message cache raises TypeError ('NoneType'
+    object does not support item assignment) when a message type it first
+    cached without instance data arrives again with one; seen on a PX4
+    CubeOrange, where it escaped recv_match and aborted arm() mid-command.
+    The cache is only a convenience, so keep the newest message instead."""
+    try:
+        _orig(messages, mtype, msg)
+    except TypeError:
+        messages[mtype] = msg
+
+
+if getattr(mavutil, 'add_message', None) is not None:
+    mavutil.add_message = _tolerant_add_message
+
+try:
+    import px4_compat as _px4
+except ImportError:  # installed as a package
+    from . import px4_compat as _px4
 try:
     import pilot_override as _pilot_override
 except ImportError:  # installed as a package
@@ -139,7 +158,7 @@ def _on_message(conn, msg):
             if msg.orientation == UPWARD:
                 _upward_range = msg
         elif t == 'HEARTBEAT':
-            if (msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
+            if (_px4.is_fc_autopilot(msg.autopilot)
                     and msg.get_srcSystem() == getattr(conn, 'target_system', msg.get_srcSystem())):
                 _fc_heartbeat = msg
                 if _pilot_watch_on:
@@ -238,7 +257,7 @@ def _fc_cached(msg_type, max_age=1.5):
             msg = st.messages.get(msg_type) if st is not None else None
     if msg is None or time.time() - getattr(msg, '_timestamp', 0) > max_age:
         return None
-    if msg_type == 'HEARTBEAT' and msg.autopilot != mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
+    if msg_type == 'HEARTBEAT' and not _px4.is_fc_autopilot(msg.autopilot):
         return None
     return msg
 
@@ -302,10 +321,10 @@ def set_config_path(path):
 
 
 def _is_flight_controller_heartbeat(msg):
-    """Return whether a heartbeat identifies the ArduPilot autopilot component."""
+    """Return whether a heartbeat identifies the autopilot (ArduPilot or PX4) component."""
     return (
         msg.get_srcSystem() != 0
-        and msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
+        and _px4.is_fc_autopilot(msg.autopilot)
         and msg.get_srcComponent()
         == getattr(mavutil.mavlink, 'MAV_COMP_ID_AUTOPILOT1', 1)
     )
@@ -318,12 +337,37 @@ def _is_target_heartbeat(conn, msg):
     )
 
 
+# Which autopilot answered (MAV_AUTOPILOT_*), set by _connect().
+_autopilot = None
+
+
+def _is_px4():
+    return _autopilot == _px4.AUTOPILOT_PX4
+
+
+def autopilot_name():
+    """'px4', 'ardupilot', or None until the flight controller has answered."""
+    if _autopilot is None:
+        return None
+    return 'px4' if _autopilot == _px4.AUTOPILOT_PX4 else 'ardupilot'
+
+
+def _mode_string(msg):
+    """The flight mode in drone_sdk's own (ArduPilot-style) vocabulary, for either autopilot."""
+    if msg.autopilot == _px4.AUTOPILOT_PX4:
+        return _px4.px4_mode_name(msg.custom_mode)
+    try:
+        return mavutil.mode_string_v10(msg)
+    except Exception:
+        return f"MODE_{msg.custom_mode}"
+
+
 def _connect():
     """Get or create MAVLink connection. Must be called with _mavlink_lock held.
     
     Raises ConnectionError if the flight controller is not detected.
     """
-    global _master
+    global _master, _autopilot
     # Note: caller must hold _mavlink_lock (RLock allows re-entry if needed)
     if _master is None:
         import os
@@ -376,21 +420,23 @@ def _connect():
             _master = None
             raise ConnectionError(
                 f"Flight controller not responding on {port}. "
-                f"Got no ArduPilot autopilot heartbeat within 10 seconds. "
+                f"Got no ArduPilot or PX4 autopilot heartbeat within 10 seconds. "
                 f"Check that the flight controller is powered on and connected."
             )
+        _autopilot = fc_heartbeat.autopilot
         _master.target_system = fc_heartbeat.get_srcSystem()
         _master.target_component = fc_heartbeat.get_srcComponent()
         hooks = getattr(_master, 'message_hooks', None)
         if hooks is not None and _on_message not in hooks:
             hooks.append(_on_message)
-        print(f"Connected to flight controller (system {_master.target_system}, comp {_master.target_component})")
+        print(f"Connected to {'PX4' if _autopilot == _px4.AUTOPILOT_PX4 else 'ArduPilot'} flight controller "
+              f"(system {_master.target_system}, comp {_master.target_component})")
     return _master
 
 
 def disconnect():
     """Close MAVLink connection and reset state. Thread-safe."""
-    global _master
+    global _master, _autopilot
     with _mavlink_lock:
         if _master is not None:
             try:
@@ -404,6 +450,7 @@ def disconnect():
             except:
                 pass
             _master = None
+            _autopilot = None
             print("MAVLink connection closed")
 
 
@@ -475,7 +522,8 @@ def _wait_for_mode(target_mode, timeout=5, quiet=False):
         msg = _fc_cached('HEARTBEAT', max_age=1.5)
         if msg:
             try:
-                current = mavutil.mode_string_v10(msg)
+                current = _mode_string(msg)
+                target_mode = _px4.expected_mode(msg.autopilot, target_mode)
                 if current == target_mode:
                     if not quiet:
                         print(f"Mode confirmed: {current}")
@@ -487,6 +535,74 @@ def _wait_for_mode(target_mode, timeout=5, quiet=False):
                 pass
     if not quiet:
         print(f"Mode change to {target_mode} timed out!")
+    return False
+
+
+def _connect_locked():
+    """Make sure the link is up (so _autopilot is known) without the caller holding the lock."""
+    with _mavlink_lock:
+        return _connect()
+
+
+def _px4_amsl(rel_alt_m):
+    """PX4 takes altitudes AMSL; the SDK works relative to home. Convert using
+    the aircraft's own GLOBAL_POSITION_INT (alt - relative_alt = home's AMSL)."""
+    for _ in range(10):
+        msg = _fc_cached('GLOBAL_POSITION_INT', max_age=3.0)
+        if msg is not None:
+            return _px4.home_amsl_m(msg) + rel_alt_m
+        _pump(0.3)
+    raise RuntimeError("no GLOBAL_POSITION_INT from the PX4 flight controller")
+
+
+def _px4_takeoff_amsl(climb_m):
+    """PX4 takeoff target (AMSL): climb_m above where the aircraft IS, not above
+    home. Indoors the GPS-height estimate drifted metres away from the stored
+    home, "home + 1 m" was already below it, and PX4 answered "Already higher
+    than takeoff altitude" and never climbed."""
+    for _ in range(10):
+        msg = _fc_cached('GLOBAL_POSITION_INT', max_age=3.0)
+        if msg is not None:
+            return msg.alt / 1000.0 + climb_m
+        _pump(0.3)
+    raise RuntimeError("no GLOBAL_POSITION_INT from the PX4 flight controller")
+
+
+def _px4_takeoff_refusal(altitude_m):
+    """PX4 never takes off lower than MIS_TAKEOFF_ALT above home: asked for 1 m
+    with it at 5 m, it climbs to 5 m. Refuse instead of flying higher than the
+    operator asked. None when the takeoff can go ahead."""
+    min_alt = _get_param('MIS_TAKEOFF_ALT')
+    if min_alt is not None and altitude_m < min_alt - 0.1:
+        return (f"PX4 takes off to at least MIS_TAKEOFF_ALT = {min_alt:g} m, higher than the "
+                f"{altitude_m:g} m asked for. Lower MIS_TAKEOFF_ALT in QGroundControl, or ask for "
+                f"{min_alt:g} m or more.")
+    return None
+
+
+_MAV_LANDED_STATE_ON_GROUND = 1
+
+
+def _fc_says_on_ground():
+    """True only when the FC's own land detector (EXTENDED_SYS_STATE, sent by
+    PX4 and ArduPilot alike) says it is on the ground; None if it does not say."""
+    es = _fc_cached('EXTENDED_SYS_STATE', max_age=2.0)
+    if es is None:
+        return None
+    return es.landed_state == _MAV_LANDED_STATE_ON_GROUND
+
+
+def _wait_armed(timeout=3.0):
+    """True once a heartbeat SHOWS armed. One cached read 0.3 s after the ACK
+    saw the pre-arm heartbeat (PX4 sends ~1 Hz on this link), reported "ACK'd
+    but not armed", and the takeoff was abandoned while PX4 sat armed until
+    its preflight auto-disarm."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        hb = _fc_cached('HEARTBEAT', max_age=1.5)
+        if hb is not None and hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
+            return True
+        _pump(0.2)
     return False
 
 
@@ -600,13 +716,22 @@ def arm():
         return True
     
     # Ensure DISARM_DELAY is long enough to survive waits between arm and takeoff
-    _mav_send(lambda m: m.mav.param_set_send(
-        m.target_system, m.target_component,
-        b"DISARM_DELAY", 30.0, mavutil.mavlink.MAV_PARAM_TYPE_INT8))
+    # (ArduPilot parameter; PX4 has no such setting and its own auto-disarm differs).
+    _connect_locked()
+    if not _is_px4():
+        _mav_send(lambda m: m.mav.param_set_send(
+            m.target_system, m.target_component,
+            b"DISARM_DELAY", 30.0, mavutil.mavlink.MAV_PARAM_TYPE_INT8))
 
-    # Set STABILIZE mode first (required for arming)
-    _mav_send(lambda m: _request_mode(m, 0, 'STABILIZE'))
-    time.sleep(0.5)
+    # An armable mode first: ArduPilot STABILIZE. PX4 refuses to arm in a
+    # manual mode (Stabilized) without stick input, which an autonomous aircraft
+    # does not have (PX4 v1.17 SITL: "Resolve system health failures first"):
+    # it arms in Hold, the mode a PX4 takeoff starts from anyway.
+    if _is_px4():
+        _set_mode_confirmed('GUIDED', timeout=4)
+    else:
+        _mav_send(lambda m: _request_mode(m, 0, 'STABILIZE'))
+        time.sleep(0.5)
     
     # Send arm command and wait for ACK atomically (prevents heartbeat thread from stealing ACK)
     ack_ok, result = _arm_checked()
@@ -630,11 +755,9 @@ def arm():
         _log("Arm command rejected by FC")
         return False
     
-    # Wait for motors and verify armed
+    # Wait for motors and verify armed, from a heartbeat that shows it
     _log("Waiting for motors...")
-    time.sleep(2)
-    
-    if is_armed():
+    if _wait_armed(timeout=4.0):
         _log("Armed confirmed!")
         return True
     else:
@@ -665,7 +788,18 @@ def safe_disarm():
     """Disarm motors — only when on the ground (relative altitude < 1 m).
 
     Raises RuntimeError if the drone appears airborne. Use land() first when flying.
+
+    The FC's own land detector decides when it reports one: after a flight the
+    relative altitude on the ground read ~2 m (PX4 SITL; the test aircraft drifted 1-2 m
+    outdoors), this refused, and an arm test left the aircraft armed on the
+    ground. Altitude is only the fallback for an FC that reports no land state.
     """
+    on_ground = _fc_says_on_ground()
+    if on_ground is True:
+        return disarm()
+    if on_ground is False:
+        raise RuntimeError("safe_disarm() refused: the flight controller says it is "
+                           "airborne - call land() first")
     _mav_send(lambda m: m.mav.request_data_stream_send(
         1, 1, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 4, 1))
     start = time.time()
@@ -701,9 +835,12 @@ def takeoff(altitude_m):
     
     _drain_statustext(timeout=0.5, print_msgs=False)
     
-    # Set GUIDED mode
-    _log("Setting GUIDED mode...")
+    _connect_locked()
+    # Set GUIDED mode (PX4: Hold). Arming needs an armable mode on both
+    # autopilots: a PX4 left in Land by the previous flight refused to arm,
+    # and showed it with a red status LED.
     asked = time.time()
+    _log("Setting GUIDED mode...")
     ok = _set_mode_confirmed('GUIDED')
     if not ok and _fc_said('requires position', asked):
         # GUIDED needs the EKF's position estimate, which arrives some
@@ -730,44 +867,70 @@ def takeoff(altitude_m):
             _log(f"  WARNING: {issue}")
         _log("Continuing despite warnings...")
     
+    # Everything slow happens BEFORE arming: an armed aircraft that has not
+    # taken off is auto-disarmed (PX4 COM_DISARM_PRFLT, 10 s; ArduPilot
+    # DISARM_DELAY), and these reads took seconds.
+    if _is_px4():
+        refusal = _px4_takeoff_refusal(altitude_m)
+        if refusal:
+            _log(f"TAKEOFF REFUSED: {refusal}")
+            return False
+        nan = float('nan')
+        # pitch (default), -, -, yaw (unchanged), lat/lon NaN = straight up from here, alt AMSL
+        takeoff_params = (-1.0, 0, 0, nan, nan, nan, _px4_takeoff_amsl(altitude_m))
+    else:
+        takeoff_params = (0, 0, 0, 0, 0, 0, altitude_m)
+    global _flight_home
+    pos = _fresh_position(timeout=2.0) or _position_relative()
+    _flight_home = (pos[0], pos[1]) if pos else None
+
     # Check if armed using fresh heartbeat (not cached state)
     if is_armed():
         _log("Already armed, skipping arm step")
     else:
         _log("Arming (normal)...")
+        asked = time.time()
         ack_ok, result = _arm_checked()
+        if not ack_ok and _fc_said('position estimate', asked):
+            # Right after power-up the EKF has a GPS fix but no position
+            # estimate yet ("PreArm: Need Position Estimate", ArduCopter SITL
+            # ~20 s after boot). Nothing is armed: wait for it, as the GUIDED
+            # step above already does, instead of failing the takeoff.
+            _log(f"FC has no position estimate yet - waiting up to {POSITION_WAIT_S:.0f}s to arm")
+            deadline = time.time() + POSITION_WAIT_S
+            while not ack_ok and time.time() < deadline:
+                if _pilot_control is not None or _abort_event.is_set():
+                    break
+                time.sleep(3.0)
+                ack_ok, result = _arm_checked()
         if not ack_ok:
             _log(f"Arm failed (result={result})")
             return False
 
         _log("Arm ACK received, waiting for motors...")
-        time.sleep(0.3)
-
-        if not is_armed():
+        if not _wait_armed(timeout=3.0):
             _log("ERROR: Arm command ACK'd but drone not armed!")
             _drain_statustext()
+            _disarm_if_on_ground()   # in case it arms after we gave up
             return False
         _log("Armed confirmed!")
     
-    global _flight_home
-    pos = _fresh_position(timeout=2.0) or _position_relative()
-    _flight_home = (pos[0], pos[1]) if pos else None
-    start_battery_guard()
-    _start_pilot_watch()
-
-    # Send takeoff command atomically
+    # Send takeoff command atomically (PX4 wants the altitude AMSL, ArduPilot relative)
     _log(f"Sending takeoff to {altitude_m}m...")
     ack_ok, result = _mav_command(
         lambda m: m.mav.command_long_send(
             m.target_system, m.target_component,
             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
-            0, 0, 0, 0, 0, 0, 0, altitude_m
+            0, *takeoff_params
         ), 22)
     
     if not ack_ok:
         _log(f"Takeoff command failed! (result={result})")
         _drain_statustext()
+        _disarm_if_on_ground()
         return False
+    start_battery_guard()
+    _start_pilot_watch()
     
     # Wait for the altitude to be REACHED, not for a timer: a climb blocked by
     # the ceiling guard (or anything else) used to report "Reached" anyway, and
@@ -785,10 +948,23 @@ def takeoff(altitude_m):
             _log("TAKEOFF STOPPED: the operator stopped the flight")
             hold_here()
             return False
+        hb = _fc_cached('HEARTBEAT', max_age=1.5)
+        if hb is not None and not (hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED):
+            # Only a fresh heartbeat that SAYS disarmed ends it: a missing one
+            # (link hiccup) must not end the mission of an aircraft in the air.
+            # The altitude estimate alone is not proof of flight: indoors a
+            # GPS-height EKF drifted 1.3 m on an aircraft PX4 had already
+            # auto-disarmed, and this reported "Reached 1.3m".
+            _log("TAKEOFF FAILED: the flight controller disarmed before the aircraft climbed")
+            for text in _drain_statustext(timeout=0.5, print_msgs=False) or []:
+                _log(f"  FC: {text}")
+            return False
         pos = _fresh_position()
         if pos is not None:
             alt = pos[2]
-            if alt >= target:
+            # Altitude alone was fooled by drift on the ground ("Reached 0.9m"
+            # with the props never spinning up); the FC's land detector must agree.
+            if alt >= target and not _fc_says_on_ground():
                 _log(f"Reached {alt:.1f}m")
                 return True
         time.sleep(0.5)
@@ -847,7 +1023,18 @@ def land():
             pass
     _mav_send(send_land)
     print("LAND command sent - waiting for auto-disarm")
-    _wait_for_disarm(timeout=45)
+    if _wait_for_disarm(timeout=45):
+        _leave_land_mode()
+
+
+def _leave_land_mode():
+    """Down and disarmed: back to GUIDED (PX4: Hold). Left in LAND, neither
+    autopilot will arm again, and PX4 shows that as a red status LED."""
+    try:
+        if not is_armed():
+            _switch_mode('GUIDED', timeout=4)
+    except Exception as e:
+        _log(f"Could not leave LAND mode after landing: {e}")
 
 
 def _disarm_if_on_ground():
@@ -884,11 +1071,22 @@ def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
                 _log(f"GOTO REFUSED: {reason}")
                 return False
     print(f"Flying to ({lat}, {lon}) at {alt}m...")
+    _send_position_target(lat, lon, alt)
+
+
+def _send_position_target(lat, lon, alt_rel_m):
+    """Command the aircraft to a point (alt relative to home): ArduPilot takes a
+    GUIDED position setpoint, PX4 a DO_REPOSITION (which leaves it in Hold)."""
+    _connect_locked()
+    if _is_px4():
+        amsl = _px4_amsl(alt_rel_m)
+        _mav_send(lambda m: _px4.send_reposition(m, lat, lon, amsl))
+        return
     _mav_send(lambda m: m.mav.set_position_target_global_int_send(
         0, 1, 1,
         mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
         0b0000111111111000,
-        int(lat * 1e7), int(lon * 1e7), alt,
+        int(lat * 1e7), int(lon * 1e7), alt_rel_m,
         0, 0, 0, 0, 0, 0, 0, 0
     ))
 
@@ -904,6 +1102,13 @@ def set_velocity(vx, vy, vz):
     vx = _clamp(vx, -MAX_VELOCITY, MAX_VELOCITY, "vx")
     vy = _clamp(vy, -MAX_VELOCITY, MAX_VELOCITY, "vy")
     vz = _clamp(vz, -MAX_VELOCITY, MAX_VELOCITY, "vz")
+    _connect_locked()
+    if _is_px4():
+        # PX4 only follows velocity setpoints in Offboard mode, which needs a
+        # setpoint stream held above 2 Hz; a single message is ignored and the
+        # failsafe fires. Not implemented rather than silently doing nothing.
+        _log("VELOCITY not supported on PX4 (needs an Offboard setpoint stream): use goto()")
+        return False
     print(f"Setting velocity: vx={vx}, vy={vy}, vz={vz}")
     _mav_send(lambda m: m.mav.set_position_target_local_ned_send(
         0, 1, 1,
@@ -1006,19 +1211,28 @@ def _ceiling_guard_loop(min_clearance):
                         said_absent = True
                     clamped = False
                     _ceiling_guard_holding = None
-                    time.sleep(0.1)
-                    continue
+                    # No sleep or `continue` here: both used to run INSIDE the
+                    # lock, so this thread held the MAVLink lock ~100% of the
+                    # time and the mission thread waited seconds per command.
+                    # PX4 auto-disarmed (10 s, COM_DISARM_PRFLT) before the
+                    # takeoff went out; ArduPilot hid it behind DISARM_DELAY 30.
+                    clearance = None
+                else:
+                    clearance = dist_msg.current_distance / 100.0
 
-                clearance = dist_msg.current_distance / 100.0
+                if clearance is None:
+                    pass
 
-                if clearance < min_clearance:
+                elif clearance < min_clearance:
                     _ceiling_guard_holding = clearance
                     if not clamped:
                         _log(f"CEILING GUARD: {clearance:.2f}m clearance — holding altitude")
                         clamped = True
                     # Read current position and re-issue it as a hold target (stops ascent)
                     pos = st.messages.get('GLOBAL_POSITION_INT') if st is not None else None
-                    if pos and _pilot_control is None:
+                    if pos and _pilot_control is None and _is_px4():
+                        _px4.send_reposition(conn, pos.lat / 1e7, pos.lon / 1e7, pos.alt / 1000.0)
+                    elif pos and _pilot_control is None:
                         conn.mav.set_position_target_global_int_send(
                             0,
                             conn.target_system, conn.target_component,
@@ -1160,7 +1374,7 @@ def _read_battery_raw(max_wait=1.5):
     pos = _fc_cached('GLOBAL_POSITION_INT', max_age=5.0)
     if pos is not None:
         sample.flying = sample.armed and pos.relative_alt / 1000.0 > 1.0
-    scales = _battery_scales()
+    scales = {} if _is_px4() else _battery_scales()   # BATT_* are ArduPilot parameters
     if scales.get('BATT_VOLT_MULT') and sample.voltage:
         sample.volt_adc_v = sample.voltage / scales['BATT_VOLT_MULT']
     if scales.get('BATT_AMP_PERVLT') and sample.current_a is not None:
@@ -1350,7 +1564,7 @@ def _pilot_watch_heartbeat(msg):
     """Every FC heartbeat while the watch is on (from the message hook)."""
     global _pilot_control, _pilot_handover, _pilot_watch_on
     try:
-        mode = mavutil.mode_string_v10(msg)
+        mode = _mode_string(msg)
     except Exception:
         return
     if not msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
@@ -1475,13 +1689,7 @@ def hold_here(brake_first=True):
         return False
     alt = max(pos[2], MIN_ALTITUDE)
     _log(f"Holding position at {alt:.1f}m")
-    _mav_send(lambda m: m.mav.set_position_target_global_int_send(
-        0, 1, 1,
-        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-        0b0000111111111000,
-        int(pos[0] * 1e7), int(pos[1] * 1e7), alt,
-        0, 0, 0, 0, 0, 0, 0, 0
-    ))
+    _send_position_target(pos[0], pos[1], alt)
     return True
 
 
@@ -1659,6 +1867,10 @@ def _request_mode(m, mode, name=None):
     """Every mode coybot asks for goes through here, so the pilot watch can
     tell coybot's mode changes from the transmitter's. Caller holds the lock."""
     _pilot_watch.requested(name or mode, time.time())
+    if _is_px4():
+        if not _px4.send_set_mode(m, mode):
+            _log(f"PX4 has no equivalent of mode {mode!r}")
+        return
     m.set_mode(mode)
 
 
@@ -1783,8 +1995,8 @@ def seed_fc_battery_from_voltage(min_gap_pct=5.0, min_interval_s=120.0):
     Returns the seeded % or None.
     """
     global _last_fc_seed
-    if time.time() - _last_fc_seed < min_interval_s:
-        return None
+    if _is_px4() or time.time() - _last_fc_seed < min_interval_s:
+        return None   # MAV_CMD_BATTERY_RESET is ArduPilot-only
     b = get_battery()
     if b['armed'] or b['source'] != 'voltage_rest' or b['fc_remaining'] is None:
         return None
@@ -1836,6 +2048,28 @@ def _esc_voltage(seconds=1.5):
     return sum(vals) / len(vals) if vals else None
 
 
+def _ardupilot_only(skipped):
+    """For functions that write or read ArduPilot parameters (BATT_*, FS_*, ARMING_CHECK).
+    PX4 names them differently (BAT1_*, COM_*, NAV_*), so on PX4 the call is
+    skipped with a log line and returns `skipped`, never a half-applied config."""
+    def wrap(fn):
+        import functools
+        @functools.wraps(fn)
+        def inner(*a, **kw):
+            try:
+                _connect_locked()   # learn which autopilot this is
+            except ConnectionError:
+                pass                # no FC: the function reports that itself
+            if _is_px4():
+                _log(f"{fn.__name__}: skipped - ArduPilot parameters; configure this PX4 "
+                     f"aircraft in QGroundControl")
+                return skipped
+            return fn(*a, **kw)
+        return inner
+    return wrap
+
+
+@_ardupilot_only(None)
 def battery_diagnostics():
     """Read the FC's battery-monitor setup and say what, if anything, is wrong.
 
@@ -1892,6 +2126,7 @@ def battery_diagnostics():
     }
 
 
+@_ardupilot_only(None)
 def calibrate_voltage(reference_v=None, full_charge=False, use_esc=False):
     """Correct BATT_VOLT_MULT without a multimeter. Disarmed only.
 
@@ -1932,6 +2167,7 @@ def calibrate_voltage(reference_v=None, full_charge=False, use_esc=False):
             'reference_v': reference_v, 'now_reads_v': after}
 
 
+@_ardupilot_only(None)
 def calibrate_current(charger_mah, fc_consumed_mah=None):
     """Correct BATT_AMP_PERVLT from what the charger put back after a flight.
 
@@ -1986,10 +2222,7 @@ def get_flight_mode():
     while time.time() - start < 3:
         msg = _fc_cached('HEARTBEAT', max_age=1.5)
         if msg:
-            try:
-                return mavutil.mode_string_v10(msg)
-            except Exception:
-                return f"MODE_{msg.custom_mode}"
+            return _mode_string(msg)
         _pump(0.3)
     return "UNKNOWN"
 
@@ -2037,10 +2270,7 @@ def get_telemetry():
             collected.add('battery')
         elif msg_type == 'HEARTBEAT' and 'armed' not in collected:
             telemetry['armed'] = (msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
-            try:
-                telemetry['mode'] = mavutil.mode_string_v10(msg)
-            except Exception:
-                telemetry['mode'] = f"MODE_{msg.custom_mode}"
+            telemetry['mode'] = _mode_string(msg)
             collected.add('armed')
     
     return telemetry
@@ -2105,6 +2335,7 @@ def _set_param(name, value):
     return False
 
 
+@_ardupilot_only(False)
 def configure_battery_monitoring(n_cells=4, capacity_mah=5000, low_voltage=3.5, critical_voltage=3.3,
                                  fc_pins=None):
     """Configure ArduPilot battery monitoring and its battery failsafes.
@@ -2153,6 +2384,7 @@ def configure_battery_monitoring(n_cells=4, capacity_mah=5000, low_voltage=3.5, 
     return True
 
 
+@_ardupilot_only(False)
 def configure_failsafes():
     """SAFETY LAYER 3: Configure flight controller failsafes for autonomous operation."""
     print("=" * 50)

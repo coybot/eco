@@ -636,7 +636,8 @@ class MissionLoop:
                         battery = self._get_backend().get_battery()
                         battery_ok = battery is None or battery.get('remaining', 100.0) > 15.0
                     budget_ok = (
-                        replans_used < self.MAX_REPLANS_PER_PHASE
+                        not phase_result.get('no_replan')   # e.g. a failed arm test: report it, never retry
+                        and replans_used < self.MAX_REPLANS_PER_PHASE
                         and elapsed < self.MAX_DURATION_SECONDS * 0.9
                         and battery_ok
                     )
@@ -798,6 +799,7 @@ class MissionLoop:
     # "change B": ending the previously-hand-duplicated phase-type lists).
     _PHASE_DISPATCH = {
         "arm_and_takeoff": "_exec_arm_and_takeoff",
+        "arm_test": "_exec_arm_test",
         "nav": "_exec_nav",
         "go_to_gps": "_exec_go_to_gps",
         "fly_circle": "_exec_fly_circle",
@@ -826,7 +828,7 @@ class MissionLoop:
 
     # Phases that end where they began, so a nav after one still chains from
     # the previous nav's target.
-    _PHASES_THAT_STAY_PUT = ("nav", "capture_photo", "hold", "look_around",
+    _PHASES_THAT_STAY_PUT = ("nav", "arm_test", "capture_photo", "hold", "look_around",
                              "start_recording", "stop_recording")
 
     def _stopped_result(self, mission: Mission, actions_taken: int) -> MissionResult:
@@ -915,7 +917,7 @@ class MissionLoop:
     # ------------------------------------------------------------------ #
 
     # Phases that spend nothing new or that ARE the way home: never blocked.
-    _BATTERY_FREE_PHASES = ("return_home", "land", "stop_recording")
+    _BATTERY_FREE_PHASES = ("return_home", "land", "stop_recording", "arm_test")
 
     def _battery_situation(self):
         """(pct or None, distance from home m, altitude m) from the backend."""
@@ -1120,10 +1122,41 @@ class MissionLoop:
         try:
             ok = self._get_backend().takeoff(alt)
         except Exception as e:
-            return {'failed': True, 'reason': str(e), 'actions': 1}
+            return {'failed': True, 'reason': str(e), 'actions': 1, 'no_replan': True}
         if not ok:
-            return {'failed': True, 'reason': 'takeoff did not report reaching altitude', 'actions': 1}
+            # Not retried: a replan re-arms the aircraft, and the rest of the
+            # mission (return_home, land...) was then sent to a disarmed one.
+            return {'failed': True, 'reason': 'takeoff did not report reaching altitude',
+                    'actions': 1, 'no_replan': True}
         self._nav_cursor = (0.0, 0.0, float(alt))
+        return {'success': True, 'actions': 1}
+
+    ARM_TEST_MAX_HOLD_S = 10.0
+
+    def _exec_arm_test(self, phase: Dict[str, Any]) -> Dict[str, Any]:
+        """Arm, stay armed briefly, disarm. Never takes off, and the backend
+        disarms again whatever happens in between."""
+        try:
+            hold_s = float(phase.get('hold_s') if phase.get('hold_s') is not None else 3.0)
+        except (TypeError, ValueError):
+            hold_s = 3.0
+        hold_s = max(0.0, min(hold_s, self.ARM_TEST_MAX_HOLD_S))
+        backend = self._get_backend()
+        if not hasattr(backend, 'arm_test'):
+            return {'failed': True, 'reason': 'this vehicle backend cannot run an arm test',
+                    'actions': 0, 'no_replan': True}
+        self._report_progress(f"Arm test: arming, holding {hold_s:g} s, then disarming")
+        try:
+            result = backend.arm_test(hold_s, should_stop=lambda: getattr(self, '_aborted', False))
+        except Exception as e:
+            return {'failed': True, 'reason': f'arm test error: {e}', 'actions': 1, 'no_replan': True}
+        if not result.get('ok'):
+            return {'failed': True, 'reason': result.get('reason', 'arm test failed'),
+                    'actions': 1, 'no_replan': True}
+        self._report_progress("Arm test passed: armed, held, and disarmed")
+        # The operator's reply is built from findings: without one the chat
+        # said only "Done!".
+        self._findings.append(f"Arm test passed: armed, held {hold_s:g} s, then disarmed")
         return {'success': True, 'actions': 1}
 
     def _apply_clearance(self, alt_m: float, phase: Dict[str, Any]) -> float:

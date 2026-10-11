@@ -710,9 +710,13 @@ struct ChatTabView: View {
                 
                 await MainActor.run {
                     self.conversationId = storedConvId
-                    self.displayMessages = messages.map { msg in
+                    var loaded = messages.map { msg in
                         DisplayMessage.from(chatMessage: msg)
                     }
+                    // A stored "loading" message that the drone has since answered
+                    // is just part of the conversation, not still in progress.
+                    DisplayMessage.settleAnsweredInProgress(&loaded)
+                    self.displayMessages = loaded
                     // Subscribe to MQTT for real-time updates
                     setupMQTTSubscription(conversationId: storedConvId)
                 }
@@ -835,10 +839,11 @@ struct ChatTabView: View {
             
             // Handle actual response (text, image, image_choice)
             print("💬 Chat MQTT message_type=\(messageType), text=\(text.prefix(80))")
-            // Remove any "loading" or "in progress" messages
-            displayMessages.removeAll { msg in
-                msg.status == .inProgress || msg.content.contains("Processing")
-            }
+            // The result has arrived: drop the generic "working on it" bubbles but
+            // KEEP the planner's own explanation (what it is about to do, the
+            // propellers-off warning...). Deleting every in-progress bubble left
+            // the operator with a bare "Done!".
+            DisplayMessage.settleInProgress(&displayMessages)
             
             // Create the new message
             var newMessage = DisplayMessage(
@@ -996,11 +1001,16 @@ struct ChatTabView: View {
                     await MainActor.run {
                         let newMessage = DisplayMessage.from(chatMessage: lastMsg)
                         
-                        // Replace the "in progress" message if found
-                        if let idx = displayMessages.lastIndex(where: { !$0.isUser && $0.status == .inProgress }) {
-                            displayMessages[idx] = newMessage
-                        } else if !displayMessages.contains(where: { $0.id == newMessage.id }) {
-                            displayMessages.append(newMessage)
+                        if case .loading = lastMsg.content {
+                            if !displayMessages.contains(where: { $0.id == newMessage.id }) {
+                                displayMessages.append(newMessage)
+                            }
+                        } else {
+                            // A result: keep the planner's explanation above it.
+                            DisplayMessage.settleInProgress(&displayMessages)
+                            if !displayMessages.contains(where: { $0.id == newMessage.id }) {
+                                displayMessages.append(newMessage)
+                            }
                         }
                     }
                     
@@ -1034,6 +1044,31 @@ struct DisplayMessage: Identifiable {
         case delivered
         case inProgress
         case failed
+    }
+
+    /// Generic "working on it" text the backend uses when the planner gave none.
+    static func isPlaceholder(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return t.isEmpty || ["processing...", "processing", "working on it...",
+                             "starting mission...", "thinking..."].contains(t)
+    }
+
+    /// The drone's result has arrived: remove placeholder bubbles, keep real
+    /// planner text as an ordinary delivered message.
+    static func settleInProgress(_ messages: inout [DisplayMessage]) {
+        messages.removeAll { !$0.isUser && $0.status == .inProgress && isPlaceholder($0.content) }
+        for i in messages.indices where !messages[i].isUser && messages[i].status == .inProgress {
+            messages[i].status = .delivered
+        }
+    }
+
+    /// History: an in-progress message followed by a later drone message was answered.
+    static func settleAnsweredInProgress(_ messages: inout [DisplayMessage]) {
+        guard let lastDrone = messages.lastIndex(where: { !$0.isUser && $0.status != .inProgress }) else { return }
+        for i in messages.indices where i < lastDrone && !messages[i].isUser && messages[i].status == .inProgress {
+            messages[i].status = .delivered
+        }
+        messages.removeAll { !$0.isUser && $0.status == .delivered && isPlaceholder($0.content) }
     }
     
     static func from(chatMessage: ChatMessage) -> DisplayMessage {

@@ -61,6 +61,7 @@ class Backend(Protocol):
     # implementation per vehicle (a plane can't hover/vertical-takeoff/LAND-mode
     # the way a quad does), which is the whole point of routing through here.
     def takeoff(self, alt_m: float) -> bool: ...
+    def arm_test(self, hold_s: float, should_stop=None) -> dict: ...
     def land(self, heading_deg: Optional[float] = None) -> bool: ...
     def rtl(self, alt_m: Optional[float] = None) -> bool: ...
     # change E: the FC-enforced safety envelope (geofence + altitude floor)
@@ -304,18 +305,57 @@ class HardwareBackend:
         # keeps its existing behavior unchanged.
         return None
 
+    def arm_test(self, hold_s: float, should_stop=None) -> dict:
+        """Ground-only: arm, hold, disarm. {'ok': bool, 'reason': str}. Works on
+        ArduPilot and PX4 alike (drone_sdk hides the difference). Disarms in a
+        finally so a refused or interrupted test never leaves it armed."""
+        import time
+        if self._is_fixedwing():
+            return {'ok': False, 'reason': 'arm test is not supported on a fixed-wing'}
+        sdk = self._sdk
+        if sdk is None:
+            return {'ok': False, 'reason': 'no flight controller link'}
+        try:
+            if sdk.is_flying():
+                return {'ok': False, 'reason': 'refused: the aircraft is already flying'}
+            if not sdk.arm():
+                return {'ok': False,
+                        'reason': 'the flight controller did not stay armed (it refused, or disarmed itself, '
+                                  'for example on a battery or pre-arm failsafe)'}
+            end = time.time() + hold_s
+            while time.time() < end:
+                if should_stop and should_stop():
+                    break
+                if not sdk.is_armed():
+                    return {'ok': False, 'reason': 'the flight controller disarmed itself during the hold'}
+                time.sleep(0.25)
+            return {'ok': True, 'reason': ''}
+        except Exception as e:
+            return {'ok': False, 'reason': str(e)}
+        finally:
+            try:
+                sdk.safe_disarm()
+                for _ in range(20):          # a fresh heartbeat, not the cached armed one
+                    if not sdk.is_armed():
+                        break
+                    time.sleep(0.25)
+            except Exception:
+                pass
+
     def takeoff(self, alt_m: float) -> bool:
         if self._is_fixedwing():
             try:
                 return bool(self._plane.hand_launch(alt_m))
             except Exception:
                 return False
-        # Quad path: identical to what _exec_arm_and_takeoff did directly before
-        # this seam existed — same two calls, same object.
+        # Quad path. takeoff() arms by itself AFTER its preflight checks. A
+        # separate arm() first left the aircraft armed through those checks,
+        # ~10 s on the PX4 test aircraft: ArduPilot survived it only because arm() raises
+        # DISARM_DELAY, and PX4 auto-disarmed (COM_DISARM_PRFLT, 10 s) just
+        # as the takeoff command went out.
         if self._sdk is None:
             return False
         try:
-            self._sdk.arm()
             return bool(self._sdk.takeoff(alt_m))
         except Exception:
             return False
@@ -642,6 +682,10 @@ class SimBackend:
         world = self._client.fw_unproject(self._id, nx, ny)
         return tuple(world) if world is not None else None
 
+    def arm_test(self, hold_s: float, should_stop=None) -> dict:
+        # A kinematic sim vehicle has no motors to arm: the phase is exercised, nothing spins.
+        return {'ok': True, 'reason': ''}
+
     def takeoff(self, alt_m: float) -> bool:
         # KNOWN GAP: fixedwing_manager.gd/depot_client.py have no launch/ground-
         # roll physics at all — fw_spawn() places the aircraft already airborne
@@ -816,6 +860,10 @@ class FleetSimBackend:
     # takeoff/land/rtl wait for the vehicle, as the aircraft's do. Returning
     # at once let the next phase overwrite the goal: return_home then land
     # set down 6.3 m from home, wherever the vehicle had got to.
+    def arm_test(self, hold_s: float, should_stop=None) -> dict:
+        # A kinematic sim vehicle has no motors to arm: the phase is exercised, nothing spins.
+        return {'ok': True, 'reason': ''}
+
     def takeoff(self, alt_m: float) -> bool:
         pose = self.get_pose()
         if pose is None:

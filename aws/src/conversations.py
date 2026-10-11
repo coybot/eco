@@ -107,6 +107,14 @@ at import time, so keep this section in sync with it if either changes)
 
 1. TYPED PRIMITIVES (use for metric/GPS commands):
    {"type": "arm_and_takeoff", "altitude_m": 5}
+   {"type": "arm_test", "hold_s": 3}
+   — a GROUND-ONLY arm test: arms the motors, stays armed hold_s seconds (0-10,
+   default 3), then disarms. It never takes off. When the operator asks to "do an
+   arm test", "test arming" or "arm and disarm", the whole mission is exactly
+   this one phase (no arm_and_takeoff, no return_home, no land) and "action" is
+   "mission" like any other mission: DO IT, do not refuse it for lack of
+   a command. Refused on board if the aircraft is already flying. The motors
+   spin at idle, so the message says "Props off." (nothing more about safety).
    {"type": "nav", "forward_m": 5, "description": "fly 5m forward"}
    — "nav" flies a straight line in ANY direction, as a move from wherever the
    drone is now; consecutive nav phases chain, each starting where the last
@@ -262,7 +270,20 @@ at import time, so keep this section in sync with it if either changes)
    {"objective": "Orbit the parking area and count the cars", "success": "Count reported"}
 
 RULES:
-- Start with arm_and_takeoff and end with return_home then land. DRONE STATE
+- MESSAGE STYLE: "message" is read on a phone by someone standing next to the
+  aircraft. One or two short sentences, plain words: say what the drone is
+  about to do. If motors will spin or it will fly, add one short safety clause
+  (e.g. "Props off." / "Keep clear."). No speculation, no troubleshooting
+  steps, no settings advice, no "if this fails, check..." contingencies, no
+  restating the request, no apologies or recaps of earlier turns. Only when
+  the operator asks a question, answer it - in at most three short sentences.
+- AUTOPILOT: the flight controller is either PX4 or ArduPilot, and only DRONE STATE
+  (below) says which, if it does. Never give autopilot-specific advice (ArduPilot
+  parameter names such as SRx_EXT_STAT, Mission Planner steps, PX4 shell commands)
+  unless DRONE STATE names that autopilot, and never guess a battery figure from
+  another app. If you do not know, say so.
+- Start with arm_and_takeoff and end with return_home then land (an arm test is
+  the exception: it is just the single arm_test phase). DRONE STATE
   (below) says whether it is already flying: if it is, a mission REPLACES the
   one it is flying, straight away - so "Land" or "hover here" is just that
   phase, and a "return home" follow-up is just return_home. An arm_and_takeoff
@@ -341,6 +362,10 @@ OR: {"action": "ask", "message": "..."}  — use when the mission objective is a
     focused question, don't plan a guessed mission and ask at the same time
 
 EXAMPLES:
+
+User: "Do an arm test"
+{"action": "mission", "mission": {"phases": [{"type": "arm_test", "hold_s": 3}]},
+ "message": "Arm test: arming for 3 s, then disarming. Props off."}
 
 User: "Look around a 10 meter radius"
 {"action": "mission", "mission": {"phases": [
@@ -728,6 +753,8 @@ def describe_drone_state(item):
     else:
         doing = "no mission running"
     extra = f"; battery {item['battery']}%" if item.get('battery') is not None else ""
+    ap = {'px4': 'PX4', 'ardupilot': 'ArduPilot'}.get(str(item.get('autopilot', '')).lower())
+    extra += f"; flight controller runs {ap}" if ap else "; flight-controller autopilot unknown"
     if item.get('pilotControl'):
         extra += ("; THE PILOT HAS CONTROL from the transmitter, so the drone refuses every "
                   "command until it lands or the transmitter selects GUIDED")
@@ -942,8 +969,22 @@ def fetch_image_as_base64(url: str) -> tuple[str, str]:
         return None, None
 
 
+def _without_echo(history, user_message):
+    """The handlers save the operator's message and THEN load the history, so the
+    history already ends with it and the agent calls append it again. The model
+    then saw the same request twice and said so ("your message came through
+    twice") instead of answering it. Drop the trailing copy."""
+    if history and history[-1].get('role') == 'user':
+        last = history[-1].get('content')
+        last = last.get('text') if isinstance(last, dict) else last
+        if isinstance(last, str) and last.strip() == (user_message or '').strip():
+            return history[:-1]
+    return history
+
+
 def call_agent(conversation_history, user_message, pending_images=None):
     """Call the AI agent to decide on action."""
+    conversation_history = _without_echo(conversation_history, user_message)
     
     # Build messages for Bedrock (Claude format)
     messages = []
@@ -1105,6 +1146,25 @@ def failure_message(result):
     if total_phases:
         reason = f"{reason} ({result.get('phases_completed', 0)}/{total_phases} phases completed)"
     return reason
+
+
+def success_message(result):
+    """Describe a successful drone result to the operator.
+
+    A mission used to come back as a bare "Done!": the cloud only read code
+    execution's stdout, which a mission does not have, and dropped the
+    mission's own findings (an arm test's "armed, held 3 s, disarmed").
+    """
+    stdout = str(result.get('stdout') or '').strip()
+    if not result.get('total_phases'):          # code execution
+        return f"Done! {stdout}".strip()
+    findings = [str(f).strip() for f in (result.get('findings') or []) if str(f).strip()]
+    body = " ".join(f if f.endswith(('.', '!', '?')) else f + "." for f in findings[:3])
+    if len(findings) > 3:
+        body += f" (+{len(findings) - 3} more)"
+    # No step count: on success it is always N of N (a flight is 3+ steps
+    # by design), so it says nothing. failure_message() keeps it, where it does.
+    return " ".join(p for p in ("Done.", body, stdout) if p)
 
 
 def media_items(image_urls, video_urls=None):
@@ -1307,6 +1367,7 @@ def call_mission_agent(conversation_history, user_message, pending_images=None, 
     system prompt so follow-ups ("did you also see a car?", "fly back to it")
     have real data to answer and anchor from.
     """
+    conversation_history = _without_echo(conversation_history, user_message)
     messages = []
     
     # Add conversation history
@@ -1823,6 +1884,7 @@ def call_mission_planner(conversation_history, user_message, fleet, ctx,
     style = _plan_style(user_message)
     generated = _generated_plans(fleet, ctx, target, style, notes or {})
     suggested = next((p['per_drone'] for p in generated if p['source'] == 'planner'), None)
+    conversation_history = _without_echo(conversation_history, user_message)
     system = (MISSION_SYSTEM_PROMPT + "\n\n"
               + _render_planning_context(ctx.get('area'), ctx.get('no_fly'), fleet,
                                          planning.Wind.parse(ctx.get('wind')),
@@ -3125,7 +3187,7 @@ Describe what you see in the image and respond to the user's request."""
     else:
         # No images, just execution result
         if result.get('success'):
-            msg = f"Done! {result.get('stdout', '')}"
+            msg = success_message(result)
         else:
             msg = f"There was an issue: {failure_message(result)}"
         

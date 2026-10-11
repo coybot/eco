@@ -62,6 +62,15 @@ PHASE_SCHEMAS: Dict[str, PhaseSpec] = {
                      "a vertical climb.",
         fields={"altitude_m": FieldSpec("float", 5.0, description="Target altitude, meters AGL")},
     ),
+    "arm_test": PhaseSpec(
+        description="GROUND-ONLY arm test: arm the motors, stay armed for "
+                     "hold_s seconds, then disarm. It does NOT take off. Use "
+                     "it alone as the whole mission when the operator asks to "
+                     "'test arming' / 'do an arm test'. Refused if the "
+                     "aircraft is already flying. The motors spin at idle: "
+                     "propellers must be off or the aircraft restrained.",
+        fields={"hold_s": FieldSpec("float", 3.0, description="Seconds to stay armed (0-10)")},
+    ),
     "nav": PhaseSpec(
         description="Fly in a straight line, in any direction. As a MOVE from "
                      "where the aircraft is now: forward_m/right_m (negative = "

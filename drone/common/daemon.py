@@ -753,11 +753,14 @@ def _handle_battery_config(battery_config: dict, source: str):
 
             # Set ArduPilot parameters via MAVLink
             try:
-                from drone_sdk import _connect
+                from drone_sdk import _connect, _is_px4
                 from pymavlink import mavutil
                 import time
 
                 m = _connect()
+                if _is_px4():
+                    raise RuntimeError("PX4 flight controller: BATT_* are ArduPilot "
+                                       "parameters (set BAT1_* in QGroundControl)")
 
                 def set_param(name, value):
                     name_bytes = name.encode("utf-8")
@@ -1831,6 +1834,12 @@ def publish_heartbeat():
     try:
         from drone_sdk import get_telemetry
         telemetry = get_telemetry()
+        try:
+            from drone_sdk import autopilot_name
+            if autopilot_name():
+                heartbeat['autopilot'] = autopilot_name()   # the cloud planner tells the operator about the right one
+        except Exception:
+            pass
         
         # Battery: drone_sdk's estimate, never the FC's raw battery_remaining
         # (that counter resets to 100% at FC boot and freezes when the
