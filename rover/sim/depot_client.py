@@ -73,6 +73,11 @@ class DepotClient:
         return {"res": r["res"], "origin": r["origin"], "w": r["w"], "h": r["h"],
                 "occ": occ, "obs": obs}
 
+    def person_view(self, rid: str, cam_h: float = 0.3) -> dict:
+        """Line-of-sight body samples per active person (see phrover_manager.gd's
+        person_view). Includes ground-truth name/pos/vel for scoring only."""
+        return self._call({"op": "phrover_person_view", "id": rid, "cam_h": cam_h})
+
     def drive(self, rid: str, v: float, w: float) -> dict:
         return self._call({"op": "phrover_drive", "id": rid, "v": v, "w": w})
 

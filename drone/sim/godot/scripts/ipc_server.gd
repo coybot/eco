@@ -185,6 +185,13 @@ func _dispatch(line: String) -> String:
 		"phrover_detect":
 			return JSON.stringify({"ok": true, "objects": pm.detect(did)})
 
+		"phrover_person_view":
+			var view = pm.person_view(did, float(req.get("cam_h", 0.3)))
+			if view == null:
+				return JSON.stringify({"ok": false, "error": "unknown phrover " + did})
+			view["ok"] = true
+			return JSON.stringify(view)
+
 		"phrover_unproject":
 			var world = pm.unproject(did, float(req.get("nx", 0.5)), float(req.get("ny", 0.5)))
 			if world == null:

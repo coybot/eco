@@ -147,6 +147,18 @@ var _rovers: Dictionary = {}   # id -> PhroverState
 var _events: Array = []        # [{t, kind, data}]
 var _sim_time: float = 0.0
 var _occ: PackedByteArray = PackedByteArray()
+# Follow-me benches turn the person governor off (`person_governor {on: false}`): it is a
+# sim-only brain-safety construct that full-stops inside 1.8 m of ANY person, which would
+# make every follow stand-off below that untestable. The forward-ray guard stays on — it
+# models the real rover's depth/LiDAR stop and still sees people. reset() turns it back on.
+var _person_governor_on := true
+# Scenario obstacles from `place_obstacle`; removed by `clear_obstacles` and reset().
+var _obstacles: Array = []
+# Body sample heights (m) and their joint names for person_view(). Matches the 1.7 m
+# capsule in env_depot.gd: ankles, knees, hips, chest, shoulders, head.
+const BODY_SAMPLE_HEIGHTS := {"ankle": 0.08, "knee": 0.5, "hip": 0.95, "chest": 1.2,
+		"shoulder": 1.45, "head": 1.62}
+const BODY_SAMPLE_LATERAL := [-0.17, 0.0, 0.17]
 
 
 class PhroverState:
@@ -280,7 +292,9 @@ func _step_rover(st: PhroverState, dt: float) -> void:
 	# repro: releasing the instant distance passed PERSON_STOP_DIST caused the rover to
 	# oscillate in place at dist≈1.79-1.80 for tens of seconds (7 collisions). A distinctly
 	# higher release bar (PERSON_SAFE_DIST) fixes that without needing any timer.
-	if not st.person_override_active \
+	if not _person_governor_on:
+		st.person_override_active = false
+	elif not st.person_override_active \
 			and (person_dist < PERSON_STOP_DIST \
 				or (y_gap < PERSON_Y_STOP_DIST and _person_x_gap(st) < PERSON_X_TRIGGER_DIST)):
 		st.person_override_active = true
@@ -302,13 +316,15 @@ func _step_rover(st: PhroverState, dt: float) -> void:
 	# needs to reflect the ACTUAL, real-time 2D separation, which changes as the person moves
 	# in X even while the rover's Y (and thus Y-gap) is fixed — using Y-gap here recreated the
 	# same permanent-dead-zone bug as the outer trigger's early attempts.
-	var emergency := person_dist < PERSON_EMERGENCY_DIST
+	var emergency := _person_governor_on and person_dist < PERSON_EMERGENCY_DIST
 	st.person_stop_active = st.person_override_active or emergency
 
 	var escape_velocity := Vector2.ZERO
 	var use_escape := false
 
-	if y_gap < PERSON_Y_FREEZE_FLOOR:
+	if not _person_governor_on:
+		pass
+	elif y_gap < PERSON_Y_FREEZE_FLOOR:
 		# NEVER freeze here, regardless of override_active/emergency: person_actor.gd has
 		# zero avoidance of its own (just walks its fixed waypoint loop), so the "stop is
 		# provably safe" argument up top only holds while a stationary rover keeps y-only
@@ -636,6 +652,85 @@ func unproject(id: String, nx: float, ny: float) -> Variant:
 	return [p.x, -p.z]
 
 
+## Line-of-sight body samples for every active person, for camera models that need more
+## than detect()'s single centre ray: boxes clipped by the frame, partial occlusion,
+## which joints a pose estimator could see, and what a depth sensor would read through
+## each sample's pixel. Geometry only — projection into an image (FOV, pitch, clipping)
+## and every noise model live client-side, so camera mounts can be varied without
+## touching the sim.
+##
+## Each sample is [x, y, z, visible, depth]: the ENU point on the near surface of the
+## person (z = height, m), whether a ray from the camera reaches it unobstructed (the
+## person itself and the rover excluded; walls, props, obstacles and OTHER people block),
+## and the range (m) a depth sensor would report through that point's pixel — the
+## occluder's range when blocked. `name`, `pos` and `vel` are ground truth for scoring and
+## for client-side appearance models only; a follow controller must not read them.
+func person_view(id: String, cam_h: float) -> Variant:
+	var st: PhroverState = _rovers.get(id)
+	if st == null or _env == null:
+		return null
+	var cam := Vector3(st.pos.x, cam_h, -st.pos.y)
+	var persons: Array = []
+	for node in _person_nodes():
+		var centre: Vector2 = node.enu_position()
+		var to_person := centre - st.pos
+		var dist := to_person.length()
+		if dist < 0.05:
+			continue
+		var dir := to_person / dist
+		var lateral := Vector2(-dir.y, dir.x)
+		var surface := centre - dir * 0.2
+		var samples: Array = []
+		for joint in BODY_SAMPLE_HEIGHTS.keys():
+			var h: float = BODY_SAMPLE_HEIGHTS[joint]
+			for off in BODY_SAMPLE_LATERAL:
+				var p2: Vector2 = surface + lateral * float(off)
+				var p3 := Vector3(p2.x, h, -p2.y)
+				var hit := _raycast(cam, p3, LAYER_STRUCTURE | LAYER_PROPS | LAYER_PERSON, [st.node, node])
+				var visible := hit.is_empty()
+				var depth: float = cam.distance_to(p3) if visible else cam.distance_to(hit["position"])
+				samples.append([p2.x, p2.y, h, visible, depth, joint])
+		var vel: Vector3 = node.velocity if node.active else Vector3.ZERO
+		persons.append({"name": str(node.name), "pos": [centre.x, centre.y],
+				"vel": [vel.x, -vel.z], "samples": samples})
+	return {"t": _sim_time, "pose": [st.pos.x, st.pos.y, st.yaw], "persons": persons,
+			"clearance": _forward_clearance(st), "guard_stopped": st.guard_stopped}
+
+
+func _place_obstacle(params: Dictionary) -> void:
+	var r: Array = params.get("rect", [0.0, 0.0, 0.5, 0.5])  # ENU centre x, y, size x, y
+	var h: float = float(params.get("h", 1.0))
+	var size := Vector3(float(r[2]), h, float(r[3]))
+	var body := StaticBody3D.new()
+	body.name = "obstacle_%d" % _obstacles.size()
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	col.shape = shape
+	body.add_child(col)
+	var mesh := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mesh.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.45, 0.47, 0.5)
+	mesh.material_override = mat
+	body.add_child(mesh)
+	body.position = Vector3(float(r[0]), h * 0.5, -float(r[1]))
+	body.collision_layer = LAYER_PROPS
+	body.collision_mask = 0
+	body.add_to_group("depot_prop")
+	_env.add_child(body)
+	_obstacles.append(body)
+
+
+func _clear_obstacles() -> void:
+	for body in _obstacles:
+		if is_instance_valid(body):
+			body.queue_free()
+	_obstacles.clear()
+
+
 # ------------------------------------------------------------------
 # IPC: drive / stop
 # ------------------------------------------------------------------
@@ -803,6 +898,13 @@ func inject(name: String, params: Dictionary) -> void:
 		"kill_rover":
 			var rid: String = params.get("id", "")
 			despawn(rid)
+		"place_obstacle":
+			if _env:
+				_place_obstacle(params)
+		"clear_obstacles":
+			_clear_obstacles()
+		"person_governor":
+			_person_governor_on = bool(params.get("on", true))
 	_log_event("inject_fired", {"name": name, "params": params})
 
 
@@ -840,6 +942,8 @@ func get_events(since: float) -> Array:
 func reset(seed_val: int) -> void:
 	_events.clear()
 	_sim_time = 0.0
+	_person_governor_on = true
+	_clear_obstacles()
 	if _env:
 		_env.rebuild_props(seed_val)
 		_env.set_door_closed("A", false)
