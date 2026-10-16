@@ -354,7 +354,7 @@ eco/
 │       ├── oakdlite/              # OAK-D Lite implementation (DepthAI 3.x)
 │       │   ├── __init__.py
 │       │   ├── camera.py          # OakDLiteCamera class
-│       │   └── test_camera.py     # Test script
+│       │   └── camera_check.py    # Hand-run camera check
 │       └── intelD435i/            # Intel RealSense D435i
 │           └── camera.py          # RealSenseCamera class
 │
@@ -655,8 +655,8 @@ with OakDLiteCamera(enable_depth=True) as cam:
 
 ```bash
 cd drone/camera/oakdlite
-python3 test_camera.py --frames 50        # Capture 50 frames
-python3 test_camera.py --save --frames 10 # Save frames to disk
+python3 camera_check.py --frames 50        # Capture 50 frames
+python3 camera_check.py --save --frames 10 # Save frames to disk
 ```
 
 ### Specs

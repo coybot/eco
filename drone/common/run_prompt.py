@@ -211,6 +211,9 @@ def current_rel_alt(mav, timeout: float = 1.0) -> Optional[float]:
     Returns None if no fresh message arrives within `timeout`.
 
     Do NOT use VFR_HUD.alt — on ArduPilot it's MSL absolute, not relative.
+    ArduPilot only, like the rest of this tool: PX4 moves its home altitude by
+    ~1 m mid-flight, so on PX4 measure from the takeoff ground instead (see
+    drone_sdk._rel_alt_m).
     """
     msg = mav.recv_match(type="GLOBAL_POSITION_INT",
                          blocking=True, timeout=timeout)

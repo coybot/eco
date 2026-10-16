@@ -37,7 +37,7 @@ from drone_sdk import (  # noqa: F401 - re-exported for callers of this module
     _mavlink_lock, _log, _clamp, _set_param, _drain_statustext,
     _wait_for_mode, _wait_for_disarm, _check_preflight_status,
     disconnect, is_armed, get_position, get_attitude, get_battery,
-    get_telemetry, get_flight_mode, goto,
+    get_telemetry, get_flight_mode, goto, _rel_alt_m,
 )
 
 # =============================================================================
@@ -238,12 +238,14 @@ def hand_launch(altitude_m, pitch_deg=15.0, loiter_distance_m=200.0,
             return False
         _log("Armed — waiting for launch (throw the aircraft now)...")
 
-    # Wait for the FC to detect the throw and begin climbing (relative_alt rising).
+    # Wait for the FC to detect the throw and begin climbing (altitude above
+    # home rising). _rel_alt_m is drone_sdk's one altitude frame: relative_alt
+    # on ArduPlane, whose home (set at arming) holds still.
     t0 = time.time()
     launched = False
     while time.time() - t0 < launch_timeout_s:
         msg = _mav_recv('GLOBAL_POSITION_INT', timeout=0.5)
-        if msg and msg.relative_alt / 1000.0 > 1.5:
+        if msg and _rel_alt_m(msg) > 1.5:
             launched = True
             break
     if not launched:
@@ -256,7 +258,7 @@ def hand_launch(altitude_m, pitch_deg=15.0, loiter_distance_m=200.0,
     t0 = time.time()
     while time.time() - t0 < climb_timeout_s:
         msg = _mav_recv('GLOBAL_POSITION_INT', timeout=0.5)
-        if msg and msg.relative_alt / 1000.0 >= altitude_m * 0.95:
+        if msg and _rel_alt_m(msg) >= altitude_m * 0.95:
             _log(f"Reached {altitude_m}m")
             return True
     _log("WARNING: climb timeout before reaching target altitude")

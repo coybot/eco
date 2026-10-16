@@ -3,9 +3,9 @@
 Test script for OAK-D Lite camera (DepthAI 3.x).
 
 Usage:
-    python test_camera.py              # Basic test - capture frames
-    python test_camera.py --save       # Save frames to disk
-    python test_camera.py --frames 50  # Capture 50 frames
+    python camera_check.py              # Basic test - capture frames
+    python camera_check.py --save       # Save frames to disk
+    python camera_check.py --frames 50  # Capture 50 frames
 """
 
 import argparse
