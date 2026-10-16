@@ -20,7 +20,18 @@ Run: cd eco/aws/src && python3 -m pytest test_media_message.py -v
 import json
 from unittest.mock import patch
 
+import pytest
+
 import conversations
+
+
+@pytest.fixture(autouse=True)
+def _no_reply_records():
+    """The repeat-delivery guard writes to DynamoDB; keep it in the process."""
+    with patch.object(conversations, "_claim_reply",
+                      lambda d, k: {"at": "2026-10-16T00:00:00+00:00", "status": "processing"}), \
+         patch.object(conversations, "_finish_reply", lambda *a: None):
+        yield
 
 
 class _Recorder:
@@ -31,7 +42,7 @@ class _Recorder:
         self.published = []
 
     def save_message(self, conversation_id, drone_id, sender, content_type,
-                     content, image_urls=None, media=None):
+                     content, image_urls=None, media=None, at=None, message_id=None):
         self.saved.append({
             "content_type": content_type, "content": content,
             "image_urls": image_urls, "media": media,

@@ -250,3 +250,15 @@ def test_s3_presigned_url_points_at_local_images_route(tmp_path):
 def test_s3_public_image_url(tmp_path):
     s3 = LocalS3("http://127.0.0.1:8080/", tmp_path / "images", sign_fn=lambda k, e: "T")
     assert s3.public_image_url("k1") == "http://127.0.0.1:8080/images/k1"
+
+
+# --- conversations._claim_reply: create-if-absent -------------------------------
+
+def test_put_if_absent_refuses_the_second_write(dynamo):
+    table = dynamo.Table("drone-conversations-dev")
+    item = {"PK": "REPLY#d1#k", "SK": "REPLY", "status": "processing"}
+    table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK)")
+    with pytest.raises(Exception) as e:
+        table.put_item(Item=dict(item, status="other"), ConditionExpression="attribute_not_exists(PK)")
+    assert e.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
+    assert table.get_item(Key={"PK": "REPLY#d1#k", "SK": "REPLY"})["Item"]["status"] == "processing"

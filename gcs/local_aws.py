@@ -170,18 +170,34 @@ DEFAULT_TABLE_SCHEMAS = {
 }
 
 
+class ConditionalCheckFailed(Exception):
+    """A put_item condition was not met: the same .response shape boto3's
+    ClientError has, so callers check one error code for both backends."""
+
+    def __init__(self):
+        super().__init__("The conditional request failed")
+        self.response = {"Error": {"Code": "ConditionalCheckFailedException"}}
+
+
 class LocalDynamoTable:
     def __init__(self, store: "_SqliteStore", name: str, key_attrs: Optional[tuple] = None):
         self._store = store
         self._name = name
         self._key_attrs = key_attrs  # None => infer from first put_item (best-effort fallback)
 
-    def put_item(self, Item: dict):
+    def put_item(self, Item: dict, ConditionExpression: str = None):
         item = _decimal_to_native(Item)
         # Every put_item observed in aws/src writes a full item that already
         # contains its own primary key attribute(s) inline.
         key_attrs = self._key_attrs or self._store.infer_key_attrs(self._name, item)
         key = {k: item[k] for k in key_attrs if k in item}
+        if ConditionExpression is not None:
+            # Only the create-if-absent form is used (conversations._claim_reply).
+            m = re.fullmatch(r"\s*attribute_not_exists\(\s*(\w+)\s*\)\s*", ConditionExpression)
+            if not m:
+                raise NotImplementedError(f"unsupported put_item condition: {ConditionExpression!r}")
+            if key and self._store.get(self._name, _item_key_id(key)) is not None:
+                raise ConditionalCheckFailed()
         self._store.put(self._name, _item_key_id(key) if key else str(uuid.uuid4()), item)
         return {}
 

@@ -8,6 +8,8 @@ Implements an AI agent that can:
 4. Manage multi-turn conversations with context
 """
 
+import functools
+import hashlib
 import json
 import os
 import uuid
@@ -819,12 +821,15 @@ def json_response(status_code, body):
 
 
 def save_message(conversation_id, drone_id, sender, content_type, content, image_urls=None, media=None,
-                 sent=None):
-    """Save a message to the conversation history."""
+                 sent=None, at=None, message_id=None):
+    """Save a message to the conversation history.
+
+    at/message_id give it a fixed slot (SK): saving the same reply again
+    overwrites it instead of adding a second message (see response_handler)."""
     table = dynamodb.Table(CONVERSATIONS_TABLE)
     
-    timestamp = datetime.now(timezone.utc).isoformat()
-    message_id = str(uuid.uuid4())
+    timestamp = at or datetime.now(timezone.utc).isoformat()
+    message_id = message_id or str(uuid.uuid4())
     
     item = {
         'PK': f'CONV#{drone_id}#{conversation_id}',
@@ -2014,6 +2019,9 @@ def _append_mission_record(drone_id, conversation_id, record, keep=3):
     except Exception as e:
         print(f"⚠️ Failed to load prior mission records: {e}")
         existing = []
+    if record.get('reply'):
+        # The same reply handled again (a retry) replaces its record.
+        existing = [r for r in existing if r.get('reply') != record['reply']]
     existing.append(record)
     existing = existing[-keep:]
     item = dict(key)
@@ -2025,7 +2033,7 @@ def _append_mission_record(drone_id, conversation_id, record, keep=3):
     table.put_item(Item=item)
 
 
-def _persist_mission_record(drone_id, conversation_id, payload, result):
+def _persist_mission_record(drone_id, conversation_id, payload, result, reply=None):
     """Record a completed (or failed) MISSION's structured result for later
     follow-ups. Plain code executions carry none of the mission keys and are
     skipped. Never raises: losing a record must not lose the reply."""
@@ -2033,8 +2041,10 @@ def _persist_mission_record(drone_id, conversation_id, payload, result):
                ('phases_completed', 'phasesCompleted', 'mission_id')):
         return
     try:
-        _append_mission_record(drone_id, conversation_id,
-                               _build_mission_record(payload, result))
+        record = _build_mission_record(payload, result)
+        if reply:
+            record['reply'] = reply
+        _append_mission_record(drone_id, conversation_id, record)
     except Exception as e:
         print(f"⚠️ failed to persist mission record: {e}")
 
@@ -3086,8 +3096,60 @@ def select_handler(event, context):
         })
 
 
+REPLY_SEEN_DAYS = 7
+
+
+def reply_key(payload):
+    """Fingerprint of one drone reply. AWS retries a failed async invocation
+    with the same event and the drone's outbox resends the payload it stored,
+    so both are byte-identical; every new reply carries its own timestamp."""
+    canon = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(canon.encode()).hexdigest()[:32]
+
+
+def _reply_record_key(drone_id, key):
+    # No droneId attribute: keeps these out of droneId-index (like SHARE#).
+    return {'PK': f'REPLY#{drone_id}#{key}', 'SK': 'REPLY'}
+
+
+def _claim_reply(drone_id, key):
+    """{'at': when this reply was first seen, 'status': 'processing'|'done'}.
+    The first delivery creates it; a repeat gets the first one's record back.
+    A failed claim does not stop the reply: it is handled without the guard."""
+    table = dynamodb.Table(CONVERSATIONS_TABLE)
+    now = datetime.now(timezone.utc)
+    item = dict(_reply_record_key(drone_id, key), at=now.isoformat(), status='processing',
+                ttl=int(now.timestamp()) + REPLY_SEEN_DAYS * 24 * 60 * 60)
+    try:
+        table.put_item(Item=item, ConditionExpression='attribute_not_exists(PK)')
+        return item
+    except Exception as e:
+        if getattr(e, 'response', {}).get('Error', {}).get('Code') != 'ConditionalCheckFailedException':
+            print(f"⚠️ Could not record reply {key[:8]}, handling it unguarded: {e}")
+            return item
+    try:
+        return table.get_item(Key=_reply_record_key(drone_id, key)).get('Item') or item
+    except Exception as e:
+        print(f"⚠️ Could not read reply record {key[:8]}: {e}")
+        return item
+
+
+def _finish_reply(drone_id, key, claim):
+    try:
+        dynamodb.Table(CONVERSATIONS_TABLE).put_item(Item=dict(claim, status='done'))
+    except Exception as e:
+        print(f"⚠️ Could not mark reply {key[:8]} handled: {e}")
+
+
 def response_handler(event, context):
-    """Handle response from drone (via IoT Rule)."""
+    """Handle response from drone (via IoT Rule).
+
+    Safe to run more than once on the same reply. The IoT rule invokes this
+    asynchronously, and AWS reruns a failed invocation up to twice: on
+    2026-10-16 a crash after the result was stored (an app message over AWS
+    IoT's 128 KB limit) stored one survey result three times. Now a reply
+    already handled is skipped, and a rerun after a crash writes the same
+    message slot (first-seen time + reply key) instead of adding another."""
     # This is triggered by IoT Rule when drone publishes to chat response topic
     
     # The payload comes directly from IoT
@@ -3100,7 +3162,20 @@ def response_handler(event, context):
     if not drone_id or not conversation_id:
         print(f"❌ Missing drone_id or conversation_id in payload: {payload}")
         return
-    
+
+    key = reply_key(payload)
+    claim = _claim_reply(drone_id, key)
+    if claim.get('status') == 'done':
+        print(f"↩️ Reply {key[:8]} was already handled - repeat delivery skipped")
+        return
+    _respond(payload, drone_id, conversation_id, at=claim['at'], key=key)
+    _finish_reply(drone_id, key, claim)
+
+
+def _respond(payload, drone_id, conversation_id, at, key):
+    """Store and announce one drone reply (response_handler guards repeats)."""
+    # Every message of this reply goes to one fixed slot (see response_handler).
+    save = functools.partial(save_message, at=at, message_id=key)
     result = payload.get('result', {})
     image_urls = payload.get('image_urls', [])
     video_urls = payload.get('video_urls', [])
@@ -3130,7 +3205,7 @@ def response_handler(event, context):
         # 'media' whenever anything was captured — including video, which the
         # old 'image' type could not describe. Text only when nothing was.
         content_type = 'media' if media else 'text'
-        save_message(conversation_id, drone_id, 'drone', content_type, msg,
+        save(conversation_id, drone_id, 'drone', content_type, msg,
                      image_urls=image_urls if image_urls else None,
                      media=media if media else None)
         publish_to_app(drone_id, conversation_id, content_type, msg,
@@ -3138,10 +3213,10 @@ def response_handler(event, context):
                        media=media if media else None)
         print(f"✅ Failure reported to app: {msg[:120]}")
         # A failed mission can still have found things before it stopped.
-        _persist_mission_record(drone_id, conversation_id, payload, result)
+        _persist_mission_record(drone_id, conversation_id, payload, result, reply=key)
         return
 
-    _persist_mission_record(drone_id, conversation_id, payload, result)
+    _persist_mission_record(drone_id, conversation_id, payload, result, reply=key)
 
     # Get conversation history
     history = get_conversation_history(drone_id, conversation_id)
@@ -3161,7 +3236,7 @@ Analyze the situation and respond appropriately. If multiple options match what 
         
         if action == 'ask' or len(image_urls) > 1:
             # Show options to user
-            save_message(
+            save(
                 conversation_id, drone_id, 'drone', 'image_choice',
                 agent_response.get('message', 'I found these. Which one?'),
                 image_urls=image_urls
@@ -3181,7 +3256,7 @@ Analyze the situation and respond appropriately. If multiple options match what 
             msg_content = agent_response.get('message', 'Here\'s what I found.')
             content_type = 'media' if media else 'text'
 
-            save_message(
+            save(
                 conversation_id, drone_id, 'drone', content_type,
                 msg_content,
                 image_urls=image_urls if image_urls else None,
@@ -3217,7 +3292,7 @@ Describe what you see in the image and respond to the user's request."""
                            f"{'s' if len(video_urls) != 1 else ''}).")
 
         msg_content = agent_response.get('message') or default_msg
-        save_message(
+        save(
             conversation_id, drone_id, 'drone', 'media',
             msg_content,
             image_urls=image_urls if image_urls else None,
@@ -3239,7 +3314,7 @@ Describe what you see in the image and respond to the user's request."""
             msg = f"There was an issue: {failure_message(result)}"
         
         print(f"💬 Saving text message: {msg[:100]}")
-        save_message(conversation_id, drone_id, 'drone', 'text', msg)
+        save(conversation_id, drone_id, 'drone', 'text', msg)
         publish_to_app(drone_id, conversation_id, 'text', msg)
         print(f"✅ Message saved and published to app")
 
