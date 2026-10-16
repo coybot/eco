@@ -1137,7 +1137,7 @@ Resources:
             Path: /albums
             Method: POST
 
-  # The public end of a shared link: no sign-in, redirects to the zip
+  # The public end of a shared link: no sign-in, a web page of the photos
   ShareFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1160,7 +1160,8 @@ Resources:
             - Effect: Allow
               Action:
                 - s3:GetObject
-              Resource: !Sub 'arn:aws:s3:::${DroneImagesBucket}/drones/*/albums/*'
+              # The page signs each photo as well as the zip.
+              Resource: !Sub 'arn:aws:s3:::${DroneImagesBucket}/drones/*'
       Events:
         Share:
           Type: Api

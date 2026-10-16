@@ -6,10 +6,12 @@ the drone's position manifest into one zip beside them in the bucket, and return
 
     https://<api>/prod/share/<random id>
 
-which anyone can open - no app, no sign-in. Each open redirects to a freshly
-presigned download of the zip, so the link itself does not expire after a day the
-way a presigned URL does (Lambda credentials are temporary; a presigned URL dies
-with them). It works for SHARE_DAYS: the bucket deletes every object 30 days after
+which anyone can open - no app, no sign-in. It opens a plain web page: the photos
+(full size on tap), where each was taken, and "Download all" for the zip. Built for
+a farmer opening it on a phone, where a zip of 50 photos is a dead end. Every image
+and the download are presigned afresh on each visit, so the link itself does not
+expire after a day the way a presigned URL does (Lambda credentials are temporary;
+a presigned URL dies with them). It works for SHARE_DAYS: the bucket deletes every object 30 days after
 upload (template.yaml, DeleteOldImages), so a longer link would outlive its zip.
 
 The same album always gets the same link: the zip and the link are keyed by the
@@ -21,7 +23,9 @@ someone else's photos by naming a different drone.
 """
 import csv
 import hashlib
+import html
 import io
+import math
 import json
 import os
 import secrets
@@ -215,7 +219,8 @@ def album_handler(event, context):
     folder = f'coybot-survey-{stamp}'
     zip_key = f"{keys[0].rsplit('/', 1)[0]}/albums/{aid}.zip"
     try:
-        path = build_zip(keys, folder, _read_object, _manifests_beside(keys))
+        manifest_texts = _manifests_beside(keys)
+        path = build_zip(keys, folder, _read_object, manifest_texts)
     except Exception as e:
         # Most likely a photo still on its way up from the drone.
         print(f"album {aid}: build failed: {e}")
@@ -230,11 +235,13 @@ def album_handler(event, context):
 
     token = secrets.token_urlsafe(16)
     ttl = now + SHARE_DAYS * 86400
+    photos = page_photos(keys, manifest_texts)
     # No droneId attribute: these must stay out of the droneId-index that
     # lists a drone's conversations.
     table.put_item(Item={'PK': f'SHARE#{token}', 'SK': 'SHARE', 'zipKey': zip_key,
                          'filename': f'{folder}.zip', 'ownerId': user_id,
-                         'photos': len(keys), 'createdAt': now, 'ttl': ttl})
+                         'photos': len(keys), 'photoList': photos,
+                         'createdAt': now, 'ttl': ttl})
     table.put_item(Item={'PK': f'ALBUM#{aid}', 'SK': 'ALBUM', 'token': token,
                          'zipKey': zip_key, 'photos': len(keys), 'createdAt': now, 'ttl': ttl})
     print(f"album {aid}: {len(keys)} photos, {size} bytes -> {zip_key}")
@@ -246,25 +253,168 @@ def album_handler(event, context):
 
 
 def share_handler(event, context):
-    """GET /share/{token} - public. Redirects to a fresh download of the zip."""
+    """GET /share/{token} - public. The album's web page; ?download=1 is the zip."""
     token = ((event.get('pathParameters') or {}).get('token') or '').strip()
     item = None
     if token and len(token) <= 64:
         item = _table().get_item(Key={'PK': f'SHARE#{token}', 'SK': 'SHARE'}).get('Item')
     if not item or int(item.get('ttl', 0)) < time.time():
-        return {'statusCode': 404, 'headers': {'Content-Type': 'text/plain; charset=utf-8'},
-                'body': 'This link has expired or does not exist.\n'}
+        return _html(404, _page('Link expired', '<p class="note">This link has expired or '
+                                'does not exist. Ask the drone operator for a new one.</p>'))
+    query = event.get('queryStringParameters') or {}
     filename = item.get('filename') or 'coybot-survey.zip'
-    url = C.s3.generate_presigned_url(
+    zip_url = C.s3.generate_presigned_url(
         'get_object',
         Params={'Bucket': C.IMAGES_BUCKET, 'Key': item['zipKey'],
                 'ResponseContentDisposition': f'attachment; filename="{filename}"',
                 'ResponseContentType': 'application/zip'},
         ExpiresIn=DOWNLOAD_EXPIRES_S)
-    return {'statusCode': 302,
-            'headers': {'Location': url, 'Cache-Control': 'no-store',
-                        'Content-Type': 'text/plain; charset=utf-8'},
-            'body': f'Download: {url}\n'}
+    if query.get('download'):
+        return {'statusCode': 302,
+                'headers': {'Location': zip_url, 'Cache-Control': 'no-store',
+                            'Content-Type': 'text/plain; charset=utf-8'},
+                'body': f'Download: {zip_url}\n'}
+    photos = [dict(p, url=C.s3.generate_presigned_url(
+                  'get_object', Params={'Bucket': C.IMAGES_BUCKET, 'Key': p['k']},
+                  ExpiresIn=DOWNLOAD_EXPIRES_S))
+              for p in (item.get('photoList') or [])]
+    return _html(200, album_page(photos, int(item.get('photos', len(photos))),
+                                 int(item.get('createdAt', time.time())), int(item['ttl'])))
+
+
+# --- the page -----------------------------------------------------------------------
+
+def page_photos(keys, manifest_texts):
+    """What the page needs per photo, in order taken: key, name, and - when the
+    drone's manifest has them - capture time and position. Strings, so the
+    DynamoDB item needs no Decimal handling."""
+    names = [k.rsplit('/', 1)[-1] for k in keys]
+    header, rows = manifest_rows(manifest_texts, names)
+    by_file = {}
+    if header:
+        for row in rows:
+            by_file[row[header.index('file')]] = dict(zip(header, row))
+    out = []
+    for key, name in zip(keys, names):
+        m = by_file.get(name, {})
+        p = {'k': key, 'n': name}
+        for src, dst in (('utc_time', 't'), ('lat', 'la'), ('lon', 'lo'), ('alt_msl_m', 'al')):
+            if m.get(src):
+                p[dst] = str(m[src])
+        out.append(p)
+    return out
+
+
+def _num(v):
+    try:
+        f = float(v)
+        return f if math.isfinite(f) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def position_plot(photos):
+    """An SVG of where the photos were taken, north up, metres to scale, each dot
+    a link to its photo. None without at least two positions."""
+    pts = [(i, _num(p.get('la')), _num(p.get('lo'))) for i, p in enumerate(photos, 1)]
+    pts = [(i, la, lo) for i, la, lo in pts if la is not None and lo is not None]
+    if len(pts) < 2:
+        return None
+    lat0 = sum(la for _, la, _ in pts) / len(pts)
+    lon0 = sum(lo for _, _, lo in pts) / len(pts)
+    m_per_deg = 111_320.0
+    xy = [(i, (lo - lon0) * m_per_deg * math.cos(math.radians(lat0)), (la - lat0) * m_per_deg)
+          for i, la, lo in pts]
+    xs, ys = [x for _, x, _ in xy], [y for _, _, y in xy]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    pad, size = 24, 320
+    scale = (size - 2 * pad) / span
+    w = (max(xs) - min(xs)) * scale + 2 * pad
+    h = (max(ys) - min(ys)) * scale + 2 * pad
+    dots = []
+    for i, x, y in xy:
+        cx = pad + (x - min(xs)) * scale
+        cy = pad + (max(ys) - y) * scale
+        dots.append(f'<a href="#p{i}"><circle cx="{cx:.1f}" cy="{cy:.1f}" r="5">'
+                    f'<title>Photo {i}</title></circle></a>')
+    width_m = max(xs) - min(xs)
+    height_m = max(ys) - min(ys)
+    return (f'<svg viewBox="0 0 {w:.0f} {h:.0f}" role="img" '
+            f'aria-label="Where the {len(xy)} photos were taken">'
+            f'<rect width="100%" height="100%" rx="8" class="bg"/>{"".join(dots)}'
+            f'<text x="{w - 6:.0f}" y="14" text-anchor="end" class="n">N &#8593;</text></svg>'
+            f'<p class="note">About {width_m:.0f} m east-west by {height_m:.0f} m north-south. '
+            f'Tap a dot to see that photo.</p>')
+
+
+def album_page(photos, count, created, expires):
+    """The whole page as one HTML string: no scripts, no third-party anything."""
+    esc = html.escape
+    when = datetime.fromtimestamp(created, timezone.utc).strftime('%-d %b %Y')
+    until = datetime.fromtimestamp(expires, timezone.utc).strftime('%-d %b %Y')
+    parts = [f'<h1>Drone survey &middot; {count} photo{"s" if count != 1 else ""}</h1>',
+             f'<p class="note">Taken {esc(when)}. This link works until {esc(until)}.</p>',
+             '<p><a class="button" href="?download=1">Download all photos (zip)</a></p>']
+    lats = [_num(p.get('la')) for p in photos]
+    lons = [_num(p.get('lo')) for p in photos]
+    pos = [(la, lo) for la, lo in zip(lats, lons) if la is not None and lo is not None]
+    if pos:
+        la = sum(a for a, _ in pos) / len(pos)
+        lo = sum(b for _, b in pos) / len(pos)
+        parts.append(f'<p><a href="https://maps.google.com/?q={la:.6f},{lo:.6f}">'
+                     f'Open the area in Maps</a></p>')
+    plot = position_plot(photos)
+    if plot:
+        parts.append(f'<h2>Where they were taken</h2>{plot}')
+    if photos:
+        parts.append('<h2>Photos</h2><ol class="grid">')
+        for i, p in enumerate(photos, 1):
+            cap = [f'#{i}']
+            if p.get('t'):
+                # The date is in the heading; the time tells the photos apart.
+                cap.append(esc(p['t'].split('T')[-1].rstrip('Z')[:8]) + ' UTC')
+            la, lo = _num(p.get('la')), _num(p.get('lo'))
+            if la is not None and lo is not None:
+                cap.append(f'<a href="https://maps.google.com/?q={la:.7f},{lo:.7f}" '
+                           f'title="{la:.6f}, {lo:.6f}">Map</a>')
+            url = esc(p['url'], quote=True)
+            parts.append(f'<li id="p{i}"><a href="{url}"><img src="{url}" loading="lazy" '
+                         f'alt="Photo {i}"></a><span>{" &middot; ".join(cap)}</span></li>')
+        parts.append('</ol>')
+    else:
+        parts.append('<p class="note">Use the button above to download the photos.</p>')
+    return _page(f'Drone survey - {count} photos', ''.join(parts))
+
+
+_CSS = """
+body{font:16px/1.4 -apple-system,system-ui,sans-serif;margin:0 auto;max-width:960px;padding:16px;
+color:#1a1a1a;background:#fafaf7}
+h1{font-size:1.5em;margin:.2em 0}h2{font-size:1.15em;margin:1.4em 0 .5em}
+.note{color:#666;margin:.3em 0}
+.button{display:inline-block;background:#1f7a3f;color:#fff;padding:12px 18px;border-radius:10px;
+text-decoration:none;font-weight:600}
+svg{max-width:100%;max-height:260px;display:block}svg .bg{fill:#e8efe2}
+svg circle{fill:#1f7a3f;stroke:#fff;stroke-width:1.5}svg .n{font-size:12px;fill:#555}
+.grid{list-style:none;padding:0;display:grid;gap:10px;
+grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.grid img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#ddd;display:block}
+.grid span{font-size:.8em;color:#555;display:block;margin-top:2px}
+"""
+
+
+def _page(title, body):
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<meta name="robots" content="noindex">'
+            f'<title>{html.escape(title)}</title><style>{_CSS}</style></head>'
+            f'<body>{body}</body></html>')
+
+
+def _html(status, body):
+    return {'statusCode': status,
+            'headers': {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
+                        'Referrer-Policy': 'no-referrer'},
+            'body': body}
 
 
 def _iso(ts):

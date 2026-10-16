@@ -8,7 +8,8 @@ Pins:
    manifest rows for those photos (a conversation can hold several surveys).
 3. Only the drone's owner can make one, and the drone is read from the photos'
    own keys - naming another drone in the request is not possible.
-4. Opening the link needs no sign-in, and an unknown or expired link says so.
+4. Opening the link needs no sign-in and shows a page of the photos (where each
+   was taken, Download all); an unknown or expired link says so.
 
 Run: cd eco/aws/src && python3 -m pytest test_albums.py -v
 """
@@ -137,20 +138,62 @@ def test_the_zip_has_the_original_photos_in_order_and_only_their_manifest_rows()
     assert "other.jpg" not in manifest                    # another survey's row
 
 
-def test_opening_the_link_needs_no_sign_in_and_redirects_to_the_zip():
+def _share_q(s3, dyn, token, query=None):
+    with patch.object(C, "s3", s3), patch.object(C, "dynamodb", dyn):
+        return albums.share_handler({"pathParameters": {"token": token},
+                                     "queryStringParameters": query}, None)
+
+
+def test_the_link_opens_a_page_of_the_photos_with_no_sign_in():
     s3, dyn = _store(), FakeDynamo()
     _, body = _call(s3, dyn, [_signed("p1.jpg"), _signed("p2.jpg")])
     token = body["url"].rsplit("/", 1)[1]
     r = _share(s3, dyn, token)
+    assert r["statusCode"] == 200
+    assert r["headers"]["Content-Type"].startswith("text/html")
+    page = r["body"]
+    assert "2 photos" in page
+    # each photo shown from a fresh signed URL, in the order taken
+    assert page.index(f"{D}/p1.jpg?X-Amz-Signature") < page.index(f"{D}/p2.jpg?X-Amz-Signature")
+    assert 'href="?download=1"' in page
+    # positions from the drone's manifest: per photo, and the plot
+    assert "maps.google.com/?q=-35.1000000,149.1000000" in page and "<svg" in page
+    assert "04:44:33 UTC" in page
+    assert "<script" not in page
+
+
+def test_download_all_redirects_to_the_zip():
+    s3, dyn = _store(), FakeDynamo()
+    _, body = _call(s3, dyn, [_signed("p1.jpg"), _signed("p2.jpg")])
+    token = body["url"].rsplit("/", 1)[1]
+    r = _share_q(s3, dyn, token, {"download": "1"})
     assert r["statusCode"] == 302
     loc = r["headers"]["Location"]
     assert f"{D}/albums/" in loc and loc.split("?")[0].endswith(".zip")
     assert "attachment" in loc
 
 
+def test_a_drone_chosen_file_name_cannot_inject_into_the_page():
+    s3, dyn = _store(), FakeDynamo()
+    evil = 'x"><script>alert(1)</script>.jpg'
+    s3.objects[f"{D}/{evil}"] = b"\xff\xd8"
+    _, body = _call(s3, dyn, [_signed("p1.jpg"), f"{BUCKET}/{D}/{evil}"])
+    page = _share(s3, dyn, body["url"].rsplit("/", 1)[1])["body"]
+    assert "<script>" not in page
+
+
+def test_an_album_without_positions_still_has_its_page():
+    s3, dyn = _store(), FakeDynamo()
+    del s3.objects[f"{D}/20261015_survey_manifest_ab.csv"]
+    _, body = _call(s3, dyn, [_signed("p1.jpg"), _signed("p2.jpg")])
+    page = _share(s3, dyn, body["url"].rsplit("/", 1)[1])["body"]
+    assert "p2.jpg" in page and "<svg" not in page
+
+
 def test_unknown_or_expired_links_say_so():
     s3, dyn = _store(), FakeDynamo()
-    assert _share(s3, dyn, "nope")["statusCode"] == 404
+    r = _share(s3, dyn, "nope")
+    assert r["statusCode"] == 404 and "expired" in r["body"]
     _, body = _call(s3, dyn, [_signed("p1.jpg"), _signed("p2.jpg")])
     token = body["url"].rsplit("/", 1)[1]
     dyn.table.items[(f"SHARE#{token}", "SHARE")]["ttl"] = int(time.time()) - 1
