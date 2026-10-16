@@ -93,7 +93,9 @@ include = [
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-testpaths = ["drone/common/tests", "drone/sim/tests", "control"]
+testpaths = ["drone/common/tests", "drone/sim/tests"]
+# Some tests import `eco.drone...`: resolvable with this checkout in a folder named eco (as CI does).
+pythonpath = [".."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

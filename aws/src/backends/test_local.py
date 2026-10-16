@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from boto3.dynamodb.conditions import Key
 
-from control.backends.local import LocalDynamo, LocalIoTData, LocalS3
+from backends.local import LocalDynamo, LocalIoTData, LocalS3
 
 
 @pytest.fixture

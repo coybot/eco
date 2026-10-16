@@ -3,7 +3,7 @@
 Lazily builds each client on first use (identical to what handler.py/
 conversations.py/drones.py/groups.py used to build directly at import time,
 before clients.py's seam existed), and caches it. This is the default backend
-when nothing else is selected via control.clients.select_backend() - matching
+when nothing else is selected via clients.select_backend() - matching
 the deployed Lambda stack's zero-configuration behavior.
 """
 from __future__ import annotations

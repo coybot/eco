@@ -8,7 +8,7 @@ handler,drones,groups}.py. An unrecognized call pattern raises NotImplementedErr
 rather than silently doing the wrong thing.
 
 gcs/server.py builds LocalDynamo/LocalIoTData/LocalS3, wraps them in a
-LocalBackend (below), and hands that to control.clients.select_backend().
+LocalBackend (below), and hands that to clients.select_backend().
 """
 from __future__ import annotations
 
@@ -311,7 +311,7 @@ class _SqliteStore:
 
 class LocalDynamo:
     """Drop-in for `boto3.resource('dynamodb')` - only `.Table(name)` is used
-    anywhere in control.
+    anywhere in aws/src.
 
     `schemas` maps table_name -> primary key attribute names, e.g.
     {"drone-registry-dev": ("userId", "droneId")}. Defaults to
@@ -335,7 +335,7 @@ class LocalDynamo:
 
 class LocalIoTData:
     """Drop-in for `boto3.client('iot-data')` - only .publish() and
-    .update_thing_shadow() are used anywhere in control. Publishing forwards to
+    .update_thing_shadow() are used anywhere in aws/src. Publishing forwards to
     the local mosquitto broker; shadow updates are stored (store-only - there is
     no live shadow-subscribe delivery path to the drone in GCS mode, see
     gcs/README.md's "degraded features" section) so a later REST read can still
@@ -421,7 +421,7 @@ class LocalS3:
 
 class LocalBackend:
     """Adapts a LocalDynamo/LocalIoTData/LocalS3 trio to the backend interface
-    control.clients.select_backend() expects (.dynamodb, .iot, .s3,
+    clients.select_backend() expects (.dynamodb, .iot, .s3,
     .image_url_fn(key)). gcs/server.py constructs the three (they need
     cfg-derived paths, an mqtt client, etc. that this module has no access to)
     and wraps them in one of these."""
