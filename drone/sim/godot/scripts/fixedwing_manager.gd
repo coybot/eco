@@ -459,7 +459,7 @@ func _sweep_structure(from_enu: Vector3, to_enu: Vector3) -> Dictionary:
 
 func _crash(st: FixedWingState, hit: Dictionary, prev_pos: Vector3) -> void:
 	var hp: Vector3 = hit.get("position", Vector3.ZERO)
-	var impact_enu := Vector3(hp.x, -hp.z, hp.y)
+	var impact_enu := _godot_rel_to_enu(hp)   # the frames share an origin: same map for a point
 	# Rest the wreck a metre short of the surface so it does not z-fight it.
 	var back := (prev_pos - impact_enu)
 	if back.length() > 0.001:
@@ -512,7 +512,7 @@ func _step_crashed(st: FixedWingState, dt: float) -> void:
 		var hp: Vector3 = hit["position"]
 		var nrm: Vector3 = hit.get("normal", Vector3.UP)
 		var rest3 := hp + nrm * 0.5
-		st.position = Vector3(rest3.x, -rest3.z, rest3.y)
+		st.position = _godot_rel_to_enu(rest3)
 		if nrm.y > 0.5:
 			landed = true          # something roughly level: ground, roof, terrace
 		else:
