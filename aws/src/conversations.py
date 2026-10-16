@@ -52,6 +52,8 @@ s3 = clients.get_s3()
 
 # Pre-signed URL expiration (24 hours)
 PRESIGNED_URL_EXPIRATION = 86400
+# AWS IoT Core's message limit is 128 KB; leave room for the topic and framing.
+APP_MESSAGE_MAX_BYTES = 120_000
 
 
 def generate_presigned_url(s3_url: str) -> str:
@@ -1244,12 +1246,24 @@ def publish_to_app(drone_id, conversation_id, message_type, text, image_urls=Non
             {**m, 'url': generate_presigned_url(m['url'])} for m in media
         ]
     
-    print(f"📤 Publishing to app topic: {topic}, type: {message_type}")
-    iot.publish(
-        topic=topic,
-        qos=1,
-        payload=json.dumps(payload)
-    )
+    body = json.dumps(payload)
+    if len(body.encode('utf-8')) > APP_MESSAGE_MAX_BYTES:
+        # AWS IoT refuses messages over 128 KB, and a 50-photo survey's signed
+        # URLs alone pass that. The message is already saved, so send the text
+        # and say how many photos stayed behind; the app loads them from history.
+        omitted = len(payload.pop('media', None) or []) or len(payload.get('image_urls') or [])
+        payload.pop('image_urls', None)
+        payload.pop('image_options', None)
+        payload['media_omitted'] = omitted
+        body = json.dumps(payload)
+    print(f"📤 Publishing to app topic: {topic}, type: {message_type}, {len(body)} bytes")
+    try:
+        iot.publish(topic=topic, qos=1, payload=body)
+    except Exception as e:
+        # Never fail the caller over the notification: for a drone reply the
+        # message is saved and the app polls history, while a raised error
+        # makes AWS retry the whole reply - analysing and saving it twice.
+        print(f"⚠️ Could not notify the app on {topic}: {e}")
 
 
 def publish_log(drone_id, level, message, code=None, source="aws"):

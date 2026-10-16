@@ -869,10 +869,28 @@ struct ChatTabView: View {
                 newMessage.imageURLs = options.compactMap { $0["url"] as? String }
             }
             
+            // A result too big for one MQTT message (a 50-photo survey's
+            // signed URLs pass AWS IoT's 128 KB limit) arrives without its
+            // photos: take the whole message from the conversation instead.
+            if let omitted = json["media_omitted"] as? Int, omitted > 0,
+               let convId = conversationId,
+               let full = await latestResult(convId: convId) {
+                newMessage = full
+            }
+
             DisplayMessage.appendResult(newMessage, to: &displayMessages)
             isLoading = false
             receivedMQTTResponse = true
         }
+    }
+
+    /// The conversation's newest drone result (not a "working on it"), from history.
+    private func latestResult(convId: String) async -> DisplayMessage? {
+        guard let messages = try? await apiClient.getConversationHistory(
+            droneId: drone.droneId, conversationId: convId) else { return nil }
+        guard let last = messages.last(where: { $0.sender == .drone }) else { return nil }
+        if case .loading = last.content { return nil }
+        return DisplayMessage.from(chatMessage: last)
     }
     
     private func sendMessage() {

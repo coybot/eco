@@ -173,11 +173,14 @@ struct AlbumLinkView: View {
             if let link {
                 HStack(spacing: 6) {
                     Image(systemName: "link")
-                    Text(link.absoluteString)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("e2e_album_link_url")
+                    // Tapping opens the page the recipient will see.
+                    Link(destination: link) {
+                        Text(link.absoluteString)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .underline()
+                    }
+                    .accessibilityIdentifier("e2e_album_link_url")
                     // A sheet rather than ShareLink: ShareLink's iPad popover
                     // loses its anchor inside a scrolling chat bubble and
                     // opens empty at the top of the screen.

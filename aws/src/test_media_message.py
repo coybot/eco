@@ -160,3 +160,27 @@ def test_no_media_still_takes_the_plain_text_path():
     rec = _Recorder()
     _run(_base(result={"success": True, "stdout": "Landed."}), rec)
     assert rec.saved[0]["content_type"] == "text"
+
+
+def test_a_reply_too_big_for_mqtt_reaches_the_app_without_its_photo_urls():
+    """50 signed photo URLs pass AWS IoT's 128 KB message limit. Publishing them
+    raised, the reply Lambda failed, and AWS retried it - analysing and saving
+    the same survey result twice (seen in the cloud test, 2026-10-16)."""
+    sent = []
+    media = [{"url": f"https://b.s3.amazonaws.com/drones/d1/conversations/c1/{i:03d}.jpg",
+              "kind": "photo"} for i in range(50)]
+    long_sign = "?X-Amz-Security-Token=" + "t" * 3000
+    with patch.object(conversations.iot, "publish", lambda **kw: sent.append(kw)), \
+         patch.object(conversations, "generate_presigned_url", lambda u: u + long_sign):
+        conversations.publish_to_app("d1", "c1", "media", "Scan complete", media=media)
+    body = json.loads(sent[0]["payload"])
+    assert len(sent[0]["payload"]) < 128 * 1024
+    assert body["text"] == "Scan complete" and body["media_omitted"] == 50
+    assert "media" not in body and "image_urls" not in body
+
+
+def test_a_failed_app_notification_does_not_fail_the_reply():
+    def refuse(**kw):
+        raise RuntimeError("RequestEntityTooLargeException")
+    with patch.object(conversations.iot, "publish", refuse):
+        conversations.publish_to_app("d1", "c1", "text", "hello")   # must not raise
