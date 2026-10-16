@@ -133,4 +133,6 @@ def test_pymavlink_instance_cache_bug_does_not_escape(monkeypatch):
     messages = {}
     mavutil.add_message(messages, 'BATTERY_STATUS', first)
     mavutil.add_message(messages, 'BATTERY_STATUS', again)   # raised TypeError before
-    assert messages['BATTERY_STATUS'] is again
+    # The newest message is what a reader gets: the same object through our
+    # workaround (pymavlink <= 2.4.49), a copy through pymavlink 2.4.50's own fix.
+    assert messages['BATTERY_STATUS'].id == 1
