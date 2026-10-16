@@ -606,6 +606,16 @@ def _wait_armed(timeout=3.0):
     return False
 
 
+def _climb_reached(alt_m, start_alt_m, altitude_m):
+    """Has the aircraft climbed (most of) `altitude_m` from where the takeoff began?
+
+    Measured from the altitude at takeoff, not from home: PX4 climbs `altitude_m`
+    above where it IS (_px4_takeoff_amsl), and the altitude relative to home on
+    the ground is not zero - it was +1.1 m disarmed and read -1.9 m mid-run on a
+    GPS-height EKF - so a real 1 m climb was judged against a shifted zero."""
+    return (alt_m - start_alt_m) >= max(altitude_m - 0.5, altitude_m * 0.85)
+
+
 def _check_preflight_status():
     """Check GPS and EKF status before takeoff.
     
@@ -915,6 +925,10 @@ def takeoff(altitude_m):
             return False
         _log("Armed confirmed!")
     
+    # Where the climb starts, for the "reached" check below.
+    _start_pos = _fresh_position(timeout=2.0)
+    start_alt = _start_pos[2] if _start_pos is not None else 0.0
+
     # Send takeoff command atomically (PX4 wants the altitude AMSL, ArduPilot relative)
     _log(f"Sending takeoff to {altitude_m}m...")
     ack_ok, result = _mav_command(
@@ -937,7 +951,6 @@ def takeoff(altitude_m):
     # the mission then flew its remaining phases from wherever it was stuck.
     timeout = max(altitude_m * 3, 10)
     _log(f"Climbing... (up to {timeout:.0f}s)")
-    target = max(altitude_m - 0.5, altitude_m * 0.85)
     alt = None
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -964,16 +977,16 @@ def takeoff(altitude_m):
             alt = pos[2]
             # Altitude alone was fooled by drift on the ground ("Reached 0.9m"
             # with the props never spinning up); the FC's land detector must agree.
-            if alt >= target and not _fc_says_on_ground():
-                _log(f"Reached {alt:.1f}m")
+            if _climb_reached(alt, start_alt, altitude_m) and not _fc_says_on_ground():
+                _log(f"Reached {alt:.1f}m (climbed {alt - start_alt:.1f}m)")
                 return True
         time.sleep(0.5)
     why = ""
     if _ceiling_guard_holding is not None:
         why = (f" - the ceiling guard is holding altitude: the upward rangefinder reads "
                f"{_ceiling_guard_holding:.2f}m clearance")
-    got = f"{alt:.1f}m" if alt is not None else "unknown altitude"
-    _log(f"TAKEOFF FAILED: only reached {got} of {altitude_m}m{why}. Landing.")
+    got = f"{alt - start_alt:.1f}m" if alt is not None else "an unknown altitude"
+    _log(f"TAKEOFF FAILED: only climbed {got} of {altitude_m}m{why}. Landing.")
     land()
     return False
 
