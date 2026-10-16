@@ -62,6 +62,12 @@ def test_every_drone_publish_topic_is_allowed():
 
 
 def test_mission_results_are_published_at_qos_1():
+    """Every chat reply goes through send_chat_reply, which queues it in the
+    outbox at QoS 1 or, without one, publishes it at QoS 1 directly."""
     src = (COMMON / "daemon.py").read_text()
-    calls = re.findall(r"topic=response_topic,\s*payload=[^\n]+\n\s*qos=mqtt\.QoS\.(\w+)", src)
-    assert calls and set(calls) == {"AT_LEAST_ONCE"}, calls
+    body = src[src.index("def send_chat_reply"):]
+    body = body[:body.index("\ndef ")]
+    assert "queue_message(topic, body, 1)" in body
+    assert re.findall(r"qos=mqtt\.QoS\.(\w+)", body) == ["AT_LEAST_ONCE"]
+    # No chat reply published around it.
+    assert src.count("/response\"") == 1, "a chat reply is published outside send_chat_reply"

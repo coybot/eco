@@ -869,7 +869,7 @@ struct ChatTabView: View {
                 newMessage.imageURLs = options.compactMap { $0["url"] as? String }
             }
             
-            displayMessages.append(newMessage)
+            DisplayMessage.appendResult(newMessage, to: &displayMessages)
             isLoading = false
             receivedMQTTResponse = true
         }
@@ -992,7 +992,9 @@ struct ChatTabView: View {
         // Poll for updated conversation (up to 3 minutes for photo capture)
         for _ in 0..<180 {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
-            
+            // MQTT delivered the result while we were polling: it is on screen.
+            if await MainActor.run(body: { receivedMQTTResponse }) { return }
+
             do {
                 let messages = try await apiClient.getConversationHistory(droneId: drone.droneId, conversationId: convId)
                 
@@ -1009,7 +1011,7 @@ struct ChatTabView: View {
                             // A result: keep the planner's explanation above it.
                             DisplayMessage.settleInProgress(&displayMessages)
                             if !displayMessages.contains(where: { $0.id == newMessage.id }) {
-                                displayMessages.append(newMessage)
+                                DisplayMessage.appendResult(newMessage, to: &displayMessages)
                             }
                         }
                     }
@@ -1053,13 +1055,58 @@ struct DisplayMessage: Identifiable {
                              "starting mission...", "thinking..."].contains(t)
     }
 
+    /// A bubble that is only a "working on it" placeholder - never one carrying photos or
+    /// clips. A media message is converted with empty text, which read as a placeholder, so
+    /// reopening a conversation silently deleted every photo album from it.
+    static func isPlaceholderBubble(_ m: DisplayMessage) -> Bool {
+        isPlaceholder(m.content) && (m.media ?? []).isEmpty && (m.imageURLs ?? []).isEmpty
+    }
+
     /// The drone's result has arrived: remove placeholder bubbles, keep real
     /// planner text as an ordinary delivered message.
     static func settleInProgress(_ messages: inout [DisplayMessage]) {
-        messages.removeAll { !$0.isUser && $0.status == .inProgress && isPlaceholder($0.content) }
+        messages.removeAll { !$0.isUser && $0.status == .inProgress && isPlaceholderBubble($0) }
         for i in messages.indices where !messages[i].isUser && messages[i].status == .inProgress {
             messages[i].status = .delivered
         }
+    }
+
+    /// Where a message's photos/clips live, without the presigned query string
+    /// (the same object is signed differently each time it is handed out).
+    static func mediaPaths(_ m: DisplayMessage) -> [String] {
+        let urls = (m.media ?? []).map { $0.url } + (m.imageURLs ?? []).compactMap { URL(string: $0) }
+        return urls.map { ($0.host ?? "") + $0.path }
+    }
+
+    /// Index of a drone message, since the operator last spoke, that is this same
+    /// result. A survey's result reached the app twice - live over MQTT and again
+    /// from the history poll that starts when a mission outlasts the 60 s wait - and
+    /// showed two album cards, one of them without its summary.
+    static func indexOfSameResult(_ m: DisplayMessage, in messages: [DisplayMessage]) -> Int? {
+        let start = (messages.lastIndex(where: { $0.isUser }) ?? -1) + 1
+        let paths = mediaPaths(m)
+        for i in messages.indices where i >= start && !messages[i].isUser {
+            let other = messages[i]
+            if !paths.isEmpty {
+                if mediaPaths(other) == paths { return i }
+            } else if mediaPaths(other).isEmpty, !isPlaceholder(m.content),
+                      other.content == m.content, other.status == .delivered {
+                return i
+            }
+        }
+        return nil
+    }
+
+    /// Show `m` unless it is already on screen; if the copy on screen lacks the
+    /// text this one has, give it the text.
+    static func appendResult(_ m: DisplayMessage, to messages: inout [DisplayMessage]) {
+        if let i = indexOfSameResult(m, in: messages) {
+            if messages[i].content.isEmpty && !m.content.isEmpty {
+                messages[i].content = m.content
+            }
+            return
+        }
+        messages.append(m)
     }
 
     /// History: an in-progress message followed by a later drone message was answered.
@@ -1068,7 +1115,7 @@ struct DisplayMessage: Identifiable {
         for i in messages.indices where i < lastDrone && !messages[i].isUser && messages[i].status == .inProgress {
             messages[i].status = .delivered
         }
-        messages.removeAll { !$0.isUser && $0.status == .delivered && isPlaceholder($0.content) }
+        messages.removeAll { !$0.isUser && $0.status == .delivered && isPlaceholderBubble($0) }
     }
     
     static func from(chatMessage: ChatMessage) -> DisplayMessage {
@@ -1085,8 +1132,9 @@ struct DisplayMessage: Identifiable {
         case .imageChoice(let options):
             imageURLs = options.map { $0.url.absoluteString }
             content = "Here's what I see:"
-        case .media(let items):
+        case .media(let items, let caption):
             media = items
+            content = caption
         case .loading(let text):
             content = text
             status = .inProgress

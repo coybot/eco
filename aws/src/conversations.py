@@ -176,12 +176,19 @@ at import time, so keep this section in sync with it if either changes)
    the centre of each and takes ONE photo, flying a serpentine between them.
    The number of photos is the number of cells: the example above is 25. Use
    it for "photograph every square meter of ...", "take a picture of every
-   2 m of the field", "map / cover / survey the area ...". spacing_m is the
-   operator's unit ("every square meter" = 1, "every 2 meters" = 2; if no
-   unit is given, pick spacing_m so the whole area is about 10-30 photos). It
-   takes its own photos: never wrap it in start_recording/stop_recording.
-   Capped at 100 photos; a larger grid is widened to fit and the operator is
-   told. Quadcopter/rover only.
+   2 m of the field", "map / cover / survey / scan the area ...". spacing_m is
+   the operator's unit ("every square meter" = 1, "every 2 meters" = 2). If no
+   unit is given, use spacing_m 1: a crop or field survey needs the ground
+   covered, and the cap below widens it automatically for a big area - do NOT
+   pick a coarser spacing yourself to keep the photo count low. It takes its
+   own photos: never wrap it in start_recording/stop_recording. Capped at 100
+   photos; a larger grid is widened to fit and the operator is told. Every
+   photo is stamped with its capture time, GPS position and heading, and the
+   mission also uploads a per-photo manifest (CSV) - so never promise tagging
+   as a separate step. Your "message" for a survey must state the photo count
+   (cells = ceil(forward_m / spacing_m) x ceil(right_m / spacing_m)) and the
+   spacing, e.g. "50 photos, one per 1 m, each tagged with GPS and time".
+   Quadcopter/rover only.
    {"type": "look_around", "directions": 4}
    {"type": "capture_photo"}
    {"type": "start_recording", "mode": "video", "fps": 6, "max_seconds": 120}
@@ -633,12 +640,12 @@ RULES:
 1. Use ONLY these SDK functions — do NOT import anything
 2. "disarm", "stop motors", "power off" always means land(). NEVER use safe_disarm().
 3. To just arm and disarm: arm() → wait(N) → land()
-4. NEVER call takeoff() unless the user explicitly asks to fly or take off
+4. NEVER call takeoff() unless the user explicitly asks to fly or take off - or asks to survey, scan, map or photograph an AREA ("scan the area 10 meters ahead"), which is a flight and needs takeoff (see rule 9)
 5. For flight (only outdoors, only when asked): arm() → takeoff() → ... → land()
 6. Keep altitude under 20m
 7. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
 8. takeoff(), goto() and start_recording() REFUSE (return False and print why) when the battery cannot cover them plus the trip home. Check the result: if takeoff() returns False, stop and print battery_status(); if goto() returns False while flying, land(). The drone also returns home or lands by itself when the battery runs low - do not fight it.
-9. To photograph an AREA ("photograph every square meter of the rectangle 5 m ahead", "cover/map/survey the field") call print(survey_rect(...)) with spacing_m in the operator's unit ("every square meter" = 1). Never use start_recording(mode="photos") around a flight for this: timed photos are counted by seconds of flight, not by area (observed: 100 photos of a 5 x 5 m area's outline, none of its inside).
+9. To photograph an AREA ("photograph every square meter of the rectangle 5 m ahead", "cover/map/survey/scan the field") call print(survey_rect(...)) with spacing_m in the operator's unit ("every square meter" = 1; spacing_m=1 if no unit is given). survey_rect only works while the aircraft is flying and refuses on the ground, so ALWAYS fly the whole sortie: arm(), takeoff(5) (or the altitude asked for), print(survey_rect(...)), return_home(), land(). Every photo is stamped with its time, GPS position and heading automatically. Never use start_recording(mode="photos") around a flight for this: timed photos are counted by seconds of flight, not by area (observed: 100 photos of a 5 x 5 m area's outline, none of its inside).
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
@@ -673,7 +680,7 @@ RULES:
 4. Do NOT use takeoff(), land(), set_yaw(), motor_test(), disarm() — those are either quadcopter-only or blocked
 5. "stop" or "halt" means stop(). "disarm" always means safe_disarm() — never use disarm() directly
 6. When the user asks for a VIDEO, or for pictures taken WHILE moving, bracket the flight with start_recording() ... stop_recording() and print(stop_recording()) — printing the returned URLs is how the media reaches the user, so recording without printing them delivers nothing. Use mode="photos" for stills at an interval. For one still where the vehicle is already standing, use capture_photo() instead.
-7. To photograph an AREA ("photograph every square meter of the rectangle 5 m ahead", "cover/map/survey the field") call print(survey_rect(...)) with spacing_m in the operator's unit ("every square meter" = 1). Never use start_recording(mode="photos") around a flight for this: timed photos are counted by seconds of flight, not by area (observed: 100 photos of a 5 x 5 m area's outline, none of its inside).
+7. To photograph an AREA ("photograph every square meter of the rectangle 5 m ahead", "cover/map/survey/scan the field") call print(survey_rect(...)) with spacing_m in the operator's unit ("every square meter" = 1; spacing_m=1 if no unit is given). Every photo is stamped with its time, GPS position and heading automatically. Never use start_recording(mode="photos") around a flight for this: timed photos are counted by seconds of flight, not by area (observed: 100 photos of a 5 x 5 m area's outline, none of its inside).
 
 Output ONLY Python code. No markdown, no comments unless necessary."""
 
@@ -2191,6 +2198,28 @@ def create_handler(event, context):
     })
 
 
+# What the "loading" message says when the planner gave no explanation of its own.
+_LOADING_PLACEHOLDERS = {'processing...', 'processing', 'working on it...', 'starting mission...',
+                         'looking around...', 'on it...', 'thinking...', ''}
+
+
+def history_keeps_loading(item, later_items):
+    """Whether a stored "loading" message belongs in the history the apps load.
+
+    A loading message is the planner's explanation of what the drone is about to
+    do ("Surveying the 10 x 5 m area ahead and to the right: 50 photos, one per
+    1 m..."). History used to drop every one of them, so reopening a conversation
+    showed the operator's request and then the result, with the plan in between
+    gone. Kept - as plain text - once the drone has answered it (a later drone
+    message exists). Still dropped: a generic placeholder, and one not yet
+    answered, which the apps show from their own live state (an Android client
+    draws a stored "loading" message as a spinner, forever)."""
+    if (item.get('content') or '').strip().lower() in _LOADING_PLACEHOLDERS:
+        return False
+    return any(later.get('sender') == 'drone' and later.get('contentType') != 'loading'
+               for later in later_items)
+
+
 def get_handler(event, context):
     """Get conversation history."""
     user_id = get_user_id(event)
@@ -2215,18 +2244,22 @@ def get_handler(event, context):
         ScanIndexForward=True
     )
     
+    items = response.get('Items', [])
     messages = []
-    for item in response.get('Items', []):
-        # Skip "loading" messages - they're temporary placeholders
-        if item['contentType'] == 'loading':
-            continue
-            
+    for idx, item in enumerate(items):
+        content_type = item['contentType']
+        if content_type == 'loading':
+            if not history_keeps_loading(item, items[idx + 1:]):
+                continue
+            # Answered: no longer "in progress", just what the drone said it would do.
+            content_type = 'text'
+
         msg = {
             'id': item['messageId'],
             'conversationId': conversation_id,
             'sender': item['sender'],
             'content': {
-                'type': item['contentType'],
+                'type': content_type,
                 'text': item['content']
             },
             'timestamp': item['timestamp']

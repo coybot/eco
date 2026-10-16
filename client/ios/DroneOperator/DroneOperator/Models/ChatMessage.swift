@@ -34,7 +34,10 @@ enum MessageContent: Codable, Equatable {
     case text(String)
     case image(URL)
     case imageChoice([ImageOption])  // Multiple images for user selection
-    case media([MediaItem])          // Photos and/or recorded clips from a mission
+    /// Photos and/or recorded clips from a mission, with the text that came with
+    /// them ("Scan complete! 50 photos..."). The caption used to be dropped here,
+    /// so a survey's summary vanished as soon as the conversation was reloaded.
+    case media([MediaItem], caption: String)
     case loading(String)             // Drone is processing, with status text
     case error(String)               // Error message
     case missionProgress(MissionProgress)  // Mission execution progress
@@ -127,7 +130,8 @@ enum MessageContent: Codable, Equatable {
             self = .imageChoice(options)
         case "media":
             let items = try container.decode([MediaItem].self, forKey: .media)
-            self = .media(items)
+            let caption = (try? container.decode(String.self, forKey: .text)) ?? ""
+            self = .media(items, caption: caption)
         case "loading":
             let text = try container.decode(String.self, forKey: .text)
             self = .loading(text)
@@ -161,9 +165,12 @@ enum MessageContent: Codable, Equatable {
         case .imageChoice(let options):
             try container.encode("image_choice", forKey: .type)
             try container.encode(options, forKey: .options)
-        case .media(let items):
+        case .media(let items, let caption):
             try container.encode("media", forKey: .type)
             try container.encode(items, forKey: .media)
+            if !caption.isEmpty {
+                try container.encode(caption, forKey: .text)
+            }
         case .loading(let text):
             try container.encode("loading", forKey: .type)
             try container.encode(text, forKey: .text)

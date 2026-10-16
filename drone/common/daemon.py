@@ -19,6 +19,7 @@ import yaml
 import time
 import re
 import threading
+import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import deque
@@ -192,6 +193,64 @@ logger.addHandler(mqtt_log_handler)
 
 # Global reference to MQTT connection
 _mqtt_connection = None
+
+# Set while the MQTT link is up (cleared by on_connection_interrupted). The
+# outbox reads it to decide whether a queued reply can go out now.
+_link_up = threading.Event()
+
+
+def _publish_for_outbox(topic, payload, qos):
+    """The outbox's way out: publish and hand back the client's future, which
+    resolves when the broker acknowledges a QoS 1 message."""
+    conn = _mqtt_connection
+    if conn is None:
+        raise RuntimeError("no MQTT connection")
+    q = mqtt.QoS.AT_LEAST_ONCE if int(qos) >= 1 else mqtt.QoS.AT_MOST_ONCE
+    future, _packet_id = conn.publish(topic=topic, payload=payload, qos=q)
+    return future
+
+
+def _attach_outbox():
+    """Let the SDK's outbox publish queued replies on this connection, and start
+    draining anything left from before a reboot."""
+    try:
+        import drone_sdk
+        box = drone_sdk.outbox()
+    except Exception as e:
+        logger.warning(f"Outbox unavailable, replies go out directly: {e}")
+        return
+    if box is not None:
+        box.attach_mqtt(_publish_for_outbox, _link_up.is_set)
+        left = len(box.pending())
+        logger.info(f"Outbox attached ({left} item(s) waiting)")
+
+
+def send_chat_reply(conversation_id, payload):
+    """Send a reply to the app on the conversation's response topic.
+
+    Queued in the SDK's outbox (on disk, sent in order after the photos queued
+    before it, retried until the link is back) so a reply written out of WiFi
+    range arrives when the aircraft is back in range, with its photos already
+    there. Falls back to a direct QoS 1 publish if there is no outbox. Never
+    raises: a reply problem must not take down the mission thread."""
+    topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
+    payload = dict(payload)
+    payload.setdefault('message_id', uuid.uuid4().hex)
+    body = json.dumps(payload, default=str)
+    try:
+        import drone_sdk
+        if drone_sdk.queue_message(topic, body, 1):
+            logger.info(f"Reply queued for {topic}")
+            return
+    except Exception as e:
+        logger.warning(f"Could not queue reply ({e}); publishing directly")
+    try:
+        if _mqtt_connection is None:
+            logger.error("No MQTT connection; reply dropped")
+            return
+        _mqtt_connection.publish(topic=topic, payload=body, qos=mqtt.QoS.AT_LEAST_ONCE)
+    except Exception as e:
+        logger.error(f"Failed to publish reply: {e}")
 
 # Video streaming state
 _video_process = None
@@ -526,7 +585,9 @@ def _extract_media_urls(stdout: str, extensions: str) -> list:
     their URLs and this scrapes them back out — so an extension missing here
     means media that was really captured and uploaded never reaches the app.
     """
-    pattern = r'https://[a-zA-Z0-9\-]+\.s3\.amazonaws\.com/[^\s\'"]+\.(?:' + extensions + r')'
+    # S3 (control_plane: aws) or the GCS's own /images/ route (control_plane: gcs).
+    pattern = (r'https://[a-zA-Z0-9\-]+\.s3\.amazonaws\.com/[^\s\'"]+\.(?:' + extensions + r')'
+               r'|https?://[^\s\'"/]+/images/[^\s\'"]+\.(?:' + extensions + r')')
     # dict.fromkeys dedups while preserving capture order, which set() lost —
     # a look_around's photos arriving shuffled made the app's image_choice
     # numbering disagree with the order they were taken in.
@@ -1207,6 +1268,15 @@ def on_chat_command(topic, payload, **kwargs):
         
         logger.info(f"Received chat command: {action}")
         logger.info(f"Conversation: {conversation_id}")
+
+        if conversation_id:
+            # capture_photo/upload_media file media under drones/<id>/conversations/
+            # <this id>/ - read from drone_sdk's own globals. Only the generated code's
+            # exec namespace carried CONVERSATION_ID, never the SDK itself, so every photo
+            # of a survey went to its own random photos/<uuid>/ folder (50 folders for one
+            # survey) instead of one folder per conversation.
+            import drone_sdk
+            drone_sdk.CONVERSATION_ID = conversation_id
         
         if action == 'abort':
             then = data.get('then', 'hold')
@@ -1220,15 +1290,12 @@ def on_chat_command(topic, payload, **kwargs):
                         ok, msg = False, f"Stop failed: {e}"
                         logger.error(msg)
                 logger.info(msg)
-                _mqtt_connection.publish(
-                    topic=f"drone/{DRONE_ID}/chat/{conversation_id}/response",
-                    payload=json.dumps({
-                        'droneId': DRONE_ID, 'conversation_id': conversation_id,
-                        'original_message': original_message,
-                        'result': {'success': ok, 'stdout': msg, 'error': None if ok else msg},
-                        'timestamp': datetime.now(timezone.utc).isoformat(),
-                    }),
-                    qos=mqtt.QoS.AT_LEAST_ONCE)
+                send_chat_reply(conversation_id, {
+                    'droneId': DRONE_ID, 'conversation_id': conversation_id,
+                    'original_message': original_message,
+                    'result': {'success': ok, 'stdout': msg, 'error': None if ok else msg},
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                })
             threading.Thread(target=abort_async, daemon=True).start()
             return
 
@@ -1335,17 +1402,12 @@ def on_chat_command(topic, payload, **kwargs):
                             f"duration={result.duration_seconds:.1f}s)"
                         )
 
-                    response_topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
-                    # QoS 1: the result is the one message the operator is waiting
-                    # for. At QoS 0 one published while the connection was being
+                    # The result is the one message the operator is waiting for.
+                    # At QoS 0 one published while the connection was being
                     # re-established was simply gone (seen in a cloud test: 25
-                    # photos uploaded, no answer in the chat). QoS 1 is queued and
-                    # re-sent on reconnect.
-                    _mqtt_connection.publish(
-                        topic=response_topic,
-                        payload=json.dumps(response_payload),
-                        qos=mqtt.QoS.AT_LEAST_ONCE
-                    )
+                    # photos uploaded, no answer in the chat). It now goes through
+                    # the outbox: on disk, after the mission's photos, until acked.
+                    send_chat_reply(conversation_id, response_payload)
                     
                 except Exception as e:
                     import traceback
@@ -1360,12 +1422,7 @@ def on_chat_command(topic, payload, **kwargs):
                         'result': {'success': False, 'error': str(e)},
                         'timestamp': datetime.now(timezone.utc).isoformat()
                     }
-                    response_topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
-                    _mqtt_connection.publish(
-                        topic=response_topic,
-                        payload=json.dumps(error_payload),
-                        qos=mqtt.QoS.AT_LEAST_ONCE
-                    )
+                    send_chat_reply(conversation_id, error_payload)
             
             def dispatch():
                 # The newest command wins: stop the one in flight first.
@@ -1403,20 +1460,10 @@ def on_chat_command(topic, payload, **kwargs):
         if result.get('video_urls'):
             response_payload['video_urls'] = result['video_urls']
         
-        # Publish to conversation-specific response topic
+        # Reply on the conversation's response topic (queued; see send_chat_reply)
+        send_chat_reply(conversation_id, response_payload)
+
         if _mqtt_connection:
-            response_topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
-            logger.info(f"Publishing response to {response_topic}")
-            try:
-                _mqtt_connection.publish(
-                    topic=response_topic,
-                    payload=json.dumps(response_payload),
-                    qos=mqtt.QoS.AT_LEAST_ONCE
-                )
-                logger.info(f"Published response successfully")
-            except Exception as pub_err:
-                logger.error(f"Failed to publish response: {pub_err}")
-            
             # Also publish status update
             status_topic = f"drone/{DRONE_ID}/status"
             _mqtt_connection.publish(
@@ -1451,12 +1498,7 @@ def on_chat_command(topic, payload, **kwargs):
                     'result': {'success': False, 'error': str(e)},
                     'timestamp': datetime.now(timezone.utc).isoformat()
                 }
-                response_topic = f"drone/{DRONE_ID}/chat/{conversation_id}/response"
-                _mqtt_connection.publish(
-                    topic=response_topic,
-                    payload=json.dumps(error_payload),
-                    qos=mqtt.QoS.AT_LEAST_ONCE
-                )
+                send_chat_reply(conversation_id, error_payload)
             except Exception as pub_err:
                 logger.error(f"Failed to publish error response: {pub_err}")
 
@@ -1921,16 +1963,38 @@ def publish_heartbeat():
 
 def on_connection_interrupted(connection, error, **kwargs):
     """Callback when connection is interrupted."""
+    _link_up.clear()
     logger.warning(f"Connection interrupted: {error}")
 
 
 def on_connection_resumed(connection, return_code, session_present, **kwargs):
     """Callback when connection is resumed."""
     logger.info(f"Connection resumed (return_code={return_code}, session_present={session_present})")
-    
-    # Resubscribe to topics if session wasn't present
+    _link_up.set()
+    try:
+        import drone_sdk
+        if drone_sdk._outbox is not None:
+            drone_sdk._outbox.link_changed()     # send what is queued now, not after a backoff
+    except Exception:
+        pass
+
+    # Resubscribe to topics if session wasn't present - on its own thread.
+    # This callback runs on the MQTT client's network thread (paho's loop,
+    # awscrt's event loop), and resubscribe_topics waits on subscribe futures
+    # that only that thread can complete. Called inline it deadlocked: seen in
+    # SITL after a WiFi dropout, the daemon reconnected, logged "Subscribing
+    # to ...", and hung there for good - deaf to commands, every publish
+    # (the mission's reply included) stuck behind a dead network thread.
     if not session_present:
+        threading.Thread(target=_resubscribe_after_reconnect, args=(connection,),
+                         name="resubscribe", daemon=True).start()
+
+
+def _resubscribe_after_reconnect(connection):
+    try:
         resubscribe_topics(connection)
+    except Exception as e:
+        logger.error(f"Resubscribe after reconnect failed: {e}")
 
 
 def resubscribe_topics(connection):
@@ -2121,6 +2185,8 @@ def main():
 
     # Store global reference
     _mqtt_connection = mqtt_connection
+    _link_up.set()
+    _attach_outbox()
     
     # Enable MQTT log streaming now that we're connected
     mqtt_log_handler.set_mqtt_connection(mqtt_connection)

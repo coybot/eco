@@ -54,6 +54,7 @@ from vehicle_class import VehicleClass, get_class
 from spatial_memory import SpatialMemory, normalize_label, labels_match
 import search_patterns
 import mission_vocab
+import photo_meta
 from situation import ObstacleTracker, PeerTracker, payload_block
 from battery import BatteryConfig, BatteryGovernor
 
@@ -1386,23 +1387,38 @@ class MissionLoop:
     SURVEY_SETTLE_TIMEOUT_S = 6.0
     SURVEY_SECONDS_PER_PHOTO = 3.0
 
+    # Ground speed under which a shot is sharp and really belongs to its cell.
+    SURVEY_STILL_MPS = 0.25
+
     def _settle_over(self, backend, north_m: float, east_m: float, tol_m: float) -> None:
-        """Wait until the vehicle is really over the point, not just "arrived".
+        """Wait until the vehicle is really over the point AND nearly stopped.
 
         goto() calls a waypoint reached at 1 m, which is a whole cell of a 1 m
         survey. Flown in ArduCopter SITL, 7 of 25 photos were taken outside
-        their own cell. Gives up after SURVEY_SETTLE_TIMEOUT_S and takes the
-        photo anyway: a slightly-off photo beats a hole in the survey.
+        their own cell; with only the position test, 5 of 50 still landed on a
+        cell boundary because the aircraft was passing through at up to 0.9 m/s.
+        Speed is estimated from consecutive poses (get_pose carries none).
+        Gives up after SURVEY_SETTLE_TIMEOUT_S and takes the photo anyway: a
+        slightly-off photo beats a hole in the survey.
         """
         time.sleep(self.SURVEY_SETTLE_S)
         deadline = time.time() + self.SURVEY_SETTLE_TIMEOUT_S
+        prev = None   # (time, east, north) of the previous read
         while time.time() < deadline:
             try:
                 pose = backend.get_pose()
             except Exception:
                 return
-            if pose is None or math.hypot(pose[1] - north_m, pose[0] - east_m) <= tol_m:
+            if pose is None:
                 return
+            now = time.time()
+            near = math.hypot(pose[1] - north_m, pose[0] - east_m) <= tol_m
+            # A speed needs two reads, so the first can never end the wait.
+            if prev is not None and near and now > prev[0]:
+                speed = math.hypot(pose[0] - prev[1], pose[1] - prev[2]) / (now - prev[0])
+                if speed <= self.SURVEY_STILL_MPS:
+                    return
+            prev = (now, pose[0], pose[1])
             time.sleep(0.2)
 
     def _survey_points(self, phase: Dict[str, Any]):
@@ -1439,29 +1455,88 @@ class MissionLoop:
         )
         backend = self._get_backend()
         missed, problem = 0, None
-        for i, (east_m, north_m) in enumerate(pts):
-            if self._aborted:
-                return {'failed': True, 'reason': 'Stopped on your command', 'actions': i, 'aborted': True}
-            if self._time_up():
-                self._media_warning(f"the survey stopped at its time limit after {i} of {len(pts)} photos")
-                return self._time_limit_result(i)
-            self._report_progress(f"Survey photo {i + 1}/{len(pts)}")
-            try:
-                result = backend.goto(north_m, east_m, alt_m)
-            except Exception as e:
-                return {'failed': True, 'reason': f'Survey point {i + 1}: {e}', 'actions': i + 1}
-            if not self._goto_ok(result):
-                reason = getattr(result, 'message', 'blocked')
-                return {'failed': True, 'reason': f'Survey point {i + 1} blocked: {reason}', 'actions': i + 1}
-            self._settle_over(backend, north_m, east_m, tol_m=0.35 * spacing)
-            url, why = self._take_photo()
-            if url is None:
-                missed += 1
-                problem = problem or why
+        rows: List[Dict[str, Any]] = []
+        heading = self._home_yaw_rad or 0.0
+        try:
+            for i, (east_m, north_m) in enumerate(pts):
+                if self._aborted:
+                    return {'failed': True, 'reason': 'Stopped on your command', 'actions': i, 'aborted': True}
+                if self._time_up():
+                    self._media_warning(f"the survey stopped at its time limit after {i} of {len(pts)} photos")
+                    return self._time_limit_result(i)
+                self._report_progress(f"Survey photo {i + 1}/{len(pts)}")
+                try:
+                    result = backend.goto(north_m, east_m, alt_m)
+                except Exception as e:
+                    return {'failed': True, 'reason': f'Survey point {i + 1}: {e}', 'actions': i + 1}
+                if not self._goto_ok(result):
+                    reason = getattr(result, 'message', 'blocked')
+                    return {'failed': True, 'reason': f'Survey point {i + 1} blocked: {reason}', 'actions': i + 1}
+                self._settle_over(backend, north_m, east_m, tol_m=0.35 * spacing)
+                url, why = self._take_photo()
+                if url is None:
+                    missed += 1
+                    problem = problem or why
+                    continue
+                # The cell's centre in the start frame (forward/right of the start point).
+                fwd = north_m * math.cos(heading) + east_m * math.sin(heading)
+                rgt = east_m * math.cos(heading) - north_m * math.sin(heading)
+                rows.append(self._survey_row(len(rows) + 1, url, i + 1, fwd, rgt))
+        finally:
+            # On every exit - done, aborted, timed out, failed - because the
+            # photos already taken are delivered either way and still need
+            # their positions.
+            self._finish_survey_manifest(rows)
         if missed:
             # One line for the whole survey, not one per cell.
             self._media_warning(f"{missed} of {len(pts)} survey photos were not taken: {problem}")
         return {'success': True, 'actions': len(pts)}
+
+    def _survey_row(self, n: int, url: str, cell: int, cell_forward_m: float, cell_right_m: float) -> Dict[str, Any]:
+        """One manifest row: what the SDK stamped on the photo just taken."""
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        meta = None
+        getter = getattr(sdk, 'last_photo_meta', None)
+        if callable(getter):
+            try:
+                meta = getter()
+            except Exception:
+                meta = None
+        return photo_meta.survey_row(n, url, cell, cell_forward_m, cell_right_m, meta, time.time())
+
+    def _finish_survey_manifest(self, rows: List[Dict[str, Any]]) -> None:
+        """Warn about photos with no GPS fix, and upload the manifest CSV next
+        to the photos. Never raises: a manifest problem must not fail the flight."""
+        if not rows:
+            return
+        ungeo = sum(1 for r in rows if r['gps'] == 'no')
+        if ungeo:
+            self._media_warning(f"{ungeo} of {len(rows)} survey photos have no GPS position "
+                                "(no fix when they were taken), only a time")
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        if sdk is None or not hasattr(sdk, 'upload_media'):
+            return   # sim shims upload photos only
+        import tempfile
+        path = None
+        try:
+            with tempfile.NamedTemporaryFile('w', suffix='.csv', prefix='survey_manifest_',
+                                             delete=False) as f:
+                f.write(photo_meta.manifest_csv(rows))
+                path = f.name
+            url = sdk.upload_media(path, self.conversation_id)
+            if url:
+                self._report_progress(f"Survey manifest saved: {len(rows)} photos")
+            else:
+                self._media_warning("the survey photos were saved but their position/time manifest "
+                                    "could not be (positions are still in each photo's EXIF)")
+        except Exception as e:
+            self._report_progress(f"WARNING: survey manifest not uploaded: {e}")
+        finally:
+            if path:
+                try:
+                    Path(path).unlink()
+                except OSError:
+                    pass
 
     def _exec_hold(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         """Stay where it is for `seconds` ("hover for 30 s", "wait 10 s then
@@ -1512,6 +1587,8 @@ class MissionLoop:
                 fps=fps,
                 interval_s=interval_s,
                 max_seconds=max_seconds,
+                fix_source=getattr(_drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk,
+                                   'photo_fix', None),
             )
             self._recorder.start()
         except Exception as e:
@@ -2742,6 +2819,13 @@ class MissionLoop:
                     'message': message,
                     'timestamp': time.time(),
                 }
+                # A report is a chat message: on the aircraft it goes through the
+                # SDK's outbox, so one written out of range is delivered (after
+                # the photos taken before it) when the link is back, and never
+                # holds up the flight. Sims without the SDK publish directly.
+                queue = getattr(_drone_sdk, 'queue_message', None) if DRONE_SDK_AVAILABLE else None
+                if queue is not None and queue(topic, json.dumps(payload), 1):
+                    return
                 self._mqtt_publish(topic, json.dumps(payload))
             except:
                 pass

@@ -2622,6 +2622,17 @@ def _get_iot_credentials():
         return None
 
 
+def _s3_client_config():
+    """Fail fast and let the outbox retry: botocore's defaults (60 s connect and
+    read timeouts, several retries) held one upload for minutes when the link
+    was gone."""
+    try:
+        from botocore.config import Config
+        return Config(connect_timeout=5, read_timeout=30, retries={'max_attempts': 2})
+    except ImportError:
+        return None
+
+
 def _get_s3():
     """Get or create S3 client with fresh credentials."""
     global _s3_client, _s3_bucket, _s3_credentials_expiry
@@ -2661,14 +2672,15 @@ def _get_s3():
                     region_name=region,
                     aws_access_key_id=creds['access_key'],
                     aws_secret_access_key=creds['secret_key'],
-                    aws_session_token=creds['session_token']
+                    aws_session_token=creds['session_token'],
+                    config=_s3_client_config(),
                 )
                 # Set expiry with 5 min buffer
                 _s3_credentials_expiry = creds['expiry'] - timedelta(minutes=5)
                 print(f"S3 initialized with IoT credentials (bucket: {_s3_bucket}, expires: {creds['expiry']})")
             else:
                 # Fallback to default credentials (EC2 role, env vars, etc.)
-                _s3_client = boto3.client('s3', region_name=region)
+                _s3_client = boto3.client('s3', region_name=region, config=_s3_client_config())
                 _s3_credentials_expiry = datetime.now(timezone.utc) + timedelta(hours=1)
                 print(f"S3 initialized with default credentials (bucket: {_s3_bucket})")
                 
@@ -2680,6 +2692,51 @@ def _get_s3():
             return None, None
     
     return _s3_client, _s3_bucket
+
+
+def _photo_fix(max_age=1.0):
+    """Where the aircraft is right now, for stamping a photo: a dict with lat,
+    lon, alt_msl_m, alt_above_home_m, heading_deg (None if unknown) and
+    ground_speed_mps, or None with no GPS position.
+
+    Never returns a (0, 0) placeholder: a photo with no fix is better left
+    untagged than tagged with a point in the Atlantic."""
+    try:
+        msg = _fc_cached('GLOBAL_POSITION_INT', max_age=max_age)
+        if msg is None:
+            with _mavlink_lock:
+                m = _connect()
+                _ensure_streams(m)
+                _drain_backlog(m)
+            msg = _fc_cached('GLOBAL_POSITION_INT', max_age=max_age)
+        if msg is None:
+            msg = _mav_recv('GLOBAL_POSITION_INT', timeout=0.8)
+    except Exception:
+        return None
+    if msg is None or (msg.lat == 0 and msg.lon == 0):
+        return None
+    return {
+        'lat': msg.lat / 1e7,
+        'lon': msg.lon / 1e7,
+        'alt_msl_m': msg.alt / 1000.0,
+        'alt_above_home_m': msg.relative_alt / 1000.0,
+        'heading_deg': None if msg.hdg == 65535 else msg.hdg / 100.0,
+        'ground_speed_mps': math.hypot(msg.vx, msg.vy) / 100.0,
+    }
+
+
+photo_fix = _photo_fix   # public name, for the mission loop's interval-photo recorder
+
+
+# What the most recent capture_photo stamped, for callers that report it (the
+# survey manifest). One photo at a time: the camera is single-owner anyway.
+_last_photo_meta = None
+
+
+def last_photo_meta():
+    """Metadata of the most recent capture_photo: {'when': unix time, 'fix': the
+    _photo_fix dict or None}, or None before any photo."""
+    return _last_photo_meta
 
 
 def capture_photo(save_path=None, upload=True):
@@ -2709,6 +2766,7 @@ def capture_photo(save_path=None, upload=True):
         print("Camera ready")
         
         frame = camera.get_frame(timeout_ms=2000)
+        grabbed_at = time.time()
         if frame is None or frame.rgb is None:
             print("Error: Failed to capture frame")
             return None
@@ -2719,7 +2777,25 @@ def capture_photo(save_path=None, upload=True):
         # Convert RGB to BGR for OpenCV
         bgr_frame = cv2.cvtColor(frame.rgb, cv2.COLOR_RGB2BGR)
         cv2.imwrite(save_path, bgr_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        
+
+        # Stamp when and where, using the position read at the instant of the
+        # grab. A stamping failure must cost the tags, never the photo.
+        global _last_photo_meta
+        fix = _photo_fix()
+        _last_photo_meta = {'when': grabbed_at, 'fix': fix}
+        try:
+            import photo_meta
+            photo_meta.stamp_jpeg_file(
+                save_path, grabbed_at,
+                lat=fix['lat'] if fix else None,
+                lon=fix['lon'] if fix else None,
+                alt_msl_m=fix['alt_msl_m'] if fix else None,
+                heading_deg=fix['heading_deg'] if fix else None,
+                description=(f"alt {fix['alt_above_home_m']:.1f} m above home" if fix else None),
+            )
+        except Exception as e:
+            print(f"Warning: photo taken but not stamped with time/position: {e}")
+
         print(f"Photo captured: {save_path}")
         
         # Release camera after capture so video streaming can use it
@@ -2734,7 +2810,9 @@ def capture_photo(save_path=None, upload=True):
             
             url = upload_photo(save_path, conversation_id)
             if url:
-                print(f"Photo uploaded: {url}")
+                # Printed for the codegen path, which scrapes URLs from stdout.
+                # "saved": with the outbox it may still be on its way up.
+                print(f"Photo saved: {url}")
                 # Clean up local file
                 try:
                     os.remove(save_path)
@@ -2786,6 +2864,7 @@ _CONTENT_TYPES = {
     '.jpeg': 'image/jpeg',
     '.png': 'image/png',
     '.mp4': 'video/mp4',
+    '.csv': 'text/csv',
 }
 
 
@@ -2822,17 +2901,149 @@ def upload_photo(local_path, conversation_id):
         conversation_id: Conversation ID for organizing uploads.
 
     Returns:
-        Public URL of the uploaded image, or None if upload failed.
+        Public URL of the image (see upload_media: it may still be on its way),
+        or None if it could not even be queued.
     """
     return upload_media(local_path, conversation_id)
 
 
+# ---------------------------------------------------------------------------
+# Outbox: uploads and reply messages are queued on disk and sent by a
+# background worker (outbox.py), so the thread flying a mission never waits on
+# the network and nothing is lost out of WiFi range. `outbox: false` in
+# config.yaml restores the old inline, single-attempt upload.
+# ---------------------------------------------------------------------------
+
+_outbox = None
+_outbox_lock = threading.Lock()
+
+
+def outbox():
+    """The process's outbox (started on first use), or None if disabled or the
+    directory cannot be created - callers then upload inline as before."""
+    global _outbox
+    if _outbox is not None:
+        return _outbox
+    with _outbox_lock:
+        if _outbox is not None:
+            return _outbox
+        config = _load_config()
+        if config.get('outbox', True) is False or os.environ.get('COYBOT_OUTBOX') == 'off':
+            return None
+        # ~/drone-api/spool/ on the aircraft: beside config.yaml, not in /tmp,
+        # so a reboot does not lose what is waiting to go.
+        directory = Path(os.environ.get('COYBOT_OUTBOX_DIR') or config.get('outbox_dir')
+                         or (DRONE_DIR / 'spool'))
+        try:
+            import outbox as _outbox_mod
+            box = _outbox_mod.Outbox(directory, uploader=_upload_now, log=_logger.warning)
+        except Exception as e:
+            print(f"Warning: outbox unavailable ({e}); uploading inline")
+            return None
+        box.start()
+        left = len(box.pending())
+        if left:
+            print(f"Outbox: {left} item(s) from before are waiting to be sent")
+        _outbox = box
+        return _outbox
+
+
+def queue_message(topic, payload, qos=1):
+    """Queue an MQTT message (a chat reply) to be published, in order after any
+    media queued before it, once the daemon's link is up. False if there is no
+    outbox - the caller should publish directly."""
+    box = outbox()
+    if box is None:
+        return False
+    return box.enqueue_message(topic, payload if isinstance(payload, str) else json.dumps(payload), qos)
+
+
+def _media_url(key, config=None):
+    """The URL an object at `key` has (or will have, once the outbox sends it).
+    Known without the network, so a photo's URL can go into the survey manifest
+    and the reply before the photo itself has left the aircraft."""
+    config = config if config is not None else _load_config()
+    if config.get('control_plane') == 'gcs':
+        base = ((config.get('gcs') or {}).get('images_base_url') or '').rstrip('/')
+        return f"{base}/images/{key}" if base else None
+    bucket = config.get('images_bucket', 'drone-images-dev')
+    return f'https://{bucket}.s3.amazonaws.com/{key}'
+
+
+def _upload_now(local_path, key, content_type):
+    """Send one queued object. Raises outbox.PermanentError when the server
+    refuses it for a reason a retry will not fix; any other exception means
+    "try again later" (no route, timeout, expired credentials, 5xx)."""
+    import outbox as _outbox_mod
+    config = _load_config()
+    if config.get('control_plane') == 'gcs':
+        gcs = config.get('gcs', {}) or {}
+        base, token = gcs.get('images_base_url'), gcs.get('auth_token')
+        if not base or not token:
+            raise _outbox_mod.PermanentError('gcs.images_base_url / gcs.auth_token not configured')
+        import urllib.request
+        import urllib.error
+        with open(local_path, 'rb') as f:
+            data = f.read()
+        req = urllib.request.Request(f"{base.rstrip('/')}/images/{key}", data=data, method='PUT')
+        req.add_header('Content-Type', content_type)
+        req.add_header('Authorization', f'Bearer {token}')
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+        except urllib.error.HTTPError as e:
+            if 400 <= e.code < 500 and e.code not in (408, 429):
+                raise _outbox_mod.PermanentError(f"HTTP {e.code}")
+            raise
+        _logger.info(f"Media uploaded: {key.rsplit('/', 1)[-1]}")
+        return
+
+    global _s3_client
+    s3, bucket = _get_s3()
+    if s3 is None or bucket is None:
+        raise RuntimeError('S3 not available (no credentials yet)')
+    try:
+        s3.upload_file(local_path, bucket, key, ExtraArgs={'ContentType': content_type})
+    except Exception as e:
+        code = ''
+        try:
+            code = e.response['Error']['Code']
+        except Exception:
+            pass
+        if code in ('ExpiredToken', 'InvalidAccessKeyId', 'SignatureDoesNotMatch',
+                    'RequestTimeTooSkewed', 'InvalidToken'):
+            _s3_client = None          # fetch fresh IoT credentials on the retry
+            raise
+        if code in ('AccessDenied', 'NoSuchBucket', 'InvalidBucketName'):
+            raise _outbox_mod.PermanentError(code)
+        raise
+    _logger.info(f"Media uploaded: {key.rsplit('/', 1)[-1]}")
+
+
 def upload_media(local_path, conversation_id, content_type=None):
-    """Upload any media file (photo or video) and return its public URL."""
+    """Queue any media file (photo, video, manifest) for upload and return the
+    URL it will have.
+
+    The file is copied into the outbox, so the caller may delete it straight
+    away. The upload itself happens in the background, retried until the link
+    is back - out of WiFi range the photo is kept on the aircraft, not lost,
+    and the mission is never held up waiting for it. With the outbox disabled
+    (`outbox: false`) this uploads inline, once, as it used to."""
     config = _load_config()
     filename = Path(local_path).name
     key = _media_key(conversation_id, filename)
     content_type = content_type or _content_type_for(filename)
+
+    box = outbox()
+    if box is not None:
+        url = _media_url(key, config)
+        if url and box.enqueue_file(str(local_path), key, content_type, url):
+            return url
+        if not url:
+            print("Error: gcs.images_base_url not configured for control_plane: gcs")
+            return None
+        # Could not queue (disk full): one inline attempt is all that is left.
 
     if config.get('control_plane') == 'gcs':
         return _upload_media_gcs(local_path, key, config.get('gcs', {}) or {}, content_type)
@@ -2851,6 +3062,12 @@ def upload_video_bytes(mp4_bytes, conversation_id, label='clip'):
         return None
     config = _load_config()
     key = _media_key(conversation_id, f'{label}.mp4')
+
+    box = outbox()
+    if box is not None:
+        url = _media_url(key, config)
+        if url and box.enqueue_bytes(bytes(mp4_bytes), key, 'video/mp4', url):
+            return url
 
     if config.get('control_plane') == 'gcs':
         return _upload_bytes_gcs(mp4_bytes, key, config.get('gcs', {}) or {}, 'video/mp4')
@@ -3059,6 +3276,9 @@ def return_home(alt_m=None):
     return goto_offset(0.0, 0.0, float(alt_m))
 
 
+SURVEY_STILL_MPS = 0.25   # ground speed under which a survey shot is sharp and really in its cell
+
+
 def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
                 spacing_m=1.0, altitude_m=None, settle_s=0.5):
     """Photograph an area: one photo over the centre of every spacing_m x
@@ -3070,13 +3290,24 @@ def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
     A 5 x 5 m area at spacing_m=1 is 25 photos. Capped at 100 photos (the
     spacing is widened to fit, and said). Returns the list of photo URLs;
     stops early and returns what it has if a leg is refused.
+
+    The aircraft must already be flying: this is a flight pattern, not a way to
+    take off. On the ground it refuses and says so, rather than "surveying" a
+    patch of grass from 0 m (what generated code did when it left out takeoff()).
+    Each photo is stamped with time/GPS/heading by capture_photo, and a
+    survey_manifest CSV (one row per photo) is uploaded beside them.
     """
     import search_patterns
+    import photo_meta
     pose = get_local_pose()
     if pose is None:
         print("SURVEY FAILED: no position/heading from the flight controller")
         return []
     east0, north0, up0, yaw = pose
+    if not is_armed() or up0 < 0.5:
+        print("SURVEY REFUSED: the aircraft is not flying. Take off first - arm(), "
+              "takeoff(altitude_m) - then survey, then return_home() and land().")
+        return []
     alt = float(altitude_m) if altitude_m is not None else up0
     rel, used = search_patterns.capped_photo_grid(
         (float(forward_m), float(right_m)), (float(origin_forward_m), float(origin_right_m)),
@@ -3085,28 +3316,74 @@ def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
         print(f"Survey: a photo every {spacing_m} m would be over "
               f"{search_patterns.MAX_SURVEY_PHOTOS} photos; taking one every {used:.1f} m")
     print(f"Survey: {len(rel)} photos, one per {used:g} m cell")
-    urls, missed = [], 0
+    urls, missed, rows = [], 0, []
     for i, (e, n) in enumerate(rel):
         if not goto_offset(north0 + n, east0 + e, alt):
             print(f"Survey stopped at photo {i + 1}/{len(rel)}: leg refused or not reached")
             break
-        # goto_offset reports arrival at 1 m, a whole cell of a 1 m survey:
-        # wait until it is really over the cell centre (or give up and shoot).
+        # goto_offset reports arrival at 1 m, a whole cell of a 1 m survey: wait
+        # until it is really over the cell centre AND nearly stopped (a pass
+        # through the cell at 0.9 m/s put 5 of 50 photos on a cell boundary),
+        # or give up and shoot.
         time.sleep(settle_s)
         deadline = time.time() + 6.0
+        prev = None
         while time.time() < deadline:
             p = get_local_pose()
-            if p is None or math.hypot(p[1] - (north0 + n), p[0] - (east0 + e)) <= 0.35 * used:
+            if p is None:
                 break
+            now = time.time()
+            near = math.hypot(p[1] - (north0 + n), p[0] - (east0 + e)) <= 0.35 * used
+            if prev is not None and near and now > prev[0]:
+                if math.hypot(p[0] - prev[1], p[1] - prev[2]) / (now - prev[0]) <= SURVEY_STILL_MPS:
+                    break
+            prev = (now, p[0], p[1])
             time.sleep(0.2)
         url = capture_photo(upload=True)
         if url and str(url).startswith(("http://", "https://", "s3://")):
             urls.append(url)
+            # The cell's centre in the start frame (forward/right of where the survey began).
+            fwd = n * math.cos(yaw) + e * math.sin(yaw)
+            rgt = e * math.cos(yaw) - n * math.sin(yaw)
+            rows.append(photo_meta.survey_row(len(rows) + 1, url, i + 1, fwd, rgt,
+                                              last_photo_meta(), time.time()))
         else:
             missed += 1
     if missed:
         print(f"Survey: {missed} of {len(rel)} photos were not taken or not uploaded")
+    _upload_survey_manifest(rows)
     return urls
+
+
+def _upload_survey_manifest(rows):
+    """Upload the survey's manifest CSV beside its photos. Never raises."""
+    if not rows:
+        return
+    import tempfile
+    import photo_meta
+    ungeo = sum(1 for r in rows if r['gps'] == 'no')
+    if ungeo:
+        print(f"Survey: {ungeo} of {len(rows)} photos have no GPS position (no fix when they were taken), only a time")
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile('w', suffix='.csv', prefix='survey_manifest_', delete=False) as f:
+            f.write(photo_meta.manifest_csv(rows))
+            path = f.name
+        conversation_id = globals().get('CONVERSATION_ID') or os.environ.get('CONVERSATION_ID')
+        if not conversation_id:
+            import uuid
+            conversation_id = f"photos/{uuid.uuid4().hex[:8]}"
+        url = upload_media(path, conversation_id)
+        print(f"Survey manifest saved: {len(rows)} photos" if url
+              else "Survey: the position/time manifest could not be saved for upload (positions are still in each photo's EXIF)")
+    except Exception as e:
+        print(f"Survey: manifest not uploaded: {e}")
+    finally:
+        if path:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 def is_recording():

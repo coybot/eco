@@ -176,3 +176,55 @@ def test_stop_while_the_pilot_flies_leaves_the_aircraft_to_them(daemon, monkeypa
     result = conn.published[-1][1]["result"]
     assert moved == []
     assert result["success"] and "The pilot has control from the transmitter" in result["stdout"]
+
+
+def test_every_command_files_its_media_under_its_own_conversation(daemon, fake_loop, monkeypatch):
+    """Found by flying a survey through the real daemon: capture_photo reads CONVERSATION_ID from
+    drone_sdk's own globals, but only the generated code's exec namespace ever had it, so each of
+    a survey's 50 photos (and its manifest) went to a random photos/<uuid>/ folder. They must share
+    one folder, named for the conversation."""
+    monkeypatch.setattr(daemon, "_mqtt_connection", Conn())
+    fake_sdk = types.SimpleNamespace(
+        is_flying=lambda: True, brake=lambda: True, clear_abort=lambda: None,
+        hold_here=lambda **k: True, _position_relative=lambda: (0, 0, 4.8), land=lambda: None,
+        return_home=lambda: True, request_abort=lambda: None)
+    monkeypatch.setitem(sys.modules, "drone_sdk", fake_sdk)
+    _send(daemon, action="mission", mission_id="m1", conversation_id="conv-42",
+          phases=[{"type": "survey_rect"}])
+    assert _wait(lambda: daemon.active_mission_status().get("running"))
+    assert fake_sdk.CONVERSATION_ID == "conv-42"
+    daemon._stop_active_mission()
+
+
+def test_photo_urls_are_scraped_from_both_s3_and_the_gcs_images_route(daemon):
+    out = ("['https://bkt.s3.amazonaws.com/drones/d/conversations/c/1.jpg?X-Amz=1', "
+           "'http://127.0.0.1:8080/images/drones/d/conversations/c/2.jpg', "
+           "'http://127.0.0.1:8080/images/drones/d/conversations/c/clip.mp4', "
+           "'http://example.com/not-an-image-route.jpg']")
+    assert daemon.extract_image_urls(out) == [
+        "https://bkt.s3.amazonaws.com/drones/d/conversations/c/1.jpg",
+        "http://127.0.0.1:8080/images/drones/d/conversations/c/2.jpg"]
+    assert daemon.extract_video_urls(out) == ["http://127.0.0.1:8080/images/drones/d/conversations/c/clip.mp4"]
+
+
+def test_reconnecting_does_not_block_the_mqtt_thread(daemon):
+    """on_connection_resumed runs on the MQTT client's own network thread, and
+    the subscribe acknowledgements it used to wait for are delivered by that same
+    thread. Seen in SITL after a WiFi dropout: the daemon reconnected, logged
+    "Subscribing to ...", and never came back - deaf to commands, and the
+    mission reply queued behind a dead network thread."""
+    from concurrent.futures import Future
+
+    class Conn:
+        def __init__(self):
+            self.topics = []
+
+        def subscribe(self, topic, qos, callback):
+            self.topics.append(topic)
+            return Future(), 1          # the ack never comes on this thread
+
+    conn = Conn()
+    t0 = time.time()
+    daemon.on_connection_resumed(conn, return_code=0, session_present=False)
+    assert time.time() - t0 < 1.0, "the network thread must not wait for its own acks"
+    assert _wait(lambda: conn.topics), "it still resubscribes, from another thread"

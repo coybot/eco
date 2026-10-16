@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections import OrderedDict
 from concurrent.futures import Future
 from typing import Callable, Optional
 
@@ -47,6 +48,14 @@ class PahoMqttAdapter:
         self._lock = threading.Lock()
         self._subscriptions: dict = {}       # topic filter -> (qos_int, callback)
         self._pending_subscribes: dict = {}  # mid -> Future
+        # QoS 1 publishes awaiting the broker's PUBACK: mid -> Future. Acks that
+        # arrive before publish() has registered its mid wait in _early_acks.
+        # Never hold _pub_lock while calling into paho: paho runs on_publish
+        # with its own _out_message_mutex held, and publish() takes that same
+        # mutex - holding ours across it would deadlock against an ack.
+        self._pub_lock = threading.Lock()
+        self._pending_publishes: dict = {}
+        self._early_acks: "OrderedDict[int, None]" = OrderedDict()
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -64,6 +73,7 @@ class PahoMqttAdapter:
         self._client.on_disconnect = self._on_disconnect
         self._client.on_subscribe = self._on_subscribe
         self._client.on_message = self._on_message
+        self._client.on_publish = self._on_publish
 
     # --- surface daemon.py calls against (mirrors awsiot's mqtt_connection) ---
 
@@ -92,15 +102,30 @@ class PahoMqttAdapter:
         return future, mid
 
     def publish(self, topic: str, payload, qos=0) -> tuple:
+        """Never blocks. For QoS 0 the future is already resolved. For QoS 1 it
+        resolves when the broker acknowledges the message - which is what the
+        outbox waits for before it forgets a reply. paho keeps a QoS 1 message
+        published while disconnected and sends it after reconnecting, so the
+        future can resolve long after this returns (as awscrt's does)."""
         qos_int = int(qos)
         data = payload if isinstance(payload, (bytes, bytearray)) else str(payload).encode("utf-8")
-        info = self._client.publish(topic, data, qos=qos_int)
-        # daemon.py never calls .result() on a publish future (fire-and-forget
-        # everywhere it's used) - resolved immediately so nothing could block
-        # on it if that ever changes.
         future = Future()
-        future.set_result(info.mid)
+        info = self._client.publish(topic, data, qos=qos_int)
+        if qos_int == 0:
+            future.set_result(info.mid)
+        elif info.rc not in (mqtt.MQTT_ERR_SUCCESS, mqtt.MQTT_ERR_NO_CONN):
+            future.set_exception(RuntimeError(f"publish to {topic} failed: {info.rc}"))
+        else:
+            with self._pub_lock:
+                acked = self._early_acks.pop(info.mid, False) is None
+                if not acked:
+                    self._pending_publishes[info.mid] = future
+            if acked:
+                future.set_result(info.mid)
         return future, info.mid
+
+    def is_connected(self) -> bool:
+        return bool(self._client.is_connected())
 
     # --- paho v2 callbacks -------------------------------------------------
 
@@ -139,6 +164,20 @@ class PahoMqttAdapter:
             future = self._pending_subscribes.pop(mid, None)
         if future and not future.done():
             future.set_result(None)
+
+    def _on_publish(self, client, userdata, mid, reason_code=None, properties=None):
+        with self._pub_lock:
+            future = self._pending_publishes.pop(mid, None)
+            if future is None:
+                # Not registered yet (or a QoS 0 send nobody waits on). Bounded
+                # far below the 65535 mid space, so an old entry is evicted long
+                # before its mid can be reused.
+                self._early_acks[mid] = None
+                while len(self._early_acks) > 4096:
+                    self._early_acks.popitem(last=False)
+                return
+        if not future.done():
+            future.set_result(mid)
 
     def _on_message(self, client, userdata, message):
         with self._lock:

@@ -61,6 +61,7 @@ class MediaRecorder:
         max_seconds: float = DEFAULT_MAX_SECONDS,
         max_frames: int = DEFAULT_MAX_FRAMES,
         out_dir: Optional[Path] = None,
+        fix_source: Optional[Callable[[], Any]] = None,
     ) -> None:
         if mode not in ("video", "photos"):
             raise ValueError(f"mode must be 'video' or 'photos', got {mode!r}")
@@ -71,6 +72,9 @@ class MediaRecorder:
         self.max_frames = max(int(max_frames), 1)
         self._frame_source = frame_source
         self._out_dir = Path(out_dir) if out_dir else None
+        # Where the vehicle is now (drone_sdk._photo_fix): stamped into each still
+        # so interval photos can be placed on the ground like survey photos.
+        self._fix_source = fix_source
 
         self._frames: List[Any] = []
         self._photo_paths: List[Path] = []
@@ -164,15 +168,33 @@ class MediaRecorder:
 
     def _capture_one(self) -> None:
         frame = self._frame_source()
+        grabbed_at = time.time()
         rgb = _extract_rgb(frame)
         if rgb is None:
             return
         if self.mode == "video":
             self._frames.append(rgb)
         else:
-            self._photo_paths.append(self._write_jpeg(rgb))
+            self._photo_paths.append(self._write_jpeg(rgb, grabbed_at))
 
-    def _write_jpeg(self, rgb) -> Path:
+    def _stamp(self, path: Path, when: float) -> None:
+        """Write capture time (and position, when known) into the JPEG's EXIF.
+        Never raises: losing the tags must not lose the photo."""
+        try:
+            import photo_meta
+            fix = self._fix_source() if self._fix_source else None
+            photo_meta.stamp_jpeg_file(
+                str(path), when,
+                lat=fix['lat'] if fix else None,
+                lon=fix['lon'] if fix else None,
+                alt_msl_m=fix['alt_msl_m'] if fix else None,
+                heading_deg=fix['heading_deg'] if fix else None,
+                description=(f"alt {fix['alt_above_home_m']:.1f} m above home" if fix else None),
+            )
+        except Exception as e:
+            logger.warning("Could not stamp %s with time/position: %s", path, e)
+
+    def _write_jpeg(self, rgb, when: Optional[float] = None) -> Path:
         import cv2
 
         if self._out_dir is not None:
@@ -184,6 +206,7 @@ class MediaRecorder:
         # still and a one-off still are the same picture.
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         cv2.imwrite(str(path), bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        self._stamp(path, when if when is not None else time.time())
         return path
 
     def _finalize(self) -> List[MediaArtifact]:

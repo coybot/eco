@@ -11,7 +11,12 @@ import AVKit
 struct MediaAlbumView: View {
     let items: [MessageContent.MediaItem]
     @State var selection: Int
+    @State private var exporting = false
+    @State private var exportError: String?
+    @State private var exportedFile: ExportedFile?
     @Environment(\.dismiss) private var dismiss
+
+    private var photoURLs: [URL] { items.filter { $0.kind == .photo }.map(\.url) }
 
     init(items: [MessageContent.MediaItem], initialIndex: Int = 0) {
         self.items = items
@@ -40,15 +45,57 @@ struct MediaAlbumView: View {
                     Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    if items.indices.contains(selection) {
-                        ShareLink(item: items[selection].url) {
-                            Image(systemName: "square.and.arrow.up")
+                    HStack(spacing: 16) {
+                        if photoURLs.count > 1 {
+                            exportButton
+                        }
+                        if items.indices.contains(selection) {
+                            ShareLink(item: items[selection].url) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
                         }
                     }
                 }
             }
+            .sheet(item: $exportedFile) { file in
+                ShareSheet(fileURL: file.url)
+            }
+            .alert("Couldn't export", isPresented: Binding(get: { exportError != nil },
+                                                           set: { if !$0 { exportError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(exportError ?? "")
+            }
         }
         .accessibilityIdentifier("e2e_media_album_view")
+    }
+
+    /// Export the whole album - original photos plus a manifest.csv of where and
+    /// when each was taken - as one zip, via the share sheet (Files, AirDrop, Mail).
+    private var exportButton: some View {
+        Button {
+            Task { await export() }
+        } label: {
+            if exporting {
+                ProgressView()
+            } else {
+                Image(systemName: "square.and.arrow.down.on.square")
+            }
+        }
+        .disabled(exporting)
+        .accessibilityIdentifier("e2e_media_album_export")
+        .accessibilityLabel("Export \(photoURLs.count) photos with positions")
+    }
+
+    private func export() async {
+        exporting = true
+        defer { exporting = false }
+        do {
+            let zip = try await AlbumArchive.build(photos: photoURLs)
+            exportedFile = ExportedFile(url: zip)
+        } catch {
+            exportError = error.localizedDescription
+        }
     }
 
     private var title: String {
@@ -255,4 +302,10 @@ private struct VideoPosterView: View {
 /// silently change what `.sheet(item:)` accepts everywhere else in the app.
 private struct MediaSelection: Identifiable {
     let id: Int
+}
+
+/// `.sheet(item:)` payload for a finished export.
+private struct ExportedFile: Identifiable {
+    let url: URL
+    var id: String { url.path }
 }

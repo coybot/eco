@@ -203,3 +203,42 @@ def test_extract_rgb_rejects_what_cannot_be_encoded():
     assert _extract_rgb(types.SimpleNamespace(rgb=None)) is None
     assert _extract_rgb(np.zeros((8, 8), dtype=np.uint8)) is None      # no channels
     assert _extract_rgb(np.zeros((8, 8, 1), dtype=np.uint8)) is None   # mono
+
+
+def test_interval_photos_are_stamped_with_the_fix_read_when_each_was_taken(tmp_path, monkeypatch):
+    """start_recording(mode='photos') writes JPEGs too: they carry time and position
+    the same way survey photos do (here: a stub cv2 that writes a real JPEG)."""
+    PIL = pytest.importorskip("PIL.Image")
+    import io
+
+    def imwrite(path, img, params=None):
+        buf = io.BytesIO()
+        PIL.new("RGB", (8, 8)).save(buf, "JPEG")
+        Path(path).write_bytes(buf.getvalue())
+
+    monkeypatch.setitem(sys.modules, "cv2", types.SimpleNamespace(
+        COLOR_RGB2BGR=4, IMWRITE_JPEG_QUALITY=1, cvtColor=lambda img, code: img, imwrite=imwrite))
+    fix = {"lat": 36.5, "lon": -121.25, "alt_msl_m": 12.0, "alt_above_home_m": 5.0, "heading_deg": 90.0}
+    rec = MediaRecorder(lambda: _frame(), mode="photos", interval_s=0.1, max_frames=1,
+                        out_dir=tmp_path, fix_source=lambda: fix)
+    rec.start()
+    paths = []
+    deadline = time.time() + 3
+    while time.time() < deadline and not paths:
+        paths = rec.stop() if rec._photo_paths else []
+        time.sleep(0.05)
+    assert paths
+    from PIL import Image
+    ex = Image.open(paths[0]).getexif()
+    assert ex.get_ifd(0x8825)[1] == "N" and ex.get_ifd(0x8825)[3] == "W"
+    assert ex.get_ifd(0x8769)[0x9003]
+
+
+def test_a_stamping_failure_never_loses_the_photo(tmp_path, stub_cv2):
+    """The stub writes bytes that are not a JPEG, so stamping refuses; the still survives."""
+    rec = MediaRecorder(lambda: _frame(), mode="photos", interval_s=0.1, max_frames=1,
+                        out_dir=tmp_path, fix_source=lambda: {"lat": 1, "lon": 2})
+    rec.start()
+    time.sleep(0.4)
+    paths = rec.stop()
+    assert len(paths) == 1 and Path(paths[0]).exists()

@@ -45,6 +45,7 @@
 		CFFDBBDEDF1B7532C3452E07 /* DroneVideoStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1E22CB322E9D5FF8EEB122 /* DroneVideoStream.swift */; };
 		D025012D892BA99D526B1A60 /* AddDroneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52E7B74766FC4B87FFD7EBC /* AddDroneView.swift */; };
 		D81F858620864A66FD1DA596 /* DroneChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E698CDF3450F25420AF98 /* DroneChatView.swift */; };
+		D9A59A9E5A043ED3C63522AA /* AlbumArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E52839AB9B0D3A0E24F0945 /* AlbumArchive.swift */; };
 		DBFCE4F62FD1EC95E4520726 /* MissionSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202506501BD84295F9B1D80C /* MissionSidebarView.swift */; };
 		E427F2D57CD9544B88FD1380 /* Drone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5478F74C272118CF0A0A4F37 /* Drone.swift */; };
 		ECA9B045D7B23DEE76F16734 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A746FD8CC2B9360FAC4C6D /* ChatMessage.swift */; };
@@ -82,6 +83,7 @@
 		6C2F7D9E1A4B3C2D9E8F7A6B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		6E3CA67B8321CF39FF4699E1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		778D49B6247BDE8431A4B834 /* DroneOperator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DroneOperator.entitlements; sourceTree = "<group>"; };
+		7E52839AB9B0D3A0E24F0945 /* AlbumArchive.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlbumArchive.swift; sourceTree = "<group>"; };
 		852D4B7A3590B029C16F8846 /* MQTTClientProtocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MQTTClientProtocol.swift; sourceTree = "<group>"; };
 		85D3CDBF14C7FA275224809B /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
 		8772BB5AB92D0D4BDC39B7B5 /* MissionStoryboardView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MissionStoryboardView.swift; sourceTree = "<group>"; };
@@ -137,6 +139,7 @@
 			isa = PBXGroup;
 			children = (
 				0989F22FDDFFC1229AAE1E5C /* MediaAlbumView.swift */,
+				7E52839AB9B0D3A0E24F0945 /* AlbumArchive.swift */,
 			);
 			name = Media;
 			path = Media;
@@ -460,6 +463,7 @@
 				DBFCE4F62FD1EC95E4520726 /* MissionSidebarView.swift in Sources */,
 				29C4DB79C9606930ABA66F89 /* MissionStoryboardView.swift in Sources */,
 				6CDE7213D79F4F445C6E8E22 /* StoryboardController.swift in Sources */,
+				D9A59A9E5A043ED3C63522AA /* AlbumArchive.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

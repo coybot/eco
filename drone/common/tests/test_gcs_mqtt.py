@@ -140,3 +140,53 @@ def test_publish_accepts_qos_enum_like_object(broker):
     future, _mid = conn.publish(topic="drone/d1/status", payload=b"{}", qos=FakeAwsCrtQoS(1))
     future.result(timeout=5)  # must not raise
     conn.disconnect().result(timeout=5)
+
+
+def test_a_qos1_publish_resolves_only_when_the_broker_acknowledges_it(tmp_path):
+    """The outbox forgets a reply only when its future resolves, so the future
+    must mean "the broker has it" - not "paho accepted the call". Published while
+    the broker is unreachable, it stays pending; after the link comes back paho
+    resends it, the PUBACK arrives, and the subscriber gets it exactly once."""
+    port = _free_port()
+    conf = tmp_path / "mosquitto.conf"
+    conf.write_text(f"listener {port}\nallow_anonymous true\npersistence false\n")
+
+    def start():
+        p = subprocess.Popen([MOSQUITTO_BIN, "-c", str(conf)],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        _wait_for_port("127.0.0.1", port)
+        return p
+
+    proc = start()
+    conn = PahoMqttAdapter(host="127.0.0.1", port=port, client_id="test-drone")
+    conn._client.reconnect_delay_set(min_delay=2, max_delay=3)   # the app subscribes first
+    conn.connect().result(timeout=5)
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+        deadline = time.time() + 5
+        while time.time() < deadline and conn.is_connected():
+            time.sleep(0.05)
+        assert not conn.is_connected()
+
+        future, _mid = conn.publish(topic="drone/d1/chat/c1/response", payload=b'{"r": 1}', qos=1)
+        time.sleep(1.0)
+        assert not future.done(), "nothing has acknowledged it yet"
+
+        proc = start()
+        received = []
+        sub = PahoMqttAdapter(host="127.0.0.1", port=port, client_id="test-app")
+        sub.connect().result(timeout=5)
+        sub.subscribe(topic="drone/d1/chat/+/response", qos=1,
+                      callback=lambda t, p: received.append(p))[0].result(timeout=5)
+        future.result(timeout=20)
+        deadline = time.time() + 5
+        while time.time() < deadline and not received:
+            time.sleep(0.05)
+        time.sleep(0.5)
+        assert received == [b'{"r": 1}']
+        sub.disconnect().result(timeout=5)
+    finally:
+        conn.disconnect()
+        proc.terminate()
+        proc.wait(timeout=5)

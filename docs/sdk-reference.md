@@ -61,9 +61,36 @@ overrides — see [`quickstart-aws.md`](quickstart-aws.md)'s SITL note and
 |---|---|---|
 | `motor_test` | `(motor_num=None, throttle_pct=15, duration_sec=2)` | Spin one motor (1–4) or all sequentially, without arming. **Props off.** |
 | `release_camera` | `()` | Release the camera so another process (e.g. video streaming) can use it. |
-| `capture_photo` | `(save_path, upload)` | Capture a photo, optionally upload it. |
+| `capture_photo` | `(save_path, upload)` | Capture a photo, optionally upload it. The JPEG is stamped with EXIF: capture time (UTC, ms), GPS latitude/longitude/altitude (MSL) and heading, read from the flight controller at the instant of the grab. With no GPS fix it carries the time only - never a `0,0` position. |
+| `last_photo_meta` | `()` | What the most recent `capture_photo` stamped: `{'when': unix time, 'fix': {...} or None}`. Used by the survey phase to build its manifest. |
 | `look_around` | `(directions)` | Rotate to N evenly-spaced headings, capturing a photo at each. |
-| `upload_photo` | `(local_path, conversation_id)` | Upload a photo and return its public URL — to S3 in AWS mode, to the GCS's local image store in GCS mode. Same call either way; the backend is selected by `control_plane` (see [`control-plane.md`](control-plane.md)). |
+| `upload_photo` | `(local_path, conversation_id)` | Queue a photo for upload and return the URL it will have — S3 in AWS mode, the GCS's local image store in GCS mode. Same call either way; the backend is selected by `control_plane` (see [`control-plane.md`](control-plane.md)). Returns at once; see "Out of WiFi range" below. |
+
+### Out of WiFi range (the outbox)
+
+Photos, survey manifests, recordings and chat replies are written to an outbox on
+the aircraft's disk (`~/drone-api/spool/`, or `outbox_dir` in `config.yaml`) and
+sent by a background worker, oldest first, retried until the link is back. The
+thread flying the mission never waits on the network, so a survey out of range
+keeps its normal pace; and because the reply was queued after its photos, it
+reaches the app after them. A reboot loses nothing: the next daemon start sends
+what is left. An item the server keeps refusing (403, missing bucket) is moved to
+`spool/failed/` after five attempts instead of blocking the rest. `outbox: false`
+in `config.yaml` restores the old inline, single-attempt upload.
+
+### Area surveys (`survey_rect`)
+
+A survey takes one photo per `spacing_m` x `spacing_m` cell (capped at 100). Each
+photo is stamped as above, and the mission also uploads `survey_manifest_*.csv`
+next to the photos in the conversation's S3 folder: one row per photo with UTC
+time, lat/lon, altitude (MSL and above home), heading, ground speed and the cell
+it was meant for. In the iOS app, the album view's export button downloads the
+original photos (EXIF intact) and a `manifest.csv` built from their EXIF, zipped for
+the share sheet (Files, AirDrop, Mail). Heading matters: a multirotor yaws toward its
+direction of travel, so downward images are rotated differently from shot to shot.
+
+Time comes from the companion computer's clock - keep it synced (NTP or GPS time)
+before a survey that will be analysed by time.
 
 ## Errors
 

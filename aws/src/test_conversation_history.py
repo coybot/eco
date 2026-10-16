@@ -40,3 +40,51 @@ def test_a_long_conversation_ends_with_its_latest_exchange(monkeypatch):
     assert len(history) == 20
     assert [m["content"] for m in history[-3:]] == [m["content"] for m in latest]
     assert [m["role"] for m in history[-3:]] == ["user", "assistant", "user"]
+
+
+# --- the history the apps load (get_handler) -------------------------------- #
+
+def _get(monkeypatch, items):
+    monkeypatch.setattr(c, "get_user_id", lambda e: "u1")
+    monkeypatch.setattr(c, "verify_ownership", lambda u, d: True)
+    monkeypatch.setattr(c, "generate_presigned_url", lambda u: u + "?signed")
+    monkeypatch.setattr(c, "dynamodb", type("D", (), {"Table": lambda self, n: Table(items)})())
+    import json
+    resp = c.get_handler({"pathParameters": {"droneId": "d", "conversationId": "conv"}}, None)
+    return json.loads(resp["body"])["messages"]
+
+
+def _msg(sk, sender, ctype, text, **extra):
+    return {"SK": f"MSG#2026-10-15T21:{sk}#x", "messageId": sk, "sender": sender,
+            "contentType": ctype, "content": text, "timestamp": sk, **extra}
+
+
+PLAN = "Surveying the 10 x 5 m area ahead and to the right: 50 photos, one per 1 m, each tagged with GPS and time"
+
+
+def test_reopening_a_finished_survey_still_shows_the_plan(monkeypatch):
+    """Seen 2026-10-15: reopened, the chat went straight from the request to the album -
+    the planner's "50 photos, one per 1 m" confirmation had been dropped from history."""
+    out = _get(monkeypatch, [
+        _msg("44:19", "user", "text", "scan the rectangle..."),
+        _msg("44:22", "drone", "loading", PLAN, sent="mission: survey_rect(...)"),
+        _msg("47:22", "drone", "media", "Scan complete! 50 photos",
+             media=[{"url": "https://b.s3.amazonaws.com/p1.jpg", "kind": "photo"}]),
+    ])
+    assert [(m["content"]["type"], m["content"]["text"][:8]) for m in out] == [
+        ("text", "scan the"), ("text", "Surveyin"), ("media", "Scan com")]
+    assert out[2]["content"]["media"][0]["url"].endswith("?signed")
+
+
+def test_a_plan_still_in_progress_is_left_to_the_live_view(monkeypatch):
+    """Not answered yet: an Android client draws a stored "loading" as a spinner."""
+    out = _get(monkeypatch, [_msg("44:19", "user", "text", "scan..."),
+                             _msg("44:22", "drone", "loading", PLAN)])
+    assert [m["content"]["type"] for m in out] == ["text"]
+
+
+def test_generic_placeholders_stay_out_of_history(monkeypatch):
+    out = _get(monkeypatch, [_msg("01:00", "user", "text", "take a photo"),
+                             _msg("01:01", "drone", "loading", "Working on it..."),
+                             _msg("01:09", "drone", "text", "Done!")])
+    assert [m["content"]["text"] for m in out] == ["take a photo", "Done!"]
