@@ -157,38 +157,8 @@ def history_handler(event, context):
     return C.json_response(200, {"conversation_id": conversation_id, "messages": messages})
 
 
-def message_handler(event, context):
-    user_id = C.get_user_id(event)
-    if not user_id:
-        return C.json_response(401, {"error": "Unauthorized"})
-    group_id = event["pathParameters"]["groupId"]
-    conversation_id = event["pathParameters"]["conversationId"]
-    body = json.loads(event.get("body", "{}") or "{}")
-    message = body.get("message", "")
-    if not message:
-        return C.json_response(400, {"error": "Missing message"})
-
-    group = _get_group(user_id, group_id)
-    if not group:
-        return C.json_response(404, {"error": "group not found"})
-    members = group.get("members", [])
-    member_types = _member_types(user_id, members)
-
-    # record the user's group message
-    C.save_message(conversation_id, group_id, "user", "text", message)
-
-    orders = split_orders(message, member_types)
-    print(f"[group {group_id}] orders: {json.dumps(orders)[:600]}")
-
-    # Generate ALL per-drone code first, THEN publish back-to-back. Interleaving
-    # slow Bedrock calls between publishes left long gaps that dropped delivery to
-    # later drones; a tight publish loop (like independent publishers) is reliable.
-    codes = {}
-    for drone_id, order in orders.items():
-        try:
-            codes[drone_id] = C.generate_code(order, conversation_id, vehicle_type=member_types.get(drone_id, 'quadcopter'))
-        except Exception as e:
-            print(f"[group {group_id}] codegen {drone_id} failed: {e}")
+def _fan_out(group_id, conversation_id, codes, orders):
+    """Publish every drone's code back-to-back, then ack into the group thread."""
     dispatched = {}
     for drone_id, code in codes.items():
         try:
@@ -205,4 +175,80 @@ def message_handler(event, context):
     # drone/{id}/chat/{conversation_id} topic (app subscribes per member).
     C.publish_to_app(group_id, conversation_id, "ack",
                      f"Dispatched to {len(dispatched)} drones.")
-    return C.json_response(200, {"groupId": group_id, "orders": dispatched})
+    return C.json_response(200, {"status": "sent", "groupId": group_id, "orders": dispatched})
+
+
+def _decide_pending_orders(group_id, conversation_id, pending_id, decision):
+    """The operator answered the confirm prompt for a fleet order: send every
+    drone its held code, or drop them all. Anything but "go" cancels."""
+    held = C._take_pending_flight(group_id, conversation_id, pending_id)
+    if held is None:
+        text, status = C.NOT_HELD_TEXT, "expired"
+    elif decision != "go":
+        text, status = "Cancelled. Nothing was sent to the fleet.", "cancelled"
+    else:
+        print(f"[group {group_id}] operator approved {pending_id}")
+        return _fan_out(group_id, conversation_id, held["codes"], held["orders"])
+    msg = C.save_message(conversation_id, group_id, "drone", "text", text)
+    return C.json_response(200, {"status": status, "groupId": group_id, "orders": {},
+                                 "message_id": msg["id"], "immediate_response": msg})
+
+
+def message_handler(event, context):
+    user_id = C.get_user_id(event)
+    if not user_id:
+        return C.json_response(401, {"error": "Unauthorized"})
+    group_id = event["pathParameters"]["groupId"]
+    conversation_id = event["pathParameters"]["conversationId"]
+    body = json.loads(event.get("body", "{}") or "{}")
+    message = body.get("message", "")
+    if not message and not body.get("pending_id"):
+        return C.json_response(400, {"error": "Missing message"})
+
+    group = _get_group(user_id, group_id)
+    if not group:
+        return C.json_response(404, {"error": "group not found"})
+
+    # The operator's answer to a confirm prompt, not a new message.
+    if body.get("pending_id"):
+        return _decide_pending_orders(group_id, conversation_id,
+                                      body["pending_id"], body.get("decision"))
+
+    members = group.get("members", [])
+    member_types = _member_types(user_id, members)
+
+    # record the user's group message
+    C.save_message(conversation_id, group_id, "user", "text", message)
+    # Anything new the operator says supersedes orders still waiting for OK.
+    C._clear_pending_flight(group_id, conversation_id)
+
+    orders = split_orders(message, member_types)
+    print(f"[group {group_id}] orders: {json.dumps(orders)[:600]}")
+
+    # Generate ALL per-drone code first, THEN publish back-to-back. Interleaving
+    # slow Bedrock calls between publishes left long gaps that dropped delivery to
+    # later drones; a tight publish loop (like independent publishers) is reliable.
+    codes = {}
+    for drone_id, order in orders.items():
+        try:
+            codes[drone_id] = C.generate_code(order, conversation_id, vehicle_type=member_types.get(drone_id, 'quadcopter'))
+        except Exception as e:
+            print(f"[group {group_id}] codegen {drone_id} failed: {e}")
+
+    # Every drone's order is generated code that can move it, so with
+    # confirm_flight the whole set waits for one OK, exactly as generated.
+    if body.get("confirm_flight") and codes:
+        held_orders = {d: orders[d] for d in codes}
+        pending_id = C._store_pending_flight(group_id, conversation_id,
+                                             {"codes": codes, "orders": held_orders})
+        print(f"[group {group_id}] holding {len(codes)} orders for the operator's OK ({pending_id})")
+        n = len(codes)
+        return C.json_response(200, {
+            "status": "needs_confirmation", "groupId": group_id, "orders": held_orders,
+            "pending_id": pending_id,
+            "prompt": f"Send these orders to {n} drone{'s' if n != 1 else ''}.",
+            "steps": [f"{d}: {o}" for d, o in held_orders.items()],
+            "expires_in_s": C.PENDING_FLIGHT_TTL_S,
+        })
+
+    return _fan_out(group_id, conversation_id, codes, orders)

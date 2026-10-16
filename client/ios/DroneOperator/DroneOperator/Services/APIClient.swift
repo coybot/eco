@@ -173,9 +173,25 @@ final class APIClient {
         return response.messages
     }
     
-    /// Send a chat message to a drone conversation
-    func sendChatMessage(droneId: String, conversationId: String, message: String) async throws -> ChatResponse {
-        let body = ChatMessageRequest(message: message)
+    /// Send a chat message to a drone conversation.
+    ///
+    /// With `confirmFlight`, a reply that would move the aircraft comes back as
+    /// `needs_confirmation` (see `ChatResponse.pendingFlight`) and nothing flies
+    /// until `decideFlight` says go.
+    func sendChatMessage(droneId: String, conversationId: String, message: String,
+                         confirmFlight: Bool = false) async throws -> ChatResponse {
+        let body = ChatMessageRequest(message: message, confirmFlight: confirmFlight ? true : nil)
+        return try await request(
+            method: "POST",
+            path: "/drones/\(droneId)/conversations/\(conversationId)/messages",
+            body: body
+        )
+    }
+
+    /// The operator's answer to a held flight command: fly it, or cancel it.
+    func decideFlight(droneId: String, conversationId: String, pendingId: String,
+                      go: Bool) async throws -> ChatResponse {
+        let body = FlightDecisionRequest(pendingId: pendingId, decision: go ? "go" : "cancel")
         return try await request(
             method: "POST",
             path: "/drones/\(droneId)/conversations/\(conversationId)/messages",
@@ -285,8 +301,22 @@ final class APIClient {
         let _: EmptyResponse = try await request(method: "DELETE", path: "/groups/\(groupId)")
     }
 
-    func sendGroupMessage(groupId: String, conversationId: String, message: String) async throws -> GroupMessageResponse {
-        let body = ChatMessageRequest(message: message)
+    /// With `confirmFlight`, the fleet's orders come back held
+    /// (`GroupMessageResponse.pendingFlight`) until `decideGroupOrders` says go.
+    func sendGroupMessage(groupId: String, conversationId: String, message: String,
+                          confirmFlight: Bool = false) async throws -> GroupMessageResponse {
+        let body = ChatMessageRequest(message: message, confirmFlight: confirmFlight ? true : nil)
+        return try await request(
+            method: "POST",
+            path: "/groups/\(groupId)/conversations/\(conversationId)/messages",
+            body: body
+        )
+    }
+
+    /// The operator's answer to a fleet's held orders: send them all, or none.
+    func decideGroupOrders(groupId: String, conversationId: String, pendingId: String,
+                           go: Bool) async throws -> GroupMessageResponse {
+        let body = FlightDecisionRequest(pendingId: pendingId, decision: go ? "go" : "cancel")
         return try await request(
             method: "POST",
             path: "/groups/\(groupId)/conversations/\(conversationId)/messages",
@@ -686,6 +716,22 @@ private struct ErrorResponse: Decodable {
 
 private struct ChatMessageRequest: Encodable {
     let message: String
+    var confirmFlight: Bool? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case message
+        case confirmFlight = "confirm_flight"
+    }
+}
+
+private struct FlightDecisionRequest: Encodable {
+    let pendingId: String
+    let decision: String
+
+    enum CodingKeys: String, CodingKey {
+        case pendingId = "pending_id"
+        case decision
+    }
 }
 
 private struct CreateGroupRequest: Encodable {
@@ -728,11 +774,43 @@ struct ChatResponse: Decodable {
     let status: String
     let messageId: String?
     let immediateResponse: ChatMessage?
+    let pendingId: String?
+    let prompt: String?
+    let steps: [String]?
     
     enum CodingKeys: String, CodingKey {
         case status
         case messageId = "message_id"
         case immediateResponse = "immediate_response"
+        case pendingId = "pending_id"
+        case prompt
+        case steps
+    }
+
+    /// A flight command the backend is holding until the operator says OK.
+    var pendingFlight: PendingFlight? {
+        guard status == "needs_confirmation", let pendingId else { return nil }
+        return PendingFlight(id: pendingId, prompt: prompt ?? "Fly this mission?", steps: steps ?? [])
+    }
+}
+
+struct PendingFlight: Identifiable, Equatable {
+    let id: String
+    let prompt: String
+    let steps: [String]
+
+    /// "Take off, fly to 1 meter, and take a photo." -> "... take a photo. OK?"
+    var title: String {
+        let p = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !p.isEmpty else { return "Fly this mission?" }
+        let ends = p.last.map { ".!?".contains($0) } ?? false
+        return p + (ends ? " OK?" : ", OK?")
+    }
+
+    var message: String {
+        let clear = "Make sure the area around the drone is clear."
+        guard !steps.isEmpty else { return clear }
+        return steps.map { "\u{2022} " + $0 }.joined(separator: "\n") + "\n\n" + clear
     }
 }
 

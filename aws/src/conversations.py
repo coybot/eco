@@ -904,15 +904,20 @@ def get_conversation_history(drone_id, conversation_id, limit=20):
     return messages
 
 
-def summarize_phases(phases):
-    """One line per mission for the history: what the drone was told to do."""
+def phase_steps(phases):
+    """Each phase as one step, e.g. "arm_and_takeoff(altitude_m=1)"."""
     out = []
     for p in phases or []:
         extra = {k: v for k, v in p.items() if k not in ('type', 'objective', 'success', 'description')}
         name = p.get('type') or p.get('objective', 'vision phase')
         args = ", ".join(f"{k}={v}" for k, v in extra.items())
         out.append(f"{name}({args})" if args else name)
-    return "mission: " + " -> ".join(out)
+    return out
+
+
+def summarize_phases(phases):
+    """One line per mission for the history: what the drone was told to do."""
+    return "mission: " + " -> ".join(phase_steps(phases))
 
 
 # Plain stop/land/home words skip the planner: they are the ones that must not
@@ -2358,6 +2363,137 @@ def is_movement_request(message: str) -> bool:
     return any(keyword in message_lower for keyword in movement_keywords)
 
 
+# A command that moves the aircraft can wait for the operator's OK: the app
+# asks for that with confirm_flight. The command is built in full first and
+# held here, so OK flies exactly what was shown - not a fresh plan from the
+# model, which could differ. Real incident: "take a photo" came back as
+# "take off, fly to 1 meter, and take a photo" and flew before anyone was ready.
+PENDING_FLIGHT_TTL_S = 5 * 60
+
+OFFLINE_TEXT = 'The drone appears to be offline. Please check the connection and try again.'
+
+
+def _pending_flight_key(drone_id, conversation_id):
+    return {'PK': f'CONV#{drone_id}#{conversation_id}', 'SK': 'PENDINGFLIGHT'}
+
+
+def _clear_pending_flight(drone_id, conversation_id):
+    try:
+        dynamodb.Table(CONVERSATIONS_TABLE).delete_item(Key=_pending_flight_key(drone_id, conversation_id))
+    except Exception as e:
+        print(f"⚠️ Failed to clear the held command: {e}")
+
+
+def _store_pending_flight(owner_id, conversation_id, record):
+    """Hold `record` (anything JSON-able) for this conversation, replacing
+    whatever was held before. Returns the id the confirm must quote.
+    `owner_id` is a drone id, or a group id for a group conversation."""
+    pending_id = uuid.uuid4().hex[:12]
+    now = int(datetime.now(timezone.utc).timestamp())
+    item = dict(_pending_flight_key(owner_id, conversation_id))
+    item.update({
+        'pendingId': pending_id,
+        'record': json.dumps(record),
+        'expiresAt': now + PENDING_FLIGHT_TTL_S,
+        'ttl': now + PENDING_FLIGHT_TTL_S,
+    })
+    dynamodb.Table(CONVERSATIONS_TABLE).put_item(Item=item)
+    return pending_id
+
+
+def _take_pending_flight(owner_id, conversation_id, pending_id):
+    """The held record if `pending_id` is still the one waiting and hasn't
+    expired, else None. Either way it is no longer held: it is deleted before
+    anything is sent, so a second tap can't fly it twice."""
+    key = _pending_flight_key(owner_id, conversation_id)
+    table = dynamodb.Table(CONVERSATIONS_TABLE)
+    item = table.get_item(Key=key).get('Item')
+    if not item or item.get('pendingId') != pending_id:
+        return None
+    table.delete_item(Key=key)
+    if int(item.get('expiresAt', 0)) < int(datetime.now(timezone.utc).timestamp()):
+        return None
+    return json.loads(item['record'])
+
+
+NOT_HELD_TEXT = ("That request is no longer waiting for approval, so nothing was sent "
+                 "to the drone. Ask again if you still want it.")
+
+
+def _offline_response(drone_id, conversation_id, what):
+    error_msg = save_message(conversation_id, drone_id, 'drone', 'text', OFFLINE_TEXT)
+    publish_to_app(drone_id, conversation_id, 'error', OFFLINE_TEXT)
+    publish_log(drone_id, "ERROR", f"Rejected {what}: drone offline")
+    return json_response(200, {
+        'status': 'error',
+        'message_id': error_msg['id'],
+        'immediate_response': error_msg
+    })
+
+
+def _dispatch(drone_id, conversation_id, payload, loading_text, sent=None, extra=None):
+    """Send a command to the drone: the in-progress message, the app's ack, the command."""
+    loading_msg = save_message(conversation_id, drone_id, 'drone', 'loading', loading_text, sent=sent)
+
+    # Send ack via MQTT so app knows request is being processed
+    publish_to_app(drone_id, conversation_id, 'ack', loading_text)
+
+    payload = dict(payload)
+    if payload.get('action') == 'execute':
+        # The drone answers on this id, so the app and the drone agree on one identity.
+        payload['message_id'] = loading_msg['id']
+    publish_to_drone(drone_id, conversation_id, payload)
+
+    return json_response(200, {
+        'status': 'sent',
+        **(extra or {}),
+        'message_id': loading_msg['id'],
+        'immediate_response': loading_msg
+    })
+
+
+def _hold_for_ok(drone_id, conversation_id, payload, loading_text, sent=None, extra=None, steps=None):
+    """Keep the command instead of sending it, and ask the app to confirm it."""
+    pending_id = _store_pending_flight(drone_id, conversation_id, {
+        'payload': payload, 'loading_text': loading_text, 'sent': sent, 'extra': extra or {}})
+    publish_log(drone_id, "INFO", f"Holding {payload.get('action')} for the operator's OK ({pending_id})",
+                code=payload.get('code'))
+    return json_response(200, {
+        'status': 'needs_confirmation',
+        'pending_id': pending_id,
+        'prompt': loading_text,
+        'steps': steps or [],
+        'expires_in_s': PENDING_FLIGHT_TTL_S,
+    })
+
+
+def _decide_pending_flight(drone_id, conversation_id, pending_id, decision):
+    """The operator answered the confirm prompt: fly the held command, or drop it.
+    Anything but an explicit "go" cancels."""
+    held = _take_pending_flight(drone_id, conversation_id, pending_id)
+    if held is None:
+        msg = save_message(conversation_id, drone_id, 'drone', 'text', NOT_HELD_TEXT)
+        publish_log(drone_id, "WARNING", f"Confirm for {pending_id} arrived with nothing held")
+        return json_response(200, {'status': 'expired', 'message_id': msg['id'],
+                                   'immediate_response': msg})
+
+    loading_text = held.get('loading_text') or 'Working on it...'
+
+    if decision != 'go':
+        text = f"Cancelled: “{loading_text}” Nothing was sent to the drone."
+        msg = save_message(conversation_id, drone_id, 'drone', 'text', text)
+        publish_log(drone_id, "INFO", f"Operator cancelled {pending_id}")
+        return json_response(200, {'status': 'cancelled', 'message_id': msg['id'],
+                                   'immediate_response': msg})
+
+    payload = held['payload']
+    if not is_drone_online(drone_id):
+        return _offline_response(drone_id, conversation_id, payload.get('action'))
+    publish_log(drone_id, "INFO", f"Operator approved {pending_id}")
+    return _dispatch(drone_id, conversation_id, payload, loading_text,
+                     sent=held.get('sent'), extra=held.get('extra'))
+
+
 def message_handler(event, context):
     """Handle a new chat message from user."""
     user_id = get_user_id(event)
@@ -2375,12 +2511,21 @@ def message_handler(event, context):
     except json.JSONDecodeError:
         return json_response(400, {'error': 'Invalid JSON'})
     
+    # The operator's answer to a confirm prompt, not a new message.
+    if body.get('pending_id'):
+        return _decide_pending_flight(drone_id, conversation_id,
+                                      body['pending_id'], body.get('decision'))
+
     message = body.get('message', '')
     if not message:
         return json_response(400, {'error': 'Missing message'})
-    
+    confirm_flight = bool(body.get('confirm_flight'))
+
     # Save user message
     save_message(conversation_id, drone_id, 'user', 'text', message)
+
+    # Anything new the operator says supersedes a command still waiting for OK.
+    _clear_pending_flight(drone_id, conversation_id)
 
     then = fast_abort(message)
     if then is not None:
@@ -2454,112 +2599,51 @@ def message_handler(event, context):
     if action == 'mission':
         # New mission-based approach for AGX drones with VLM
         if not drone_online:
-            error_msg = save_message(
-                conversation_id, drone_id, 'drone', 'text',
-                'The drone appears to be offline. Please check the connection and try again.'
-            )
-            publish_to_app(drone_id, conversation_id, 'error', 
-                'The drone appears to be offline. Please check the connection and try again.')
-            publish_log(drone_id, "ERROR", "Rejected mission: drone offline")
-            return json_response(200, {
-                'status': 'error',
-                'message_id': error_msg['id'],
-                'immediate_response': error_msg
-            })
+            return _offline_response(drone_id, conversation_id, 'mission')
         
         mission = agent_response.get('mission', {})
         phases = mission.get('phases', [])
-        publish_log(drone_id, "INFO", f"Starting mission with {len(phases)} phases")
-        
-        # Save loading message
-        loading_msg = save_message(
-            conversation_id, drone_id, 'drone', 'loading',
-            agent_response.get('message', 'Starting mission...'),
-            sent=summarize_phases(phases)
-        )
-        
-        # Send ack via MQTT so app knows request is being processed
-        publish_to_app(drone_id, conversation_id, 'ack', 
-            agent_response.get('message', 'Starting mission...'))
-        
-        # Generate mission ID
-        import uuid
         mission_id = str(uuid.uuid4())[:8]
-        
-        # Send mission to drone
-        publish_to_drone(drone_id, conversation_id, {
+        payload = {
             'action': 'mission',
             'mission_id': mission_id,
             'phases': phases,
             'conversation_id': conversation_id,
             'original_message': message
-        })
-        
-        return json_response(200, {
-            'status': 'sent',
-            'mission_id': mission_id,
-            'message_id': loading_msg['id'],
-            'immediate_response': loading_msg
-        })
+        }
+        loading_text = agent_response.get('message', 'Starting mission...')
+        if confirm_flight:
+            return _hold_for_ok(drone_id, conversation_id, payload, loading_text,
+                                sent=summarize_phases(phases), extra={'mission_id': mission_id},
+                                steps=phase_steps(phases))
+        publish_log(drone_id, "INFO", f"Starting mission with {len(phases)} phases")
+        return _dispatch(drone_id, conversation_id, payload, loading_text,
+                         sent=summarize_phases(phases), extra={'mission_id': mission_id})
     
     elif action == 'set_goal':
         # New goal-based approach - send goal to drone's on-device intelligence
         if not drone_online:
-            error_msg = save_message(
-                conversation_id, drone_id, 'drone', 'text',
-                'The drone appears to be offline. Please check the connection and try again.'
-            )
-            publish_to_app(drone_id, conversation_id, 'error', 
-                'The drone appears to be offline. Please check the connection and try again.')
-            publish_log(drone_id, "ERROR", "Rejected set_goal: drone offline")
-            return json_response(200, {
-                'status': 'error',
-                'message_id': error_msg['id'],
-                'immediate_response': error_msg
-            })
+            return _offline_response(drone_id, conversation_id, 'set_goal')
         
         goal = agent_response.get('goal', {})
-        publish_log(drone_id, "INFO", f"Setting goal: {goal.get('objective', 'unknown')}")
-        
-        # Save loading message
-        loading_msg = save_message(
-            conversation_id, drone_id, 'drone', 'loading',
-            agent_response.get('message', 'Working on it...')
-        )
-        
-        # Send ack via MQTT so app knows request is being processed
-        publish_to_app(drone_id, conversation_id, 'ack', 
-            agent_response.get('message', 'Working on it...'))
-        
-        # Send goal to drone
-        publish_to_drone(drone_id, conversation_id, {
+        payload = {
             'action': 'set_goal',
             'goal': goal,
             'conversation_id': conversation_id,
             'original_message': message
-        })
-        
-        return json_response(200, {
-            'status': 'sent',
-            'message_id': loading_msg['id'],
-            'immediate_response': loading_msg
-        })
+        }
+        loading_text = agent_response.get('message', 'Working on it...')
+        if confirm_flight:
+            objective = goal.get('objective') if isinstance(goal, dict) else None
+            return _hold_for_ok(drone_id, conversation_id, payload, loading_text,
+                                steps=[objective] if objective else None)
+        publish_log(drone_id, "INFO", f"Setting goal: {goal.get('objective', 'unknown')}")
+        return _dispatch(drone_id, conversation_id, payload, loading_text)
     
     elif action == 'execute':
         # Check if drone is online
         if not drone_online:
-            error_msg = save_message(
-                conversation_id, drone_id, 'drone', 'text',
-                'The drone appears to be offline. Please check the connection and try again.'
-            )
-            publish_to_app(drone_id, conversation_id, 'error', 
-                'The drone appears to be offline. Please check the connection and try again.')
-            publish_log(drone_id, "ERROR", "Rejected execute: drone offline")
-            return json_response(200, {
-                'status': 'error',
-                'message_id': error_msg['id'],
-                'immediate_response': error_msg
-            })
+            return _offline_response(drone_id, conversation_id, 'execute')
         
         # Generate and send code to drone
         # For rovers: always use generate_code() with the rover prompt — the
@@ -2581,32 +2665,17 @@ def message_handler(event, context):
                     'message_id': error_msg['id'],
                     'immediate_response': error_msg
                 })
-        publish_log(drone_id, "INFO", "Dispatching execute command to drone", code=code)
-        
-        # Save loading message
-        loading_msg = save_message(
-            conversation_id, drone_id, 'drone', 'loading',
-            agent_response.get('message', 'Working on it...')
-        )
-        
-        # Send ack via MQTT so app knows request is being processed
-        publish_to_app(drone_id, conversation_id, 'ack', 
-            agent_response.get('message', 'Working on it...'))
-        
-        # Send to drone
-        publish_to_drone(drone_id, conversation_id, {
+        payload = {
             'action': 'execute',
             'code': code,
             'conversation_id': conversation_id,
             'original_message': message,
-            'message_id': loading_msg['id']
-        })
-        
-        return json_response(200, {
-            'status': 'sent',
-            'message_id': loading_msg['id'],
-            'immediate_response': loading_msg
-        })
+        }
+        loading_text = agent_response.get('message', 'Working on it...')
+        if confirm_flight:
+            return _hold_for_ok(drone_id, conversation_id, payload, loading_text)
+        publish_log(drone_id, "INFO", "Dispatching execute command to drone", code=code)
+        return _dispatch(drone_id, conversation_id, payload, loading_text)
     
     elif action == 'ask':
         # Agent needs clarification

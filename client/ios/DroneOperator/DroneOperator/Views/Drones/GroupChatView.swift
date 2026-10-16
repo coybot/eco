@@ -13,6 +13,8 @@ struct GroupChatView: View {
     @State private var isLoading = false
     @State private var error: Error?
     @State private var scrollProxy: ScrollViewProxy?
+    /// The fleet's orders, held by the backend until the operator says OK.
+    @State private var pendingFlight: PendingFlight?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,6 +53,7 @@ struct GroupChatView: View {
             await setupMQTT()
             await loadHistory()
         }
+        .confirmFlight(pendingFlight, decide: decideOrders)
     }
 
     // MARK: - Input
@@ -127,18 +130,60 @@ struct GroupChatView: View {
 
         Task {
             do {
-                _ = try await apiClient.sendGroupMessage(
+                let response = try await apiClient.sendGroupMessage(
                     groupId: group.groupId,
                     conversationId: conversationId,
-                    message: text
+                    message: text,
+                    confirmFlight: true
                 )
-                // Responses arrive over MQTT
+                // Every order can move a drone: ask first, send nothing yet.
+                if let flight = response.pendingFlight {
+                    await MainActor.run {
+                        isLoading = false
+                        pendingFlight = flight
+                    }
+                }
+                // Otherwise responses arrive over MQTT
             } catch {
                 await MainActor.run {
                     self.error = error
                     isLoading = false
                     messages.append(GroupChatMessage(
                         chatMessage: ChatMessage(conversationId: conversationId, sender: .drone, content: .error(error.localizedDescription)),
+                        droneId: nil
+                    ))
+                }
+            }
+        }
+    }
+
+    /// OK sends every drone its held order; No drops them all and the chat carries on.
+    private func decideOrders(_ flight: PendingFlight, go: Bool) {
+        pendingFlight = nil
+        isLoading = true
+        Task {
+            do {
+                let response = try await apiClient.decideGroupOrders(
+                    groupId: group.groupId,
+                    conversationId: conversationId,
+                    pendingId: flight.id,
+                    go: go
+                )
+                // Sent: the ack and each drone's result arrive over MQTT.
+                if let note = response.immediateResponse {
+                    await MainActor.run {
+                        isLoading = false
+                        messages.append(GroupChatMessage(chatMessage: note, droneId: nil))
+                        scrollToBottom()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error
+                    isLoading = false
+                    messages.append(GroupChatMessage(
+                        chatMessage: ChatMessage(conversationId: conversationId, sender: .drone,
+                                                 content: .error("Failed to send your answer: \(error.localizedDescription)")),
                         droneId: nil
                     ))
                 }

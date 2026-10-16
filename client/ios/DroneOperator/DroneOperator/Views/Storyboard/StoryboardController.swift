@@ -80,6 +80,8 @@ final class StoryboardController {
     var input: String = ""
     var showMap = false
     var isBusy = false
+    /// A follow-up mission the backend is holding until the operator says OK.
+    var pendingFlight: PendingFlight?
 
     // Mission tasking (accumulates operator clarifications).
     var missionText: String = ""
@@ -298,24 +300,48 @@ final class StoryboardController {
         isBusy = true; defer { isBusy = false }
         do {
             let resp = try await api.sendChatMessage(
-                droneId: leadDroneId, conversationId: conversationId, message: text)
-            guard let immediate = resp.immediateResponse else { return }
-            switch immediate.content {
-            case .text(let t), .error(let t):
-                say(t)
-            case .loading(let t):
-                // message_handler's 'mission' branch saves a 'loading'
-                // message when it dispatches a fresh mission — reset
-                // per-mission state so "mission complete" fires again once
-                // every drone reports in, exactly like the first launch.
-                respondedDrones = []
-                phase = .executing
-                say(t)
-            default:
-                break
+                droneId: leadDroneId, conversationId: conversationId, message: text,
+                confirmFlight: true)
+            // A fly-back follow-up would launch at once: ask first.
+            if let flight = resp.pendingFlight {
+                pendingFlight = flight
+                return
             }
+            showFollowUpReply(resp)
         } catch {
             say("Couldn't reach the ground control station: \(error.localizedDescription)")
+        }
+    }
+
+    /// The operator answered the confirm prompt for a held follow-up mission.
+    func decideFlight(_ flight: PendingFlight, go: Bool) async {
+        pendingFlight = nil
+        isBusy = true; defer { isBusy = false }
+        do {
+            let resp = try await api.decideFlight(
+                droneId: leadDroneId, conversationId: conversationId,
+                pendingId: flight.id, go: go)
+            showFollowUpReply(resp)
+        } catch {
+            say("Couldn't send your answer: \(error.localizedDescription)")
+        }
+    }
+
+    private func showFollowUpReply(_ resp: ChatResponse) {
+        guard let immediate = resp.immediateResponse else { return }
+        switch immediate.content {
+        case .text(let t), .error(let t):
+            say(t)
+        case .loading(let t):
+            // message_handler's 'mission' branch saves a 'loading'
+            // message when it dispatches a fresh mission — reset
+            // per-mission state so "mission complete" fires again once
+            // every drone reports in, exactly like the first launch.
+            respondedDrones = []
+            phase = .executing
+            say(t)
+        default:
+            break
         }
     }
 

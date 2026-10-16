@@ -590,6 +590,27 @@ struct DroneInfoRow: View {
 
 // MARK: - Chat Tab
 
+// MARK: - Confirm before flying
+
+extension View {
+    /// Nothing that moves an aircraft is sent until the operator says OK: the
+    /// planner can turn "take a photo" into a takeoff. Shows `flight`'s prompt
+    /// with No / OK; `decide` gets the answer and must clear `flight`.
+    func confirmFlight(_ flight: PendingFlight?,
+                       decide: @escaping (PendingFlight, Bool) -> Void) -> some View {
+        alert(
+            flight?.title ?? "",
+            isPresented: Binding(get: { flight != nil }, set: { _ in }),
+            presenting: flight
+        ) { f in
+            Button("No", role: .cancel) { decide(f, false) }
+            Button("OK") { decide(f, true) }
+        } message: { f in
+            Text(f.message)
+        }
+    }
+}
+
 struct ChatTabView: View {
     let drone: Drone
     let isOnline: Bool
@@ -606,6 +627,8 @@ struct ChatTabView: View {
     @State private var scrollProxy: ScrollViewProxy?
     @State private var receivedMQTTAck = false
     @State private var receivedMQTTResponse = false
+    /// A flight command the backend is holding until the operator says OK.
+    @State private var pendingFlight: PendingFlight?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -670,6 +693,7 @@ struct ChatTabView: View {
                 mqttService.unsubscribe(from: "drone/\(drone.droneId)/chat/\(convId)")
             }
         }
+        .confirmFlight(pendingFlight, decide: decideFlight)
     }
     
     private var conversationKey: String {
@@ -926,8 +950,20 @@ struct ChatTabView: View {
                 let response = try await apiClient.sendChatMessage(
                     droneId: drone.droneId,
                     conversationId: convId,
-                    message: text
+                    message: text,
+                    confirmFlight: true
                 )
+                // The reply would fly the drone: ask first, send nothing yet.
+                if let flight = response.pendingFlight {
+                    await MainActor.run {
+                        if let idx = displayMessages.firstIndex(where: { $0.id == userMessage.id }) {
+                            displayMessages[idx].status = .delivered
+                        }
+                        isLoading = false
+                        pendingFlight = flight
+                    }
+                    return
+                }
                 // Check if we need to wait for drone response
                 var needsWait = false
                 if let immediate = response.immediateResponse {
@@ -962,22 +998,8 @@ struct ChatTabView: View {
                     isLoading = false
                 }
                 
-                // Wait for MQTT response - no need to poll if cloud sends ack/error via MQTT
                 if needsWait {
-                    // Wait up to 60 seconds for MQTT to deliver the response
-                    for _ in 0..<60 {
-                        try? await Task.sleep(nanoseconds: 1_000_000_000)
-                        
-                        let gotResponse = await MainActor.run { receivedMQTTResponse }
-                        if gotResponse { return }
-                    }
-                    
-                    // Only fall back to polling if we never got an MQTT response
-                    let gotResponse = await MainActor.run { receivedMQTTResponse }
-                    if !gotResponse {
-                        print("⏳ Chat MQTT timeout; polling for result")
-                        await pollForResult(convId: convId)
-                    }
+                    await waitForResult(convId: convId)
                 }
             } catch {
                 await MainActor.run {
@@ -993,6 +1015,71 @@ struct ChatTabView: View {
                     ))
                 }
             }
+        }
+    }
+
+    /// The operator answered the confirm prompt. OK flies the held command;
+    /// No drops it and the chat carries on.
+    private func decideFlight(_ flight: PendingFlight, go: Bool) {
+        pendingFlight = nil
+        guard let convId = conversationId else { return }
+        print("🛫 Chat flight decision: \(go ? "go" : "cancel") pending=\(flight.id)")
+        receivedMQTTAck = false
+        receivedMQTTResponse = false
+        isLoading = true
+
+        Task {
+            do {
+                let response = try await apiClient.decideFlight(
+                    droneId: drone.droneId,
+                    conversationId: convId,
+                    pendingId: flight.id,
+                    go: go
+                )
+                var needsWait = false
+                if let immediate = response.immediateResponse, case .loading = immediate.content {
+                    needsWait = true
+                }
+                await MainActor.run {
+                    if let immediate = response.immediateResponse {
+                        displayMessages.append(DisplayMessage.from(chatMessage: immediate))
+                    }
+                    isLoading = false
+                }
+                if needsWait {
+                    await waitForResult(convId: convId)
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    print("❌ Chat flight decision failed: \(error.localizedDescription)")
+                    displayMessages.append(DisplayMessage(
+                        id: UUID().uuidString,
+                        content: "Failed to send your answer: \(error.localizedDescription)",
+                        isUser: false,
+                        timestamp: Date(),
+                        status: .failed
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Wait for the drone's result over MQTT; poll history only if it never comes.
+    private func waitForResult(convId: String) async {
+        // Wait up to 60 seconds for MQTT to deliver the response
+        for _ in 0..<60 {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            
+            let gotResponse = await MainActor.run { receivedMQTTResponse }
+            if gotResponse { return }
+        }
+        
+        // Only fall back to polling if we never got an MQTT response
+        let gotResponse = await MainActor.run { receivedMQTTResponse }
+        if !gotResponse {
+            print("⏳ Chat MQTT timeout; polling for result")
+            await pollForResult(convId: convId)
         }
     }
 

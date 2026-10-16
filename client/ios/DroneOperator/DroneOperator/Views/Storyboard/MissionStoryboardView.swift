@@ -63,6 +63,9 @@ struct MissionStoryboardView: View {
                 MissionSidebarView(controller: controller)
             }
             .animation(.default, value: controller.selection)
+            .confirmFlight(controller.pendingFlight) { flight, go in
+                Task { await controller.decideFlight(flight, go: go) }
+            }
         }
         .task { await controller.begin() }
         .onDisappear { controller.teardown() }
