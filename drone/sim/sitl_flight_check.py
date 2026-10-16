@@ -71,6 +71,9 @@ class Truth:
             self.got_land_state = False  # ArduCopter sends no EXTENDED_SYS_STATE
             self.max_alt = 0.0
             self.alt = 0.0
+            # Height is AMSL above the ground at reset, never relative_alt: PX4
+            # moves its home altitude ~1 m mid-flight, and a 1 m flight read 2.1 m.
+            self.ground_amsl = None
             self.landed_state = None
             self.mode = None
             self.texts = []
@@ -104,7 +107,11 @@ class Truth:
                         except Exception:
                             self.mode = f"MODE_{m.custom_mode}"
                 elif t == 'GLOBAL_POSITION_INT':
-                    self.alt = m.relative_alt / 1000.0
+                    if m.lat == 0:
+                        continue                  # no position estimate yet
+                    if self.ground_amsl is None:
+                        self.ground_amsl = m.alt / 1000.0
+                    self.alt = m.alt / 1000.0 - self.ground_amsl
                     if self.armed:
                         self.max_alt = max(self.max_alt, self.alt)
                 elif t == 'EXTENDED_SYS_STATE':

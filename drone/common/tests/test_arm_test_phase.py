@@ -220,6 +220,9 @@ def _fake_takeoff_env(monkeypatch, armed_bits, landed_state=2, autopilot='ardupi
         'is_flying': lambda: False, '_set_mode_confirmed': lambda *a, **k: True,
         '_battery_preflight': lambda *a: (True, ''), '_check_preflight_status': lambda: (True, []),
         '_fresh_position': lambda *a, **k: (37.0, -122.0, 1.3),   # the drifting indoor altitude
+        # 25.0 m AMSL where the takeoff starts, 1.3 m higher from then on: a climb
+        # if the FC agrees it is flying, drift if it says on ground / disarmed
+        '_fresh_amsl': lambda *a, _n=iter([25.0]), **k: next(_n, 26.3),
         '_position_relative': lambda: (37.0, -122.0, 1.3), 'is_armed': lambda: True,
         '_mav_command': mav_command, 'start_battery_guard': lambda *a, **k: None,
         '_start_pilot_watch': lambda: None, '_drain_statustext': lambda *a, **k: [],

@@ -230,7 +230,7 @@ class PosLink:
         if self.path:
             self.last = self.path.pop(0)
         lat, lon, alt = self.last
-        return SimpleNamespace(lat=int(lat * 1e7), lon=int(lon * 1e7),
+        return SimpleNamespace(lat=int(lat * 1e7), lon=int(lon * 1e7), alt=int((100.0 + alt) * 1000),
                                relative_alt=int(alt * 1000), yaw=0.0)
 
 

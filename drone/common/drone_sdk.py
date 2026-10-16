@@ -544,9 +544,25 @@ def _connect_locked():
         return _connect()
 
 
+def _rel_alt_m(msg):
+    """Altitude above home (m) from a GLOBAL_POSITION_INT: the frame of every
+    altitude the SDK reads or commands.
+
+    On PX4, once a takeoff has recorded it, "home" is the ground that takeoff
+    began from (AMSL), not PX4's own home: PX4 v1.17 moves its home altitude by
+    ~1 m mid-flight (HomePosition altitude correction), so relative_alt jumped
+    and "return home at 1 m" peaked 2.1 m up in SITL. ArduPilot's home holds
+    still, and its NAV_TAKEOFF / GUIDED targets use it: relative_alt as is."""
+    if _flight_ground_amsl is not None and _is_px4():
+        return msg.alt / 1000.0 - _flight_ground_amsl
+    return msg.relative_alt / 1000.0
+
+
 def _px4_amsl(rel_alt_m):
-    """PX4 takes altitudes AMSL; the SDK works relative to home. Convert using
-    the aircraft's own GLOBAL_POSITION_INT (alt - relative_alt = home's AMSL)."""
+    """PX4 takes altitudes AMSL; the SDK works relative to home (_rel_alt_m).
+    Before any takeoff, home is PX4's own: GLOBAL_POSITION_INT alt - relative_alt."""
+    if _flight_ground_amsl is not None:
+        return _flight_ground_amsl + rel_alt_m
     for _ in range(10):
         msg = _fc_cached('GLOBAL_POSITION_INT', max_age=3.0)
         if msg is not None:
@@ -566,6 +582,16 @@ def _px4_takeoff_amsl(climb_m):
             return msg.alt / 1000.0 + climb_m
         _pump(0.3)
     raise RuntimeError("no GLOBAL_POSITION_INT from the PX4 flight controller")
+
+
+def _ardupilot_takeoff_rel(climb_m):
+    """ArduCopter takeoff target: climb_m above where the aircraft IS, in the
+    above-home frame NAV_TAKEOFF uses. Home is not always under the aircraft (a
+    GCS can set and lock it elsewhere): with home 1.5 m below, "1 m" was already
+    reached, so ArduCopter rejected the takeoff; with home 1.9 m above, it
+    climbed 2.9 m. Read after arming - arming moves an unlocked home here."""
+    pos = _fresh_position(timeout=2.0)
+    return (pos[2] if pos is not None else 0.0) + climb_m
 
 
 def _px4_takeoff_refusal(altitude_m):
@@ -609,10 +635,13 @@ def _wait_armed(timeout=3.0):
 def _climb_reached(alt_m, start_alt_m, altitude_m):
     """Has the aircraft climbed (most of) `altitude_m` from where the takeoff began?
 
-    Measured from the altitude at takeoff, not from home: PX4 climbs `altitude_m`
-    above where it IS (_px4_takeoff_amsl), and the altitude relative to home on
-    the ground is not zero - it was +1.1 m disarmed and read -1.9 m mid-run on a
-    GPS-height EKF - so a real 1 m climb was judged against a shifted zero."""
+    Both altitudes are AMSL (GLOBAL_POSITION_INT.alt), never relative to home.
+    PX4 climbs `altitude_m` above where it IS (_px4_takeoff_amsl), and home
+    does not hold still: PX4 v1.17 re-publishes home with a different altitude
+    mid-flight (its HomePosition altitude correction; SITL moved it 584.13 ->
+    585.59 -> 584.53 -> 585.49 m in one 22 s flight), so relative_alt jumped
+    ~1 m second to second and a real 1 m climb read as 0.5 m. The test
+    aircraft showed the same (+1.1 m disarmed, -1.9 m mid-run)."""
     return (alt_m - start_alt_m) >= max(altitude_m - 0.5, altitude_m * 0.85)
 
 
@@ -817,7 +846,7 @@ def safe_disarm():
     while time.time() - start < 3:
         msg = _mav_recv('GLOBAL_POSITION_INT', timeout=0.5)
         if msg:
-            rel_alt = msg.relative_alt / 1000.0  # mm → m
+            rel_alt = _rel_alt_m(msg)
             break
     if rel_alt is not None and rel_alt > 1.0:
         raise RuntimeError(
@@ -889,8 +918,8 @@ def takeoff(altitude_m):
         # pitch (default), -, -, yaw (unchanged), lat/lon NaN = straight up from here, alt AMSL
         takeoff_params = (-1.0, 0, 0, nan, nan, nan, _px4_takeoff_amsl(altitude_m))
     else:
-        takeoff_params = (0, 0, 0, 0, 0, 0, altitude_m)
-    global _flight_home
+        takeoff_params = None   # ArduPilot: set once armed (arming moves home)
+    global _flight_home, _flight_ground_amsl
     pos = _fresh_position(timeout=2.0) or _position_relative()
     _flight_home = (pos[0], pos[1]) if pos else None
 
@@ -925,9 +954,14 @@ def takeoff(altitude_m):
             return False
         _log("Armed confirmed!")
     
-    # Where the climb starts, for the "reached" check below.
-    _start_pos = _fresh_position(timeout=2.0)
-    start_alt = _start_pos[2] if _start_pos is not None else 0.0
+    # Where the climb starts (AMSL), for the "reached" check below. Without a
+    # reading it is taken from the first one in the climb loop: a climb
+    # measured from 0 m AMSL would count as reached at once.
+    start_amsl = _fresh_amsl(timeout=2.0)
+    if _is_px4():
+        _flight_ground_amsl = start_amsl   # None: PX4's own home until a takeoff records one
+    if takeoff_params is None:
+        takeoff_params = (0, 0, 0, 0, 0, 0, _ardupilot_takeoff_rel(altitude_m))
 
     # Send takeoff command atomically (PX4 wants the altitude AMSL, ArduPilot relative)
     _log(f"Sending takeoff to {altitude_m}m...")
@@ -941,7 +975,7 @@ def takeoff(altitude_m):
     if not ack_ok:
         _log(f"Takeoff command failed! (result={result})")
         _drain_statustext()
-        _disarm_if_on_ground()
+        _disarm_if_on_ground(since_amsl=start_amsl)
         return False
     start_battery_guard()
     _start_pilot_watch()
@@ -949,9 +983,13 @@ def takeoff(altitude_m):
     # Wait for the altitude to be REACHED, not for a timer: a climb blocked by
     # the ceiling guard (or anything else) used to report "Reached" anyway, and
     # the mission then flew its remaining phases from wherever it was stuck.
-    timeout = max(altitude_m * 3, 10)
+    # At least 20 s: PX4 SITL took 6.4-9.2 s from arming to 0.85 of a 1 m
+    # takeoff - ~3 s spooling up on the ground, then Takeoff ends within
+    # NAV_MC_ALT_RAD (0.8 m) of the target and Hold creeps the rest at ~0.1 m/s.
+    # 10 s landed real climbs that were still on their way up.
+    timeout = max(altitude_m * 3, 20)
     _log(f"Climbing... (up to {timeout:.0f}s)")
-    alt = None
+    climbed = None
     deadline = time.time() + timeout
     while time.time() < deadline:
         if _pilot_control is not None:
@@ -972,20 +1010,22 @@ def takeoff(altitude_m):
             for text in _drain_statustext(timeout=0.5, print_msgs=False) or []:
                 _log(f"  FC: {text}")
             return False
-        pos = _fresh_position()
-        if pos is not None:
-            alt = pos[2]
+        amsl = _fresh_amsl()
+        if amsl is not None:
+            if start_amsl is None:
+                start_amsl = amsl
+            climbed = amsl - start_amsl
             # Altitude alone was fooled by drift on the ground ("Reached 0.9m"
             # with the props never spinning up); the FC's land detector must agree.
-            if _climb_reached(alt, start_alt, altitude_m) and not _fc_says_on_ground():
-                _log(f"Reached {alt:.1f}m (climbed {alt - start_alt:.1f}m)")
+            if _climb_reached(amsl, start_amsl, altitude_m) and not _fc_says_on_ground():
+                _log(f"Reached {altitude_m:g}m: climbed {climbed:.1f}m")
                 return True
         time.sleep(0.5)
     why = ""
     if _ceiling_guard_holding is not None:
         why = (f" - the ceiling guard is holding altitude: the upward rangefinder reads "
                f"{_ceiling_guard_holding:.2f}m clearance")
-    got = f"{alt - start_alt:.1f}m" if alt is not None else "an unknown altitude"
+    got = f"{climbed:.1f}m" if climbed is not None else "an unknown altitude"
     _log(f"TAKEOFF FAILED: only climbed {got} of {altitude_m}m{why}. Landing.")
     land()
     return False
@@ -1050,13 +1090,24 @@ def _leave_land_mode():
         _log(f"Could not leave LAND mode after landing: {e}")
 
 
-def _disarm_if_on_ground():
-    """Undo an arm() that a refused takeoff would otherwise leave spinning."""
-    if is_armed():
-        try:
-            safe_disarm()
-        except RuntimeError as e:
-            _log(str(e))
+def _disarm_if_on_ground(since_amsl=None):
+    """Undo an arm() that a refused takeoff would otherwise leave spinning.
+
+    since_amsl: the AMSL altitude when it armed, before any takeoff was accepted.
+    No climb from there and an FC not saying airborne is proof it never left.
+    safe_disarm()'s above-home rule alone refused with home 1.5 m below the
+    aircraft (ArduCopter sends no land state) and left it armed on the ground."""
+    if not is_armed():
+        return
+    if since_amsl is not None and _fc_says_on_ground() is not False:
+        now = _fresh_amsl()
+        if now is not None and now - since_amsl < 0.5:
+            disarm()
+            return
+    try:
+        safe_disarm()
+    except RuntimeError as e:
+        _log(str(e))
 
 
 def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
@@ -1160,7 +1211,7 @@ def get_position():
     while time.time() - start < 3:
         msg = _mav_recv('GLOBAL_POSITION_INT', timeout=0.5)
         if msg:
-            return (msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000)
+            return (msg.lat / 1e7, msg.lon / 1e7, _rel_alt_m(msg))
     return (0, 0, 0)
 
 
@@ -1315,6 +1366,7 @@ _battery_guard_thread = None
 _battery_guard_stop = threading.Event()
 _battery_guard_trip = None   # None, or {'action': 'return_home'|'land_now', 'reason': str}
 _flight_home = None          # (lat, lon) captured at takeoff/arm, for trip-home cost
+_flight_ground_amsl = None   # PX4: AMSL of the ground the last takeoff began from, see _rel_alt_m()
 _last_fc_seed = 0.0
 
 # ArduPilot-specific: set the FC's remaining % (ardupilotmega.xml).
@@ -1386,7 +1438,7 @@ def _read_battery_raw(max_wait=1.5):
                     if hb is not None else is_armed())
     pos = _fc_cached('GLOBAL_POSITION_INT', max_age=5.0)
     if pos is not None:
-        sample.flying = sample.armed and pos.relative_alt / 1000.0 > 1.0
+        sample.flying = sample.armed and _rel_alt_m(pos) > 1.0
     scales = {} if _is_px4() else _battery_scales()   # BATT_* are ArduPilot parameters
     if scales.get('BATT_VOLT_MULT') and sample.voltage:
         sample.volt_adc_v = sample.voltage / scales['BATT_VOLT_MULT']
@@ -1450,7 +1502,7 @@ def _position_relative():
             msg = _connect().messages.get('GLOBAL_POSITION_INT')
         if msg is None:
             return None
-        return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
+        return msg.lat / 1e7, msg.lon / 1e7, _rel_alt_m(msg)
     except Exception:
         return None
 
@@ -1458,6 +1510,19 @@ def _position_relative():
 def _fresh_position(timeout=1.0):
     """(lat, lon, rel_alt_m) from a NEW GLOBAL_POSITION_INT, or None.
     Unlike get_position() this never returns a (0, 0, 0) placeholder."""
+    msg = _fresh_global_position(timeout)
+    if msg is None:
+        return None
+    return msg.lat / 1e7, msg.lon / 1e7, _rel_alt_m(msg)
+
+
+def _fresh_amsl(timeout=1.0):
+    """Altitude above mean sea level (m) from a NEW GLOBAL_POSITION_INT, or None."""
+    msg = _fresh_global_position(timeout)
+    return None if msg is None else msg.alt / 1000.0
+
+
+def _fresh_global_position(timeout=1.0):
     with _mavlink_lock:
         m = _connect()
         _ensure_streams(m)
@@ -1467,9 +1532,7 @@ def _fresh_position(timeout=1.0):
         with _mavlink_lock:
             m = _connect()
             msg = m.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=timeout)
-    if msg is None:
-        return None
-    return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
+    return msg
 
 
 def _offset_origin():
@@ -2269,7 +2332,7 @@ def get_telemetry():
                 'longitude': msg.lon / 1e7,
                 'altitude': msg.alt / 1000.0
             }
-            telemetry['altitude_agl'] = msg.relative_alt / 1000.0
+            telemetry['altitude_agl'] = _rel_alt_m(msg)
             collected.add('position')
         elif msg_type == 'ATTITUDE' and 'attitude' not in collected:
             telemetry['attitude'] = {
@@ -2732,7 +2795,7 @@ def _photo_fix(max_age=1.0):
         'lat': msg.lat / 1e7,
         'lon': msg.lon / 1e7,
         'alt_msl_m': msg.alt / 1000.0,
-        'alt_above_home_m': msg.relative_alt / 1000.0,
+        'alt_above_home_m': _rel_alt_m(msg),
         'heading_deg': None if msg.hdg == 65535 else msg.hdg / 100.0,
         'ground_speed_mps': math.hypot(msg.vx, msg.vy) / 100.0,
     }

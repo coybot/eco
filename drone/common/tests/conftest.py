@@ -11,6 +11,8 @@ def _private_outbox(tmp_path, monkeypatch):
     yield
     import sys
     sdk = sys.modules.get("drone_sdk")
+    if sdk is not None:
+        sdk._flight_ground_amsl = None   # a takeoff in one test must not anchor the next one's altitudes
     box = getattr(sdk, "_outbox", None) if sdk is not None else None
     if box is not None:
         try:
