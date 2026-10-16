@@ -190,7 +190,7 @@ enum AlbumArchive {
     }
 }
 
-/// The system share sheet, for a file that already exists.
+/// The system share sheet, for a file that already exists or a web link.
 struct ShareSheet: UIViewControllerRepresentable {
     let fileURL: URL
 

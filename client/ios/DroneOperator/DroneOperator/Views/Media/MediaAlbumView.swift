@@ -37,6 +37,16 @@ struct MediaAlbumView: View {
                 .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .automatic : .never))
                 .indexViewStyle(.page(backgroundDisplayMode: .interactive))
             }
+            .safeAreaInset(edge: .bottom) {
+                if photoURLs.count > 1 {
+                    AlbumLinkView(photos: photoURLs)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.black.opacity(0.6))
+                }
+            }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -147,6 +157,99 @@ private struct MediaPlaceholder: View {
     }
 }
 
+/// The album's web link. The server zips the photos (with the drone's position
+/// manifest) and returns a /share/<id> link that anyone can open in a browser,
+/// no app or sign-in - so it is what gets sent to people outside the app.
+/// Asked for as soon as the album is on screen; the server hands the same
+/// album the same link, and this cache spares the round trip on scroll.
+struct AlbumLinkView: View {
+    let photos: [URL]
+    @State private var link: URL?
+    @State private var failure: String?
+    @State private var sharing = false
+
+    var body: some View {
+        Group {
+            if let link {
+                HStack(spacing: 6) {
+                    Image(systemName: "link")
+                    Text(link.absoluteString)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("e2e_album_link_url")
+                    // A sheet rather than ShareLink: ShareLink's iPad popover
+                    // loses its anchor inside a scrolling chat bubble and
+                    // opens empty at the top of the screen.
+                    Button {
+                        sharing = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .sheet(isPresented: $sharing) {
+                        // The link alone: with a caption beside it, Copy
+                        // takes only the caption.
+                        ShareSheet(fileURL: link)
+                    }
+                    .accessibilityIdentifier("e2e_album_link_share")
+                    .accessibilityLabel("Share link to \(photos.count) photos")
+                }
+            } else if failure != nil {
+                Button {
+                    Task { await load() }
+                } label: {
+                    Label("No link yet - tap to retry", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(failure ?? "")
+            } else {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Making a link...")
+                }
+            }
+        }
+        .font(.caption)
+        .accessibilityIdentifier("e2e_album_link")
+        .task(id: AlbumLinkCache.key(photos)) { await load() }
+    }
+
+    private func load() async {
+        if let cached = AlbumLinkCache.links[AlbumLinkCache.key(photos)] {
+            link = cached
+            return
+        }
+        failure = nil
+        // A couple of tries: right after a mission the last photos can still
+        // be on their way up (the server answers 409 then).
+        for attempt in 0..<3 {
+            do {
+                let response = try await APIClient.shared.shareAlbum(photos: photos)
+                guard let url = URL(string: response.url) else { break }
+                AlbumLinkCache.links[AlbumLinkCache.key(photos)] = url
+                link = url
+                return
+            } catch {
+                failure = error.localizedDescription
+                if attempt < 2 { try? await Task.sleep(for: .seconds(5)) }
+            }
+        }
+    }
+}
+
+/// Album links already fetched this run, keyed by the photos without their
+/// presigned query (which changes every time history is read).
+@MainActor
+enum AlbumLinkCache {
+    static var links: [String: URL] = [:]
+
+    static func key(_ photos: [URL]) -> String {
+        photos.map { ($0.host() ?? "") + $0.path() }.sorted().joined(separator: "\n")
+    }
+}
+
 /// The in-bubble presentation: one item inline, several as an album card.
 ///
 /// This is the "a file, or a folder" split the operator asked for, and it is
@@ -219,10 +322,17 @@ struct MediaAttachmentView: View {
             Text(summary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if photoURLs.count > 1 {
+                AlbumLinkView(photos: photoURLs)
+                    .frame(maxWidth: 420, alignment: .leading)
+            }
         }
         .accessibilityIdentifier("e2e_media_album")
         .accessibilityLabel(summary)
     }
+
+    private var photoURLs: [URL] { items.filter { $0.kind == .photo }.map(\.url) }
 
     private var summary: String {
         let photos = items.filter { $0.kind == .photo }.count

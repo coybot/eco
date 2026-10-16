@@ -124,19 +124,22 @@ def start(cfg: GCSConfig) -> GCSHandle:
     sys.path.insert(0, str(AWS_SRC))
     import clients
     clients.configure(dynamodb=dynamodb, iot=iot, s3=s3, image_url_fn=s3.public_image_url)
+    # Album share links (albums.py) are served by this same HTTP server.
+    os.environ.setdefault("SHARE_BASE_URL", s3.public_image_url("").rsplit("/images/", 1)[0])
 
     import handler
     import rover
     import drones
     import conversations
     import groups
+    import albums
 
     import rules
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="gcs-rule")
     rules.register(mqtt, drones, conversations, executor)
 
     import http_api
-    routes = http_api.build_routes(handler, rover, drones, conversations, groups)
+    routes = http_api.build_routes(handler, rover, drones, conversations, groups, albums)
     http_server = http_api.GCSHttpServer(
         host=cfg.http.host, port=cfg.http.port, routes=routes,
         auth_store=auth_store, images_dir=cfg.data_dir / "images", sign_verify_fn=signer.verify,

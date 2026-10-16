@@ -251,6 +251,17 @@ final class APIClient {
         )
     }
     
+    /// A web link to a mission's album: the server zips the photos (and the
+    /// drone's position manifest) and returns a /share/<id> link anyone can open
+    /// without the app. The same photos always get the same link.
+    func shareAlbum(photos: [URL]) async throws -> AlbumShareResponse {
+        return try await request(
+            method: "POST",
+            path: "/albums",
+            body: ["photos": photos.map(\.absoluteString)]
+        )
+    }
+
     // MARK: - Groups
 
     func listGroups() async throws -> [DroneGroup] {
@@ -723,6 +734,12 @@ struct ChatResponse: Decodable {
         case messageId = "message_id"
         case immediateResponse = "immediate_response"
     }
+}
+
+struct AlbumShareResponse: Decodable {
+    let url: String
+    let photos: Int
+    let expiresAt: String?
 }
 
 struct UploadUrlResponse: Decodable {

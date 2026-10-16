@@ -37,10 +37,15 @@ class Route:
         return m.groupdict() if m else None
 
 
-def build_routes(handler_mod, rover_mod, drones_mod, conversations_mod, groups_mod) -> list:
+def build_routes(handler_mod, rover_mod, drones_mod, conversations_mod, groups_mod,
+                 albums_mod=None) -> list:
     """Mirrors aws/template.yaml's Events blocks exactly (method, path ->
     handler function) for every route that has a local equivalent."""
-    return [
+    album_routes = [] if albums_mod is None else [
+        Route("POST", "/albums", albums_mod.album_handler),
+        Route("GET", "/share/{token}", albums_mod.share_handler),
+    ]
+    return album_routes + [
         Route("POST", "/command", handler_mod.lambda_handler),
         Route("POST", "/rover/converse", rover_mod.converse_handler),
         Route("POST", "/rover/act", rover_mod.act_handler),
@@ -90,6 +95,8 @@ _MEDIA_CONTENT_TYPES = {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
     ".mp4": "video/mp4",
+    ".zip": "application/zip",
+    ".csv": "text/csv",
 }
 
 

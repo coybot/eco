@@ -366,7 +366,7 @@ class LocalIoTData:
 
 class LocalS3:
     """Drop-in for the S3 client control builds - only .generate_presigned_url()
-    is used. Presigned PUT/GET urls point back at the GCS's own HTTP server
+    is used, plus get/put/list for albums. Presigned PUT/GET urls point back at the GCS's own HTTP server
     (see gcs/http_api.py's /images/{key} route), carrying a short-lived HMAC
     token (gcs/signing.py) instead of a real SigV4 signature."""
 
@@ -389,6 +389,32 @@ class LocalS3:
     # self._images_dir, this helper exists for any future direct-write caller.
     def path_for(self, key: str) -> Path:
         return self._images_dir / key
+
+    # Object reads/writes for albums.py, which zips a mission's photos beside
+    # them. Bucket is ignored: the GCS has one images dir.
+    def _object_path(self, key: str) -> Path:
+        target = (self._images_dir / key).resolve()
+        if self._images_dir.resolve() not in target.parents:
+            raise ValueError(f"invalid key: {key}")
+        return target
+
+    def get_object(self, Bucket: str = "", Key: str = "", **_):
+        import io
+        return {"Body": io.BytesIO(self._object_path(Key).read_bytes())}
+
+    def put_object(self, Bucket: str = "", Key: str = "", Body=b"", **_):
+        target = self._object_path(Key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(Body.read() if hasattr(Body, "read") else Body)
+        return {}
+
+    def list_objects_v2(self, Bucket: str = "", Prefix: str = "", **_):
+        base = self._images_dir.resolve()
+        folder = (base / Prefix).parent if not Prefix.endswith("/") else base / Prefix
+        keys = sorted(str(p.relative_to(base)) for p in folder.rglob("*")
+                      if p.is_file()) if folder.is_dir() else []
+        return {"Contents": [{"Key": k} for k in keys if k.startswith(Prefix)],
+                "IsTruncated": False}
 
 
 # --- LocalBackend ------------------------------------------------------------------

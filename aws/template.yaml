@@ -1088,6 +1088,89 @@ Resources:
             Path: /drones/{droneId}/conversations/{conversationId}/upload-url
             Method: POST
 
+  # Shareable album link: zip a mission's photos + manifest, hand back a
+  # public /share/<id> link (albums.py)
+  AlbumFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-album-${Environment}
+      CodeUri: src/
+      Handler: albums.album_handler
+      MemorySize: 1024
+      Timeout: 29
+      EphemeralStorage:
+        Size: 2048
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt DroneTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt ConversationsTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub 'arn:aws:s3:::${DroneImagesBucket}/drones/*'
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: !Sub 'arn:aws:s3:::${DroneImagesBucket}'
+              Condition:
+                StringLike:
+                  s3:prefix: 'drones/*'
+      Events:
+        Album:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /albums
+            Method: POST
+
+  # The public end of a shared link: no sign-in, redirects to the zip
+  ShareFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub drone-share-${Environment}
+      CodeUri: src/
+      Handler: albums.share_handler
+      MemorySize: 256
+      Environment:
+        Variables:
+          DRONE_TABLE: !Ref DroneTable
+          CONVERSATIONS_TABLE: !Ref ConversationsTable
+          IMAGES_BUCKET: !Ref DroneImagesBucket
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt ConversationsTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub 'arn:aws:s3:::${DroneImagesBucket}/drones/*/albums/*'
+      Events:
+        Share:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DroneApi
+            Path: /share/{token}
+            Method: GET
+            Auth:
+              Authorizer: NONE
+
   # ============================================
   # Group Functions
   # ============================================
