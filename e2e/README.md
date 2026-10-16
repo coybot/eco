@@ -79,5 +79,5 @@ screenshots each milestone, and asserts the mission's response arrives — see
 - `e2e-fast.yml` — the fast tier above, on every push/PR. No creds needed.
 - `ui-sim.yml` — `run_phone.sh` against an iOS Simulator + Android emulator, on PRs
   touching the client apps.
-- `e2e-live.yml` — the live tier, nightly + manual dispatch, on a self-hosted macOS
-  runner (needs a Mac for Coybot Sim / the iOS Simulator).
+- The live tier has no CI job; run `python3 -m eco.e2e.run_e2e --type all --tier live`
+  by hand on a Mac with Coybot Sim and the AWS dev stack credentials.
