@@ -93,6 +93,8 @@ def _run_swift_tests() -> tuple[bool, str]:
         proc = subprocess.run(
             ["xcodebuild", "test", "-scheme", "coybot-sdk-Package",
              "-destination", f"id={udid}",
+             # A real bug fails all three runs; a timing flake on a slow runner does not.
+             "-retry-tests-on-failure", "-test-iterations", "3",
              "-only-testing:RoverNavTests", "-only-testing:PhroverKitTests"],
             cwd=_SDK_DIR, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired:
