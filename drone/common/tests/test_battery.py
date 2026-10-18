@@ -429,3 +429,40 @@ def test_a_flat_reading_after_landing_is_still_not_trusted_until_it_changes():
     assert landed.pct is None, "the constant must not come back as 90% on the ground"
     swapped = est.update(bt.BatterySample(voltage=16.1, armed=False, t=60))
     assert swapped.pct is not None, "a different reading (new pack) is judged afresh"
+
+
+# --- the quadcopter 2026-10-18: both battery pins pinned at the ADC rail -------
+
+def _quadcopter_bench(**kw):
+    # What the Cube reported on the bench, disarmed: a constant 58.7 V and 78 A
+    # from inputs pinned at 3.26 V, 10.7 Ah "consumed" and its own 0%.
+    return bt.BatterySample(voltage=58.722, current_a=78.32, consumed_mah=10680,
+                            fc_remaining=0, armed=False, volt_adc_v=3.26,
+                            curr_adc_v=3.26, **kw)
+
+
+def test_the_fc_percent_from_pinned_inputs_is_unknown_not_zero():
+    cfg = bt.BatteryConfig(cells=CELLS, allow_unknown_battery=True)
+    est = bt.BatteryEstimator(cfg).update(_quadcopter_bench())
+    assert est.pct is None and est.source == "unknown"
+    assert any("pinned input" in w and "ignored" in w for w in est.warnings)
+    # ... so allow_unknown_battery lets it take off and does not land it at once
+    gov = bt.BatteryGovernor(cfg)
+    assert gov.preflight(est.pct, 3.0).ok
+    assert gov.in_flight(est.pct, 50.0, 10.0).ok
+
+
+def test_pinned_inputs_still_refuse_takeoff_without_allow_unknown():
+    cfg = bt.BatteryConfig(cells=CELLS)
+    est = bt.BatteryEstimator(cfg).update(_quadcopter_bench())
+    v = bt.BatteryGovernor(cfg).preflight(est.pct, 3.0)
+    assert not v.ok and "cannot be determined" in v.reason
+
+
+def test_the_fc_percent_is_still_used_when_its_inputs_are_not_pinned():
+    # Voltage implausible for the cell count but the pins are not railed: the
+    # FC's own % remains the (unverified) fallback, as before.
+    cfg = bt.BatteryConfig(cells=CELLS, allow_unknown_battery=True)
+    est = bt.BatteryEstimator(cfg).update(
+        bt.BatterySample(voltage=5.1, fc_remaining=62, volt_adc_v=1.0, curr_adc_v=0.2))
+    assert est.pct == 62 and est.source == "fc"

@@ -307,7 +307,8 @@ class BatteryEstimator:
         voltage_ok = self._voltage_ok(s.voltage)
         cell_v = (s.voltage / cfg.cells) if (s.voltage and s.voltage > 0) else None
         current_a = s.current_a
-        if s.curr_adc_v is not None and s.curr_adc_v >= ADC_RAIL_V:
+        current_railed = s.curr_adc_v is not None and s.curr_adc_v >= ADC_RAIL_V
+        if current_railed:
             warnings.append(
                 f"current input is pinned at the {s.curr_adc_v:.2f} V ADC limit - nothing "
                 f"is wired to BATT_CURR_PIN; the {s.current_a:.0f} A it shows is not real")
@@ -415,10 +416,20 @@ class BatteryEstimator:
                     pct = min(pct, self._flight_min_pct)
                 self._flight_min_pct = pct
 
+        # The FC's own % is computed from these same inputs (consumed mAh from
+        # the current pin, or the voltage): with either pinned it is as made up
+        # as they are. The quadcopter's current pin pinned at a constant 78 A
+        # "consumed" 10.7 Ah while it sat on the bench and read 0%, which
+        # refused every takeoff despite allow_unknown_battery. Unknown it is.
+        fc_inputs_real = not (voltage_railed or current_railed)
         if pct is None and s.fc_remaining is not None and s.fc_remaining >= 0 \
-                and cfg.allow_unknown_battery:
+                and cfg.allow_unknown_battery and fc_inputs_real:
             pct, source = float(s.fc_remaining), "fc"
             warnings.append("only the FC's own % is available and it is unverified")
+        elif pct is None and s.fc_remaining is not None and s.fc_remaining >= 0 \
+                and not fc_inputs_real:
+            warnings.append(f"the FC's own {s.fc_remaining:.0f}% comes from the pinned "
+                            f"input(s) above - ignored, battery level unknown")
 
         if pct is not None:
             pct = max(0.0, min(100.0, pct))
