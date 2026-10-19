@@ -343,6 +343,8 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:Query
+                # get_system_prompt scans the registry for the vehicle type.
+                - dynamodb:Scan
               Resource: 
                 - !GetAtt DroneTable.Arn
                 - !Sub '${DroneTable.Arn}/index/*'
@@ -846,6 +848,12 @@ Resources:
                 - !GetAtt DroneTable.Arn
                 - !GetAtt ConversationsTable.Arn
                 - !GetAtt DroneStatusTable.Arn
+            # A flight held for the operator's OK is deleted when it is taken
+            # or replaced (conversations._take_pending_flight/_clear_pending_flight).
+            - Effect: Allow
+              Action:
+                - dynamodb:DeleteItem
+              Resource: !GetAtt ConversationsTable.Arn
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
@@ -1282,12 +1290,19 @@ Resources:
               Resource:
                 - !GetAtt GroupsTable.Arn
                 - !GetAtt DroneTable.Arn
+            # conversations.get_vehicle_type scans the registry for the vehicle type.
+            - Effect: Allow
+              Action:
+                - dynamodb:Scan
+              Resource: !GetAtt DroneTable.Arn
             - Effect: Allow
               Action:
                 - dynamodb:PutItem
                 - dynamodb:Query
                 - dynamodb:GetItem
                 - dynamodb:UpdateItem
+                # A held group order is deleted when it is taken or replaced.
+                - dynamodb:DeleteItem
               Resource: !GetAtt ConversationsTable.Arn
             - Effect: Allow
               Action:
