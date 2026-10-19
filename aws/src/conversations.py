@@ -12,6 +12,7 @@ import functools
 import hashlib
 import json
 import os
+import re
 import uuid
 import base64
 import urllib.request
@@ -1674,15 +1675,24 @@ def _extract_tool_input(result, tool_name, list_key=None):
 
 _DETECTOR_NOUNS = ("pickup truck", "truck", "car", "person", "aircraft",
                    "water bottle")
+# Other words operators use for a detector noun.
+_NOUN_ALIASES = {"people": "person"}
+# "with 2 aircraft", "send three aircraft": how many vehicles fly, not what to
+# look for.
+_AIRCRAFT_COUNT = re.compile(
+    r"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+aircraft\b")
 
 
 def _target_noun(message):
     """The detector noun the mission is about, taken from the operator's text
     so a synthesized search phase grounds correctly (see mission_vocab wording
     rules). Defaults to 'target' if none of the known nouns appear."""
-    low = (message or "").lower()
+    low = _AIRCRAFT_COUNT.sub(" ", (message or "").lower())
     for noun in _DETECTOR_NOUNS:
         if noun in low:
+            return noun
+    for word, noun in _NOUN_ALIASES.items():
+        if re.search(rf"\b{word}\b", low):
             return noun
     return "target"
 
