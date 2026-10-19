@@ -256,3 +256,92 @@ def test_a_position_read_skips_the_backlog_to_the_newest_fix(monkeypatch):
     monkeypatch.setattr(drone_sdk, "_ensure_streams", lambda m: None)
     lat, _, _ = drone_sdk._fresh_position()
     assert lat == pytest.approx(37.00002, abs=1e-7), "read the oldest queued fix"
+
+
+class HoldingBackend(Backend):
+    """A flight controller that takes a heading to hold, as HardwareBackend does."""
+
+    def __init__(self):
+        super().__init__()
+        self.holds = []        # every hold_heading() call
+        self.held_at_goto = []
+
+    def hold_heading(self, yaw_deg):
+        self.holds.append(yaw_deg)
+
+    def goto(self, north_m, east_m, alt_m):
+        self.held_at_goto.append(self.holds[-1] if self.holds else None)
+        return super().goto(north_m, east_m, alt_m)
+
+
+def test_every_survey_photo_faces_the_heading_the_mission_started_with():
+    """Asked to scan an area, the photos must line up. Left to itself ArduCopter
+    turned to face each new point, so a 2 x 2 m survey came back with four
+    photos at four headings. The hold ends with the survey: other flying may
+    turn to face where it goes."""
+    backend = HoldingBackend()
+    loop = rl.MissionLoop(backend=backend, drone_sdk=SDK(), conversation_id="c-1",
+                          vehicle_class=get_class("quadcopter"))
+    loop._home_yaw_rad = math.radians(72.0)
+    loop._media_warnings, loop._photos = [], []
+    loop._exec_survey_rect(THE_MISSION)
+    assert len(backend.gotos) == 25
+    assert backend.held_at_goto == [pytest.approx(72.0)] * 25
+    assert backend.holds[-1] is None
+
+
+def test_the_hold_is_released_when_the_survey_stops_early():
+    backend = HoldingBackend()
+    backend.goto = lambda *a: False
+    loop = rl.MissionLoop(backend=backend, drone_sdk=SDK(), conversation_id="c-1",
+                          vehicle_class=get_class("quadcopter"))
+    loop._home_yaw_rad = 0.0
+    loop._media_warnings, loop._photos = [], []
+    assert loop._exec_survey_rect(THE_MISSION).get("failed")
+    assert backend.holds[-1] is None
+
+
+def _route_len(gotos, start=(0.0, 0.0), end=None):
+    pts = [start] + [(n, e) for n, e, _ in gotos] + ([end] if end else [])
+    return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:]))
+
+
+def test_a_survey_followed_by_the_return_finishes_at_the_near_edge():
+    """The serpentine through 5 rows ends at the far corner, 10.5 m from home,
+    and the flight home from there was the mission's longest leg. With the
+    return counted, the route comes back down the area and ends by home."""
+    loop, backend = _loop()
+    mission = rl.Mission(mission_id="m", phases=[THE_MISSION, {"type": "return_home"}])
+    loop._execute_phase(THE_MISSION, mission)
+    assert len({(n, e) for n, e, _ in backend.gotos}) == len(backend.gotos) == 25
+    last_n, last_e, _ = backend.gotos[-1]
+    assert last_n == pytest.approx(5.5), "the row nearest home"
+    serpentine = [(n, e, 5) for e, n in search_patterns.photo_grid((5, 5), (5, 0), 1.0)]
+    assert (_route_len(backend.gotos, end=(0.0, 0.0))
+            < _route_len(serpentine, end=(0.0, 0.0)) - 3.0)
+
+
+def test_a_survey_starts_at_the_cell_nearest_the_aircraft():
+    """Started from the far side of the area, it does not fly across it first."""
+    loop, backend = _loop()
+    arrive = backend.get_pose
+    # East, north: past the far corner, until the first leg; then where sent.
+    backend.get_pose = lambda: arrive() if backend.gotos else (4.6, 10.6, 5.0, 0.0)
+    loop._exec_survey_rect(THE_MISSION)
+    first_n, first_e, _ = backend.gotos[0]
+    assert (first_n, first_e) == (pytest.approx(9.5), pytest.approx(4.5))
+
+
+def test_the_manifest_keeps_each_cells_own_number_whatever_the_order():
+    loop, backend = _loop()
+    rows = []
+    loop._finish_survey_manifest = lambda r: rows.extend(r)
+    loop._survey_row = lambda n, url, cell, f, r: {"n": n, "cell": cell, "f": round(f, 2), "r": round(r, 2)}
+    mission = rl.Mission(mission_id="m", phases=[THE_MISSION, {"type": "return_home"}])
+    loop._execute_phase(THE_MISSION, mission)
+    grid = search_patterns.photo_grid((5, 5), (5, 0), 1.0)
+    assert [r["n"] for r in rows] == list(range(1, 26))
+    assert sorted(r["cell"] for r in rows) == list(range(1, 26))
+    for r in rows:
+        e, n = grid[r["cell"] - 1]
+        assert (r["f"], r["r"]) == (pytest.approx(n), pytest.approx(e))

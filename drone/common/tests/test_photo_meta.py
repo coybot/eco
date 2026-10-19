@@ -380,7 +380,9 @@ def test_sdk_survey_in_flight_takes_every_photo_and_uploads_the_manifest(monkeyp
     assert len(lines) == 7
     first = dict(zip(head, lines[1].split(",")))
     assert first["file"] == "p01.jpg" and first["gps"] == "yes" and first["utc_time"] == "2026-10-14T17:34:31.563Z"
-    assert [int(l.split(",")[head.index("cell")]) for l in lines[1:]] == [1, 2, 3, 4, 5, 6]
+    # Every cell once, in the shortest order that ends back by home: up the
+    # left column and down the right (the serpentine 1..6 ends at the far end).
+    assert [int(l.split(",")[head.index("cell")]) for l in lines[1:]] == [1, 4, 5, 6, 3, 2]
 
 
 def test_sdk_survey_manifest_failure_never_loses_the_photos(monkeypatch):

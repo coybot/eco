@@ -908,6 +908,8 @@ class MissionLoop:
         blocked = self._battery_gate_phase(phase)
         if blocked is not None:
             return blocked
+        nxt = mission.current_phase + 1 if mission is not None else None
+        self._next_phase = mission.phases[nxt] if nxt is not None and nxt < len(mission.phases) else None
         method_name = self._PHASE_DISPATCH.get(phase_type)
         if method_name is not None:
             return getattr(self, method_name)(phase)
@@ -1431,6 +1433,21 @@ class MissionLoop:
             max_photos=self.MAX_SURVEY_PHOTOS,
         )
 
+    _next_phase: Optional[Dict[str, Any]] = None   # the phase after the one running
+
+    def _survey_order(self, pts) -> List[int]:
+        """Shortest visiting order for the survey's cells, from where the
+        aircraft is, and back toward home when the next phase is the return.
+        The cell numbers stay those of the grid; only the order changes."""
+        try:
+            pose = self._get_backend().get_pose()
+        except Exception:
+            pose = None
+        start = (float(pose[0]), float(pose[1])) if pose is not None else None
+        nxt = (self._next_phase or {}).get('type')
+        end = (0.0, 0.0) if nxt == 'return_home' else None
+        return search_patterns.plan_route(pts, start=start, end=end)
+
     def _exec_survey_rect(self, phase: Dict[str, Any]) -> Dict[str, Any]:
         if not self.vehicle_class.can_hover:
             # Not a failure to retry: no replan can make a fixed-wing stop,
@@ -1457,8 +1474,16 @@ class MissionLoop:
         missed, problem = 0, None
         rows: List[Dict[str, Any]] = []
         heading = self._home_yaw_rad or 0.0
+        order = self._survey_order(pts)
+        # Every photo faces the start heading, so the photos line up with the
+        # rectangle and with each other. Only here: elsewhere the aircraft may
+        # turn to face where it is going.
+        hold = getattr(backend, 'hold_heading', None)
+        if callable(hold):
+            hold(math.degrees(heading))
         try:
-            for i, (east_m, north_m) in enumerate(pts):
+            for i, cell in enumerate(order):
+                east_m, north_m = pts[cell]
                 if self._aborted:
                     return {'failed': True, 'reason': 'Stopped on your command', 'actions': i, 'aborted': True}
                 if self._time_up():
@@ -1481,8 +1506,10 @@ class MissionLoop:
                 # The cell's centre in the start frame (forward/right of the start point).
                 fwd = north_m * math.cos(heading) + east_m * math.sin(heading)
                 rgt = east_m * math.cos(heading) - north_m * math.sin(heading)
-                rows.append(self._survey_row(len(rows) + 1, url, i + 1, fwd, rgt))
+                rows.append(self._survey_row(len(rows) + 1, url, cell + 1, fwd, rgt))
         finally:
+            if callable(hold):
+                hold(None)
             # On every exit - done, aborted, timed out, failed - because the
             # photos already taken are delivered either way and still need
             # their positions.

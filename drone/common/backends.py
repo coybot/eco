@@ -126,6 +126,13 @@ class HardwareBackend:
         # convention — see goto()/loiter() below) into absolute GPS coordinates,
         # since a real fixed-wing navigates by lat/lon, not an ENU world frame.
         self._plane_origin_latlon = None
+        self._heading_hold_deg = None
+
+    def hold_heading(self, yaw_deg):
+        """Hold this compass heading (deg, 0 = north) on every goto() until
+        called with None. A survey's photos then all face the same way and tile
+        the area; left to itself the flight controller turns to face each point."""
+        self._heading_hold_deg = None if yaw_deg is None else float(yaw_deg)
 
     def _is_fixedwing(self) -> bool:
         return self._vehicle_class == "fixedwing" and self._plane is not None
@@ -266,6 +273,9 @@ class HardwareBackend:
             return self._plane.goto(lat, lon, alt_m, max_alt=self._plane.MAX_ALTITUDE)
         if self._fc_nav():
             try:
+                if self._heading_hold_deg is not None:
+                    return bool(self._sdk.goto_offset(north_m, east_m, alt_m,
+                                                      yaw_deg=self._heading_hold_deg))
                 return bool(self._sdk.goto_offset(north_m, east_m, alt_m))
             except Exception:
                 return False
@@ -427,6 +437,8 @@ class HardwareBackend:
         # before this seam existed (Nav2 offset back to home/origin).
         if self._fc_nav():
             try:
+                if hasattr(self._sdk, "return_home"):   # settles tighter over home than goto_offset
+                    return bool(self._sdk.return_home(alt_m if alt_m is not None else 5.0))
                 return bool(self._sdk.goto_offset(0.0, 0.0, alt_m if alt_m is not None else 5.0))
             except Exception:
                 return False

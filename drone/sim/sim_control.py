@@ -208,7 +208,8 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
             float(spacing_m or 1.0), heading_deg=heading)
         print(f"Survey: {len(rel)} photos, one per {used:g} m cell")
         urls = []
-        for e, n in rel:
+        for k in search_patterns.plan_route(rel, start=(0.0, 0.0)):
+            e, n = rel[k]
             _goto_xyz(float(p[0]) + e, float(p[1]) + n, alt)
             time.sleep(settle_s)
             u = capture_photo()

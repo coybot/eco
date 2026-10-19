@@ -1110,8 +1110,11 @@ def _disarm_if_on_ground(since_amsl=None):
         _log(str(e))
 
 
-def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
+def goto(lat, lon, alt, max_alt=MAX_ALTITUDE, yaw_deg=None):
     """Fly to GPS coordinates.
+
+    yaw_deg: compass heading to hold on the way (0 = north, clockwise). None
+    leaves it to the flight controller, which turns to face each new point.
 
     SAFETY: Altitude is clamped to MIN_ALTITUDE..max_alt range. max_alt
     defaults to this module's own copter-oriented MAX_ALTITUDE (20m), but
@@ -1135,23 +1138,34 @@ def goto(lat, lon, alt, max_alt=MAX_ALTITUDE):
                 _log(f"GOTO REFUSED: {reason}")
                 return False
     print(f"Flying to ({lat}, {lon}) at {alt}m...")
-    _send_position_target(lat, lon, alt)
+    _send_position_target(lat, lon, alt, yaw_deg)
 
 
-def _send_position_target(lat, lon, alt_rel_m):
+def _send_position_target(lat, lon, alt_rel_m, yaw_deg=None):
     """Command the aircraft to a point (alt relative to home): ArduPilot takes a
-    GUIDED position setpoint, PX4 a DO_REPOSITION (which leaves it in Hold)."""
+    GUIDED position setpoint, PX4 a DO_REPOSITION (which leaves it in Hold).
+
+    With yaw_deg None the yaw field is marked ignored, and ArduCopter then
+    turns to face the point (WP_YAW_BEHAVIOR): a 2 x 2 m survey came back with
+    every photo at a different heading. Given, the aircraft holds it."""
     _connect_locked()
+    yaw_rad = math.radians(yaw_deg % 360.0) if yaw_deg is not None else None
     if _is_px4():
         amsl = _px4_amsl(alt_rel_m)
-        _mav_send(lambda m: _px4.send_reposition(m, lat, lon, amsl))
+        if yaw_rad is None:
+            _mav_send(lambda m: _px4.send_reposition(m, lat, lon, amsl))
+        else:
+            _mav_send(lambda m: _px4.send_reposition(m, lat, lon, amsl, yaw_rad))
         return
+    # Bits set = fields ignored: velocity, acceleration, yaw rate, and yaw
+    # unless one was asked for (bit 10).
+    mask = 0b0000101111111000 if yaw_rad is not None else 0b0000111111111000
     _mav_send(lambda m: m.mav.set_position_target_global_int_send(
         0, 1, 1,
         mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-        0b0000111111111000,
+        mask,
         int(lat * 1e7), int(lon * 1e7), alt_rel_m,
-        0, 0, 0, 0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0, yaw_rad or 0.0, 0
     ))
 
 
@@ -1769,14 +1783,15 @@ def hold_here(brake_first=True):
     return True
 
 
-def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None):
+def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None, yaw_deg=None):
     """Fly to a north/east offset (m) from the takeoff point at alt_m and WAIT
     until the aircraft is actually there. Returns True only on arrival.
 
     Without Nav2 this is the only real way to move to an offset: the Nav2
     bridge's fallback when ROS is absent merely sleeps and reports success.
     Returns False if refused (battery), stopped by the battery guard, or not
-    arrived within timeout_s (default: generous for the distance).
+    arrived within timeout_s (default: generous for the distance). yaw_deg: see
+    goto().
     """
     origin = _offset_origin()
     start = _fresh_position(timeout=2.0)
@@ -1788,7 +1803,7 @@ def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None):
     dist = _flat_dist_m(start[0], start[1], lat, lon)
     if timeout_s is None:
         timeout_s = 15.0 + 3.0 * (dist + abs(alt_m - start[2])) / 2.0
-    if goto(lat, lon, alt_m) is False:
+    if goto(lat, lon, alt_m, yaw_deg=yaw_deg) is False:
         return False
     alt_target = _clamp(alt_m, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
     deadline = time.time() + timeout_s
@@ -3349,7 +3364,25 @@ def return_home(alt_m=None):
     if alt_m is None:
         pos = _fresh_position(timeout=2.0)
         alt_m = max(pos[2], MIN_ALTITUDE) if pos else 5.0
-    return goto_offset(0.0, 0.0, float(alt_m))
+    # goto_offset's 1 m arrival is too loose for the spot it lands on: a survey
+    # that ends on the cell beside home finishes 0.7 m out, "arrived" at once,
+    # and landed there (ArduCopter SITL). Settle to HOME_TOL_M; if that does not
+    # happen in time (wind), within the old 1 m still counts.
+    if goto_offset(0.0, 0.0, float(alt_m), tol_m=HOME_TOL_M):
+        return True
+    if _battery_guard_trip or _pilot_control is not None or _abort_event.is_set():
+        return False
+    origin, pos = _offset_origin(), _fresh_position(timeout=2.0)
+    if origin is None or pos is None:
+        return False
+    left = _flat_dist_m(pos[0], pos[1], origin[0], origin[1])
+    if left <= 1.0:
+        _log(f"Home: settled {left:.1f} m from the takeoff point, not {HOME_TOL_M} m; landing here")
+        return True
+    return False
+
+
+HOME_TOL_M = 0.3   # how close return_home() gets to the takeoff point before it counts
 
 
 SURVEY_STILL_MPS = 0.25   # ground speed under which a survey shot is sharp and really in its cell
@@ -3358,7 +3391,9 @@ SURVEY_STILL_MPS = 0.25   # ground speed under which a survey shot is sharp and 
 def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
                 spacing_m=1.0, altitude_m=None, settle_s=0.5):
     """Photograph an area: one photo over the centre of every spacing_m x
-    spacing_m cell of a rectangle, flying a serpentine between them.
+    spacing_m cell of a rectangle, by the shortest route through them that
+    ends back toward home, every photo facing the heading at the call so the
+    photos line up.
 
     The rectangle is in the drone's own frame at the moment of the call:
     forward_m straight ahead, right_m to its right, the near corner
@@ -3392,9 +3427,14 @@ def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
         print(f"Survey: a photo every {spacing_m} m would be over "
               f"{search_patterns.MAX_SURVEY_PHOTOS} photos; taking one every {used:.1f} m")
     print(f"Survey: {len(rel)} photos, one per {used:g} m cell")
+    # Relative to here: start at (0, 0), and home - where return_home() goes
+    # next - at minus the current offset.
+    order = search_patterns.plan_route(rel, start=(0.0, 0.0), end=(-east0, -north0))
+    heading_deg = math.degrees(yaw)
     urls, missed, rows = [], 0, []
-    for i, (e, n) in enumerate(rel):
-        if not goto_offset(north0 + n, east0 + e, alt):
+    for i, cell in enumerate(order):
+        e, n = rel[cell]
+        if not goto_offset(north0 + n, east0 + e, alt, yaw_deg=heading_deg):
             print(f"Survey stopped at photo {i + 1}/{len(rel)}: leg refused or not reached")
             break
         # goto_offset reports arrival at 1 m, a whole cell of a 1 m survey: wait
@@ -3421,7 +3461,7 @@ def survey_rect(forward_m, right_m, origin_forward_m=0.0, origin_right_m=0.0,
             # The cell's centre in the start frame (forward/right of where the survey began).
             fwd = n * math.cos(yaw) + e * math.sin(yaw)
             rgt = e * math.cos(yaw) - n * math.sin(yaw)
-            rows.append(photo_meta.survey_row(len(rows) + 1, url, i + 1, fwd, rgt,
+            rows.append(photo_meta.survey_row(len(rows) + 1, url, cell + 1, fwd, rgt,
                                               last_photo_meta(), time.time()))
         else:
             missed += 1

@@ -275,6 +275,108 @@ def capped_photo_grid(size: Point, origin: Point, spacing_m: float,
         spacing *= 1.1
 
 
+def plan_route(points: List[Point], start: Point = None, end: Point = None,
+               time_budget_s: float = 2.0) -> List[int]:
+    """The order to visit `points` in (indices into it), shortest first.
+
+    `start` is where the aircraft is now; `end`, if given, is where it goes
+    straight after (home, when a return follows). Both count toward the length:
+    a grid's serpentine is the shortest way through the cells alone, but it
+    finishes at the far corner of an odd-row grid, and the flight home from
+    there was the longest leg of the mission. With the trip home counted the
+    route comes back down the grid instead.
+
+    Visiting order is a travelling-salesman path, so this is a heuristic, not
+    an exact answer: several seed routes (the given order, its reverse,
+    nearest-neighbour from the start), each improved by 2-opt and Or-opt
+    until neither shortens it, best kept. For a full grid it reaches the
+    unit-step optimum; for 100 points it takes well under a second.
+    `time_budget_s` bounds it on a slow companion computer: when it runs out
+    the best route so far is returned, which is never worse than the given
+    order.
+    """
+    import time as _time
+
+    n = len(points)
+    if n <= 1:
+        return list(range(n))
+    deadline = _time.monotonic() + time_budget_s
+    # Indices n and n+1 are the start and end anchors. A missing anchor is a
+    # point zero distance from everything, so the route may begin/end anywhere.
+    pts = list(points) + [start, end]
+    d = [[0.0] * (n + 2) for _ in range(n + 2)]
+    for i in range(n + 2):
+        for j in range(i + 1, n + 2):
+            if pts[i] is None or pts[j] is None:
+                continue
+            d[i][j] = d[j][i] = math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1])
+
+    def length(order):
+        seq = [n] + order + [n + 1]
+        return sum(d[seq[k]][seq[k + 1]] for k in range(len(seq) - 1))
+
+    def improve(order):
+        seq = [n] + list(order) + [n + 1]   # seq[0], seq[-1] never move
+        m = len(seq)
+        better = True
+        while better and _time.monotonic() < deadline:
+            better = False
+            # 2-opt: reverse seq[i..j].
+            for i in range(1, m - 2):
+                a, b = seq[i - 1], seq[i]
+                for j in range(i + 1, m - 1):
+                    c, e = seq[j], seq[j + 1]
+                    if d[a][c] + d[b][e] < d[a][b] + d[c][e] - 1e-9:
+                        seq[i:j + 1] = reversed(seq[i:j + 1])
+                        b = seq[i]
+                        better = True
+            # Or-opt: move a run of 1-3 points elsewhere, either way round.
+            for seg in (1, 2, 3):
+                i = 1
+                while i + seg <= m - 1:
+                    s0, s1 = seq[i], seq[i + seg - 1]
+                    p, q = seq[i - 1], seq[i + seg]
+                    gain = d[p][s0] + d[s1][q] - d[p][q]
+                    moved = False
+                    for k in range(0, m - 1):
+                        if i - 1 <= k <= i + seg - 1:
+                            continue
+                        x, y = seq[k], seq[k + 1]
+                        fwd = d[x][s0] + d[s1][y] - d[x][y]
+                        rev = d[x][s1] + d[s0][y] - d[x][y]
+                        if min(fwd, rev) < gain - 1e-9:
+                            run = seq[i:i + seg]
+                            if rev < fwd:
+                                run.reverse()
+                            rest = seq[:i] + seq[i + seg:]
+                            at = k + 1 if k < i else k + 1 - seg
+                            seq = rest[:at] + run + rest[at:]
+                            better = moved = True
+                            break
+                    if not moved:
+                        i += 1
+        return seq[1:-1]
+
+    given = list(range(n))
+    seeds = [given, given[::-1]]
+    if start is not None:
+        left, here, nn = set(given), n, []
+        while left:
+            nxt = min(left, key=lambda k: d[here][k])
+            nn.append(nxt)
+            left.discard(nxt)
+            here = nxt
+        seeds.append(nn)
+    best = min(seeds, key=length)
+    for seed in seeds:
+        if _time.monotonic() >= deadline:
+            break
+        cand = improve(seed)
+        if length(cand) < length(best) - 1e-9:
+            best = cand
+    return best
+
+
 def _along(frm: Point, toward: Point, dist: float) -> Point:
     """Point `dist` from `frm` along the segment toward `toward`."""
     dx, dy = toward[0] - frm[0], toward[1] - frm[1]

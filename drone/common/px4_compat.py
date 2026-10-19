@@ -105,9 +105,10 @@ def home_amsl_m(global_position_int):
     return (global_position_int.alt - global_position_int.relative_alt) / 1000.0
 
 
-def send_reposition(conn, lat, lon, alt_amsl_m):
+def send_reposition(conn, lat, lon, alt_amsl_m, yaw_rad=math.nan):
     """Fly a PX4 aircraft to a point (MAV_CMD_DO_REPOSITION, which also puts it in
-    Hold so it stays there). PX4 reads the altitude as AMSL."""
+    Hold so it stays there). PX4 reads the altitude as AMSL. `yaw_rad` is the
+    heading to hold (radians, 0 = north, clockwise); NaN leaves it to PX4."""
     conn.mav.command_int_send(
         conn.target_system, conn.target_component,
         0,                       # MAV_FRAME_GLOBAL: lat/lon in 1e7 deg, z AMSL
@@ -115,5 +116,5 @@ def send_reposition(conn, lat, lon, alt_amsl_m):
         -1.0,                    # ground speed: the vehicle default
         1,                       # MAV_DO_REPOSITION_FLAGS_CHANGE_MODE
         0.0,                     # loiter radius: default
-        math.nan,                # yaw: unchanged
+        float(yaw_rad),          # yaw: NaN = unchanged
         int(round(lat * 1e7)), int(round(lon * 1e7)), float(alt_amsl_m))
