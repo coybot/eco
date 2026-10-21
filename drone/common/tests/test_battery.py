@@ -537,3 +537,74 @@ def test_an_sdk_without_a_shared_config_falls_back_to_its_config_file(monkeypatc
     monkeypatch.setattr(rl, "_drone_sdk", broken, raising=False)
     loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
     assert loop._battery_gov.config.cells == 6
+
+
+# --- the % cost rates follow the pack fitted, not the one they were tuned on --
+
+def test_an_unchanged_pack_keeps_the_rates_exactly():
+    """The aircraft today: config.yaml's pack is the pack, nothing moves."""
+    cfg = bt.BatteryConfig.from_dict({"capacity_mah": 5000, "hover_pct_per_min": 7.0})
+    assert cfg.rates_capacity_mah == 5000 and cfg.rate_scale() == 1.0
+    assert bt.BatteryGovernor(cfg).hover_cost(60) == pytest.approx(7.0)
+    assert bt.BatteryGovernor(bt.BatteryConfig()).hover_cost(60) == pytest.approx(7.0)
+
+
+def test_a_bigger_pack_from_the_app_costs_less_of_it_per_minute():
+    """7 %/min of a 5000 mAh pack is the same current as 4.375 %/min of 8000 mAh."""
+    cfg = bt.BatteryConfig.from_dict({"capacity_mah": 5000, "hover_pct_per_min": 7.0,
+                                      "takeoff_overhead_pct": 1.0, "landing_overhead_pct": 1.0})
+    gov = bt.BatteryGovernor(cfg)
+    cfg.capacity_mah = 8000.0                         # what set_battery_pack does
+    assert gov.hover_cost(60) == pytest.approx(7.0 * 5 / 8)
+    assert gov.takeoff_cost(0) == pytest.approx(5 / 8)
+    assert gov.land_cost(0) == pytest.approx(5 / 8)
+    assert gov.transit_cost(30) == pytest.approx(10 / 60 * 7.0 * 5 / 8 * cfg.cruise_mult)
+    assert cfg.landing_reserve_pct == 20.0 and cfg.min_takeoff_pct == 35.0   # still % of this pack
+
+
+def test_a_smaller_pack_costs_more_of_it():
+    cfg = bt.BatteryConfig.from_dict({"capacity_mah": 5000})
+    cfg.capacity_mah = 2500.0
+    assert bt.BatteryGovernor(cfg).hover_cost(60) == pytest.approx(14.0)
+
+
+def test_rates_tuned_on_another_pack_can_say_so():
+    cfg = bt.BatteryConfig.from_dict({"capacity_mah": 8000, "rates_capacity_mah": 4000})
+    assert cfg.rate_scale() == pytest.approx(0.5)
+
+
+def test_the_heartbeat_reports_rates_for_the_pack_fitted(monkeypatch, tmp_path):
+    """The cloud planner prices from the heartbeat's energy model: it must scale too, or
+    the plan and the aircraft disagree about what a mission costs."""
+    sdk = pytest.importorskip("drone_sdk")
+    (tmp_path / "config.yaml").write_text("battery:\n  capacity_mah: 5000\n  hover_pct_per_min: 7.0\n"
+                                          "  takeoff_overhead_pct: 1.0\n  landing_overhead_pct: 2.0\n")
+    monkeypatch.setattr(sdk, "DRONE_DIR", tmp_path)
+    for name in ("_battery_cfg", "_battery_estimator", "_battery_governor"):
+        monkeypatch.setattr(sdk, name, None)
+    assert sdk.energy_model()["hover_pct_per_min"] == pytest.approx(7.0)
+    sdk.set_battery_pack(capacity_mah=10000)
+    em = sdk.energy_model()
+    assert em["hover_pct_per_min"] == pytest.approx(3.5)
+    assert (em["takeoff_overhead_pct"], em["landing_overhead_pct"]) == (pytest.approx(0.5), pytest.approx(1.0))
+    assert em["cruise_mult"] == sdk.battery_config().cruise_mult   # multipliers are ratios: unscaled
+    assert sdk.battery_config().hover_pct_per_min == 7.0            # the tuned value is untouched
+
+
+def test_the_mission_loop_prices_a_survey_for_the_pack_set_in_the_app(monkeypatch, tmp_path):
+    sdk = pytest.importorskip("drone_sdk")
+    (tmp_path / "config.yaml").write_text("battery:\n  capacity_mah: 5000\n")
+    monkeypatch.setattr(sdk, "DRONE_DIR", tmp_path)
+    for name in ("_battery_cfg", "_battery_estimator", "_battery_governor"):
+        monkeypatch.setattr(sdk, name, None)
+    monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", True)
+    monkeypatch.setattr(rl, "_drone_sdk", sdk, raising=False)
+    survey = {"type": "survey_rect", "forward_m": 5, "right_m": 5, "spacing_m": 1, "altitude_m": 5}
+
+    def cost():
+        loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
+        loop._home_yaw_rad = 0.0
+        return loop._phase_battery_cost(survey, 0.0, 5.0)[1]
+    before = cost()
+    sdk.set_battery_pack(capacity_mah=10000)
+    assert cost() == pytest.approx(before / 2)

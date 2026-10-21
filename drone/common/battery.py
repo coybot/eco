@@ -130,6 +130,12 @@ class BatteryConfig:
     descent_rate_mps: float = 0.7
     takeoff_overhead_pct: float = 1.0  # spool-up, arming, settling
     landing_overhead_pct: float = 1.0  # final slow descent and touchdown
+    # The pack the % rates above were tuned on. Unset, it is config.yaml's own
+    # capacity_mah, so when the app sets a different pack (set_battery_pack) the rates
+    # follow it: the same hover burns 7%/min of a 5000 mAh pack but 4.4%/min of 8000 mAh.
+    # Reserves and thresholds stay % of whatever pack is fitted. Capacity only: a
+    # different cell count is a different power system - retune the rates for it.
+    rates_capacity_mah: Optional[float] = None
 
     # Estimator.
     hover_sag_per_cell_v: float = 0.15  # loaded-vs-resting drop at hover
@@ -159,7 +165,22 @@ class BatteryConfig:
                 except (TypeError, ValueError):
                     continue
                 setattr(out, key, value)
+        if out.rates_capacity_mah is None:
+            out.rates_capacity_mah = out.capacity_mah
+        else:
+            try:
+                out.rates_capacity_mah = float(out.rates_capacity_mah)
+            except (TypeError, ValueError):
+                out.rates_capacity_mah = out.capacity_mah
         return out
+
+    def rate_scale(self) -> float:
+        """How much of THIS pack one % of the tuning pack is: tuned mAh / fitted mAh.
+        1.0 until the fitted pack differs from the one the rates were tuned on."""
+        ref = self.rates_capacity_mah or self.capacity_mah
+        if not ref or not self.capacity_mah or self.capacity_mah <= 0:
+            return 1.0
+        return float(ref) / float(self.capacity_mah)
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "BatteryConfig":
@@ -483,7 +504,8 @@ class BatteryGovernor:
     # ---- cost model (all return % of pack) --------------------------------
 
     def _pct_for(self, seconds: float, mult: float) -> float:
-        return max(0.0, seconds) / 60.0 * self.config.hover_pct_per_min * mult
+        return (max(0.0, seconds) / 60.0 * self.config.hover_pct_per_min
+                * self.config.rate_scale() * mult)
 
     def hover_cost(self, seconds: float) -> float:
         return self._pct_for(seconds, 1.0)
@@ -497,10 +519,11 @@ class BatteryGovernor:
         return self._pct_for(dist_m / self.config.cruise_speed_mps, self.config.cruise_mult)
 
     def takeoff_cost(self, alt_m: float) -> float:
-        return self.config.takeoff_overhead_pct + self.climb_cost(alt_m)
+        return self.config.takeoff_overhead_pct * self.config.rate_scale() + self.climb_cost(alt_m)
 
     def land_cost(self, alt_m: float) -> float:
-        return self.config.landing_overhead_pct + self.climb_cost(-max(0.0, alt_m))
+        return (self.config.landing_overhead_pct * self.config.rate_scale()
+                + self.climb_cost(-max(0.0, alt_m)))
 
     def home_cost(self, dist_home_m: float, alt_m: float) -> float:
         """Fly home at the current altitude, then descend and land."""

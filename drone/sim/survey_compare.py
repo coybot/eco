@@ -21,6 +21,9 @@ ROWS = [
     ("mission time, s", "elapsed_s"),
     ("pack set (app)", "pack_set"),
     ("pack the mission loop used", "mission_loop_battery"),
+    ("phase cost the loop priced, %", "mission_loop_phase_cost_pct"),
+    ("heartbeat hover %/min", lambda s: (s.get("heartbeat_energy_model") or {}).get("hover_pct_per_min")),
+    ("failure", "failure"),
 ]
 
 
@@ -30,7 +33,10 @@ def _span(xs):
 
 def main(dirs):
     runs = [(Path(d).name, json.loads((Path(d) / "summary.json").read_text())) for d in dirs]
-    table = [(label, [str(key(s) if callable(key) else s.get(key)) for _, s in runs]) for label, key in ROWS]
+    def cell(v, limit=48):
+        v = str(v)
+        return v if len(v) <= limit else v[:limit - 3] + "..."
+    table = [(label, [cell(key(s) if callable(key) else s.get(key)) for _, s in runs]) for label, key in ROWS]
     width = max(len(r[0]) for r in ROWS) + 2
     col = max([len(n) for n, _ in runs] + [len(v) for _, vals in table for v in vals]) + 3
     print("".ljust(width) + "".join(n.ljust(col) for n, _ in runs))

@@ -268,6 +268,14 @@ def main():
             if g is not None:
                 loop_battery.update(cells=g.config.cells, capacity_mah=g.config.capacity_mah)
         _rl.MissionLoop.__init__ = _spy
+        phase_costs = {}
+        _cost = getattr(_rl.MissionLoop, "_phase_battery_cost", None)
+        if _cost is not None:
+            def _cost_spy(self, phase, *a, **k):
+                out = _cost(self, phase, *a, **k)
+                phase_costs.setdefault(phase.get("type") or "phase", round(out[1], 2))
+                return out
+            _rl.MissionLoop._phase_battery_cost = _cost_spy
         drone_sdk._get_camera = lambda: cam.setdefault("c", FakeCamera(args.cam_open_s))
         drone_sdk.release_camera = lambda: cam.pop("c", None)
         drone_sdk.upload_media = fake_upload
@@ -314,6 +322,8 @@ def main():
             "media_warnings": getattr(result, "media_warnings", None),
             "elapsed_s": round(elapsed, 1), "start_heading": round(h0, 1), "pre_yaw": pre,
             "pack_set": pack, "mission_loop_battery": loop_battery or None,
+            "mission_loop_phase_cost_pct": phase_costs or None,
+            "heartbeat_energy_model": (lambda f: f() if callable(f) else None)(getattr(drone_sdk, "energy_model", None)),
             "photos": len(shots),
         }
         sv = next((p for p in phases if p.get("type") == "survey_rect"), None)

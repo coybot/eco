@@ -1864,9 +1864,16 @@ _ENERGY_MODEL_KEYS = ("hover_pct_per_min", "cruise_mult", "climb_mult", "descend
 
 
 def energy_model():
-    """This aircraft's battery cost model, for the heartbeat."""
+    """This aircraft's battery cost model, for the heartbeat: the % rates for the pack
+    fitted now (scaled from the one they were tuned on, see BatteryConfig.rate_scale), so
+    the cloud planner prices a mission as the aircraft's own governor will."""
     cfg, _, _ = _battery_models()
-    return {k: getattr(cfg, k) for k in _ENERGY_MODEL_KEYS if hasattr(cfg, k)}
+    out = {k: getattr(cfg, k) for k in _ENERGY_MODEL_KEYS if hasattr(cfg, k)}
+    scale = cfg.rate_scale()
+    for k in ("hover_pct_per_min", "takeoff_overhead_pct", "landing_overhead_pct"):
+        if k in out:
+            out[k] = round(out[k] * scale, 4)
+    return out
 
 
 def flight_home():
