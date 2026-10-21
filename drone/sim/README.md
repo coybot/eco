@@ -38,6 +38,54 @@ it (`drone/common/tests/test_l5_parity.py` and friends), because Godot cannot
 render cameras headless on a CI runner, and it is the only place the Crazyflie
 is simulated. Replace that gate before removing it.
 
+## Real autopilot firmware (SITL): flight checks and A/B runs
+
+These fly the aircraft's own mission code (`reasoning_loop` → `backends` →
+`drone_sdk`, over MAVLink) against the real ArduCopter or PX4 firmware, and
+score what a second MAVLink link to the autopilot reports. A software change
+that flies should pass here before it reaches the quadcopter.
+
+* `sitl_flight_check.py`: the takeoff/land/arm scenarios on PX4 or ArduPilot.
+* `survey_sitl.py`: flies one mission (default: a 2 x 2 m survey at 2 m, home,
+  land) and writes `summary.json`. That covers cells hit, photo error and
+  speed, photo headings, path flown and where it landed.
+  * `--eco` picks the tree under test.
+  * `--instance` picks the SITL ports, 5760+10N.
+  * `--pre-yaw` turns the aircraft before the mission; PX4 SIH always spawns
+    facing north.
+* `survey_compare.py out-a out-b ...`: prints those runs side by side.
+* `sitl_params/quadcopter_4.7.1_nav.parm`: the quadcopter's navigation and
+  failsafe parameters, plus SITL wind and battery settings. Load it after the
+  build's `copter.parm`; `survey_sitl.py` does that by default.
+* `cloud_sim_drone.py` + `sitl_camera.py`: the real `daemon.py` as a sim drone
+  on the live cloud. You command it from the real app, it flies SITL, and its
+  photos go to S3 and the app album. See its docstring for setup; the drone's
+  certs and config are not in git.
+
+Old code against new, on the same mission:
+
+```bash
+git worktree add /tmp/eco-old <commit-before-the-change>
+python3 drone/sim/survey_sitl.py --autopilot ardupilot --instance 1 \
+    --arducopter-bin ~/ardupilot-4.7.1/build/sitl/bin/arducopter --eco /tmp/eco-old --out out-old &
+python3 drone/sim/survey_sitl.py --autopilot ardupilot --instance 2 \
+    --arducopter-bin ~/ardupilot-4.7.1/build/sitl/bin/arducopter --out out-new
+wait; python3 drone/sim/survey_compare.py out-old out-new
+```
+
+Traps:
+
+* ArduPilot needs about 45 s after boot before arming, for GPS and the EKF.
+  The scripts wait for it.
+* Instance 0 is often held by the cloud sim drone, so use 1 or higher for A/B
+  runs.
+* PX4 runs one instance at a time on fixed UDP ports, so run PX4 runs back to
+  back.
+* PX4 SIH's GPS parks the aircraft about 0.7 m from `PX4_HOME`, and its
+  position hold wanders 0.5–0.9 m. Judge headings and order there, not
+  sub-metre positions. ArduPilot SITL holds to about 0.04 m/s.
+* Headings wrap: a start of 1° reads as both 0 and 360.
+
 ## Isaac Sim — removed
 
 The Isaac path (hoopoe GPU host) is gone: `isaac_vehicle.py`, `sim_engine.py`,
