@@ -19,6 +19,8 @@ ROWS = [
     ("landed from takeoff, m", "end_dist_from_takeoff_m"),
     ("armed at end", "armed_at_end"),
     ("mission time, s", "elapsed_s"),
+    ("pack set (app)", "pack_set"),
+    ("pack the mission loop used", "mission_loop_battery"),
 ]
 
 

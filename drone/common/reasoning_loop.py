@@ -360,10 +360,8 @@ class MissionLoop:
         # Battery budget: every phase and VLM action is priced against "can we
         # still get home and land with the reserve?". Multirotor only: the
         # cost model is hover-based and means nothing for a plane or a rover.
-        # The same config.yaml drone_sdk reads (its DRONE_DIR follows set_config_path()).
         self._battery_gov: Optional[BatteryGovernor] = (
-            BatteryGovernor(BatteryConfig.load(
-                Path(_drone_sdk.DRONE_DIR) / "config.yaml" if DRONE_SDK_AVAILABLE else None))
+            BatteryGovernor(self._battery_config())
             if self.vehicle_class.name == "quadcopter" else None)
 
         # World-frame landmark memory. merge_radius scales with sense_range_m: the
@@ -923,6 +921,22 @@ class MissionLoop:
 
     # Phases that spend nothing new or that ARE the way home: never blocked.
     _BATTERY_FREE_PHASES = ("return_home", "land", "stop_recording", "arm_test")
+
+    @staticmethod
+    def _battery_config() -> BatteryConfig:
+        """drone_sdk's own config object when the SDK is here: config.yaml plus the pack the
+        operator set in the app (set_battery_pack). Loaded separately, the loop's copy kept
+        config.yaml's pack whatever the app said. Otherwise the same config.yaml drone_sdk
+        would read (its DRONE_DIR follows set_config_path())."""
+        if DRONE_SDK_AVAILABLE:
+            shared = getattr(_drone_sdk, 'battery_config', None)
+            if callable(shared):
+                try:
+                    return shared()
+                except Exception:
+                    pass
+            return BatteryConfig.load(Path(_drone_sdk.DRONE_DIR) / "config.yaml")
+        return BatteryConfig.load()
 
     def _battery_situation(self):
         """(pct or None, distance from home m, altitude m) from the backend."""

@@ -71,6 +71,9 @@ def parse_args():
     ap.add_argument("--pre-yaw", type=float,
                     help="take off to 2 m and turn to this heading before the mission (its own "
                          "takeoff phase is then dropped). PX4 SIH always spawns facing north.")
+    ap.add_argument("--pack", metavar="CELLS:MAH",
+                    help="apply a battery pack the way the app does (drone_sdk.set_battery_pack) "
+                         "before the mission; the summary records what the mission loop used")
     ap.add_argument("--cam-open-s", type=float, default=3.0, help="fake camera open time (RealSense ~3 s)")
     return ap.parse_args()
 
@@ -250,6 +253,21 @@ def main():
             time.sleep(2)
         print("code under test ready:", {k: (ready or {}).get(k) for k in ("can_takeoff", "takeoff_reason")},
               flush=True)
+        pack, loop_battery = None, {}
+        if args.pack:
+            cells, mah = (int(x) for x in args.pack.split(":"))
+            drone_sdk.set_battery_pack(cells=cells, capacity_mah=mah)
+            pack = {"cells": cells, "capacity_mah": mah}
+        # Record the pack each MissionLoop decides with (sfc.run_mission builds the loop).
+        import reasoning_loop as _rl
+        _init = _rl.MissionLoop.__init__
+
+        def _spy(self, *a, **k):
+            _init(self, *a, **k)
+            g = getattr(self, "_battery_gov", None)
+            if g is not None:
+                loop_battery.update(cells=g.config.cells, capacity_mah=g.config.capacity_mah)
+        _rl.MissionLoop.__init__ = _spy
         drone_sdk._get_camera = lambda: cam.setdefault("c", FakeCamera(args.cam_open_s))
         drone_sdk.release_camera = lambda: cam.pop("c", None)
         drone_sdk.upload_media = fake_upload
@@ -295,6 +313,7 @@ def main():
             "failure": getattr(result, "failure_reason", None),
             "media_warnings": getattr(result, "media_warnings", None),
             "elapsed_s": round(elapsed, 1), "start_heading": round(h0, 1), "pre_yaw": pre,
+            "pack_set": pack, "mission_loop_battery": loop_battery or None,
             "photos": len(shots),
         }
         sv = next((p for p in phases if p.get("type") == "survey_rect"), None)

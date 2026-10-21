@@ -53,6 +53,8 @@ that flies should pass here before it reaches the quadcopter.
   * `--instance` picks the SITL ports, 5760+10N.
   * `--pre-yaw` turns the aircraft before the mission; PX4 SIH always spawns
     facing north.
+  * `--pack CELLS:MAH` applies a battery pack the way the app does, and the
+    summary records the pack the mission loop actually used.
 * `survey_compare.py out-a out-b ...`: prints those runs side by side.
 * `sitl_params/quadcopter_4.7.1_nav.parm`: the quadcopter's navigation and
   failsafe parameters, plus SITL wind and battery settings. Load it after the

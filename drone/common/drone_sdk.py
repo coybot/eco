@@ -1398,6 +1398,13 @@ def _battery_models():
         return _battery_cfg, _battery_estimator, _battery_governor
 
 
+def battery_config():
+    """The battery config this SDK decides with - config.yaml's `battery:` plus the app's
+    pack settings (set_battery_pack). The mission loop shares this object, so both price
+    and gate a flight from the same pack description."""
+    return _battery_models()[0]
+
+
 def set_battery_pack(cells=None, capacity_mah=None):
     """Override the pack's cell count / capacity (the app's battery settings)."""
     cfg, est, _ = _battery_models()

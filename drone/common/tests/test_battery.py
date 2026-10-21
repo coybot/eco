@@ -506,3 +506,34 @@ def test_without_drone_sdk_the_mission_loop_still_follows_the_env(monkeypatch, t
     monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", False)
     loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
     assert loop._battery_gov.config.cells == 6
+
+
+def test_the_mission_loop_prices_with_the_pack_set_in_the_app(monkeypatch, tmp_path):
+    """The daemon applies the app's battery settings with drone_sdk.set_battery_pack. The
+    loop used to load its own copy of config.yaml, so it never saw them; it now shares
+    drone_sdk's config object, as the real SDK hands it out."""
+    sdk = pytest.importorskip("drone_sdk")
+    (tmp_path / "config.yaml").write_text("battery:\n  cells: 4\n  capacity_mah: 5000\n"
+                                          "  allow_unknown_battery: true\n")
+    monkeypatch.setattr(sdk, "DRONE_DIR", tmp_path)
+    for name in ("_battery_cfg", "_battery_estimator", "_battery_governor"):
+        monkeypatch.setattr(sdk, name, None)
+    sdk.set_battery_pack(cells=6, capacity_mah=8000)       # what daemon.py does for the app
+    monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", True)
+    monkeypatch.setattr(rl, "_drone_sdk", sdk, raising=False)
+    loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
+    cfg = loop._battery_gov.config
+    assert cfg is sdk.battery_config()
+    assert (cfg.cells, cfg.capacity_mah, cfg.allow_unknown_battery) == (6, 8000, True)
+    sdk.set_battery_pack(capacity_mah=10000)                # changed again mid-session
+    assert loop._battery_gov.config.capacity_mah == 10000
+
+
+def test_an_sdk_without_a_shared_config_falls_back_to_its_config_file(monkeypatch, tmp_path):
+    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", True)
+    broken = type("SDK", (), {"DRONE_DIR": tmp_path,
+                              "battery_config": staticmethod(lambda: 1 / 0)})()
+    monkeypatch.setattr(rl, "_drone_sdk", broken, raising=False)
+    loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
+    assert loop._battery_gov.config.cells == 6
