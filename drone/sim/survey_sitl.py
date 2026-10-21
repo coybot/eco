@@ -108,6 +108,23 @@ class FakeCamera:
         return types.SimpleNamespace(rgb=(np.random.rand(720, 1280, 3) * 255).astype("uint8"))
 
 
+def px4_ports_taken():
+    """PX4 SITL's fixed UDP ports already bound by someone else: another PX4 SITL on this
+    host, e.g. one in a host-network container. Both then run, and the code under test hears
+    neither cleanly (no heartbeat, a nonsense position) - fail with that instead."""
+    import socket
+    taken = []
+    for port in (14540, 14550):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.bind(("0.0.0.0", port))
+        except OSError:
+            taken.append(port)
+        finally:
+            sock.close()
+    return taken
+
+
 def heading_of(truth):
     """Compass heading (deg) from ATTITUDE, else GLOBAL_POSITION_INT.hdg."""
     a = truth.conn.messages.get("ATTITUDE")
@@ -158,6 +175,11 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=f"survey-{args.autopilot}-"))
     if args.autopilot == "px4":
+        taken = px4_ports_taken()
+        if taken:
+            print(f"FAIL: UDP {taken} already in use - another PX4 SITL is running on this host "
+                  f"(check `ss -lunp` and `docker ps`); PX4 runs one at a time")
+            return 2
         proc, sdk_url, truth_url = sfc.launch_px4(args.px4_dir.expanduser(), work)
     else:
         proc, sdk_url, truth_url = launch_ardupilot(args, work)
@@ -215,8 +237,7 @@ def main():
             return 2
         # Wait until the code under test has its own link up and its preflight says go, as
         # the daemon's would be long before a chat mission. Started cold, PX4's link took
-        # ~10 s, the battery read unknown, and the mission loop - whose battery config is
-        # battery.py's own config.yaml, not COYBOT_SDK_CONFIG_DIR - refused the takeoff.
+        # ~10 s and the first takeoff ran with no battery reading at all.
         ready, end = None, time.time() + 90
         while time.time() < end:
             try:

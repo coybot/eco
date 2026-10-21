@@ -466,3 +466,43 @@ def test_the_fc_percent_is_still_used_when_its_inputs_are_not_pinned():
     est = bt.BatteryEstimator(cfg).update(
         bt.BatterySample(voltage=5.1, fc_remaining=62, volt_adc_v=1.0, curr_adc_v=0.2))
     assert est.pct == 62 and est.source == "fc"
+
+
+# --- where the mission loop's battery config comes from ----------------------
+
+_UNKNOWN_OK = "battery:\n  cells: 6\n  allow_unknown_battery: true\n"
+
+
+def test_battery_config_follows_the_sdk_config_dir(monkeypatch, tmp_path):
+    """drone_sdk reads $COYBOT_SDK_CONFIG_DIR/config.yaml; the governor's config came from
+    beside battery.py whatever it said, so a SITL harness's allow_unknown_battery reached
+    drone_sdk but not the mission loop, which refused the takeoff (PX4 v1.17 SITL)."""
+    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    monkeypatch.setenv("COYBOT_SDK_CONFIG_DIR", str(tmp_path))
+    cfg = bt.BatteryConfig.load()
+    assert cfg.allow_unknown_battery is True and cfg.cells == 6
+
+
+def test_an_explicit_battery_config_path_still_wins(monkeypatch, tmp_path):
+    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    monkeypatch.setenv("COYBOT_SDK_CONFIG_DIR", str(tmp_path / "elsewhere"))
+    assert bt.BatteryConfig.load(tmp_path / "config.yaml").cells == 6
+
+
+def test_the_mission_loop_reads_the_config_drone_sdk_reads(monkeypatch, tmp_path):
+    """Including a directory set with drone_sdk.set_config_path(), which no env var shows."""
+    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    monkeypatch.delenv("COYBOT_SDK_CONFIG_DIR", raising=False)
+    monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", True)
+    monkeypatch.setattr(rl, "_drone_sdk", type("SDK", (), {"DRONE_DIR": tmp_path})(), raising=False)
+    loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
+    assert loop._battery_gov.config.allow_unknown_battery is True
+    assert loop._battery_gov.config.cells == 6
+
+
+def test_without_drone_sdk_the_mission_loop_still_follows_the_env(monkeypatch, tmp_path):
+    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    monkeypatch.setenv("COYBOT_SDK_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", False)
+    loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
+    assert loop._battery_gov.config.cells == 6

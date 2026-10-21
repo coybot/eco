@@ -360,8 +360,10 @@ class MissionLoop:
         # Battery budget: every phase and VLM action is priced against "can we
         # still get home and land with the reserve?". Multirotor only: the
         # cost model is hover-based and means nothing for a plane or a rover.
+        # The same config.yaml drone_sdk reads (its DRONE_DIR follows set_config_path()).
         self._battery_gov: Optional[BatteryGovernor] = (
-            BatteryGovernor(BatteryConfig.load())
+            BatteryGovernor(BatteryConfig.load(
+                Path(_drone_sdk.DRONE_DIR) / "config.yaml" if DRONE_SDK_AVAILABLE else None))
             if self.vehicle_class.name == "quadcopter" else None)
 
         # World-frame landmark memory. merge_radius scales with sense_range_m: the

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import bisect
 import math
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -162,9 +163,14 @@ class BatteryConfig:
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "BatteryConfig":
-        """Read config.yaml's `battery:` section; defaults if absent/unreadable."""
+        """Read config.yaml's `battery:` section; defaults if absent/unreadable.
+
+        The default is drone_sdk's: $COYBOT_SDK_CONFIG_DIR/config.yaml if set, else beside
+        this file (~/drone-api on the aircraft). Beside-this-file only, a SITL harness's
+        config reached drone_sdk but not the mission loop: with the battery not yet read,
+        the loop refused a takeoff that the harness's allow_unknown_battery permits."""
         if config_path is None:
-            config_path = Path(__file__).parent / "config.yaml"
+            config_path = Path(os.environ.get("COYBOT_SDK_CONFIG_DIR") or Path(__file__).parent) / "config.yaml"
         try:
             import yaml
             with open(config_path) as f:

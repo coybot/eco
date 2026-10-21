@@ -80,7 +80,9 @@ Traps:
 * Instance 0 is often held by the cloud sim drone, so use 1 or higher for A/B
   runs.
 * PX4 runs one instance at a time on fixed UDP ports, so run PX4 runs back to
-  back.
+  back. That includes any other PX4 SITL on the host, e.g. a bench in a
+  host-network container; `survey_sitl.py` refuses to start while the ports are
+  taken.
 * PX4 SIH's GPS parks the aircraft about 0.7 m from `PX4_HOME`, and its
   position hold wanders 0.5–0.9 m. Judge headings and order there, not
   sub-metre positions. ArduPilot SITL holds to about 0.04 m/s.
