@@ -178,10 +178,18 @@ def test_takeoff_allowed_on_a_healthy_pack():
     assert GOV.preflight(80, 10).ok
 
 
-def test_unknown_battery_blocks_takeoff_unless_configured():
+def test_unknown_battery_blocks_takeoff():
     assert not GOV.preflight(None, 5).ok
-    lax = bt.BatteryGovernor(bt.BatteryConfig(allow_unknown_battery=True))
-    assert lax.preflight(None, 5).ok
+
+
+def test_a_leftover_allow_unknown_battery_key_is_ignored():
+    # The override this key once enabled is gone. A drone whose config.yaml still
+    # carries it must neither fail to load nor be let off the ground blind.
+    cfg = bt.BatteryConfig.from_dict({"cells": CELLS, "allow_unknown_battery": True})
+    gov = bt.BatteryGovernor(cfg)
+    assert not gov.preflight(None, 5).ok
+    assert not gov.check_action(None, 1.0, 10.0, 5.0, "takeoff").ok
+    assert gov.in_flight(None, 50.0, 10.0).action == "return_home"
 
 
 def test_far_from_home_on_a_low_pack_lands_rather_than_trying_to_get_back():
@@ -442,27 +450,26 @@ def _quadcopter_bench(**kw):
 
 
 def test_the_fc_percent_from_pinned_inputs_is_unknown_not_zero():
-    cfg = bt.BatteryConfig(cells=CELLS, allow_unknown_battery=True)
+    cfg = bt.BatteryConfig(cells=CELLS)
     est = bt.BatteryEstimator(cfg).update(_quadcopter_bench())
     assert est.pct is None and est.source == "unknown"
     assert any("pinned input" in w and "ignored" in w for w in est.warnings)
-    # ... so allow_unknown_battery lets it take off and does not land it at once
-    gov = bt.BatteryGovernor(cfg)
-    assert gov.preflight(est.pct, 3.0).ok
-    assert gov.in_flight(est.pct, 50.0, 10.0).ok
+    # ... so in flight it means "go home", not the immediate "land now" a made-up 0% would
+    assert bt.BatteryGovernor(cfg).in_flight(est.pct, 50.0, 10.0).action == "return_home"
 
 
-def test_pinned_inputs_still_refuse_takeoff_without_allow_unknown():
+def test_pinned_inputs_refuse_takeoff():
     cfg = bt.BatteryConfig(cells=CELLS)
     est = bt.BatteryEstimator(cfg).update(_quadcopter_bench())
     v = bt.BatteryGovernor(cfg).preflight(est.pct, 3.0)
     assert not v.ok and "cannot be determined" in v.reason
 
 
-def test_the_fc_percent_is_still_used_when_its_inputs_are_not_pinned():
-    # Voltage implausible for the cell count but the pins are not railed: the
-    # FC's own % remains the (unverified) fallback, as before.
-    cfg = bt.BatteryConfig(cells=CELLS, allow_unknown_battery=True)
+def test_the_fc_percent_is_not_trusted_on_its_own():
+    # Voltage implausible for the cell count but the pins are not railed: the FC's
+    # own % is computed from those same readings, so it is not a level to fly on.
+    cfg = bt.BatteryConfig(cells=CELLS)
     est = bt.BatteryEstimator(cfg).update(
         bt.BatterySample(voltage=5.1, fc_remaining=62, volt_adc_v=1.0, curr_adc_v=0.2))
-    assert est.pct == 62 and est.source == "fc"
+    assert est.pct is None and est.source == "unknown"
+    assert not bt.BatteryGovernor(cfg).preflight(est.pct, 3.0).ok
