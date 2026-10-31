@@ -203,8 +203,7 @@ def write_config(cfg_dir: Path, cells: int):
         f"  cells: {cells}\n"
         "  capacity_mah: 5000\n"
         "  low_voltage_per_cell: 3.5\n"
-        "  critical_voltage_per_cell: 3.3\n"
-        "  allow_unknown_battery: true\n")
+        "  critical_voltage_per_cell: 3.3\n")
 
 
 def run_mission(phases, text):
