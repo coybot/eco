@@ -2841,6 +2841,35 @@ def last_photo_meta():
     return _last_photo_meta
 
 
+def _grab_frame():
+    """Warm the camera up and grab one colour frame, or None.
+
+    A reader can go quiet right after it opens a perfectly healthy feed (seen
+    on the quadcopter: a second of frames, then 2 s of nothing, while a fresh
+    reader got 30 of 30). Reopening costs about a second and almost always
+    gets the frame, so one dead read does not cost the photo. Whatever camera
+    is left holding no frame is released, never kept for the next photo.
+    """
+    for attempt in (1, 2):
+        camera = _get_camera()
+        if camera is None:
+            print("Error: Camera not available")
+            return None
+        # Discard first few frames to let auto-exposure settle
+        # Note: RealSense already does 30-frame warmup in start(), so this is minimal
+        print("Warming up camera...")
+        for _ in range(3):
+            camera.get_frame(timeout_ms=500)
+        print("Camera ready")
+        frame = camera.get_frame(timeout_ms=2000)
+        if frame is not None and frame.rgb is not None:
+            return frame
+        release_camera()
+        if attempt == 1:
+            print("Camera went quiet - reopening it once")
+    return None
+
+
 def capture_photo(save_path=None, upload=True):
     """
     Capture a photo from the drone camera and optionally upload to S3.
@@ -2852,27 +2881,15 @@ def capture_photo(save_path=None, upload=True):
     Returns:
         S3 URL if uploaded, local path otherwise, or None if capture failed.
     """
-    camera = _get_camera()
-    if camera is None:
-        print("Error: Camera not available")
-        return None
-    
     try:
         import cv2
-        
-        # Discard first few frames to let auto-exposure settle
-        # Note: RealSense already does 30-frame warmup in start(), so this is minimal
-        print("Warming up camera...")
-        for i in range(3):
-            camera.get_frame(timeout_ms=500)
-        print("Camera ready")
-        
-        frame = camera.get_frame(timeout_ms=2000)
+
+        frame = _grab_frame()
         grabbed_at = time.time()
-        if frame is None or frame.rgb is None:
+        if frame is None:
             print("Error: Failed to capture frame")
             return None
-        
+
         if save_path is None:
             save_path = tempfile.mktemp(suffix='.jpg', prefix='drone_capture_')
         

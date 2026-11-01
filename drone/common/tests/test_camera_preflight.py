@@ -172,3 +172,69 @@ def test_a_working_camera_lets_the_mission_go():
 
 def test_a_backend_with_no_camera_check_is_left_alone():
     assert _loop(object())._camera_preflight(_mission("survey_rect")) is None
+
+
+# --- a reader that goes quiet is reopened once --------------------------------
+
+class _Frame:
+    rgb = object()
+
+
+class _Reader:
+    """Delivers `frames` real frames, then nothing."""
+
+    def __init__(self, frames):
+        self.left = frames
+
+    def get_frame(self, timeout_ms=1000):
+        if self.left <= 0:
+            return None
+        self.left -= 1
+        return _Frame()
+
+
+@pytest.fixture
+def sdk(monkeypatch):
+    import drone_sdk
+    drone_sdk.opened, drone_sdk.released = [], 0
+
+    def release():
+        drone_sdk.released += 1
+    monkeypatch.setattr(drone_sdk, "release_camera", release)
+    return drone_sdk
+
+
+def _opens(sdk, monkeypatch, *readers):
+    queue = list(readers)
+
+    def get():
+        sdk.opened.append(1)
+        return queue.pop(0) if queue else None
+    monkeypatch.setattr(sdk, "_get_camera", get)
+
+
+def test_a_reader_that_goes_quiet_is_reopened_and_the_photo_is_taken(sdk, monkeypatch):
+    # 3 warm-up frames and then silence, as seen on the quadcopter; the second open is fine.
+    _opens(sdk, monkeypatch, _Reader(3), _Reader(99))
+    assert sdk._grab_frame() is not None
+    assert len(sdk.opened) == 2
+    assert sdk.released == 1, "the quiet reader must not be kept for the next photo"
+
+
+def test_a_camera_that_stays_quiet_gives_up_after_one_retry_and_is_released(sdk, monkeypatch):
+    _opens(sdk, monkeypatch, _Reader(3), _Reader(3))
+    assert sdk._grab_frame() is None
+    assert len(sdk.opened) == 2
+    assert sdk.released == 2
+
+
+def test_a_healthy_camera_is_opened_once(sdk, monkeypatch):
+    _opens(sdk, monkeypatch, _Reader(99))
+    assert sdk._grab_frame() is not None
+    assert len(sdk.opened) == 1 and sdk.released == 0
+
+
+def test_no_camera_is_not_retried(sdk, monkeypatch):
+    _opens(sdk, monkeypatch)
+    assert sdk._grab_frame() is None
+    assert len(sdk.opened) == 1
