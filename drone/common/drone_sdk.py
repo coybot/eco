@@ -2554,6 +2554,32 @@ def release_camera():
         _camera = None
 
 
+def camera_ready():
+    """(True, "") if a camera is delivering colour frames now, else (False, why).
+
+    Call it on the ground, before takeoff, for any sortie that takes photos or
+    video. The camera is only found out to be dead when the first photo is
+    asked for, which used to be after the whole flight had been flown.
+    """
+    camera = _get_camera()
+    if camera is not None:
+        try:
+            frame = camera.get_frame(timeout_ms=3000)
+        except Exception:
+            frame = None
+        if frame is not None and frame.rgb is not None:
+            return True, ""
+        # Started but silent (a feed that died after it was opened): do not
+        # keep handing out the dead camera to the next photo.
+        release_camera()
+    try:
+        from camera import last_camera_error
+        why = last_camera_error()
+    except Exception:
+        why = None
+    return False, why or "no camera detected"
+
+
 def _get_camera():
     """Get or create camera instance with auto-detection."""
     global _camera

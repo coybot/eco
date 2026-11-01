@@ -549,6 +549,21 @@ class MissionLoop:
             )
             self._home_yaw_rad = 0.0
 
+        # Before anything moves: a mission that is only photos and flight is
+        # not worth flying with no camera. Found out in the air, a dead camera
+        # cost a whole survey (16 of 16 photos not taken).
+        no_camera = self._camera_preflight(mission)
+        if no_camera:
+            self._report_progress(f"Not starting: {no_camera}")
+            return MissionResult(
+                success=False,
+                summary="Not started: the camera is not working",
+                phases_completed=0,
+                total_phases=len(mission.phases),
+                duration_seconds=time.time() - mission.start_time,
+                failure_reason=f"{no_camera}. The aircraft did not take off.",
+            )
+
         # Ceiling guard runs for the entire mission as a safety thread
         if DRONE_SDK_AVAILABLE:
             try:
@@ -1715,6 +1730,30 @@ class MissionLoop:
             self._photos.append(url)
             return True
         return False
+
+    # Phases that need a working camera.
+    _CAMERA_PHASES = ("capture_photo", "survey_rect", "start_recording")
+
+    def _camera_preflight(self, mission: Mission) -> Optional[str]:
+        """Why this mission's photo/video phases cannot work, or None.
+
+        Only the SDK on a real aircraft can say; a sim backend supplies its own
+        frames, so there is nothing to check and the mission goes ahead.
+        """
+        if not any(p.get('type') in self._CAMERA_PHASES for p in mission.phases):
+            return None
+        sdk = _drone_sdk if DRONE_SDK_AVAILABLE else self.drone_sdk
+        check = getattr(sdk, 'camera_ready', None)
+        if not callable(check):
+            return None
+        try:
+            answer = check()
+        except Exception as e:
+            return f"camera check failed: {e}"
+        if not (isinstance(answer, tuple) and len(answer) == 2):
+            return None  # not a camera_ready() we know how to read
+        ok, why = answer
+        return None if ok else f"no working camera: {why}"
 
     def _photo_problem(self, url) -> str:
         if url:

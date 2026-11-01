@@ -56,7 +56,8 @@ class V4L2Camera(Camera):
         cap = cv2.VideoCapture(self._device, backend)
         if not cap.isOpened():
             cap.release()
-            raise RuntimeError(f"could not open V4L2 device {self._device}")
+            raise RuntimeError(
+                f"could not open V4L2 device {self._device}: {explain_open_failure(self._device)}")
 
         # Best effort: a real webcam honours these, a loopback device keeps
         # whatever format its producer negotiated. Read back what we got.
@@ -139,10 +140,50 @@ class V4L2Camera(Camera):
                 "type": "v4l2",
                 "name": name,
                 "device": f"/dev/{node}",
-                "loopback": "dummy video device" in name.lower() or "loopback" in name.lower(),
+                "loopback": _is_loopback(os.path.basename(path), name),
                 "available": True,
             })
         return devices
+
+
+def explain_open_failure(device: Union[str, int], sysfs: str = _SYSFS) -> str:
+    """Why a V4L2 node will not open, from what the filesystem says about it.
+
+    OpenCV only reports that it could not open the device. On the quadcopter
+    that one line covered four different faults with four different fixes: the
+    node was gone, it had been renumbered onto a RealSense, nobody was writing
+    to the loopback, or the user could not read it.
+    """
+    path = f"/dev/video{device}" if isinstance(device, int) else str(device)
+    if not os.path.exists(path):
+        if os.path.islink(path):
+            return (f"{path} is a symlink to a node that no longer exists "
+                    f"(-> {os.readlink(path)}); the camera or its loopback is not attached")
+        return (f"{path} does not exist; the v4l2loopback module is not loaded, "
+                f"or its nodes were numbered differently this boot (ls -l /dev/video*)")
+    node = os.path.basename(os.path.realpath(path))
+    name = _read(os.path.join(sysfs, node, "name")) or "unknown"
+    if not os.access(path, os.R_OK | os.W_OK):
+        return f"permission denied on {path}; this user needs the 'video' group"
+    if "realsense" in name.lower():
+        return (f"{path} is '{name}', a RealSense node, not a colour feed. /dev/videoN "
+                f"numbers move when USB cameras enumerate; use a stable name (a udev "
+                f"symlink on the loopback's card label) instead of a number")
+    if _is_loopback(node, name, sysfs):
+        return (f"{path} is the loopback '{name}' but nothing is writing to it, so it "
+                f"has no image to read; the service that feeds it (cam-split) is "
+                f"stopped or failing (journalctl -u cam-split)")
+    return f"{path} ('{name}') exists but is busy or is not a capture device"
+
+
+def _is_loopback(node: str, name: str, sysfs: str = _SYSFS) -> bool:
+    """A v4l2loopback node, whatever its card_label says."""
+    if "dummy video device" in name.lower() or "loopback" in name.lower():
+        return True
+    try:
+        return "v4l2loopback" in os.path.realpath(os.path.join(sysfs, node, "device"))
+    except OSError:
+        return False
 
 
 def _node_number(path: str) -> int:
