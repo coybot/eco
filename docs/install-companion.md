@@ -51,11 +51,47 @@ Both install to `~/drone-api/` (override with `INSTALL_DIR`):
 | `drone-api` | both | Runs `daemon.py` — the always-on command loop |
 | `coybot-network-manager` | Orin | WiFi state machine (infra WiFi ↔ AP-mode fallback) — see [`provisioning.md`](provisioning.md) |
 | `coybot-local-control` | Orin | Local HTTPS API for the phone-hosted offline path — see [`offline-first.md`](offline-first.md) |
+| `cam-split` | Orin, with a RealSense D435i | Copies the D435i colour stream onto three v4l2loopback nodes — see [Camera split](#camera-split-realsense-d435i) |
+| `cam-split-watchdog.timer` | Orin, with a RealSense D435i | Every 30 s, restarts `cam-split` if its feed has frozen |
 
 ```bash
 sudo systemctl status drone-api
 journalctl -u drone-api -f              # live logs
 sudo systemctl restart drone-api
+```
+
+## Camera split (RealSense D435i)
+
+`install.sh` sets this up on its own when it finds a D435i (`CAMERA_SPLIT=yes`
+or `no` overrides that). A RealSense colour stream can be opened by one
+process, and the aircraft wants it in three places, so `cam-split` (ffmpeg)
+owns the camera and writes three v4l2loopback copies, which udev names:
+
+| Name | Read by |
+|---|---|
+| `/dev/eco-stream` | the RTSP video stream |
+| `/dev/eco-color` | `drone-api` (`CAMERA_DEVICE`): photos and perception |
+| `/dev/eco-watch` | `cam-split-watchdog`, alone on its node |
+
+Everything refers to these names, never to a `/dev/videoN`. The numbers move
+when USB cameras enumerate: with the loopbacks at `video10,11` a RealSense took
+those numbers one boot and every photo failed with `could not open V4L2 device`.
+The loopbacks are pinned to `video20-22`, well clear of any camera, and the
+watchdog has its own node because sharing one with `drone-api` made the drone's
+OpenCV reader lose frames whenever the two overlapped.
+
+The files are in `drone/platforms/orin/camera-split/`, and
+`drone/common/tests/test_camera_split_config.py` fails if they stop agreeing
+with each other. An aircraft installed before this existed needs a reboot after
+`install.sh` (or `sudo modprobe -r v4l2loopback` with `drone-api` and
+`cam-split` stopped) so the module loads with the new node numbers.
+
+If photos fail, check in this order:
+
+```bash
+ls -l /dev/eco-* /dev/d435i-color          # the names exist
+systemctl is-active cam-split cam-split-watchdog.timer
+journalctl -u cam-split -n 30 --no-pager   # ffmpeg's own errors
 ```
 
 ## Updating an installed drone

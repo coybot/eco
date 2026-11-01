@@ -1,0 +1,20 @@
+[Unit]
+Description=D435i colour split to v4l2loopback (eco-stream, eco-color, eco-watch)
+After=systemd-modules-load.service systemd-udevd.service
+
+[Service]
+Type=simple
+# Loads the module with /etc/modprobe.d/eco-v4l2loopback.conf if the boot-time
+# load has not already; a no-op when it has.
+ExecStartPre=-/sbin/modprobe v4l2loopback
+# Wait for the names, not for /dev/videoN numbers: USB cameras enumerate in
+# whatever order they like, and the loopbacks are pinned well above them.
+ExecStartPre=/bin/bash -c "for _ in {1..30}; do [ -e /dev/eco-stream ] && [ -e /dev/eco-color ] && [ -e /dev/eco-watch ] && [ -e /dev/d435i-color ] && exit 0; sleep 1; done; echo camera-nodes-missing >&2; exit 1"
+ExecStart=/usr/bin/ffmpeg -nostats -loglevel warning -f v4l2 -input_format yuyv422 -video_size 1280x720 -framerate 15 -i /dev/d435i-color -f v4l2 /dev/eco-stream -f v4l2 /dev/eco-color -f v4l2 /dev/eco-watch
+Restart=always
+RestartSec=2
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

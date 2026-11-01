@@ -1,0 +1,5 @@
+# /dev/eco-* names for the cam-split loopbacks, matched on their card_label
+# (see eco-v4l2loopback.conf), not on a /dev/videoN number.
+SUBSYSTEM=="video4linux", ATTR{name}=="eco-stream", SYMLINK+="eco-stream"
+SUBSYSTEM=="video4linux", ATTR{name}=="eco-color",  SYMLINK+="eco-color"
+SUBSYSTEM=="video4linux", ATTR{name}=="eco-watch",  SYMLINK+="eco-watch"

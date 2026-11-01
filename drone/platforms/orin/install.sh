@@ -482,6 +482,61 @@ fi
 cd "$INSTALL_DIR"
 
 # =========================================
+# Camera split (RealSense D435i -> v4l2loopback)
+# =========================================
+# A RealSense's colour stream can be opened by one process, and the aircraft
+# wants it in three places: the video stream, photos/perception, and a health
+# check. cam-split (ffmpeg) owns the camera and writes three v4l2loopback
+# copies that any number of readers can open; udev names them /dev/eco-stream,
+# /dev/eco-color and /dev/eco-watch. Nothing refers to a /dev/videoN number:
+# those move when USB cameras enumerate, and the old video_nr=10,11 landed on
+# a RealSense, so photos failed with "could not open V4L2 device".
+#
+# Installed when a D435i is attached. CAMERA_SPLIT=yes|no overrides that (yes
+# to set up before the camera is plugged in; no on a board that uses another
+# camera).
+CAMERA_SPLIT_DIR="$SCRIPT_DIR/camera-split"
+CAMERA_SPLIT_MODE="${CAMERA_SPLIT:-auto}"
+CAMERA_SPLIT=false
+if [ "$CAMERA_SPLIT_MODE" = yes ]; then
+    CAMERA_SPLIT=true
+elif [ "$CAMERA_SPLIT_MODE" = auto ] && command -v lsusb >/dev/null 2>&1 \
+        && lsusb -d 8086:0b3a >/dev/null 2>&1; then
+    CAMERA_SPLIT=true
+fi
+
+DRONE_API_AFTER="network-online.target time-sync.target"
+DRONE_API_WANTS="network-online.target time-sync.target"
+DRONE_API_CAMERA_ENV=""
+
+if [ "$CAMERA_SPLIT" = true ]; then
+    echo ""
+    echo "Setting up the camera split (D435i -> /dev/eco-stream, eco-color, eco-watch)..."
+    command -v ffmpeg >/dev/null 2>&1 || sudo apt-get install -y ffmpeg
+    command -v v4l2-ctl >/dev/null 2>&1 || sudo apt-get install -y v4l-utils
+    if ! modinfo v4l2loopback >/dev/null 2>&1; then
+        sudo apt-get install -y v4l2loopback-dkms \
+            || echo "  ⚠️  v4l2loopback is not available for this kernel - the camera split cannot run"
+    fi
+    sudo install -m 644 "$CAMERA_SPLIT_DIR/eco-v4l2loopback.conf" /etc/modprobe.d/eco-v4l2loopback.conf
+    sudo install -m 644 "$CAMERA_SPLIT_DIR/eco-v4l2loopback.modules" /etc/modules-load.d/eco-v4l2loopback.conf
+    sudo install -m 644 "$CAMERA_SPLIT_DIR/60-eco-camera.rules" /etc/udev/rules.d/60-eco-camera.rules
+    sudo install -m 644 "$CAMERA_SPLIT_DIR/99-d435i-color.rules" /etc/udev/rules.d/99-d435i-color.rules
+    sudo install -m 755 "$CAMERA_SPLIT_DIR/cam-split-watchdog.py" /usr/local/bin/cam-split-watchdog.py
+    sudo install -m 644 "$CAMERA_SPLIT_DIR/cam-split.service" /etc/systemd/system/cam-split.service
+    # Substitute, do not cat: see the network-manager service below.
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "$CAMERA_SPLIT_DIR/cam-split-watchdog.service" \
+        | sudo tee /etc/systemd/system/cam-split-watchdog.service > /dev/null
+    sudo install -m 644 "$CAMERA_SPLIT_DIR/cam-split-watchdog.timer" /etc/systemd/system/cam-split-watchdog.timer
+    sudo udevadm control --reload
+
+    # drone-api reads the colour loopback by name and starts after the split.
+    DRONE_API_AFTER="$DRONE_API_AFTER cam-split.service"
+    DRONE_API_WANTS="$DRONE_API_WANTS cam-split.service"
+    DRONE_API_CAMERA_ENV="Environment=CAMERA_DEVICE=/dev/eco-color"
+fi
+
+# =========================================
 # Create systemd Services
 # =========================================
 
@@ -494,8 +549,8 @@ Description=Drone API Daemon
 # 1970 until NTP lands. mTLS to AWS IoT fails against a wrong clock
 # (AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE), the daemon exits 1, and systemd
 # restarts it - so every single boot logged a crash before connecting.
-After=network-online.target time-sync.target
-Wants=network-online.target time-sync.target
+After=$DRONE_API_AFTER
+Wants=$DRONE_API_WANTS
 
 [Service]
 Type=simple
@@ -505,6 +560,7 @@ ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/daemon.py
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+$DRONE_API_CAMERA_ENV
 
 [Install]
 WantedBy=multi-user.target
@@ -559,6 +615,20 @@ if [ "$START_AFTER_INSTALL" = true ]; then
     echo "Starting Services"
     echo "========================================="
     
+    if [ "$CAMERA_SPLIT" = true ]; then
+        echo "Enabling and starting the camera split..."
+        # A loopback module already loaded with other options (an older
+        # install, or a hand-loaded one) keeps its old node numbers until it
+        # is unloaded; it can only be unloaded while nothing has it open.
+        if lsmod | grep -q '^v4l2loopback' && [ ! -e /dev/eco-watch ]; then
+            sudo systemctl stop cam-split cam-split-watchdog.timer 2>/dev/null || true
+            sudo modprobe -r v4l2loopback 2>/dev/null \
+                || echo "  ⚠️  v4l2loopback is in use; reboot to load it with the new node numbers"
+        fi
+        sudo systemctl enable cam-split cam-split-watchdog.timer
+        sudo systemctl start cam-split cam-split-watchdog.timer
+    fi
+
     echo "Enabling and starting drone-api..."
     sudo systemctl enable drone-api
     sudo systemctl start drone-api
@@ -616,6 +686,11 @@ else
     echo "1. Edit config: nano $INSTALL_DIR/config.yaml"
     echo "2. Start:       sudo systemctl start drone-api"
     echo "3. Enable boot: sudo systemctl enable drone-api"
+    if [ "$CAMERA_SPLIT" = true ]; then
+        echo "4. Camera split: sudo systemctl enable --now cam-split cam-split-watchdog.timer"
+        echo "   (reboot first if /dev/eco-color is missing: the loopback module"
+        echo "   loads with its new node numbers at boot)"
+    fi
     echo ""
     echo "Or run with --start flag: $0 --start"
 fi

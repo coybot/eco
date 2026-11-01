@@ -1,0 +1,9 @@
+[Unit]
+Description=Restart cam-split when the camera feed freezes
+After=cam-split.service
+
+[Service]
+Type=oneshot
+User=root
+# The venv's python: the watchdog needs cv2.
+ExecStart=__INSTALL_DIR__/venv/bin/python /usr/local/bin/cam-split-watchdog.py

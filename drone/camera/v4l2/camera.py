@@ -5,9 +5,12 @@ Covers what the vendor SDK backends do not: plain USB/UVC webcams, CSI
 cameras exposed through V4L2, and v4l2loopback devices that another process
 feeds. The last case is the one that matters on a shared aircraft. When a
 streaming service already owns a RealSense's colour stream (as cam-split does
-on the quadcopter, splitting /dev/video4 into /dev/video10 and /dev/video11),
-librealsense cannot open it again -- "Device or resource busy" -- but the
-loopback copy reads fine alongside the stream.
+on the quadcopter, copying /dev/d435i-color onto /dev/eco-stream, /dev/eco-color
+and /dev/eco-watch), librealsense cannot open it again -- "Device or resource
+busy" -- but the loopback copy reads fine alongside the stream. Point
+CAMERA_DEVICE at the name (/dev/eco-color), never a /dev/videoN: those numbers
+move when USB cameras enumerate. drone/platforms/orin/camera-split/ is the
+whole setup, installed by drone/platforms/orin/install.sh.
 
 RGB only: V4L2 carries no depth.
 """

@@ -1,0 +1,4 @@
+# /dev/d435i-color: the D435I's colour node, by USB identity and interface, so
+# it does not matter which /dev/videoN the kernel gave it. The D430 (0ad4) has
+# no RGB sensor and is deliberately not matched.
+SUBSYSTEM=="video4linux", KERNEL=="video*", ATTR{index}=="0", ENV{ID_USB_INTERFACE_NUM}=="03", ATTRS{idVendor}=="8086", ATTRS{idProduct}=="0b3a", SYMLINK+="d435i-color"
