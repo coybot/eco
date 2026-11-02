@@ -1,0 +1,45 @@
+# Pre-briefed mission for the cloud-loss fallback (config.yaml autonomy_fallback).
+# Every coordinate is ENU metres from the vehicle's TAKEOFF point: [east, north, up].
+# Copy to fallback_mission.yaml next to config.yaml and edit before the flight.
+
+# Hard box. Every goal must be inside it, and the vehicle leaving it is an RTL.
+region:
+  min: [-40, -40]               # [east, north] m
+  max: [40, 40]
+  max_alt_m: 15                 # m above takeoff; also caps the onboard loop's climbs
+
+# Who is flying. Optional; if given, this vehicle's drone id must be on it. A
+# teammate's class comes from its own team_link broadcast, else from here.
+roster:
+  - {id: drone-REPLACE-ME, vclass: quadcopter}
+  # - {id: rover-REPLACE-ME, vclass: rover}
+
+# How the roster shares the work:
+#   static (default): every member flies its own goal list (below) in order.
+#   team: `tasks` is ONE pool of jobs the roster splits between itself over the
+#         signed team link (team_alloc_onboard.py) -- no two vehicles on one job,
+#         a lost vehicle's jobs taken over. Coordinates are then in a shared
+#         MISSION frame, and every roster entry needs its takeoff point there:
+#         home: [x, y] (or [x, y, yaw_deg] if the EKF yaw comes from VIO).
+#         Vehicle clocks must be synchronised (chrony) to well under 0.5 s.
+allocation: static
+#
+# Either a goal list every member flies in order, or {drone_id: [goals]} ...
+tasks:
+  - [10, 0, 5]
+  - [10, 10, 5]
+# ... or an area to sweep, lanes split across the roster:
+# search_area: {min: [0, 0], max: [20, 10], spacing_m: 5, alt_m: 5}
+
+home: [0, 0, 5]                 # flown to last when return_home is true
+return_home: true
+on_complete: rtl                # rtl | land | hold
+
+# Obstacle sensing. d435i: the RealSense depth stream (mount_pitch_deg 0 = facing
+# forward, -90 = down; a down-facing camera sees no obstacles ahead). A rover also
+# needs mount_height_m (camera height above the ground). none = fly blind.
+sensor:
+  type: d435i
+  mount_pitch_deg: 0
+  # serial: "<RealSense serial, from RealSenseCamera.list_devices()>"
+  # mount_height_m: 0.3

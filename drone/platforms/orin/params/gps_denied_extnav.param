@@ -1,0 +1,126 @@
+# GPS-denied flight on visual odometry (ExternalNav) - quadcopter, ArduCopter 4.7.1.
+#
+# The companion (drone/common/vio_bridge.py) streams MAVLink ODOMETRY from the
+# D435i VIO (cuVSLAM / OpenVINS) over the FC's MAVLink port; the EKF navigates on
+# it for horizontal position, velocity and heading, and on the barometer for height.
+#
+# Apply with drone/platforms/orin/apply_params.py (disarmed only; backs up every
+# parameter first), then REBOOT the FC: VISO_TYPE only takes effect at boot.
+# Then give the EKF an origin each power-up (drone_sdk.set_ekf_origin) if you want
+# GLOBAL_POSITION_INT / home / goto(lat, lon); goto_local() needs none.
+#
+# Every name, value and enum below was checked against the ArduPilot source at the
+# Copter-4.7.1 tag (dbe79216, the quadcopter's firmware), file:line given, and the
+# ArduPilot wiki where it states a recommendation:
+#   [SRC]  libraries/AP_NavEKF/AP_NavEKF_Source.cpp  (EK3_SRCn_*, EK3_SRC_OPTIONS)
+#   [VISO] libraries/AP_VisualOdom/AP_VisualOdom.cpp (VISO_*)
+#   [ODOM] libraries/GCS_MAVLink/GCS_Common.cpp GCS_MAVLINK::handle_odometry
+#   [WIKI-VIO] https://ardupilot.org/copter/docs/common-vio-tracking-camera.html
+#   [WIKI-SRC] https://ardupilot.org/copter/docs/common-ekf-sources.html
+#
+# Comments must start a line ('#' in column 0): ArduPilot's own defaults-file parser
+# (AP_Param::parse_param_line) skips only those.
+
+# ---- Visual odometry input -------------------------------------------------------
+# VISO_TYPE: 0:None, 1:MAVLink, 2:IntelT265, 3:VOXL [VISO AP_VisualOdom.cpp:34].
+# 1 = the MAVLink backend, which consumes ODOMETRY / VISION_POSITION_ESTIMATE /
+# VISION_SPEED_ESTIMATE as sent. Reboot required (the backend is created at init).
+VISO_TYPE 1
+# VISO_POS_X/Y/Z: camera position in the body frame, metres, FRD (X forward,
+# Y right, Z down) [VISO :39-62]. The EKF removes this lever arm from position and
+# velocity itself (AP_NavEKF3_PosVelFusion.cpp, visual_odom->get_pos_offset()).
+# vio_bridge sends the SENSOR's position, so these must be the D435i's real offset
+# from the FC's IMU. 0 = unmeasured: MEASURE AND SET before flight.
+# If your VIO already reports base_link (cuVSLAM with a base_frame TF), keep 0.
+VISO_POS_X 0
+VISO_POS_Y 0
+VISO_POS_Z 0
+# VISO_ORIENT: 0:Forward,... [VISO :67]. The MAVLink backend never applies it
+# (AP_VisualOdom_MAV.cpp has no rotation; only the T265 backend uses it):
+# vio_bridge does every rotation (FrameConvention mount_rpy_deg). Keep 0.
+VISO_ORIENT 0
+# VISO_SCALE: position scale factor, default 1.0 [VISO :75]. Stereo VIO is metric.
+VISO_SCALE 1
+# VISO_DELAY_MS: sensor delay relative to the IMU, default 10 ms [VISO :83]. The FC
+# maps time_usec onto its clock with a min-lag jitter filter
+# (correct_offboard_timestamp_usec_to_ms), so a constant camera->VIO->MAVLink
+# latency is NOT seen by the EKF unless it is given here. 10 is the default, not a
+# measurement: measure the pipeline's latency and set it.
+VISO_DELAY_MS 10
+# VISO_POS_M_NSE / VISO_YAW_M_NSE: noise FLOORS, defaults 0.2 m / 0.2 rad
+# [VISO :99, :107]; ODOMETRY's pose_covariance can only raise them
+# (posErr = sqrt(c[0]+c[6]+c[11]), constrained to >= the floor). Defaults kept.
+VISO_POS_M_NSE 0.2
+VISO_YAW_M_NSE 0.2
+# VISO_VEL_M_NSE: velocity noise, default 0.1 m/s [VISO :91]. ODOMETRY's velocity
+# covariance is ignored by 4.7.1 [ODOM]: this is the only velocity noise. Default kept.
+VISO_VEL_M_NSE 0.1
+# VISO_QUAL_MIN: consume only if quality >= this; -1 always, 0 good or unknown,
+# default 0 [VISO :115]. Kept at 0: vio_bridge gates on quality itself and STOPS
+# sending below its min_quality (so the EKF times out and falls back) rather than
+# sending low-quality data for the FC to discard.
+VISO_QUAL_MIN 0
+
+# ---- EKF3 source set 1: everything from the VIO except height ---------------------
+# EK3_SRC1_POSXY: 0:None, 3:GPS, 4:Beacon, 6:ExternalNav [SRC :30]
+EK3_SRC1_POSXY 6
+# EK3_SRC1_VELXY: 0:None, 3:GPS, 4:Beacon, 5:OpticalFlow, 6:ExternalNav, 7:WheelEncoder [SRC :37]
+EK3_SRC1_VELXY 6
+# EK3_SRC1_POSZ: 0:None, 1:Baro, 2:RangeFinder, 3:GPS, 4:Beacon, 6:ExternalNav [SRC :44]
+# 1 = Baro, as [WIKI-VIO] recommends ("safer": the camera is weak under vibration).
+# Why not the others:
+#   ExternalNav - VIO height drifts with scale error and steps on every VIO reset /
+#     relocalisation (each reset_counter change resets the EKF position).
+#   RangeFinder - height above whatever is below (steps at every box, table and
+#     edge), limited to the downward rangefinders' range, and it would make the
+#     height source differ between set 1 and the flow set 2, so every source switch
+#     would reset height. Baro is the same in both sets: switching cannot jump it.
+# The rangefinders still serve flow scaling and landing; EK3_RNG_USE_HGT (default -1,
+# off) is left alone.
+EK3_SRC1_POSZ 1
+# EK3_SRC1_VELZ: 0:None, 3:GPS, 4:Beacon, 6:ExternalNav [SRC :51]
+# VIO vertical velocity is good short-term and makes the baro height less laggy.
+EK3_SRC1_VELZ 6
+# EK3_SRC1_YAW: 0:None, 1:Compass, 2:GPS, 3:GPS with Compass Fallback, 6:ExternalNav, 8:GSF [SRC :58]
+# 6 = ExternalNav ([WIKI-VIO] "option A"). The MAVLink VISO backend cannot align the
+# VIO frame's heading to the compass (request_align_yaw_to_ahrs is a no-op outside
+# the T265 backend), so with compass yaw the EKF would fuse VIO positions in a frame
+# rotated from its own. With 6 the EKF adopts the VIO's heading: local "north" is the
+# VIO's x axis (FrameConvention: forward at VIO start for an FLU odom frame).
+# Compasses stay enabled (COMPASS_USE untouched): with yaw source ExternalNav the EKF
+# fuses the VIO yaw, not the magnetometer (AP_NavEKF3_MagFusion.cpp), and set 2 of
+# gps_denied_flow_fallback.param uses the compass.
+EK3_SRC1_YAW 6
+
+# ---- Source sets 2 and 3: nothing (see gps_denied_flow_fallback.param) -------------
+# Defaults of sets 2/3 are POSXY 0, VELXY 0, POSZ 1, VELZ 0, YAW 0 [SRC :68-133];
+# written explicitly so whatever the aircraft had there before is not left active.
+#
+# GPS: deliberately in NO source set, so the EKF never fuses it (GPS1_TYPE is left as
+# it is: the receiver can stay connected for logging). Do not add GPS as SRC2/SRC3
+# unless a receiver is fitted and detected: AP_NavEKF_Source::pre_arm_check fails
+# with "AHRS: EK3 sources require GPS" when any set names GPS and AP_GPS::num_sensors()
+# is 0 - which counts DETECTED receivers only (AP_GPS.cpp update()).
+EK3_SRC2_POSXY 0
+EK3_SRC2_VELXY 0
+EK3_SRC2_POSZ 1
+EK3_SRC2_VELZ 0
+EK3_SRC2_YAW 0
+EK3_SRC3_POSXY 0
+EK3_SRC3_VELXY 0
+EK3_SRC3_POSZ 1
+EK3_SRC3_VELZ 0
+EK3_SRC3_YAW 0
+# EK3_SRC_OPTIONS bitmask: 0:FuseAllVelocities, 1:AlignExtNavPosWhenUsingOptFlow,
+# 3:UsePerCoreEKFSources; default 0 [SRC :139-141]. 0: fuse only the active set.
+EK3_SRC_OPTIONS 0
+
+# ---- Not changed here, check by hand ---------------------------------------------
+# * SERIALn_PROTOCOL of the port the Orin uses must be 2 (MAVLink2): ODOMETRY is a
+#   MAVLink 2 message. On the USB port (SERIAL0) it is MAVLink 2 by default.
+# * The quadcopter's ARMING_SKIPCHK (2097144 on 2026-10-18) skips bit 18, VISION
+#   (AP_Arming.h Check::VISION), so a dead VIO does not block arming by itself.
+#   GUIDED still refuses to arm without a position ("Need Position Estimate",
+#   AP_Arming_Copter.cpp mandatory_position_checks), but consider clearing bit 18.
+# * FS_EKF_ACTION (1 = Land on the quadcopter) is what happens if the VIO stops in
+#   flight and no fallback source is selected.

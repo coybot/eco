@@ -86,6 +86,11 @@ def _clamp(value, min_val, max_val, name="value"):
 # Global connection
 _master = None
 _mavlink_lock = threading.RLock()  # Lock for serial port access (pymavlink isn't thread-safe)
+# Every write to the link, whoever sends it, goes out whole under this lock
+# (_install_tx_lock): a stream that must not wait for _mavlink_lock - VIO to
+# the FC at 30 Hz, while another thread blocks seconds in recv_match for an
+# ACK under it - sends with this one alone (_mav_send_stream).
+_mav_tx_lock = threading.RLock()
 
 # Camera instance (lazy loaded)
 _camera = None
@@ -109,6 +114,40 @@ def _mav_send(send_func):
     with _mavlink_lock:
         m = _connect()
         return send_func(m)
+
+
+def _mav_send_stream(send_func):
+    """Send without waiting for _mavlink_lock, for fixed-rate streams (VIO).
+
+    Holding _mavlink_lock means waiting behind whoever is in recv_match under
+    it - up to 3 s for a command ACK - and the FC's visual odometry goes
+    unhealthy after 300 ms without a message. Reading and writing a serial
+    port or socket from two threads is safe; two writers interleaving bytes is
+    not, and every write takes _mav_tx_lock (_install_tx_lock), so a message
+    always goes out whole. pymavlink's sequence counter can repeat a number
+    under this race, which costs nothing but a "lost packet" in the FC's stats.
+    """
+    m = _master
+    if m is None:
+        with _mavlink_lock:
+            m = _connect()
+    with _mav_tx_lock:
+        return send_func(m)
+
+
+def _install_tx_lock(m):
+    """Make the connection's byte writes atomic under _mav_tx_lock. Wraps
+    mavfile.write, not mav.send: pymavlink replaces m.mav when it switches to
+    MAVLink 2 on the first v2 packet, but every send ends in m.write."""
+    write = getattr(m, 'write', None)
+    if write is None or getattr(write, '_coybot_tx_locked', False):
+        return
+
+    def locked_write(buf):
+        with _mav_tx_lock:
+            return write(buf)
+    locked_write._coybot_tx_locked = True
+    m.write = locked_write
 
 
 def _mav_recv(msg_type, timeout=1.0):
@@ -424,6 +463,7 @@ def _connect():
                 f"Check that the flight controller is powered on and connected."
             )
         _autopilot = fc_heartbeat.autopilot
+        _install_tx_lock(_master)
         _master.target_system = fc_heartbeat.get_srcSystem()
         _master.target_component = fc_heartbeat.get_srcComponent()
         hooks = getattr(_master, 'message_hooks', None)
@@ -672,7 +712,9 @@ def _check_preflight_status():
         print("GPS: No data received")
         issues.append("GPS: No data received")
     
-    # Check EKF
+    # Check EKF. ArduCopter streams EKF_STATUS_REPORT only in EXTRA3, which
+    # nothing here asks for: request the one message.
+    _mav_send(lambda m: _request_message(m, 193))   # EKF_STATUS_REPORT
     msg = _mav_recv('EKF_STATUS_REPORT', timeout=1)
     if msg:
         flags = msg.flags
@@ -690,6 +732,14 @@ def _check_preflight_status():
         if flags & 0x20:
             ekf_status.append("vpos:OK")
         print(f"EKF: flags=0x{flags:02x} ({', '.join(ekf_status) if ekf_status else 'not ready'})")
+        if flags & 0x10:
+            # An absolute position without a GPS fix: an EKF origin plus
+            # ExternalNav (VIO) or optical flow. The GPS is not what it flies on.
+            gps = [i for i in issues if i.startswith("GPS")]
+            if gps:
+                print("GPS: not needed - the EKF has an absolute position from another "
+                      "source (EKF origin + ExternalNav / optical flow)")
+                issues = [i for i in issues if i not in gps]
     else:
         print("EKF: No status received (may be OK on some FCs)")
     
@@ -1840,6 +1890,222 @@ def goto_offset(north_m, east_m, alt_m, tol_m=1.0, timeout_s=None, yaw_deg=None)
     _log(f"GOTO FAILED: still {left:.1f}m from N={north_m:.1f} E={east_m:.1f} "
          f"after {timeout_s:.0f}s{why}")
     return False
+
+
+# =============================================================================
+# Flying without GPS: the EKF origin and the local NED frame.
+#
+# With ExternalNav (vio_bridge.py) or optical flow as the EKF's source, the
+# flight controller has a position but no global frame until it is given an
+# origin. Once it has one (set_ekf_origin), GLOBAL_POSITION_INT, home and so
+# takeoff(), goto(), return_home() all work as they do on GPS. goto_local() /
+# get_local_position() work in the EKF's own local NED frame (metres from the
+# origin; with EK3_SRC1_YAW = ExternalNav "north" is the VIO's x axis).
+# ArduCopter's GUIDED accepts a relative-only position (Copter::position_ok:
+# ekf_has_relative_position with VISO enabled), but the SITL proof
+# (drone/sim/sitl_gps_denied_test.py) always sets the origin first.
+# =============================================================================
+_ekf_origin = None          # (lat, lon, alt_amsl_m) once the FC has confirmed it
+MAV_CMD_REQUEST_MESSAGE = 512
+_MSG_ID_GPS_GLOBAL_ORIGIN = 49
+
+
+def _request_message(m, msg_id):
+    """MAV_CMD_REQUEST_MESSAGE: have the FC send one `msg_id` now. Caller holds the lock."""
+    m.mav.command_long_send(m.target_system, m.target_component, MAV_CMD_REQUEST_MESSAGE,
+                            0, msg_id, 0, 0, 0, 0, 0, 0)
+
+
+def _origin_from(msg):
+    return msg.latitude / 1e7, msg.longitude / 1e7, msg.altitude / 1000.0
+
+
+def get_ekf_origin(timeout=2.0):
+    """(lat, lon, alt_amsl_m) of the flight controller's EKF origin, or None
+    if it has none (ArduPilot answers the request only once one is set)."""
+    global _ekf_origin
+    deadline = time.time() + timeout
+    asked = 0.0
+    while time.time() < deadline:
+        if time.time() - asked > 1.0:
+            asked = time.time()
+            _mav_send(lambda m: _request_message(m, _MSG_ID_GPS_GLOBAL_ORIGIN))
+        try:
+            msg = _mav_recv('GPS_GLOBAL_ORIGIN', timeout=min(0.5, max(0.05, deadline - time.time())))
+        except TypeError:   # pymavlink's cache on this build (see _tolerant_add_message)
+            msg = None
+        if msg is None:
+            msg = _fc_cached('GPS_GLOBAL_ORIGIN', max_age=max(0.0, time.time() - asked) + 0.05)
+        if msg is not None:
+            _ekf_origin = _origin_from(msg)
+            return _ekf_origin
+    return None
+
+
+def set_ekf_origin(lat, lon, alt_amsl_m=0.0, timeout_s=30.0):
+    """Give the EKF its origin (SET_GPS_GLOBAL_ORIGIN) so an aircraft with no
+    GPS fix has a global frame. Use where the aircraft stands, before arming.
+
+    ArduPilot drops the message silently until its EKF has initialised (a few
+    seconds after boot: NavEKF3_core::setOriginLLH) and refuses a second
+    origin once one is set, so this resends every second until GPS_GLOBAL_ORIGIN
+    reads back. Copter then sets home there by itself while disarmed
+    (Copter::update_home_from_EKF).
+
+    alt_amsl_m: metres above mean sea level (sent as mm). Returns True once
+    the FC's origin is (lat, lon); False if it never confirmed, or already
+    has a different origin (from GPS or an earlier call).
+    """
+    global _ekf_origin
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0) or (lat == 0 and lon == 0):
+        _log(f"EKF ORIGIN REFUSED: ({lat}, {lon}) is not a location")
+        return False
+    lat_e7, lon_e7, alt_mm = int(round(lat * 1e7)), int(round(lon * 1e7)), int(round(alt_amsl_m * 1000))
+
+    def same(o):
+        return abs(o[0] - lat) < 2e-7 and abs(o[1] - lon) < 2e-7
+
+    existing = get_ekf_origin(timeout=1.5)
+    if existing is not None:
+        if same(existing):
+            _log(f"EKF origin already ({existing[0]:.7f}, {existing[1]:.7f}, {existing[2]:.1f} m)")
+            return True
+        _log(f"EKF ORIGIN NOT SET: the flight controller already has one at "
+             f"({existing[0]:.7f}, {existing[1]:.7f}) and will not move it (reboot to clear)")
+        return False
+    _log(f"Setting EKF origin to ({lat:.7f}, {lon:.7f}, {alt_amsl_m:.1f} m AMSL)...")
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        _mav_send(lambda m: m.mav.set_gps_global_origin_send(
+            m.target_system, lat_e7, lon_e7, alt_mm, int(time.time() * 1e6)))
+        got = get_ekf_origin(timeout=1.0)
+        if got is not None:
+            if same(got):
+                _log("EKF origin confirmed")
+                return True
+            _log(f"EKF ORIGIN NOT SET: the flight controller took ({got[0]:.7f}, {got[1]:.7f}) instead")
+            return False
+    _log(f"EKF ORIGIN NOT CONFIRMED after {timeout_s:.0f}s - is the EKF running "
+         f"(and fed by VIO/flow)?")
+    return False
+
+
+def _fresh_local_position(timeout=1.0):
+    """A NEW LOCAL_POSITION_NED from the FC, or None (see _fresh_global_position)."""
+    try:
+        with _mavlink_lock:
+            m = _connect()
+            _ensure_streams(m)
+            _drain_backlog(m)
+        msg = _fc_cached('LOCAL_POSITION_NED', max_age=0.4)
+        if msg is None:
+            with _mavlink_lock:
+                m = _connect()
+                msg = m.recv_match(type='LOCAL_POSITION_NED', blocking=True, timeout=timeout)
+        return msg
+    except TypeError:   # pymavlink's cache on this build (see _tolerant_add_message)
+        return None
+
+
+def get_local_position():
+    """(north_m, east_m, up_m) in the EKF's local frame - metres from the EKF
+    origin, up positive - or None if the FC reports no local position. Works
+    with no GPS fix (ExternalNav / optical flow)."""
+    msg = _fresh_local_position()
+    if msg is None:
+        return None
+    return msg.x, msg.y, -msg.z
+
+
+def goto_local(north_m, east_m, up_m, yaw_deg=None, tol_m=0.5, timeout_s=None, wait=True):
+    """Fly to a point in the EKF's local frame (SET_POSITION_TARGET_LOCAL_NED,
+    MAV_FRAME_LOCAL_NED): north_m / east_m from the EKF origin, up_m above it.
+    Needs no GPS fix. With wait (default) returns True only on arrival -
+    within tol_m horizontally and max(0.5, tol_m) vertically - and False if
+    refused (battery, pilot, PX4), stopped (battery guard, pilot, operator)
+    or not there within timeout_s (default: generous for the distance).
+
+    yaw_deg: heading to hold (0 = the local frame's north, clockwise); None
+    leaves it to the FC. SAFETY: up_m is clamped to MIN_ALTITUDE..MAX_ALTITUDE,
+    which assumes the origin is at ground level where the aircraft flies.
+    """
+    if _pilot_refuses("GOTO_LOCAL"):
+        return False
+    _connect_locked()
+    if _is_px4():
+        # PX4 follows local setpoints only in Offboard, which needs a
+        # continuous setpoint stream; not implemented rather than ignored.
+        _log("GOTO_LOCAL not supported on PX4 (needs an Offboard setpoint stream): use goto_offset()")
+        return False
+    up_m = _clamp(up_m, MIN_ALTITUDE, MAX_ALTITUDE, "altitude")
+    start = _fresh_local_position(timeout=2.0)
+    if start is None:
+        _log("GOTO_LOCAL FAILED: no local position from the flight controller "
+             "(is the EKF fed by VIO / optical flow?)")
+        return False
+    dist = math.hypot(north_m - start.x, east_m - start.y)
+    climb = up_m - (-start.z)
+    if _battery_gates_apply():
+        _, _, gov = _battery_models()
+        dist_home = None
+        if _ekf_origin is not None and _flight_home is not None:
+            lat = _ekf_origin[0] + north_m / 111320.0
+            lon = _ekf_origin[1] + east_m / (111320.0 * math.cos(math.radians(_ekf_origin[0])))
+            dist_home = _dist_home_m(lat, lon)
+        ok, reason = check_battery_for("goto", gov.move_cost(dist, climb), dist_home, up_m)
+        if not ok:
+            _log(f"GOTO_LOCAL REFUSED: {reason}")
+            return False
+    yaw_rad = math.radians(yaw_deg % 360.0) if yaw_deg is not None else None
+    # Bits set = fields ignored: velocity, acceleration, yaw rate, and yaw
+    # unless one was asked for (bit 10) - as _send_position_target.
+    mask = 0b0000101111111000 if yaw_rad is not None else 0b0000111111111000
+    print(f"Flying to local N={north_m:.1f} E={east_m:.1f} up={up_m:.1f}m...")
+    _mav_send(lambda m: m.mav.set_position_target_local_ned_send(
+        0, m.target_system, m.target_component,
+        mavutil.mavlink.MAV_FRAME_LOCAL_NED, mask,
+        north_m, east_m, -up_m, 0, 0, 0, 0, 0, 0, yaw_rad or 0.0, 0))
+    if not wait:
+        return True
+    if timeout_s is None:
+        timeout_s = 15.0 + 3.0 * (dist + abs(climb)) / 2.0
+    deadline = time.time() + timeout_s
+    pos = (start.x, start.y, -start.z)
+    while time.time() < deadline:
+        if _battery_guard_trip:
+            _log(f"GOTO_LOCAL STOPPED: {_battery_guard_trip['reason']}")
+            return False
+        if _pilot_control is not None:
+            _log("GOTO_LOCAL STOPPED: the pilot took control")
+            return False
+        if _abort_event.is_set():
+            _log("GOTO_LOCAL STOPPED: the operator stopped the flight")
+            return False
+        p = get_local_position()
+        if p is not None:
+            pos = p
+            if (math.hypot(p[0] - north_m, p[1] - east_m) <= tol_m
+                    and abs(p[2] - up_m) <= max(0.5, tol_m)):
+                _log(f"Arrived at local N={p[0]:.2f} E={p[1]:.2f} up={p[2]:.2f}m")
+                return True
+        time.sleep(0.2)
+    left = math.hypot(pos[0] - north_m, pos[1] - east_m)
+    _log(f"GOTO_LOCAL FAILED: still {left:.1f}m from N={north_m:.1f} E={east_m:.1f} "
+         f"after {timeout_s:.0f}s")
+    return False
+
+
+def _set_ekf_source_set(n):
+    """Switch the EKF to source set n (1..3: EK3_SRCn_*) - MAV_CMD_SET_EKF_SOURCE_SET,
+    the MAVLink twin of an RCx_OPTION 90 switch. True if the FC accepted.
+    Private: generated mission code must not change what the EKF navigates on."""
+    if n not in (1, 2, 3):
+        raise ValueError("EKF source set must be 1, 2 or 3")
+    ok, result = _mav_command(lambda m: m.mav.command_long_send(
+        m.target_system, m.target_component, 42007,   # MAV_CMD_SET_EKF_SOURCE_SET
+        0, n, 0, 0, 0, 0, 0, 0), 42007)
+    _log(f"EKF source set {n}: {'accepted' if ok else f'refused (result={result})'}")
+    return ok
 
 
 def _flat_dist_m(lat1, lon1, lat2, lon2):

@@ -85,3 +85,32 @@ credentials_endpoint: "YOUR_CREDENTIALS_ENDPOINT.credentials.iot.us-west-2.amazo
 s3_role_alias: "drone-s3-access-role-alias-dev"  # IoT role alias for S3 access
 images_bucket: "drone-images-dev-us-west-2-YOUR_ACCOUNT_ID"
 
+
+# Peer-to-peer team link (team_link.py): position, task claims and sightings
+# between vehicles with no cloud. Signed: every frame carries an HMAC from the
+# shared team key, and frames that fail it are dropped. See
+# drone/platforms/orin/MESH.md for the radio link and how to make the key.
+team_link:
+  transport: udp_broadcast      # or ipv6_multicast over a mesh/IBSS radio (needs interface)
+  # interface: wlan1
+  port: 5760
+  key_file: certs/team.key      # relative to this directory; same file on every vehicle
+  # tx_key_id: 1                # which key in key_file to sign with, when it holds several
+  epoch_file: team_link.epoch   # keeps session ids increasing across reboots
+  max_clock_skew_s: 30          # null = no timestamp window (clockless bench)
+  # rssi: iw                    # per-peer signal from `iw station dump` on interface
+  vclass: quad
+  # insecure_allow_unsigned: true   # bench only; the autonomy fallback refuses to run with it
+
+# Cloud-loss fallback (autonomy_fallback.py). OFF unless enabled. When on, and the
+# control plane (AWS IoT / GCS) has been silent for cloud_silence_s while a mission
+# is flying, the vehicle is armed and in GUIDED, the onboard L5 loop flies the
+# pre-briefed mission_file and hands control back on the next operator command.
+# Any failure in it is an RTL (LAND if RTL is refused). Needs team_link above
+# with a key_file. Example mission: fallback_mission.yaml.example.
+autonomy_fallback:
+  enabled: false
+  cloud_silence_s: 15           # floor 10 s; the heartbeat goes at QoS 1 to measure it
+  mission_file: fallback_mission.yaml
+  control_hz: 10
+  max_duration_s: 900           # then RTL, whatever the mission says

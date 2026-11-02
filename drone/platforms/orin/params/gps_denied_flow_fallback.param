@@ -1,0 +1,58 @@
+# Optical-flow fallback for GPS-denied flight - quadcopter, ArduCopter 4.7.1.
+#
+# Apply AFTER gps_denied_extnav.param (this file only adds source set 2 and the
+# flow sensor). Source set 1 = VIO (ExternalNav); source set 2 = optical flow for
+# horizontal velocity + barometer for height, with the downward rangefinder the EKF
+# needs to scale flow. Reboot the FC after applying (FLOW_TYPE is read at boot).
+#
+# Switching between the sets, any of:
+#   * an RC switch: RCx_OPTION 90 "EKF Source Set" - low = set 1, middle = set 2,
+#     high = set 3 (libraries/RC_Channel/RC_Channel.h:258, RC_Channel.cpp:1692).
+#     Not set here: pick a free channel on the transmitter and set RCx_OPTION 90
+#     yourself (e.g. RC8_OPTION 90) - writing one blindly could clobber an existing
+#     aux function.
+#   * MAVLink MAV_CMD_SET_EKF_SOURCE_SET (42007), param1 = 1..3
+#     (GCS_Common.cpp handle_command_set_ekf_source_set): drone_sdk._set_ekf_source_set(n),
+#     or VioBridge(fallback_source_set=2) to switch automatically when the VIO is lost.
+#
+# Sources: [SRC] libraries/AP_NavEKF/AP_NavEKF_Source.cpp; [FLOW]
+# libraries/AP_OpticalFlow/AP_OpticalFlow.cpp; [WIKI-SRC]
+# https://ardupilot.org/copter/docs/common-ekf-sources.html (whose worked example is
+# exactly this: SRC1 ExternalNav, SRC2 POSXY 0 / VELXY 5).
+# Comments must start a line (AP_Param::parse_param_line).
+
+# FLOW_TYPE: 0:None, 1:PX4Flow, 2:Pixart, 3:Bebop, 4:CXOF, 5:MAVLink, 6:DroneCAN,
+# 7:MSP, 8:UPFLOW, 10:SITL [FLOW :30]. REVIEW BEFORE APPLYING: the quadcopter has no
+# dedicated flow sensor today. 5 = MAVLink OPTICAL_FLOW from the companion (e.g.
+# computed from the downward D430's IR stream - NOT implemented in this repo yet).
+# If you fit a sensor, use its type instead. With no flow data, set 2 has no
+# horizontal source and switching to it gives ALT_HOLD-grade flight only.
+FLOW_TYPE 5
+
+# EK3_SRC2_POSXY: 0 = None - flow gives velocity only, no position [SRC :66, WIKI-SRC]
+EK3_SRC2_POSXY 0
+# EK3_SRC2_VELXY: 5 = OpticalFlow [SRC :73, WIKI-SRC]
+EK3_SRC2_VELXY 5
+# EK3_SRC2_POSZ: 1 = Baro [SRC :80] - the same as set 1, so a switch never resets
+# height. (2 = RangeFinder is height above whatever is underneath, which steps at
+# every obstacle; the EKF already uses the rangefinder for flow's terrain height.)
+EK3_SRC2_POSZ 1
+# EK3_SRC2_VELZ: 0 = None - flow has no vertical velocity [SRC :87]
+EK3_SRC2_VELZ 0
+# EK3_SRC2_YAW: 1 = Compass [SRC :94]. ExternalNav yaw is gone when the VIO is,
+# which is why this set exists. Expect a heading reset to the compass at the switch;
+# keep the compass calibrated (indoors near steel it can be badly off).
+EK3_SRC2_YAW 1
+
+# EK3_SRC_OPTIONS bit 1 = AlignExtNavPosWhenUsingOptFlow [SRC :139]: while flying on
+# flow, the inactive ExternalNav position is kept aligned to the EKF's
+# (AP_NavEKF_Source::align_inactive_sources), so switching back to the VIO (set 1)
+# does not jump. Bit 0 (FuseAllVelocities) stays off: VIO and flow velocities would
+# both be fused, and when the VIO goes bad that is exactly what must stop.
+EK3_SRC_OPTIONS 2
+
+# Not set here, check by hand:
+# * A downward rangefinder (RNGFNDn_ORIENT 25) must be configured - the quadcopter has
+#   two. FLOW_FXSCALER / FLOW_FYSCALER / FLOW_ORIENT_YAW / FLOW_POS_* are per-sensor
+#   calibration: follow the flow-sensor setup page after fitting one.
+# * EK3_FLOW_DELAY (default 10 ms) is sensor-specific.

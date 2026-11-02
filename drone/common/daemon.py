@@ -64,6 +64,13 @@ GCS_CONFIG = config.get('gcs', {}) or {}
 # set explicitly in this drone's config.yaml until one exists.
 VEHICLE_TYPE = config.get('vehicle_type', 'quadcopter')
 
+# Cloud-loss fallback (autonomy_fallback.py) - default OFF. When enabled and the
+# control plane goes silent mid-mission, the onboard L5 loop flies a pre-briefed
+# mission until an operator command arrives:
+#   autonomy_fallback: {enabled: true, cloud_silence_s: 15, mission_file: fallback_mission.yaml}
+# Unset or enabled: false leaves _autonomy None, and every hook below a no-op.
+AUTONOMY_FALLBACK_CFG = config.get('autonomy_fallback') or {}
+
 # Training data capture — off by default; set record: true in config.yaml to enable.
 _record_cfg = config.get('record', {})
 if _record_cfg is True:
@@ -963,6 +970,7 @@ def _handle_decommission(action: str, reason: str, nonce: Optional[str], source:
 
 
 def on_shadow_get_accepted(topic, payload, **kwargs):
+    _note_control_plane()
     try:
         data = json.loads(payload)
         desired = (data.get("state") or {}).get("desired") or {}
@@ -986,6 +994,7 @@ def on_shadow_get_accepted(topic, payload, **kwargs):
 
 
 def on_shadow_delta(topic, payload, **kwargs):
+    _note_control_plane()
     try:
         data = json.loads(payload)
         # Delta payload shape: {"version":..., "timestamp":..., "state": {...desired-delta...}}
@@ -1010,6 +1019,7 @@ def on_shadow_delta(topic, payload, **kwargs):
 
 
 def on_shadow_rejected(topic, payload, **kwargs):
+    _note_control_plane()
     try:
         data = json.loads(payload)
         logger.warning(f"Thing shadow request rejected: {data}")
@@ -1079,8 +1089,10 @@ def on_command(topic, payload, **kwargs):
     """Handle incoming command from IoT Core (legacy endpoint)."""
     global _mqtt_connection
     
+    _note_control_plane()
     try:
         data = json.loads(payload)
+        _autonomy_handback()
         
         # Check for factory reset command
         if data.get('action') == 'factory_reset':
@@ -1186,6 +1198,88 @@ def active_mission_status():
             'step': phase.get('type') or (phase.get('objective') or '')[:80]}
 
 
+# ---------------------------------------------------------------------------
+# Cloud-loss fallback hooks. _autonomy is None unless autonomy_fallback.enabled,
+# and each hook returns at once without one.
+# ---------------------------------------------------------------------------
+_autonomy = None
+
+
+def _note_control_plane():
+    """Something arrived from the control plane: it is there."""
+    if _autonomy is not None:
+        _autonomy.note_alive()
+
+
+def _autonomy_handback():
+    """An operator command arrived: if the onboard fallback is flying, stop it and
+    give the vehicle back before the command runs."""
+    if _autonomy is not None:
+        try:
+            _autonomy.handback()
+        except Exception as e:
+            logger.error(f"Autonomy fallback hand-back failed: {e}")
+
+
+def _autonomy_watch_ack(sent):
+    """The broker's PUBACK for a QoS 1 heartbeat is the control plane answering."""
+    fb = _autonomy
+    future = sent[0] if isinstance(sent, tuple) else sent
+    if fb is None or not hasattr(future, 'add_done_callback'):
+        return
+
+    def done(f):
+        try:
+            if not f.cancelled() and f.exception() is None:
+                fb.note_alive()
+        except Exception:
+            pass
+    future.add_done_callback(done)
+
+
+def _register_fallback(run, thread):
+    with _active_lock:
+        _active.update(thread=thread, loop=run, mission=run.status, cancel=run.cancel)
+
+
+def _unregister_fallback(run):
+    with _active_lock:
+        if _active['loop'] is run:
+            _active.update(thread=None, loop=None, mission=None, cancel=None)
+
+
+def _make_autonomy(cfg_dict, **overrides):
+    """A FallbackManager when autonomy_fallback.enabled, else None. A fallback that
+    cannot be set up is logged and left off; the daemon then runs as without it."""
+    if not (cfg_dict or {}).get('enabled', False):
+        return None
+    try:
+        import autonomy_fallback as af
+        cfg = af.FallbackConfig.from_dict(cfg_dict, base_dir=DRONE_DIR)
+        team_link_cfg = overrides.pop('team_link_cfg', config.get('team_link'))
+        problem = af.team_link_problem(team_link_cfg)
+        if problem:
+            # With no cloud, the team link is the only channel left; unsigned, anyone on
+            # the radio could steer the vehicle. Off, loudly, rather than unsigned.
+            logger.error(f"Autonomy fallback enabled but OFF: {problem}. It needs a signed "
+                         f"team link (team_link.key_file, see platforms/orin/MESH.md).")
+            return None
+
+        def sdk():
+            import drone_sdk
+            return drone_sdk
+        kwargs = dict(
+            mission_running=lambda: active_mission_status().get('running', False),
+            stop_mission=_stop_active_mission, register=_register_fallback,
+            unregister=_unregister_fallback, sdk=sdk, dispatch_lock=_dispatch_lock,
+            team_link_cfg=team_link_cfg, base_dir=DRONE_DIR)
+        kwargs.update(overrides)
+        return af.FallbackManager(cfg, DRONE_ID, VEHICLE_TYPE, **kwargs)
+    except Exception as e:
+        logger.error(f"Autonomy fallback enabled but could not be set up, so it is OFF: {e}")
+        return None
+
+
 def _abort_then(then):
     """The operator's stop: end the mission, then hold, land or go home. Acts on
     the aircraft's real state - a stop on the ground does nothing."""
@@ -1242,6 +1336,7 @@ def _abort_then(then):
 def on_chat_command(topic, payload, **kwargs):
     """Handle incoming chat command from IoT Core."""
     global _mqtt_connection
+    _note_control_plane()
     
     try:
         data = json.loads(payload)
@@ -1254,6 +1349,7 @@ def on_chat_command(topic, payload, **kwargs):
                 logger.info(f"Skipping duplicate command (message_id={message_id[:8]}...)")
                 return
             _recent_command_ids.append(message_id)
+        _autonomy_handback()
         
         # Stop video streaming before executing chat commands
         # This ensures camera is available if code uses capture_photo()
@@ -1601,6 +1697,7 @@ def check_video_watchdog():
 def on_video_command(topic, payload, **kwargs):
     """Handle video streaming commands from iOS app."""
     global _video_last_heartbeat, _mqtt_connection
+    _note_control_plane()
 
     if CONTROL_PLANE == 'gcs':
         # Video streaming uses AWS Kinesis Video Streams WebRTC - no local
@@ -1953,11 +2050,14 @@ def publish_heartbeat():
     except Exception as e:
         logger.warning(f"Could not collect telemetry for heartbeat: {e}")
     
-    _mqtt_connection.publish(
+    # With the autonomy fallback on, the heartbeat goes at QoS 1: its PUBACK is how
+    # the daemon knows the control plane is still there (see autonomy_fallback.py).
+    sent = _mqtt_connection.publish(
         topic=status_topic,
         payload=json.dumps(heartbeat),
-        qos=mqtt.QoS.AT_MOST_ONCE
+        qos=mqtt.QoS.AT_LEAST_ONCE if _autonomy is not None else mqtt.QoS.AT_MOST_ONCE
     )
+    _autonomy_watch_ack(sent)
     logger.info(f"Published heartbeat (battery={heartbeat.get('battery', 'N/A')}%, armed={heartbeat.get('armed', 'N/A')})")
 
 
@@ -1971,6 +2071,7 @@ def on_connection_resumed(connection, return_code, session_present, **kwargs):
     """Callback when connection is resumed."""
     logger.info(f"Connection resumed (return_code={return_code}, session_present={session_present})")
     _link_up.set()
+    _note_control_plane()
     try:
         import drone_sdk
         if drone_sdk._outbox is not None:
@@ -2169,7 +2270,7 @@ def build_mqtt_connection():
 
 def main():
     """Main daemon loop."""
-    global _mqtt_connection
+    global _mqtt_connection, _autonomy
 
     # Load battery configuration from disk
     _load_battery_config()
@@ -2200,6 +2301,8 @@ def main():
     if CONTROL_PLANE == 'aws':
         ack_factory_reset_if_pending()
     
+    _autonomy = _make_autonomy(AUTONOMY_FALLBACK_CFG)
+
     logger.info(f"Drone {DRONE_ID} ready and listening for commands...")
     
     # Heartbeat interval (seconds)
@@ -2216,6 +2319,12 @@ def main():
             
             # Check video watchdog (stop streaming if iOS app disconnected)
             check_video_watchdog()
+
+            if _autonomy is not None:
+                try:
+                    _autonomy.tick()
+                except Exception as e:
+                    logger.error(f"Autonomy fallback tick failed: {e}")
             
             time.sleep(1)
     except KeyboardInterrupt:
