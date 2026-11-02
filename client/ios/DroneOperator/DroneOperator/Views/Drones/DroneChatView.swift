@@ -77,7 +77,8 @@ struct DroneChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Color.white.opacity(0.1))
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
+                .tint(.cyan)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .lineLimit(1...5)
             

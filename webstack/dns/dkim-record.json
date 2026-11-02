@@ -1,0 +1,18 @@
+{
+  "Comment": "Google Workspace DKIM for coy.bot",
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "google._domainkey.coy.bot.",
+        "Type": "TXT",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "\"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmIcU94Nzcmek64jWgqrhwzTgpGmUBeofRo4VUa7F9A+aM5fh/QpIBUEMCWbl7Hb8+BjmyIAHuC9d238oGZSoc1iDY/2ILPnnz4zsRDqmBqDR3hBHuWUDtYnxQyTFYJLW8NGY3pLa9v3d8Bp4hFyDsUnMfdmONbnIluE/0OGo5LlFuqgFl9UuhnnTFzEV\" \"GTMeMiK6zhNBNC+kau4amBE5J//D9EMPyljX3MSjHxEvdE2NBnjfZweMat8tbw1S0RGQ6x0BnXJUx2F3aOkWP2RF1oZTRVGpqfiCUnFm0DmoTM70YT8PLDl2ZSMYafF+QsVsNv11YuOZD0UvrQUInkJk/QIDAQAB\""
+          }
+        ]
+      }
+    }
+  ]
+}

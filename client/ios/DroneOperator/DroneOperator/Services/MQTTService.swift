@@ -65,14 +65,9 @@ final class MQTTService {
             wireClientCallbacks()
         }
 
+        // Topics already registered are subscribed in handleConnectionStatus
+        // once the broker accepts us.
         try await client.connect(idToken: idToken)
-
-        if isConnected {
-            // Resubscribe to existing topics
-            for topic in subscriptions.keys {
-                client.subscribe(toTopic: topic)
-            }
-        }
     }
 
     /// Disconnect from MQTT broker
@@ -213,13 +208,12 @@ final class MQTTService {
             }
         }
 
-        // Find matching handlers (support wildcards)
-        for (pattern, handlers) in subscriptions {
-            if topicMatches(pattern: pattern, topic: topic) {
+        // Find matching handlers (support wildcards). On main: `subscriptions`
+        // is only ever changed there, and this runs on the client's own thread.
+        DispatchQueue.main.async { [self] in
+            for (pattern, handlers) in subscriptions where topicMatches(pattern: pattern, topic: topic) {
                 for handler in handlers {
-                    DispatchQueue.main.async {
-                        handler(payload)
-                    }
+                    handler(payload)
                 }
             }
         }
@@ -231,6 +225,12 @@ final class MQTTService {
             isConnected = true
             connectionError = nil
             lastConnectedTime = Date()
+            // Every connect, including the clients' own auto-reconnects, starts a
+            // clean session: the broker has forgotten our topics, so a chat open
+            // across a network blip stopped receiving replies without any error.
+            for topic in subscriptions.keys {
+                client.subscribe(toTopic: topic)
+            }
             flushPendingPublishes()
 
         case .connecting:

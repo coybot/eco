@@ -151,6 +151,10 @@ struct DroneDetailView: View {
             mqttService.unsubscribe(from: statusTopic)
             statusPollTask?.cancel()
         }
+        // This screen is drawn light (white cards, beige chat, white message
+        // box) while the rest of the app is dark; without this its text took
+        // the dark scheme's white and the chat box typed white-on-white.
+        .environment(\.colorScheme, .light)
     }
     
     // MARK: - Header
@@ -1115,8 +1119,17 @@ struct ChatTabView: View {
                         } else {
                             // A result: keep the planner's explanation above it.
                             DisplayMessage.settleInProgress(&displayMessages)
-                            if !displayMessages.contains(where: { $0.id == newMessage.id }) {
-                                DisplayMessage.appendResult(newMessage, to: &displayMessages)
+                            // Everything the drone said since the operator last
+                            // spoke, not just the newest: a reply can be several
+                            // messages, and MQTT (which would have shown them all)
+                            // is exactly what failed if we are polling.
+                            let start = (messages.lastIndex(where: { $0.sender == .user }) ?? -1) + 1
+                            for msg in messages[start...] where msg.sender == .drone {
+                                if case .loading = msg.content { continue }
+                                let m = DisplayMessage.from(chatMessage: msg)
+                                if !displayMessages.contains(where: { $0.id == m.id }) {
+                                    DisplayMessage.appendResult(m, to: &displayMessages)
+                                }
                             }
                         }
                     }

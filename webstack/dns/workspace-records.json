@@ -1,0 +1,39 @@
+{
+  "Comment": "Google Workspace for coy.bot: verification + SPF (one root TXT set), MX, DMARC",
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "coy.bot.",
+        "Type": "TXT",
+        "TTL": 300,
+        "ResourceRecords": [
+          {"Value": "\"google-site-verification=r5-w1kuxaMicMKthHXyDECbE9OEhT1Ng93jRcMt41tw\""},
+          {"Value": "\"v=spf1 include:_spf.google.com ~all\""}
+        ]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "coy.bot.",
+        "Type": "MX",
+        "TTL": 300,
+        "ResourceRecords": [
+          {"Value": "1 smtp.google.com."}
+        ]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "_dmarc.coy.bot.",
+        "Type": "TXT",
+        "TTL": 300,
+        "ResourceRecords": [
+          {"Value": "\"v=DMARC1; p=none;\""}
+        ]
+      }
+    }
+  ]
+}

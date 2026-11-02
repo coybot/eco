@@ -90,6 +90,9 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: authService.isAuthenticated)
+        // Sign-in and the chat screens paint their own near-black backgrounds;
+        // in Light mode their text fields would type black-on-black.
+        .preferredColorScheme(.dark)
     }
 }
 

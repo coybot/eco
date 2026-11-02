@@ -141,7 +141,6 @@
 				0989F22FDDFFC1229AAE1E5C /* MediaAlbumView.swift */,
 				7E52839AB9B0D3A0E24F0945 /* AlbumArchive.swift */,
 			);
-			name = Media;
 			path = Media;
 			sourceTree = "<group>";
 		};
@@ -220,7 +219,6 @@
 				8772BB5AB92D0D4BDC39B7B5 /* MissionStoryboardView.swift */,
 				27B9D553AAD3110FE596DC93 /* StoryboardController.swift */,
 			);
-			name = Storyboard;
 			path = Storyboard;
 			sourceTree = "<group>";
 		};
@@ -229,7 +227,6 @@
 			children = (
 				AA7A2A9A0DB8DD0DB4730849 /* ControlPlaneSettingsView.swift */,
 			);
-			name = Settings;
 			path = Settings;
 			sourceTree = "<group>";
 		};
@@ -487,7 +484,7 @@
 				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C8JM33MCJS;
+				DEVELOPMENT_TEAM = 64FVJWYNQ7;
 				INFOPLIST_FILE = DroneOperator/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -662,7 +659,7 @@
 				CODE_SIGN_ENTITLEMENTS = DroneOperator/DroneOperator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C8JM33MCJS;
+				DEVELOPMENT_TEAM = 64FVJWYNQ7;
 				INFOPLIST_FILE = DroneOperator/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -231,11 +231,21 @@ struct DroneMessagePayload: Codable {
         case status
     }
     
-    /// Convert to ChatMessage
-    func toChatMessage() -> ChatMessage? {
+    /// Convert to ChatMessage. `media` is the payload's photos/clips, parsed
+    /// separately and leniently (ChatTabView.parseMedia) so one bad item
+    /// cannot fail the whole message.
+    func toChatMessage(media: [MessageContent.MediaItem]? = nil) -> ChatMessage? {
         let content: MessageContent
         
         switch messageType {
+        case "media":
+            if let media, !media.isEmpty {
+                content = .media(media, caption: text ?? "")
+            } else {
+                // Too big for one MQTT message: the photos stayed on the server.
+                guard let text else { return nil }
+                content = .text(text)
+            }
         case "text":
             guard let text = text else { return nil }
             content = .text(text)

@@ -53,6 +53,9 @@ struct GroupChatView: View {
             await setupMQTT()
             await loadHistory()
         }
+        // .task runs again each time the chat reappears; without this every
+        // visit added another handler and each reply showed up once per visit.
+        .onDisappear { mqttTopics.forEach(mqttService.unsubscribe(from:)) }
         .confirmFlight(pendingFlight, decide: decideOrders)
     }
 
@@ -65,7 +68,8 @@ struct GroupChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Color.white.opacity(0.1))
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
+                .tint(.cyan)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .lineLimit(1...5)
 
@@ -83,14 +87,22 @@ struct GroupChatView: View {
 
     // MARK: - MQTT
 
+    private var mqttTopics: [String] {
+        ["drone/\(group.groupId)/chat/\(conversationId)"] + group.members.flatMap { id in
+            ["drone/\(id)/chat/\(conversationId)", "drone/\(id)/chat/\(conversationId)/progress"]
+        }
+    }
+
     private func setupMQTT() async {
         // Group ack topic (publish_to_app uses group_id as "drone_id" key)
         mqttService.subscribe(to: "drone/\(group.groupId)/chat/\(conversationId)") { payload in
             handleGroupAck(payload)
         }
-        // Each member's reply and progress topics
+        // Each member's replies, as the backend relays them (summary, photos,
+        // errors) - not the drone's raw /response, which is only its stdout and
+        // showed a bare "Done!" in place of the answer.
         for memberId in group.members {
-            mqttService.subscribe(to: "drone/\(memberId)/chat/\(conversationId)/response") { payload in
+            mqttService.subscribe(to: "drone/\(memberId)/chat/\(conversationId)") { payload in
                 handleMemberMessage(payload, droneId: memberId)
             }
             mqttService.subscribe(to: "drone/\(memberId)/chat/\(conversationId)/progress") { payload in
@@ -104,6 +116,8 @@ struct GroupChatView: View {
     private func loadHistory() async {
         do {
             let history = try await apiClient.getGroupHistory(groupId: group.groupId, conversationId: conversationId)
+            // Nothing stored yet must not wipe replies that arrived meanwhile.
+            guard !history.isEmpty else { return }
             await MainActor.run {
                 self.messages = history.map { GroupChatMessage(chatMessage: $0, droneId: nil) }
                 scrollToBottom()
@@ -204,9 +218,11 @@ struct GroupChatView: View {
     }
 
     private func handleMemberMessage(_ payload: Data, droneId: String) {
+        let media = (try? JSONSerialization.jsonObject(with: payload) as? [String: Any])
+            .flatMap { ChatTabView.parseMedia($0["media"]) }
         if let msgPayload = try? JSONDecoder().decode(DroneMessagePayload.self, from: payload),
            msgPayload.conversationId == conversationId,
-           let chatMsg = msgPayload.toChatMessage() {
+           let chatMsg = msgPayload.toChatMessage(media: media) {
             Task { @MainActor in
                 if case .missionProgress = chatMsg.content {
                     if let idx = messages.lastIndex(where: { msg in
