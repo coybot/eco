@@ -181,6 +181,24 @@ def test_partition_mid_mission_no_duplicates():
     assert dup == 0.0
 
 
+def test_partition_from_takeoff_no_duplicates():
+    # The halves never hear each other: each must reserve the other's share of
+    # the briefing plan, not re-plan it from briefing positions.
+    side = {"quad_0": 0, "quad_1": 1, "quad_2": 0, "rover_0": 1}
+    done_by, dup, _ = _fly(_roster(), JOBS, bus=_Bus(partition=lambda a, b, t: side[a] != side[b]),
+                           t_end=600.0)
+    assert set(done_by) == set(JOBS)
+    assert dup == 0.0
+
+
+def test_one_way_link_no_duplicates():
+    # rover_0 hears everyone; nobody hears rover_0 (it transmits less far).
+    done_by, dup, _ = _fly(_roster(), JOBS, bus=_Bus(partition=lambda a, b, t: a == "rover_0"),
+                           t_end=600.0)
+    assert set(done_by) == set(JOBS)
+    assert dup == 0.0
+
+
 @pytest.mark.parametrize("blackout", [False, True])
 def test_dead_vehicle_jobs_are_taken_over(blackout):
     bus = _Bus(blackout=(lambda t: True) if blackout else None)
@@ -250,6 +268,157 @@ def test_two_cores_with_identical_snapshots_compute_identical_plans():
     for c in cores:
         c.maybe_plan(0.0, roster[c.me].home, periodic=True)
     assert all(c.routes == cores[0].routes for c in cores)
+
+
+# --------------------------------------------------------------------------- split teams
+
+def _search_team():
+    """Two fixed-wings that sweep but can't confirm (relay-dependent), three
+    quads that can; six cells with per-class sweep times."""
+    roster = {f"fw_{i}": RosterEntry("fixedwing", 25.0, 0.0, 500.0, False, (-200.0, i * 40.0), 1.0)
+              for i in range(2)}
+    roster.update({f"quad_{i}": RosterEntry("quadcopter", 3.0, 12.0, 250.0, False,
+                                            (i * 30.0, 0.0), 1.0) for i in range(3)})
+    cells = {f"s{i}": (i * 100.0 - 250.0, 50.0) for i in range(6)}
+    svc = {cid: {"fixedwing": 8.0, "quadcopter": 190.0} for cid in cells}
+    return roster, cells, svc
+
+
+def _cores(roster, jobs, svc, relay):
+    return {aid: TeamAllocCore(aid, roster, jobs, set(roster), svc=svc, relay_dependent=relay)
+            for aid in sorted(roster)}
+
+
+def _epochs(cores, t0, t1, deliver):
+    """Run every core's epoch loop from t0 to t1 (0.5 s epochs); `deliver(s, r, t)`
+    decides whether r hears s's STATE sent at t."""
+    t = t0
+    while t <= t1 + 1e-9:
+        out = {}
+        for aid, c in cores.items():
+            c.maybe_plan(t, tuple(c.entries[aid].pos), periodic=round(t / 0.5) % 10 == 0)
+            c.advance()
+            out[aid] = c.state_payload(t, tuple(c.entries[aid].pos))
+        for s_, p in out.items():
+            for r, c in cores.items():
+                if r != s_ and deliver(s_, r, t):
+                    c.ingest(s_, p, t, t)
+        t = round(t + 0.5, 6)
+
+
+def test_blackout_handoff_splits_a_relay_dependent_peers_jobs_identically():
+    roster, cells, svc = _search_team()
+    relay = {"fw_0", "fw_1"}
+    cores = _cores(roster, cells, svc, relay)
+    _epochs(cores, 0.0, 0.0, lambda s, r, t: False)        # the shared t=0 plan
+    fw_jobs = set(cores["quad_0"].routes["fw_0"]) | set(cores["quad_0"].routes["fw_1"])
+    assert fw_jobs, "the all-fresh plan should give the fixed-wings the cells"
+    _epochs(cores, 0.5, 8.0, lambda s, r, t: False)        # total blackout
+    quads = [cores[q] for q in ("quad_0", "quad_1", "quad_2")]
+    assert all(q.handoff == quads[0].handoff for q in quads), "handoff splits disagree"
+    shares = [tid for split in quads[0].handoff.values() for route, _ in split.values() for tid in route]
+    assert sorted(shares) == sorted(fw_jobs), "every fixed-wing cell handed to exactly one quad"
+    assert cores["fw_0"].muted and cores["fw_0"].committed is None
+
+
+def test_isolated_confirmers_resplit_all_work_identically():
+    roster, cells, svc = _search_team()
+    cores = _cores(roster, cells, svc, {"fw_0", "fw_1"})
+    _epochs(cores, 0.0, 8.0, lambda s, r, t: False)        # blackout from takeoff
+    quads = [cores[q] for q in ("quad_0", "quad_1", "quad_2")]
+    assert quads[0].blind and all(q.blind == quads[0].blind for q in quads), "blind splits disagree"
+    shares = [tid for route, _ in quads[0].blind.values() for tid in route]
+    held = {q.me: {q.committed} | set(q.routes.get(q.me, [])) for q in quads}
+    assert len(shares) == len(set(shares)), "a cell in two shares"
+    for q in quads:                                         # nobody is handed what another is flying
+        assert q.committed in quads[0].blind.get(q.me, ([None], []))[0], (q.me, q.committed)
+    assert set(shares) | {q.committed for q in quads} >= set(cells), "a cell in nobody's share"
+    for q in quads:                                         # each flies only its own share
+        own = set(quads[0].blind.get(q.me, ([], []))[0]) | {q.committed}
+        assert held[q.me] - {None} <= own, (q.me, held[q.me], own)
+
+
+def test_no_blind_split_for_a_confirmer_that_still_hears_a_sub_team():
+    roster, cells, svc = _search_team()
+    cores = _cores(roster, cells, svc, {"fw_0", "fw_1"})
+    _epochs(cores, 0.0, 3.0, lambda s, r, t: True)
+    pair = {"quad_0", "quad_1"}
+    _epochs(cores, 3.5, 15.0, lambda s, r, t: {s, r} <= pair)   # split; quad_2 alone
+    assert cores["quad_0"].blind is None and cores["quad_1"].blind is None
+    _epochs(cores, 15.5, 30.0, lambda s, r, t: False)           # then the pair loses its link too
+    assert cores["quad_0"].blind is None, "it heard the pair after the shared plan: not a team-wide blackout"
+
+
+def test_blind_split_never_hands_out_a_cell_someone_is_flying():
+    # quad_a is flying A (its route head) although quad_b, which ends next to
+    # A, would get A in a fresh split -- the failure seen on scene 9008.
+    roster = {"fw": RosterEntry("fixedwing", 25.0, 0.0, 500.0, False, (-500.0, 0.0), 1.0),
+              "quad_a": RosterEntry("quadcopter", 3.0, 12.0, 250.0, False, (0.0, 0.0), 1.0),
+              "quad_b": RosterEntry("quadcopter", 3.0, 12.0, 250.0, False, (290.0, 0.0), 1.0)}
+    cells = {"A": (300.0, 0.0), "B": (280.0, 0.0), "C": (0.0, 10.0)}
+    svc = {cid: {"fixedwing": 8.0, "quadcopter": 10.0} for cid in cells}
+    core = TeamAllocCore("quad_b", roster, cells, set(roster), svc=svc, relay_dependent={"fw"})
+    agents = {aid: PlanAgent(aid, r.home, 0.0, r.speed, None, r.reach, r.kind) for aid, r in roster.items()}
+    core.consistent = (agents, {"fw": ["C"], "quad_a": ["A"], "quad_b": ["B"]}, {}, frozenset())
+    split = core._split_blind(cells)
+    assert split["quad_a"][0][0] == "A" and split["quad_b"][0][0] == "B", split
+    assert sorted(t for route, _ in split.values() for t in route) == ["A", "B", "C"], split
+
+
+def test_relay_dependent_agent_keeps_working_while_anyone_hears_it():
+    roster, cells, svc = _search_team()
+    cores = _cores(roster, cells, svc, {"fw_0", "fw_1"})
+    # fw_0 hears only fw_1 (out of the quads' range), and fw_1 relays to the quads.
+    def link(s, r, t):
+        return not ({s, r} & {"fw_0"}) or {s, r} == {"fw_0", "fw_1"}
+    _epochs(cores, 0.0, 10.0, link)
+    assert not cores["fw_0"].muted
+    assert "fw_0" not in cores["quad_0"].handoff, "fw_0 is reachable through fw_1"
+
+
+def test_sighting_during_a_split_goes_to_one_owner():
+    roster = _roster()
+    cores = {aid: TeamAllocCore(aid, roster, JOBS, set(roster)) for aid in sorted(roster)}
+    side = {"quad_0": 0, "quad_1": 0, "quad_2": 1, "rover_0": 1}
+    _epochs(cores, 0.0, 0.0, lambda s, r, t: True)
+    _epochs(cores, 0.5, 6.0, lambda s, r, t: side[s] == side[r])
+    for c in cores.values():                               # both halves hear of it
+        c.add_sighting("c:new", (5.0, 5.0))
+        c.entries[c.me] = c.entries[c.me].__class__(**{**c.entries[c.me].__dict__,
+                                                       "sightings": frozenset({("c:new", 5.0, 5.0)})})
+        c.dirty = True
+    # Settled state (presumed-lost verdicts take an epoch or two to gossip
+    # around a sub-team; nobody commits to the sighting meanwhile).
+    _epochs(cores, 6.5, 12.0, lambda s, r, t: side[s] == side[r])
+    takers = {aid for aid, c in cores.items()
+              if c.committed == "c:new" or "c:new" in c.routes.get(aid, [])}
+    assert len(takers) == 1, takers
+
+
+def test_sightings_reserved_to_one_stale_owner_are_due_one_after_another():
+    # Scene 9010: the far side predicted each of a rover's five new confirm
+    # jobs as its first, released the later ones as overdue, and sent its own
+    # rover to a job the owner was about to reach.
+    roster = _roster()
+    cores = {aid: TeamAllocCore(aid, roster, JOBS, set(roster)) for aid in sorted(roster)}
+    side = {"quad_0": 0, "quad_1": 0, "quad_2": 1, "rover_0": 1}
+    _epochs(cores, 0.0, 0.0, lambda s, r, t: True)
+    _epochs(cores, 0.5, 4.0, lambda s, r, t: side[s] == side[r])   # stale, not yet presumed lost
+    new = {"c:a": (-10.0, -100.0), "c:b": (30.0, -100.0)}   # equally far past quad_2's last job
+    for c in cores.values():
+        for tid, xy in new.items():
+            c.add_sighting(tid, xy)
+        c.dirty = True
+    _epochs(cores, 4.5, 5.0, lambda s, r, t: side[s] == side[r])
+    checked = 0
+    for c in cores.values():
+        for owner, (route, fin, _) in c.reserved.items():
+            if "c:a" in route and "c:b" in route:
+                i, j = sorted((route.index("c:a"), route.index("c:b")))
+                gap = fin[j] - fin[i]
+                assert gap >= 0.9 * 40.0 / roster[owner].speed, (c.me, owner, route, fin)
+                checked += 1
+    assert checked, "both sightings should be reserved to one owner on the far side"
 
 
 # --------------------------------------------------------------------------- fallback wiring
