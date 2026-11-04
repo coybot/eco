@@ -376,6 +376,27 @@ def test_relay_dependent_agent_keeps_working_while_anyone_hears_it():
     assert "fw_0" not in cores["quad_0"].handoff, "fw_0 is reachable through fw_1"
 
 
+def test_a_sweeper_back_from_mute_leaves_cells_the_far_side_has_opened():
+    # Scene 9002 seed 1, partition: fw_0 was muted on its own side, so it
+    # did not sweep; the far side opened its cells to a quad of its own on
+    # the shared plan's timing, and fw_0, heard again by its side, flew one
+    # of them anyway.
+    roster, cells, svc = _search_team()
+    cores = _cores(roster, cells, svc, {"fw_0", "fw_1"})
+    side = {"fw_0": 0, "quad_0": 0, "quad_1": 0, "fw_1": 1, "quad_2": 1}
+    _epochs(cores, 0.0, 0.0, lambda s, r, t: True)
+    _epochs(cores, 0.5, 150.0, lambda s, r, t: side[s] == side[r] and "fw_0" not in (s, r))
+    split = cores["quad_2"].handoff.get("fw_0", {})
+    far_cells = {tid for c, (route, _) in split.items() if side[c] == 1 for tid in route}
+    assert far_cells, "the far side should have handed some of fw_0's cells to its own quads"
+    _epochs(cores, 150.5, 160.0, lambda s, r, t: side[s] == side[r])   # fw_0 back with its side
+    for aid in ("fw_0", "quad_0", "quad_1"):
+        c = cores[aid]
+        assert not c.muted
+        mine = {c.committed} | set(c.routes.get(aid, []))
+        assert not mine & far_cells, (aid, mine & far_cells)
+
+
 def test_sighting_during_a_split_goes_to_one_owner():
     roster = _roster()
     cores = {aid: TeamAllocCore(aid, roster, JOBS, set(roster)) for aid in sorted(roster)}

@@ -401,6 +401,7 @@ class TeamAllocCore:
         # (agents, routes, finish by job, done) of the last all-fresh plan
         self.consistent: Optional[tuple] = None
         self.handoff: dict = {}           # stale relay-dependent id -> {assignee: [jobs]}
+        self.contract: dict = {}          # the same split, for a sweeper on THIS side of a split
         self.inconsistent_since: Optional[float] = None
         self.handoff_opened: set = set()
         self.heard: set = set()           # peers this agent has ever received a STATE from
@@ -753,6 +754,51 @@ class TeamAllocCore:
                             if tid not in self.handoff_opened:
                                 self.handoff_opened.add(tid)
                                 self.dirty = True
+        # The same gate runs on the far side of a split, against this side's
+        # relay-dependent sweepers: a confirmer that has one cut off opens its
+        # cells to itself once overdue, on the last shared plan's timing. A
+        # sweeper muted out here for a while, or replanned later, has not
+        # swept them by then. So a cell whose handoff assignee is cut off from
+        # this side is that assignee's once its gate opens -- reserved to it
+        # like any stale assignee's share -- unless a confirmer here is
+        # already on it. The sweeper itself gives it up even mid-sweep: the
+        # assignee is coming.
+        if self.relay_dependent and self.consistent is not None and self.blind is None:
+            far = {c for c in stale & self.confirmers if self._cut_off(c, now)}
+            if far:
+                c_fin = self.consistent[2]
+                t0 = self.inconsistent_since if self.inconsistent_since is not None else 0.0
+                on_it = {pa.committed for aid, pa in plan_agents.items()
+                         if pa.committed and aid not in self.relay_dependent}
+                given = set()
+                for aid_n in sorted(self.relay_dependent & live):
+                    if aid_n in self.handoff or self._cut_off(aid_n, now):
+                        continue
+                    if aid_n not in self.contract:
+                        self.contract[aid_n] = self._split_handoff(aid_n, jobs, lost)
+                    for assignee, (route, fin) in sorted(self.contract[aid_n].items()):
+                        if assignee not in far:
+                            continue
+                        for tid, t_fin in zip(route, fin):
+                            if tid in done or tid not in jobs or tid in on_it:
+                                continue
+                            svc_s = (self.svc.get(tid) or {}).get(self.roster[aid_n].kind) or 0.0
+                            t_open = t0 + RELEASE_FACTOR * max(0.0, c_fin.get(tid, 0.0) - t0) \
+                                + RELEASE_SLACK_S + SERVICE_SLACK_FRACTION * svc_s
+                            if now <= t_open:
+                                continue
+                            given.add(tid)
+                            own_s = (self.svc.get(tid) or {}).get(self.roster[assignee].kind) or 0.0
+                            r_route, r_fin, t_res = self.reserved.get(assignee, ([], [], now))
+                            if tid not in r_route:
+                                self.reserved[assignee] = (r_route + [tid],
+                                                           r_fin + [max(t_fin, t_open + own_s)], t_res)
+                                self.metrics["contract_holds"] = self.metrics.get("contract_holds", 0) + 1
+                                self.dirty = True
+                for aid, pa in list(plan_agents.items()):
+                    if pa.committed in given:
+                        plan_agents[aid] = PlanAgent(aid, pa.pos, pa.t_free, pa.speed, None, pa.reach,
+                                                     pa.kind, pa.cant)
         if periodic:
             self.dirty = True   # same epoch for everyone: absorbs plan-vs-reality drift
         if not self.dirty:
