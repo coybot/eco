@@ -178,10 +178,18 @@ def test_takeoff_allowed_on_a_healthy_pack():
     assert GOV.preflight(80, 10).ok
 
 
-def test_unknown_battery_blocks_takeoff_unless_configured():
+def test_unknown_battery_blocks_takeoff():
     assert not GOV.preflight(None, 5).ok
-    lax = bt.BatteryGovernor(bt.BatteryConfig(allow_unknown_battery=True))
-    assert lax.preflight(None, 5).ok
+
+
+def test_a_leftover_allow_unknown_battery_key_is_ignored():
+    # The override this key once enabled is gone. A drone whose config.yaml still
+    # carries it must neither fail to load nor be let off the ground blind.
+    cfg = bt.BatteryConfig.from_dict({"cells": CELLS, "allow_unknown_battery": True})
+    gov = bt.BatteryGovernor(cfg)
+    assert not gov.preflight(None, 5).ok
+    assert not gov.check_action(None, 1.0, 10.0, 5.0, "takeoff").ok
+    assert gov.in_flight(None, 50.0, 10.0).action == "return_home"
 
 
 def test_far_from_home_on_a_low_pack_lands_rather_than_trying_to_get_back():
@@ -442,66 +450,64 @@ def _quadcopter_bench(**kw):
 
 
 def test_the_fc_percent_from_pinned_inputs_is_unknown_not_zero():
-    cfg = bt.BatteryConfig(cells=CELLS, allow_unknown_battery=True)
+    cfg = bt.BatteryConfig(cells=CELLS)
     est = bt.BatteryEstimator(cfg).update(_quadcopter_bench())
     assert est.pct is None and est.source == "unknown"
     assert any("pinned input" in w and "ignored" in w for w in est.warnings)
-    # ... so allow_unknown_battery lets it take off and does not land it at once
-    gov = bt.BatteryGovernor(cfg)
-    assert gov.preflight(est.pct, 3.0).ok
-    assert gov.in_flight(est.pct, 50.0, 10.0).ok
+    # ... so in flight it means "go home", not the immediate "land now" a made-up 0% would
+    assert bt.BatteryGovernor(cfg).in_flight(est.pct, 50.0, 10.0).action == "return_home"
 
 
-def test_pinned_inputs_still_refuse_takeoff_without_allow_unknown():
+def test_pinned_inputs_refuse_takeoff():
     cfg = bt.BatteryConfig(cells=CELLS)
     est = bt.BatteryEstimator(cfg).update(_quadcopter_bench())
     v = bt.BatteryGovernor(cfg).preflight(est.pct, 3.0)
     assert not v.ok and "cannot be determined" in v.reason
 
 
-def test_the_fc_percent_is_still_used_when_its_inputs_are_not_pinned():
-    # Voltage implausible for the cell count but the pins are not railed: the
-    # FC's own % remains the (unverified) fallback, as before.
-    cfg = bt.BatteryConfig(cells=CELLS, allow_unknown_battery=True)
+def test_the_fc_percent_is_not_trusted_on_its_own():
+    # Voltage implausible for the cell count but the pins are not railed: the FC's
+    # own % is computed from those same readings, so it is not a level to fly on.
+    cfg = bt.BatteryConfig(cells=CELLS)
     est = bt.BatteryEstimator(cfg).update(
         bt.BatterySample(voltage=5.1, fc_remaining=62, volt_adc_v=1.0, curr_adc_v=0.2))
-    assert est.pct == 62 and est.source == "fc"
+    assert est.pct is None and est.source == "unknown"
+    assert not bt.BatteryGovernor(cfg).preflight(est.pct, 3.0).ok
 
 
 # --- where the mission loop's battery config comes from ----------------------
 
-_UNKNOWN_OK = "battery:\n  cells: 6\n  allow_unknown_battery: true\n"
+_SIX_CELLS = "battery:\n  cells: 6\n"
 
 
 def test_battery_config_follows_the_sdk_config_dir(monkeypatch, tmp_path):
     """drone_sdk reads $COYBOT_SDK_CONFIG_DIR/config.yaml; the governor's config came from
-    beside battery.py whatever it said, so a SITL harness's allow_unknown_battery reached
+    beside battery.py whatever it said, so a SITL harness's battery settings reached
     drone_sdk but not the mission loop, which refused the takeoff (PX4 v1.17 SITL)."""
-    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    (tmp_path / "config.yaml").write_text(_SIX_CELLS)
     monkeypatch.setenv("COYBOT_SDK_CONFIG_DIR", str(tmp_path))
     cfg = bt.BatteryConfig.load()
-    assert cfg.allow_unknown_battery is True and cfg.cells == 6
+    assert cfg.cells == 6
 
 
 def test_an_explicit_battery_config_path_still_wins(monkeypatch, tmp_path):
-    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    (tmp_path / "config.yaml").write_text(_SIX_CELLS)
     monkeypatch.setenv("COYBOT_SDK_CONFIG_DIR", str(tmp_path / "elsewhere"))
     assert bt.BatteryConfig.load(tmp_path / "config.yaml").cells == 6
 
 
 def test_the_mission_loop_reads_the_config_drone_sdk_reads(monkeypatch, tmp_path):
     """Including a directory set with drone_sdk.set_config_path(), which no env var shows."""
-    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    (tmp_path / "config.yaml").write_text(_SIX_CELLS)
     monkeypatch.delenv("COYBOT_SDK_CONFIG_DIR", raising=False)
     monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", True)
     monkeypatch.setattr(rl, "_drone_sdk", type("SDK", (), {"DRONE_DIR": tmp_path})(), raising=False)
     loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
-    assert loop._battery_gov.config.allow_unknown_battery is True
     assert loop._battery_gov.config.cells == 6
 
 
 def test_without_drone_sdk_the_mission_loop_still_follows_the_env(monkeypatch, tmp_path):
-    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    (tmp_path / "config.yaml").write_text(_SIX_CELLS)
     monkeypatch.setenv("COYBOT_SDK_CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", False)
     loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
@@ -513,8 +519,7 @@ def test_the_mission_loop_prices_with_the_pack_set_in_the_app(monkeypatch, tmp_p
     loop used to load its own copy of config.yaml, so it never saw them; it now shares
     drone_sdk's config object, as the real SDK hands it out."""
     sdk = pytest.importorskip("drone_sdk")
-    (tmp_path / "config.yaml").write_text("battery:\n  cells: 4\n  capacity_mah: 5000\n"
-                                          "  allow_unknown_battery: true\n")
+    (tmp_path / "config.yaml").write_text("battery:\n  cells: 4\n  capacity_mah: 5000\n")
     monkeypatch.setattr(sdk, "DRONE_DIR", tmp_path)
     for name in ("_battery_cfg", "_battery_estimator", "_battery_governor"):
         monkeypatch.setattr(sdk, name, None)
@@ -524,13 +529,13 @@ def test_the_mission_loop_prices_with_the_pack_set_in_the_app(monkeypatch, tmp_p
     loop = rl.MissionLoop(conversation_id="c", vehicle_class=get_class("quadcopter"))
     cfg = loop._battery_gov.config
     assert cfg is sdk.battery_config()
-    assert (cfg.cells, cfg.capacity_mah, cfg.allow_unknown_battery) == (6, 8000, True)
+    assert (cfg.cells, cfg.capacity_mah) == (6, 8000)
     sdk.set_battery_pack(capacity_mah=10000)                # changed again mid-session
     assert loop._battery_gov.config.capacity_mah == 10000
 
 
 def test_an_sdk_without_a_shared_config_falls_back_to_its_config_file(monkeypatch, tmp_path):
-    (tmp_path / "config.yaml").write_text(_UNKNOWN_OK)
+    (tmp_path / "config.yaml").write_text(_SIX_CELLS)
     monkeypatch.setattr(rl, "DRONE_SDK_AVAILABLE", True)
     broken = type("SDK", (), {"DRONE_DIR": tmp_path,
                               "battery_config": staticmethod(lambda: 1 / 0)})()
