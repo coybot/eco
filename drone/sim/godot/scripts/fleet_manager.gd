@@ -24,6 +24,11 @@ const MAX_YAW_RAD := 1.5708   # rad/s  (~90 deg/s), quad/rover
 const MAX_YAW_RAD_FW := 0.6   # rad/s — bank-limited turn (FIXEDWING.max_yaw_rate_radps)
 const PHYSICS_DT := 1.0 / 60.0
 const FW_TYPES := ["fixedwing", "fw", "plane"]
+## Tilt-rotor VTOL (T2 Cruza-like). In this kinematic fleet it moves like a
+## quad (it can hover) but at cruise speed; for real hover/transition/cruise
+## dynamics spawn it through FixedWingManager with fw_spawn airframe="vtol".
+const VTOL_TYPES := ["vtol"]
+const MAX_LIN_VTOL := 17.0    # m/s — cruise estimate, see fixedwing_manager VTOL_*
 
 # Per-vehicle runtime state (Dictionary, keyed by drone_id).
 var _vehicles: Dictionary = {}   # id → VehicleState
@@ -43,6 +48,9 @@ var _chase_arg := "auto"
 var _chase_pos := Vector3.ZERO      # smoothed camera position (Godot space)
 var _chase_look := Vector3.ZERO     # smoothed aim point (Godot space)
 var _chase_ready := false
+var _chase_off := Vector3.ZERO      # VTOL: smoothed eye offset from the aircraft (ENU)
+var _chase_aim_off := Vector3.ZERO  # VTOL: smoothed aim offset from the aircraft (ENU)
+var _chase_vtol := false            # which smoothing the state above belongs to
 
 
 # ------------------------------------------------------------------
@@ -77,6 +85,9 @@ class VehicleState:
 		if vt in FW_TYPES:
 			max_lin = MAX_LIN_FW
 			max_yaw = MAX_YAW_RAD_FW
+		elif vt in VTOL_TYPES:
+			max_lin = MAX_LIN_VTOL
+			max_yaw = MAX_YAW_RAD
 		else:
 			max_lin = MAX_LIN_QUAD if vt == "quadcopter" else MAX_LIN_ROVER
 			max_yaw = MAX_YAW_RAD
@@ -245,6 +256,8 @@ func _spawn_vehicle(drone_id: String, vtype: String,
 		model_path = "res://scenes/vehicles/rover.tscn"
 	elif vtype in FW_TYPES:
 		model_path = "res://scenes/vehicles/fixedwing.tscn"
+	elif vtype in VTOL_TYPES:
+		model_path = "res://scenes/vehicles/vtol.tscn"
 	else:
 		model_path = "res://scenes/vehicles/quadcopter.tscn"
 
@@ -368,7 +381,7 @@ func _integrate(st: VehicleState, dt: float) -> void:
 # Returns [offset: Vector3 (Godot), tilt_degrees: float] for a vehicle's POV camera.
 # 0.5m forward (Godot +Z) clears all vehicle body geometry (quad arms 0.3m, rover visor 0.21m).
 func _cam_params(vtype: String) -> Array:
-	var aerial := vtype == "quadcopter" or vtype in FW_TYPES
+	var aerial := vtype == "quadcopter" or vtype in FW_TYPES or vtype in VTOL_TYPES
 	if _env_name == "plaza":
 		if aerial:
 			# 8m altitude, chairs ~15m ahead and below — look down to frame them.
@@ -404,7 +417,7 @@ static func _apply_pose_enu(node: Node3D, pos_enu: Vector3, yaw_enu: float) -> v
 # ------------------------------------------------------------------
 ## Per-vtype detection range. An aerial vehicle sees its target from much further out
 ## than a ground rover does, and a single range would make one of the two useless.
-const DETECT_RANGE_BY_TYPE := {"quadcopter": 30.0, "rover": 12.0}
+const DETECT_RANGE_BY_TYPE := {"quadcopter": 30.0, "vtol": 30.0, "rover": 12.0}
 const DETECT_RANGE_DEFAULT := 20.0
 const DETECT_FOV_HALF := deg_to_rad(35.0)
 
@@ -749,6 +762,8 @@ static func _parse_roster(fleet_str: String) -> Array[Dictionary]:
 				vtype = "quadcopter"
 			elif t in ["fixedwing", "fixedwings", "fw", "plane", "planes"]:
 				vtype = "fixedwing"
+			elif t in ["vtol", "vtols", "cruza"]:
+				vtype = "vtol"
 		if kv.size() >= 2:
 			count = kv[1].strip_edges().to_int()
 		if not vtype in type_counts:
@@ -788,6 +803,11 @@ const CHASE_UP := 4.5
 # turn because the aim point barely moves relative to the aircraft.
 const CHASE_AHEAD := 12.0
 const CHASE_LAG := 2.5     # higher = snappier follow, lower = looser trail
+# VTOL framing. Tighter than the fixed-wing's: the airframe is half the size and
+# spends much of its time slow or hovering, where a 14 m trail leaves it a speck.
+const CHASE_VTOL_BACK := 4.5
+const CHASE_VTOL_UP := 1.4
+const CHASE_VTOL_AHEAD := 6.0
 
 ## Chase camera runs on the PHYSICS clock, not the render clock.
 ##
@@ -826,6 +846,13 @@ func _update_chase(delta: float) -> void:
 	var yaw: float = float(st["yaw"])
 	var fwd := Vector2(cos(yaw), sin(yaw))  # ENU heading
 
+	if str(st.get("airframe", "")) == "vtol":
+		_chase_vtol_follow(Vector3(float(p[0]), float(p[1]), float(p[2])), fwd, delta)
+		return
+	if _chase_vtol:          # switched back from a VTOL: re-seed, don't swoop
+		_chase_vtol = false
+		_chase_ready = false
+
 	var eye_enu := Vector3(float(p[0]) - fwd.x * CHASE_BACK,
 						   float(p[1]) - fwd.y * CHASE_BACK,
 						   float(p[2]) + CHASE_UP)
@@ -848,5 +875,41 @@ func _update_chase(delta: float) -> void:
 	_main_cam.position = _chase_pos
 	# Degenerate when the smoothed eye and aim coincide (first frames after a
 	# respawn); look_at() would error out and spam the log.
+	if _chase_pos.distance_to(_chase_look) > 0.5:
+		_main_cam.look_at(_chase_look, Vector3.UP)
+
+
+## VTOL chase: smooth the camera's OFFSET from the aircraft, not its position.
+##
+## _update_chase lerps the eye's world position toward a target that itself moves
+## at the aircraft's speed, so in steady flight it trails by speed / CHASE_LAG
+## metres on top of CHASE_BACK — 7 m extra at 18 m/s. The delta wing's 14 m was
+## tuned with that lag baked in, so it is left alone; for the VTOL, which goes
+## from a hover to cruise and back, that lag would swing the framing from tight
+## to a speck. Smoothing the offset instead keeps the distance constant at any
+## speed, while turns (including a pirouette in the hover) still ease round.
+func _chase_vtol_follow(p: Vector3, fwd: Vector2, delta: float) -> void:
+	var off := Vector3(-fwd.x * CHASE_VTOL_BACK, -fwd.y * CHASE_VTOL_BACK, CHASE_VTOL_UP)
+	var aim_off := Vector3(fwd.x * CHASE_VTOL_AHEAD, fwd.y * CHASE_VTOL_AHEAD, 0.0)
+	if not _chase_ready or not _chase_vtol:
+		_chase_off = off
+		_chase_aim_off = aim_off
+		_chase_vtol = true
+		_chase_ready = true
+	else:
+		var t: float = clampf(delta * CHASE_LAG, 0.0, 1.0)
+		_chase_off = _chase_off.lerp(off, t)
+		_chase_aim_off = _chase_aim_off.lerp(aim_off, t)
+		# A straight lerp between two headings cuts the corner and pulls the
+		# camera in; hold the horizontal range.
+		var h := Vector2(_chase_off.x, _chase_off.y)
+		if h.length() > 0.1:
+			h = h.normalized() * CHASE_VTOL_BACK
+			_chase_off = Vector3(h.x, h.y, _chase_off.z)
+	var eye_enu := p + _chase_off
+	var aim_enu := p + _chase_aim_off
+	_chase_pos = Vector3(eye_enu.x, eye_enu.z, -eye_enu.y)
+	_chase_look = Vector3(aim_enu.x, aim_enu.z, -aim_enu.y)
+	_main_cam.position = _chase_pos
 	if _chase_pos.distance_to(_chase_look) > 0.5:
 		_main_cam.look_at(_chase_look, Vector3.UP)

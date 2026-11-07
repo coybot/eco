@@ -120,8 +120,11 @@ def test_altitude_is_the_enu_up_component():
     """
     text = (SCRIPTS / "fixedwing_manager.gd").read_text()
     assert "st.altitude = st.position.z" in text
-    # the ceiling is per aircraft (set at fw_spawn, ALT_CEILING_M by default)
-    assert "st.position.z = clamp(st.position.z, ALT_FLOOR_M, _ceiling(st))" in text
+    # the ceiling is per aircraft (set at fw_spawn, ALT_CEILING_M by default);
+    # the floor is ALT_FLOOR_M for the fixed-wing, the landing surface for a VTOL
+    assert ('var hard_floor: float = st.ground_floor if st.airframe == "vtol" else ALT_FLOOR_M'
+            in text)
+    assert "st.position.z = clamp(st.position.z, hard_floor, _ceiling(st))" in text
 
 
 if __name__ == "__main__":

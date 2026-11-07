@@ -16,6 +16,10 @@ The two shipped classes mirror the existing on-device contracts:
                 policy_rover_v2.onnx, radius 0.5 m, 1.5 m/s.
   - fixedwing:  coordinated-turn 3D, long-range forward depth (fw_contract.py, 56-dim
                 → 4D action), policy_fw.onnx, radius 1.0 m, 25.0 m/s cruise.
+  - vtol:       tilt-rotor after the HEEWING T2 Cruza VTOL. Coordinated-turn 3D like the
+                fixed-wing once wing-borne, but min speed 0: it hovers, turns on the spot
+                and climbs vertically on its rotors. No learned policy. radius 0.6 m,
+                24 m/s max, wing-borne from 13 m/s.
   - crazyflie:  holonomic 3D micro-UAV (Crazyflie 2.1 Brushless + Flow deck v2 +
                 AI-deck 1.1 + Multi-ranger), hybrid 50-ray sensing, no learned policy —
                 classical L5 controller only. radius 0.065 m, 1.0 m/s, 2.2 m ceiling.
@@ -39,6 +43,9 @@ class Kinematics(str, Enum):
     COORDINATED_TURN_3D = "coordinated_turn_3d"  # Dubins-airplane (fixed-wing): action
     # [vx,vy,vz,yaw_rate], but vy is ignored, vx is clamped to [min_speed_mps,max_speed_mps]
     # (never zero/reverse), yaw_rate is bank-limited by speed, vz by max_climb_angle_rad.
+    # A VTOL is this same model with min_speed_mps == 0 (can_hover): below
+    # bank_ref_speed_mps it turns at full max_yaw_rate_radps, and hover_climb_mps gives it
+    # vertical authority at any speed — see VehicleClass.climb_cap_mps.
 
 
 class Sensor(str, Enum):
@@ -238,6 +245,11 @@ class VehicleClass:
     localization: LocalizationProfile = field(default_factory=LocalizationProfile)
     min_speed_mps: float = 0.0             # stall/minimum airspeed (0 = can hover/stop)
     max_climb_angle_rad: float = 1.5708    # bounded flight-path angle (~pi/2 = unconstrained)
+    # --- hover-capable coordinated-turn classes (VTOL). Defaults reproduce the fixed-wing. ---
+    wingborne_speed_mps: float = 0.0       # speed at which the wing carries the weight; the
+    # bank-limited turn rate is referenced to it (see bank_ref_speed_mps)
+    hover_climb_mps: float = 0.0           # vertical rate the rotors give at ANY speed, on top
+    # of the flight-path-angle limit — what lets a VTOL take off and land vertically
     sense_range_m: float = 10.0            # obstacle-sensing max range ("clear" sentinel value —
     # must exceed any avoidance radius derived from this class's speed, or a genuinely clear
     # reading looks like a phantom obstacle at max range to the reactive controller)
@@ -279,6 +291,26 @@ class VehicleClass:
         for a future VTOL that is COORDINATED_TURN_3D but can still hover.
         """
         return self.min_speed_mps <= 0.0
+
+    @property
+    def bank_ref_speed_mps(self) -> float:
+        """Speed at and below which the full max_yaw_rate_radps is available.
+
+        Above it a coordinated turn is bank-limited, so the achievable yaw rate falls off as
+        ref/v. For the fixed-wing that reference is its stall speed. A VTOL has no stall
+        speed (min 0), and using 0 would make every turn above walking pace near-impossible;
+        its reference is the speed where the wing takes over from the rotors.
+        """
+        return max(self.min_speed_mps, self.wingborne_speed_mps, 1e-3)
+
+    def climb_cap_mps(self, speed_mps: float) -> float:
+        """Largest |vertical rate| available at forward speed ``speed_mps``.
+
+        The wing allows a bounded flight-path angle; a VTOL's rotors add hover_climb_mps
+        regardless of speed. For every class without rotors this is exactly
+        speed * tan(max_climb_angle_rad), the fixed-wing's historical limit.
+        """
+        return max(speed_mps * math.tan(self.max_climb_angle_rad), self.hover_climb_mps)
 
     def can_fill(self, role: Role) -> bool:
         return role in self.roles
@@ -376,6 +408,42 @@ FIXEDWING = VehicleClass(
     sense_range_m=80.0,          # matches fw_contract.DEPTH_MAX_FW — needed lookahead at cruise
 )
 
+VTOL = VehicleClass(
+    name="vtol",
+    # Tilt-rotor after the HEEWING T2 Cruza VTOL (1.2 m span, 1.11 m long, 2.0-3.5 kg, two
+    # tilting wing motors + a rear motor, ArduPilot FC). Coordinated-turn rather than
+    # holonomic: it cannot sideslip, it points its nose where it goes, and wing-borne it
+    # turns by banking — the fixed-wing model with the stall removed. Same numbers as the
+    # Godot model (fixedwing_manager.gd VTOL_*); no published speed figures exist for this
+    # airframe, so the speeds are estimates for a 1.2 m, ~3 kg foam VTOL.
+    kinematics=Kinematics.COORDINATED_TURN_3D,
+    sensor=Sensor.FORWARD_DEPTH,       # nose FPV camera, same 45-ray grid as the fixed-wing
+    state_dim=56,
+    action_dim=4,                      # [airspeed, vy(ignored), vz, yaw_rate]
+    policy_onnx="",                    # no learned policy: policy_fw.onnx was trained on a
+                                       # 12 m/s-stall airframe and must not fly this one
+    radius_m=0.6,                      # half the 1.2 m span
+    max_speed_mps=24.0,                # estimate
+    max_accel_mps2=3.0,
+    max_yaw_rate_radps=0.6,            # bank-limited wing-borne rate, as the fixed-wing; it
+                                       # also caps hover yaw (Godot allows 1.2) — conservative
+    ceiling_m=120.0,
+    payload_kg=0.5,                    # estimate; 2.0-3.5 kg flying weight leaves little
+    roles=(Role.AERIAL_SCOUT, Role.COMMS_RELAY),   # unlike the fixed-wing it can hold a
+                                                   # relay station in a hover
+    comms=CommsProfile(range_m=500.0, los_required=False, bandwidth_msgs_per_s=20.0),
+    localization=LocalizationProfile(gps_denied_drift_mps=0.30, vio_capable=False),
+    min_speed_mps=0.0,                 # hovers
+    max_climb_angle_rad=0.35,          # ~20 deg wing-borne, as the fixed-wing
+    wingborne_speed_mps=13.0,          # Godot VTOL_WINGBORNE_SPEED
+    hover_climb_mps=2.5,               # ArduPilot Q_PILOT_SPEED_UP default
+    sense_range_m=80.0,                # same forward-depth lookahead as the fixed-wing; must
+                                       # exceed the 60 m turn-radius avoid radius
+    slow_radius_m=72.0,                # braking distance from 17 m/s cruise at 2 m/s^2
+                                       # (ArduPilot Q_TRANS_DECEL): where to start slowing
+                                       # to arrive in a hover instead of overshooting
+)
+
 CRAZYFLIE = VehicleClass(
     name="crazyflie",
     kinematics=Kinematics.HOLONOMIC_3D,   # multirotor: free 3D translation + yaw, hovers
@@ -416,7 +484,8 @@ CRAZYFLIE = VehicleClass(
 )
 
 # Canonical registry. Accepts the on-device "type" strings used in rosters
-# (isaac_vehicle setup: 'quadcopter' | 'rover' | 'fixedwing') plus the short aliases.
+# (isaac_vehicle setup: 'quadcopter' | 'rover' | 'fixedwing', Godot fleet: 'vtol') plus
+# the short aliases.
 _REGISTRY: dict[str, VehicleClass] = {
     "quadcopter": QUADCOPTER,
     "quad": QUADCOPTER,
@@ -424,6 +493,9 @@ _REGISTRY: dict[str, VehicleClass] = {
     "fixedwing": FIXEDWING,
     "fw": FIXEDWING,
     "plane": FIXEDWING,
+    "vtol": VTOL,
+    "cruza": VTOL,
+    "tiltrotor": VTOL,
     "crazyflie": CRAZYFLIE,
     "cf": CRAZYFLIE,
     "cf21b": CRAZYFLIE,

@@ -107,8 +107,16 @@ class DepotClient:
         return self._call({"op": "move_vantage", "name": name, "p": list(pos_enu), "look": list(look_enu)})
 
     # -- fixedwing lifecycle --------------------------------------------------
-    def fw_spawn(self, rid: str, pos_enu: tuple[float, float, float], yaw: float = 0.0) -> dict:
-        return self._call({"op": "fw_spawn", "id": rid, "p": list(pos_enu), "yaw": yaw})
+    def fw_spawn(self, rid: str, pos_enu: tuple[float, float, float], yaw: float = 0.0,
+                 airframe: str | None = None) -> dict:
+        """Spawn an aircraft. `airframe` is "fixedwing" (the default delta wing)
+        or "vtol" (tilt-rotor after the HEEWING T2 Cruza VTOL: spawns hovering,
+        or landed if `pos_enu` is on the ground; fw_drive airspeed 0 = hover,
+        a negative climb at hover speed lands it, a positive one takes off)."""
+        req = {"op": "fw_spawn", "id": rid, "p": list(pos_enu), "yaw": yaw}
+        if airframe:
+            req["airframe"] = airframe
+        return self._call(req)
 
     def fw_despawn(self, rid: str) -> dict:
         return self._call({"op": "fw_despawn", "id": rid})

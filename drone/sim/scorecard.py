@@ -601,7 +601,9 @@ def compare_runs(scenarios_dir: str, rover_onnx: str | None = None,
                                 break
                         return action
                     elif agent.vclass.kinematics is Kinematics.COORDINATED_TURN_3D:
-                        if _fc is None:
+                        # A coordinated-turn class with no learned policy of its own
+                        # (the VTOL) must not be flown by policy_fw.onnx.
+                        if _fc is None or not agent.vclass.policy_onnx:
                             return _bc(agent, obs)
                         action = np.asarray(_fc(agent, obs), np.float32).copy()
                         if not getattr(agent, "sensor_ok", True):
@@ -708,7 +710,7 @@ def _record_comparison_videos(scenarios_dir, rover_onnx, quad_onnx, video_dir, r
                         action[0] *= 0.4; break
                 return action
             elif agent.vclass.kinematics is Kinematics.COORDINATED_TURN_3D:
-                if _fc is None:
+                if _fc is None or not agent.vclass.policy_onnx:   # see _mixed above
                     return _bc(agent, obs)
                 action = np.asarray(_fc(agent, obs), np.float32).copy()
                 if not getattr(agent, "sensor_ok", True):

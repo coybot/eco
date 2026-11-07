@@ -25,6 +25,31 @@ const MAX_CLIMB_RATE := 8.0      # m/s
 const MIN_CLIMB_RATE := -12.0    # m/s
 const ALT_FLOOR_M := 2.0         # hard envelope floor (see _apply_flight_dynamics)
 const ALT_CEILING_M := 120.0     # hard envelope ceiling
+
+## ---- Tilt-rotor VTOL airframe (fw_spawn airframe="vtol"), after the HEEWING
+## T2 Cruza VTOL: 1.2 m span, 1.11 m long, 2.0-3.5 kg, two tilting wing motors
+## plus a rear motor (see vtol_visuals.gd for what is and isn't confirmed).
+##
+## Same IPC contract as the fixed-wing — fw_drive(airspeed, yaw_rate, climb) —
+## but airspeed may go to zero: below VTOL_WINGBORNE_SPEED the rotors carry the
+## weight, so it can hover, yaw on the spot, climb and sink vertically, and land.
+## No published speed figures exist for this airframe; the speeds below are
+## typical of a 1.2 m, ~3 kg foam VTOL and should be treated as estimates. The
+## rates marked "ArduPilot" are QuadPlane parameter defaults, since this
+## aircraft ships with an ArduPilot flight controller.
+const VTOL_MAX_AIRSPEED := 24.0      # m/s, estimate
+const VTOL_CRUISE_AIRSPEED := 17.0   # m/s, estimate; what stop() does NOT return to (it hovers)
+const VTOL_WINGBORNE_SPEED := 13.0   # m/s; at/above this the wing carries it (ArduPilot ARSPD_FBW_MIN-like)
+const VTOL_HOVER_MAX_SPEED := 6.0    # m/s horizontal with rotors fully up
+const VTOL_ACCEL := 3.0              # m/s^2 forward acceleration
+const VTOL_DECEL := 2.0              # m/s^2, ArduPilot Q_TRANS_DECEL default
+const VTOL_TILT_RATE := deg_to_rad(40.0)  # rad/s, ArduPilot Q_TILT_RATE_UP default
+const VTOL_HOVER_CLIMB := 2.5        # m/s, ArduPilot Q_PILOT_SPEED_UP default
+const VTOL_HOVER_SINK := 1.5         # m/s rotor-borne descent (vortex-ring margin)
+const VTOL_HOVER_YAW_RATE := 1.2     # rad/s in hover; bank-limited MAX_YAW_RATE once wing-borne
+const VTOL_LANDED_HEIGHT := 0.08     # m, body origin above ground when sitting on its belly
+const VTOL_HOVER_DRAIN := 0.08       # %/s extra while rotor-borne (hover ~3-4x cruise power)
+const AIRFRAMES := ["fixedwing", "vtol"]
 const DETECT_RANGE := 80.0       # m — default; see DETECT_RANGE_BY_LABEL
 ## Per-class sensing range. A single 80 m cutoff for everything was wrong in
 ## both directions: a 50 m wall is visible from far further away than a person,
@@ -107,6 +132,17 @@ var _bottles: Array = []   # released payloads awaiting rest — see _update_bot
 class FixedWingState:
 	var id: String
 	var node: Node3D
+	## "fixedwing" (the delta wing) or "vtol" (tilt-rotor). Picks the visual
+	## model and the flight envelope; everything else is shared.
+	var airframe := "fixedwing"
+	var visuals: Node3D = null
+	## VTOL only. Rotor tilt in rad: 0 = thrust up (hover), PI/2 = forward.
+	var tilt := 0.0
+	## VTOL only. Sitting on the ground with the rotors idle.
+	var landed := false
+	## VTOL only. Where its belly would rest right now: terrain or a roof
+	## under it, plus VTOL_LANDED_HEIGHT. Refreshed every tick.
+	var ground_floor := VTOL_LANDED_HEIGHT
 	var position := Vector3.ZERO   # ENU
 	var velocity := Vector3.ZERO   # ENU
 	var airspeed := 0.0
@@ -171,9 +207,16 @@ func register_env(env_node: Node3D) -> void:
 # ------------------------------------------------------------------
 # Spawn / despawn
 # ------------------------------------------------------------------
-func spawn(id: String, pos: Vector3, yaw: float, ceiling: float = -1.0) -> void:
+## `airframe` is "fixedwing" (default) or "vtol". Empty keeps whatever the id
+## already is on a re-spawn, and means "fixedwing" for a new id, so every
+## existing caller is unchanged.
+func spawn(id: String, pos: Vector3, yaw: float, ceiling: float = -1.0,
+		airframe: String = "") -> void:
 	if _env == null:
 		return
+	if airframe != "" and not airframe in AIRFRAMES:
+		push_warning("[FixedWingManager] unknown airframe %s, using fixedwing" % airframe)
+		airframe = "fixedwing"
 	if id in _fw:
 		# Re-spawning an id that's still registered (e.g. a test harness looping
 		# reset()+spawn() on the same id across attempts within one Godot process)
@@ -182,10 +225,16 @@ func spawn(id: String, pos: Vector3, yaw: float, ceiling: float = -1.0) -> void:
 		# attempt, so a 3-attempt "identical scenario" loop was secretly 3 different
 		# scenarios with progressively worse geometry. Confirmed via a live trace.
 		var st: FixedWingState = _fw[id]
+		if airframe != "" and airframe != st.airframe:
+			_set_airframe(st, airframe)
 		st.position = pos
 		st.yaw = yaw
 		st.velocity = Vector3.ZERO
-		st.airspeed = MIN_AIRSPEED
+		st.airspeed = _initial_airspeed(st)
+		st.cmd_airspeed = 0.0 if st.airframe == "vtol" else st.cmd_airspeed
+		st.tilt = 0.0
+		st.landed = false
+		_settle_vtol_spawn(st)
 		st.crashed = false
 		st.crash_time = 0.0
 		st.wreck_at_rest = false
@@ -201,9 +250,6 @@ func spawn(id: String, pos: Vector3, yaw: float, ceiling: float = -1.0) -> void:
 	body.name = "fw_" + id
 	_env.add_child(body)
 
-	var mesh := Node3D.new()
-	mesh.set_script(load("res://scripts/fixedwing_visuals.gd"))
-	body.add_child(mesh)
 
 	# Engine buzz, positional: an AudioStreamPlayer3D on the airframe attenuates
 	# with distance to the active camera (the main window's camera is the audio
@@ -240,21 +286,53 @@ func spawn(id: String, pos: Vector3, yaw: float, ceiling: float = -1.0) -> void:
 	var st := FixedWingState.new()
 	st.id = id
 	st.node = body
+	_set_airframe(st, airframe if airframe != "" else "fixedwing")
 	st.position = pos
 	st.yaw = yaw
-	st.airspeed = MIN_AIRSPEED
+	st.airspeed = _initial_airspeed(st)
+	_settle_vtol_spawn(st)
 	st.climb_rate = 0.0
 	if ceiling > 0.0:
 		st.ceiling = ceiling
 	st.pitch = 0.0
 	st.roll = 0.0
-	st.altitude = pos.z
+	st.altitude = st.position.z
 	st.observed.resize(GRID_W * GRID_H)
 	st.viewport = vp
 	st.camera = cam
 	_fw[id] = st
 	_apply_pose(st)
-	print("[FixedWingManager] spawned %s at ENU %v" % [id, pos])
+	print("[FixedWingManager] spawned %s (%s) at ENU %v" % [id, st.airframe, st.position])
+
+
+## Attach (or swap) the visual model for an airframe.
+func _set_airframe(st: FixedWingState, airframe: String) -> void:
+	st.airframe = airframe
+	if st.visuals != null and is_instance_valid(st.visuals):
+		st.visuals.queue_free()
+	var mesh := Node3D.new()
+	mesh.set_script(load("res://scripts/vtol_visuals.gd" if airframe == "vtol"
+		else "res://scripts/fixedwing_visuals.gd"))
+	st.node.add_child(mesh)
+	st.visuals = mesh
+
+
+## A fixed-wing is born flying at its minimum airspeed; a VTOL is born hovering.
+func _initial_airspeed(st: FixedWingState) -> float:
+	return 0.0 if st.airframe == "vtol" else MIN_AIRSPEED
+
+
+## A VTOL may be spawned on (or into) the ground: put it on its belly, landed,
+## rather than starting it inside the terrain, which the strike check would
+## immediately call a crash.
+func _settle_vtol_spawn(st: FixedWingState) -> void:
+	if st.airframe != "vtol":
+		return
+	var g := _vtol_landing_floor(st.position.x, st.position.y, st.position.z)
+	st.ground_floor = g
+	if st.position.z <= g + 0.05:
+		st.position.z = g
+		st.landed = true
 
 
 ## A synthesized, seamlessly-looping propeller/engine buzz. Built in code rather
@@ -366,7 +444,10 @@ func _step(st: FixedWingState, dt: float) -> void:
 	var prev_pos := st.position
 
 	# Apply flight dynamics
-	_apply_flight_dynamics(st, dt)
+	if st.airframe == "vtol":
+		_apply_vtol_dynamics(st, dt)
+	else:
+		_apply_flight_dynamics(st, dt)
 	
 	# Update position and velocity
 	st.position += st.velocity * dt
@@ -399,7 +480,10 @@ func _step(st: FixedWingState, dt: float) -> void:
 	# still acts on commanded DESCENT (the climb-rate cut in
 	# _apply_flight_dynamics, logged as envelope_protection), but flying level
 	# into rising ground is a strike, not something the airframe quietly climbs.
-	st.position.z = clamp(st.position.z, ALT_FLOOR_M, _ceiling(st))
+	# A VTOL's hard floor is the surface it would land on, not the 2 m envelope:
+	# it is allowed to sink all the way down and sit there.
+	var hard_floor: float = st.ground_floor if st.airframe == "vtol" else ALT_FLOOR_M
+	st.position.z = clamp(st.position.z, hard_floor, _ceiling(st))
 	st.altitude = st.position.z
 	
 	# Apply pose
@@ -407,7 +491,11 @@ func _step(st: FixedWingState, dt: float) -> void:
 	
 	# Update battery
 	var moved := st.velocity.length() * dt
-	st.battery_level = max(0.0, st.battery_level - (BASE_DRAIN_IDLE * dt + BASE_DRAIN_PER_M * moved) * st.drain_mult)
+	var drain := BASE_DRAIN_IDLE * dt + BASE_DRAIN_PER_M * moved
+	if st.airframe == "vtol" and not st.landed:
+		# Rotor-borne flight costs far more than wing-borne cruise.
+		drain += VTOL_HOVER_DRAIN * (1.0 - _vtol_wing_frac(st)) * dt
+	st.battery_level = max(0.0, st.battery_level - drain * st.drain_mult)
 	
 	# Sweep observed grid
 	_sweep_observed(st)
@@ -625,6 +713,143 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	st.velocity = forward * st.airspeed + Vector3(0.0, 0.0, st.climb_rate)
 
 
+## 0 when the rotors carry the aircraft, 1 once the wing does.
+func _vtol_wing_frac(st: FixedWingState) -> float:
+	return smoothstep(0.0, VTOL_WINGBORNE_SPEED, st.airspeed)
+
+
+## Height the VTOL's body origin would sit at if it landed here: the bare
+## terrain, or a roof/deck under it, plus VTOL_LANDED_HEIGHT. Without the
+## downward ray a descent onto a rooftop would be swept as a building strike.
+func _vtol_landing_floor(x: float, y: float, z: float = INF) -> float:
+	var g := 0.0
+	if _env != null:
+		if _env.has_method("ground_height"):
+			g = _env.ground_height(x, y)
+		elif _env.has_method("collision_height"):
+			g = _env.collision_height(x, y)
+	if z != INF and z > g:
+		var hit := _sweep_structure(Vector3(x, y, z + 0.01), Vector3(x, y, g - 0.5))
+		if not hit.is_empty():
+			var nrm: Vector3 = hit.get("normal", Vector3.UP)
+			if nrm.y > 0.7:
+				g = maxf(g, (hit["position"] as Vector3).y)
+	return g + VTOL_LANDED_HEIGHT
+
+
+## Tilt-rotor flight model. Shares the fixed-wing's command contract
+## (airspeed, yaw_rate, climb) but runs it through three regimes:
+##   hover      — rotors up; airspeed may be 0, yaw on the spot, vertical
+##                climb/sink at multirotor rates, can land and take off.
+##   transition — rotors tilting at the servo rate; forward speed is capped by
+##                how far they have tilted, so an acceleration from hover takes
+##                as long as the tilt does rather than being instant.
+##   cruise     — at/above VTOL_WINGBORNE_SPEED the wing carries it and it
+##                flies exactly like the fixed-wing: bank-limited turns, climb
+##                capped by flight-path angle, the same envelope protection.
+func _apply_vtol_dynamics(st: FixedWingState, dt: float) -> void:
+	if st.landed:
+		if st.cmd_climb_rate > 0.0:
+			st.landed = false
+			_log_event("vtol_takeoff", {"id": st.id, "x": st.position.x,
+				"y": st.position.y, "z": st.position.z})
+		else:
+			# On the ground: rotors idle, no taxiing, no yaw.
+			st.airspeed = 0.0
+			st.climb_rate = 0.0
+			st.velocity = Vector3.ZERO
+			st.roll = 0.0
+			st.pitch = 0.0
+			st.tilt = move_toward(st.tilt, 0.0, VTOL_TILT_RATE * dt)
+			return
+	st.ground_floor = _vtol_landing_floor(st.position.x, st.position.y, st.position.z)
+
+	# Rotor tilt leads with the commanded speed (tilt forward to accelerate) and
+	# lags with the actual one (stay forward on a back-transition until the wing
+	# has slowed, or the aircraft would be dragged to a stop by vertical rotors).
+	var lead := maxf(st.cmd_airspeed, st.airspeed)
+	var tilt_target := PI * 0.5 * smoothstep(0.0, VTOL_WINGBORNE_SPEED, lead)
+	st.tilt = move_toward(st.tilt, tilt_target, VTOL_TILT_RATE * dt)
+	var tilt_frac := st.tilt / (PI * 0.5)
+
+	# Forward speed: acceleration-limited, and capped by the tilt reached so far.
+	var cap := lerpf(VTOL_HOVER_MAX_SPEED, VTOL_MAX_AIRSPEED, tilt_frac)
+	var target := clampf(minf(st.cmd_airspeed, cap), 0.0, VTOL_MAX_AIRSPEED)
+	if target > st.airspeed:
+		st.airspeed = minf(target, st.airspeed + VTOL_ACCEL * dt)
+	else:
+		st.airspeed = maxf(target, st.airspeed - VTOL_DECEL * dt)
+	var wing := _vtol_wing_frac(st)
+
+	# Yaw: free on the spot in hover, bank-limited like the fixed-wing in cruise.
+	var yaw_lim := lerpf(VTOL_HOVER_YAW_RATE, MAX_YAW_RATE, wing)
+	var yaw_rate := clampf(st.cmd_yaw_rate, -yaw_lim, yaw_lim)
+	st.yaw = wrapf(st.yaw + yaw_rate * dt, -PI, PI)
+	# Coordinated-turn bank, same sign convention as _apply_flight_dynamics. At
+	# hover speeds v*omega/g is ~0, so a pirouette stays wings-level by itself.
+	var bank_target: float = -atan(yaw_rate * st.airspeed / 9.81)
+	bank_target = clamp(bank_target, -deg_to_rad(MAX_ROLL), deg_to_rad(MAX_ROLL))
+	st.roll += (bank_target - st.roll) * minf(1.0, dt / 0.8)
+
+	# Climb. The rotors give a fixed vertical authority at any speed; the wing
+	# adds the fixed-wing's 20 deg flight-path climb once there is airspeed.
+	st.climb_rate += (st.cmd_climb_rate - st.climb_rate) * minf(1.0, dt / 1.0)
+	var path_lim: float = tan(deg_to_rad(20.0)) * st.airspeed
+	var up_lim := minf(MAX_CLIMB_RATE, maxf(VTOL_HOVER_CLIMB, path_lim))
+	var down_lim := VTOL_HOVER_SINK if st.airspeed < VTOL_WINGBORNE_SPEED \
+		else minf(-MIN_CLIMB_RATE, path_lim)
+	st.climb_rate = clampf(st.climb_rate, -down_lim, up_lim)
+
+	# Nose follows the flight path once wing-borne; level when hovering (a
+	# hovering tilt-rotor climbs with its fuselage flat, not pointing up).
+	st.pitch = wing * clampf(atan2(st.climb_rate, maxf(st.airspeed, 0.1)),
+		deg_to_rad(-30.0), deg_to_rad(20.0))
+
+	# Envelope. Rotor-borne, the ground is somewhere to land, not a limit: a
+	# slow commanded descent onto it is a touchdown. Wing-borne, the fixed-wing
+	# floor and its envelope_protection event apply unchanged.
+	if st.airspeed < VTOL_WINGBORNE_SPEED:
+		if st.position.z <= st.ground_floor + 0.02 and st.climb_rate <= 0.0:
+			st.climb_rate = 0.0
+			if st.cmd_climb_rate < 0.0 and st.airspeed < 0.5:
+				st.position.z = st.ground_floor
+				st.landed = true
+				st.cmd_airspeed = 0.0
+				st.velocity = Vector3.ZERO
+				st.pitch = 0.0
+				st.roll = 0.0
+				_log_event("vtol_touchdown", {"id": st.id, "x": st.position.x,
+					"y": st.position.y, "z": st.position.z})
+				return
+	else:
+		var floor_m := _floor_at(st.position.x, st.position.y)
+		if st.position.z <= floor_m and st.climb_rate < 0.0:
+			st.climb_rate = 0.0
+			st.cmd_climb_rate = 0.0
+			_log_event("envelope_protection", {"id": st.id,
+				"limit": "terrain_floor" if floor_m > ALT_FLOOR_M else "alt_floor",
+				"alt": st.position.z, "floor": floor_m})
+	if st.position.z >= _ceiling(st) and st.climb_rate > 0.0:
+		st.climb_rate = 0.0
+		st.cmd_climb_rate = 0.0
+		_log_event("envelope_protection", {"id": st.id, "limit": "alt_ceiling",
+			"alt": st.position.z, "ceiling": _ceiling(st)})
+
+	var forward := Vector3(cos(st.yaw), sin(st.yaw), 0.0)
+	st.velocity = forward * st.airspeed + Vector3(0.0, 0.0, st.climb_rate)
+
+
+func _vtol_flight_mode(st: FixedWingState) -> String:
+	if st.crashed:
+		return "crashed"
+	if st.landed:
+		return "landed"
+	var w := _vtol_wing_frac(st)
+	if w >= 1.0:
+		return "cruise"
+	return "hover" if st.tilt < deg_to_rad(10.0) and st.airspeed < 1.0 else "transition"
+
+
 func _apply_pose(st: FixedWingState) -> void:
 	# ENU: x=east, y=north, z=up
 	# Godot: x=right(east), y=up, z=-forward(-north)
@@ -650,6 +875,9 @@ func _apply_pose(st: FixedWingState) -> void:
 	# roll sign already needs, for the same reason (local +X is the LEFT wing).
 	var rotation_degrees = Vector3(-rad_to_deg(st.pitch), rad_to_deg(st.yaw) + 90.0, rad_to_deg(st.roll))
 	st.node.rotation_degrees = rotation_degrees
+	if st.airframe == "vtol" and st.visuals != null and st.visuals.has_method("set_flight"):
+		var effort := 0.0 if (st.landed or st.crashed) else 1.0
+		st.visuals.set_flight(st.tilt, effort, effort)
 	_sync_camera(st)
 
 
@@ -728,7 +956,16 @@ func get_state(id: String) -> Variant:
 		"payload_remaining": st.payload_remaining,
 		"sensor_yaw_offset": st.sensor_yaw_offset,
 		"ceiling": st.ceiling,
-		"crashed": st.crashed
+		"crashed": st.crashed,
+		"airframe": st.airframe,
+		# VTOL fields; constant for a fixed-wing (tilt PI/2 = always "forward").
+		"tilt": st.tilt if st.airframe == "vtol" else PI * 0.5,
+		"landed": st.landed,
+		"flight_mode": _vtol_flight_mode(st) if st.airframe == "vtol" else "cruise",
+		# Physics-clock seconds. Lets a client pace itself by sim time, which is
+		# what it must do under --write-movie (the engine then runs faster or
+		# slower than the wall clock, never in step with it).
+		"sim_time": _sim_time,
 	}
 
 
@@ -1153,17 +1390,23 @@ func drive(id: String, airspeed: float, yaw_rate: float, climb: float = 0.0) -> 
 	var st: FixedWingState = _fw.get(id)
 	if st == null or st.crashed:
 		return
-	st.cmd_airspeed = clamp(airspeed, -MAX_AIRSPEED, MAX_AIRSPEED)
-	st.cmd_yaw_rate = clamp(yaw_rate, -MAX_YAW_RATE, MAX_YAW_RATE)
+	if st.airframe == "vtol":
+		# No reverse; yaw limit is applied per regime in _apply_vtol_dynamics.
+		st.cmd_airspeed = clamp(airspeed, 0.0, VTOL_MAX_AIRSPEED)
+		st.cmd_yaw_rate = clamp(yaw_rate, -VTOL_HOVER_YAW_RATE, VTOL_HOVER_YAW_RATE)
+	else:
+		st.cmd_airspeed = clamp(airspeed, -MAX_AIRSPEED, MAX_AIRSPEED)
+		st.cmd_yaw_rate = clamp(yaw_rate, -MAX_YAW_RATE, MAX_YAW_RATE)
 	st.cmd_climb_rate = clamp(climb, MIN_CLIMB_RATE, MAX_CLIMB_RATE)
 
 
 func stop(id: String) -> void:
-	# Set airspeed to minimum, zero yaw and climb rate (loiter, not true stop)
+	# Set airspeed to minimum, zero yaw and climb rate (loiter, not true stop).
+	# A VTOL can truly stop: it back-transitions and holds a hover.
 	var st: FixedWingState = _fw.get(id)
 	if st == null or st.crashed:
 		return
-	st.cmd_airspeed = MIN_AIRSPEED
+	st.cmd_airspeed = 0.0 if st.airframe == "vtol" else MIN_AIRSPEED
 	st.cmd_yaw_rate = 0.0
 	st.cmd_climb_rate = 0.0
 	st.climb_rate = 0.0
@@ -1331,6 +1574,7 @@ func all_states() -> Array:
 			"yaw": st.yaw,
 			"altitude": st.altitude,
 			"crashed": st.crashed,
+			"airframe": st.airframe,
 		})
 	return out
 
@@ -1396,12 +1640,15 @@ func reset(id: String) -> void:
 	st.cmd_climb_rate = 0.0
 	st.position = Vector3.ZERO
 	st.velocity = Vector3.ZERO
-	st.airspeed = MIN_AIRSPEED
+	st.airspeed = _initial_airspeed(st)
 	st.climb_rate = 0.0
 	st.pitch = 0.0
 	st.yaw = 0.0
 	st.roll = 0.0
-	st.altitude = 0.0
+	st.tilt = 0.0
+	st.landed = false
+	_settle_vtol_spawn(st)
+	st.altitude = st.position.z
 	st.observed.fill(0)
 	_apply_pose(st)
 

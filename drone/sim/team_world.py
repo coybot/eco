@@ -186,19 +186,21 @@ class KinematicWorld:
             agent.pos[2] = 0.0
             agent.vel = np.array([c * v, s * v, 0.0], dtype=np.float32)
         elif vc.kinematics is Kinematics.COORDINATED_TURN_3D:
-            # Dubins-airplane (fixed-wing): action [vx, vy(ignored), vz, yaw_rate] body
-            # frame. Forward speed is clamped to [min_speed_mps, max_speed_mps] — never
-            # zero or reverse (can't hover). Turn rate is bank-limited: for a fixed max
-            # bank angle, achievable yaw rate falls off as ~1/v, so max_yaw_rate_radps is
-            # taken to apply at min_speed_mps and is scaled down at higher speeds. Climb
-            # is bounded by a fixed flight-path angle, so vz scales with forward speed.
+            # Dubins-airplane (fixed-wing, VTOL): action [vx, vy(ignored), vz, yaw_rate]
+            # body frame. Forward speed is clamped to [min_speed_mps, max_speed_mps] —
+            # never reverse, and never zero unless the class can hover. Turn rate is
+            # bank-limited: for a fixed max bank angle, achievable yaw rate falls off as
+            # ~1/v, so max_yaw_rate_radps applies up to bank_ref_speed_mps (stall speed
+            # for the fixed-wing, wing-borne speed for a VTOL) and is scaled down above.
+            # Climb is bounded by a fixed flight-path angle, so vz scales with forward
+            # speed — plus, for a VTOL, a fixed rotor climb rate at any speed.
             v = float(np.clip(action[0], vc.min_speed_mps, vc.max_speed_mps))
-            v_ref = max(vc.min_speed_mps, 1e-3)
+            v_ref = vc.bank_ref_speed_mps
             yaw_limit = vc.max_yaw_rate_radps * (v_ref / max(v, v_ref))
             w = float(np.clip(action[3], -yaw_limit, yaw_limit))
             agent.yaw = _wrap_pi(agent.yaw + w * dt)
             c, s = math.cos(agent.yaw), math.sin(agent.yaw)
-            climb_cap = v * math.tan(vc.max_climb_angle_rad)
+            climb_cap = vc.climb_cap_mps(v)
             vz = float(np.clip(action[2], -climb_cap, climb_cap))
             agent.pos[0] += (c * v + self.wind[0]) * dt
             agent.pos[1] += (s * v + self.wind[1]) * dt
@@ -625,8 +627,13 @@ def reactive_goto_controller(slow_radius: float | None = None,
             desired = math.atan2(cmd[1], cmd[0])     # body-frame desired heading
             yaw_cmd = float(np.clip(desired * 1.5, -vc.max_yaw_rate_radps,
                                     vc.max_yaw_rate_radps))
-            # never crawl toward stall; only ease off cruise near the goal
-            speed = max(vc.min_speed_mps, vc.max_speed_mps * max(gscale, 0.7))
+            if vc.can_hover:
+                # VTOL: decelerate over the class's braking distance and arrive in a
+                # hover, rather than orbiting the goal at 70% cruise like a fixed-wing.
+                speed = vc.max_speed_mps * gscale
+            else:
+                # never crawl toward stall; only ease off cruise near the goal
+                speed = max(vc.min_speed_mps, vc.max_speed_mps * max(gscale, 0.7))
             vz = cmd[2] * vc.max_speed_mps * gscale
             # blocked ahead with little vertical cue -> climb over
             if obs.min_clearance < ar and abs(tu) < 0.5:

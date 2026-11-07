@@ -247,7 +247,10 @@ func _dispatch(line: String) -> String:
 			var yaw: float = float(req.get("yaw", 0.0))
 			# Optional per-airframe altitude ceiling, metres (default 120).
 			var ceiling: float = float(req.get("ceiling", -1.0))
-			FixedWingManager.spawn(did, Vector3(p[0], p[1], p[2]), yaw, ceiling)
+			# Optional airframe: "fixedwing" (default) or "vtol" (tilt-rotor,
+			# T2 Cruza-like — can hover, land and take off).
+			var airframe: String = str(req.get("airframe", ""))
+			FixedWingManager.spawn(did, Vector3(p[0], p[1], p[2]), yaw, ceiling, airframe)
 			return JSON.stringify({"ok": true})
 
 		"fw_despawn":
@@ -275,7 +278,12 @@ func _dispatch(line: String) -> String:
 				"payload_remaining": st["payload_remaining"],
 				"sensor_yaw_offset": st["sensor_yaw_offset"],
 				"crashed": st["crashed"],
-				"ceiling": st["ceiling"]
+				"ceiling": st["ceiling"],
+				"airframe": st["airframe"],
+				"tilt": st["tilt"],
+				"landed": st["landed"],
+				"flight_mode": st["flight_mode"],
+				"sim_time": st["sim_time"]
 			})
 
 		"fw_detect":

@@ -12,7 +12,8 @@ import argparse
 
 _TYPE_ALIASES = {"quad": "quadcopter", "quadcopter": "quadcopter",
                  "rover": "rover", "carter": "rover",
-                 "fixedwing": "fixedwing", "fw": "fixedwing", "plane": "fixedwing"}
+                 "fixedwing": "fixedwing", "fw": "fixedwing", "plane": "fixedwing",
+                 "vtol": "vtol", "cruza": "vtol"}
 
 
 def parse_roster(spec: str) -> list[dict]:
@@ -41,7 +42,8 @@ def register_fleet(user_sub: str, roster: list[dict], environment: str = "office
     now = datetime.utcnow().isoformat()
     with table.batch_writer() as bw:
         for spec in roster:
-            label = {"quadcopter": "Quad", "fixedwing": "Fixed-Wing"}.get(spec["type"], "Rover")
+            label = {"quadcopter": "Quad", "fixedwing": "Fixed-Wing",
+                     "vtol": "VTOL"}.get(spec["type"], "Rover")
             bw.put_item(Item={
                 "userId": user_sub, "droneId": spec["id"],
                 "name": f"{label} {spec['id'].rsplit('-', 1)[-1]}",

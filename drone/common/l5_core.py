@@ -177,8 +177,13 @@ def reactive_goto_controller(slow_radius: float | None = None,
             desired = math.atan2(cmd[1], cmd[0])     # body-frame desired heading
             yaw_cmd = float(np.clip(desired * 1.5, -vc.max_yaw_rate_radps,
                                     vc.max_yaw_rate_radps))
-            # never crawl toward stall; only ease off cruise near the goal
-            speed = max(vc.min_speed_mps, vc.max_speed_mps * max(gscale, 0.7))
+            if vc.can_hover:
+                # VTOL: decelerate over the class's braking distance and arrive in a
+                # hover, rather than orbiting the goal at 70% cruise like a fixed-wing.
+                speed = vc.max_speed_mps * gscale
+            else:
+                # never crawl toward stall; only ease off cruise near the goal
+                speed = max(vc.min_speed_mps, vc.max_speed_mps * max(gscale, 0.7))
             vz = cmd[2] * vc.max_speed_mps * gscale
             # blocked ahead with little vertical cue -> climb over
             if obs.min_clearance < ar and abs(tu) < 0.5:

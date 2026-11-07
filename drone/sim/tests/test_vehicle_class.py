@@ -54,18 +54,21 @@ def test_unknown_class_rejected():
 
 def test_register_new_class_is_data_only():
     """Adding a class = a descriptor + aliases, no code changes elsewhere."""
-    vtol = vc.VehicleClass(
-        name="vtol", kinematics=vc.Kinematics.HOLONOMIC_3D,
+    # Named "tailsitter", not "vtol": a real "vtol" class now ships, and the cleanup
+    # below would delete it from the registry for every test that runs after this one.
+    demo = vc.VehicleClass(
+        name="tailsitter", kinematics=vc.Kinematics.HOLONOMIC_3D,
         sensor=vc.Sensor.FORWARD_DEPTH, state_dim=56, action_dim=4,
-        policy_onnx="policy_vtol.onnx", radius_m=1.0, max_speed_mps=20.0,
+        policy_onnx="policy_tailsitter.onnx", radius_m=1.0, max_speed_mps=20.0,
         max_accel_mps2=5.0, max_yaw_rate_radps=1.0, ceiling_m=100.0,
         payload_kg=3.0, roles=(vc.Role.AERIAL_SCOUT,),
     )
-    vc.register_class(vtol, "vtol-demo")
+    vc.register_class(demo, "tailsitter-demo")
     try:
-        assert vc.get_class("vtol-demo") is vtol
-        assert "vtol" in vc.known_classes()
+        assert vc.get_class("tailsitter-demo") is demo
+        assert "tailsitter" in vc.known_classes()
     finally:
         # keep the registry clean for other tests
-        for k in ("vtol", "vtol-demo"):
+        for k in ("tailsitter", "tailsitter-demo"):
             vc._REGISTRY.pop(k, None)
+    assert vc.get_class("vtol").name == "vtol"   # the shipped class survived
