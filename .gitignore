@@ -51,12 +51,6 @@ drone/common/certs/thing-name.txt
 drone/models/*
 !drone/models/.gitignore
 
-# ...except the 3 policy files the coy.bot homepage sim commits and serves directly
-# (avoids a runtime cross-origin fetch from HF and version-locks the browser's state/action
-# contract to the exact deployed weights — see eco/www/src/lib/sim/).
-!www/public/models/policy_v26rnn_dr.onnx
-!www/public/models/policy_rover_v2.onnx
-!www/public/models/policy_rover_v2.onnx.data
 !drone/models/README.md
 !drone/models/setup_models.py
 
@@ -77,8 +71,6 @@ DerivedData/
 
 # Local scratch
 drone/.local/
-www/test-sim.mjs
-www/public/sim_video_test.html
 
 # Large 3D source assets (downloaded via drone/sim/godot/setup_assets.py or tracked in LFS)
 /assets/*.glb

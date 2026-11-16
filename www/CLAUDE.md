@@ -93,13 +93,11 @@ If a fresh clone shows `Yusuf Saib <<work-email>>` in `git log -1`, the override
 
 ## Local demo mode (offline)
 
-The site supports a fully offline mode controlled by env vars — no code changes needed.
+The homepage video can play from a local file instead of YouTube, controlled by an env var — no code changes needed.
 
 | | Local dev | AWS prod |
 |---|---|---|
 | Video | `/media/fleet-demo.mp4` (local file) | YouTube embed |
-| AI planner | Ollama `llama3.2` at `localhost:11434` | Bedrock Claude Sonnet 4.6 |
-| Rate limiting | Disabled (no `RATE_LIMIT_TABLE`) | DynamoDB 100 req/IP/hr |
 
 ### One-time setup (do while online)
 
@@ -107,27 +105,21 @@ The site supports a fully offline mode controlled by env vars — no code change
 # 1. Copy env template
 cp .env.local.example .env.local
 
-# 2. Install Ollama and pull the model
-brew install ollama
-ollama pull llama3.2
-
-# 3. Place the demo video (too large for git — get from iCloud / team drive)
+# 2. Place the demo video (too large for git — get from iCloud / team drive)
 ffmpeg -i "/path/to/Fleet Demo.mp4" -c copy -movflags +faststart \
   public/media/fleet-demo.mp4
 ```
 
-### Run offline
-
-```bash
-ollama serve &
-npm run dev
-# → http://localhost:3000, fully offline
-```
+Then `npm run dev` → http://localhost:3000.
 
 ### Why `NEXT_PUBLIC_OFFLINE_MODE` works this way
 
-`NEXT_PUBLIC_*` vars are baked into the client bundle at `next build` time. `npm run dev` reads `.env.local` at startup, so the offline video/Ollama path is active locally. `sst deploy` runs on a machine without `.env.local`, so the YouTube/Bedrock path is active in production. No conditional build flags needed.
+`NEXT_PUBLIC_*` vars are baked into the client bundle at `next build` time. `npm run dev` reads `.env.local` at startup, so the local video path is active locally. `sst deploy` runs on a machine without `.env.local`, so the YouTube path is active in production. No conditional build flags needed.
 
 ### `fleet-demo.mp4` is gitignored
 
 The file is 169 MB — over GitHub's 100 MB per-file limit. It is listed in `.gitignore` and must be added manually per the steps above. If the video is missing, the offline video section will show a blank box (graceful degradation — no crash).
+
+## The in-browser simulation was removed (2026-11-16)
+
+The homepage used to run a three.js + onnxruntime-web fleet sim ("Plaza") with an LLM mission planner behind `/api/plan-mission` (Bedrock, DynamoDB rate limit). All of it is gone: the section, `src/lib/sim/`, `src/lib/mission-types.ts`, `public/models/`, `public/ort/`, the `sync-ort` build hook, the `RateLimitTable` and the Bedrock IAM policy. Don't bring it back without the user asking. `/operator/simulator` is a different thing — a signed-in viewer for a cloud sim session — and stays.

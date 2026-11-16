@@ -16,7 +16,6 @@ import {
   HeroSection,
   VideoDemoSection,
   ProductsSection,
-  PlazaSimSection,
   ResearchTeaserSection,
   BenchmarkTeaserSection,
   SolutionsSection,
@@ -51,7 +50,6 @@ export default function HomePage() {
       <main className="flex-1">
         <HeroSection />
         <VideoDemoSection />
-        <PlazaSimSection />
         <ProductsSection />
         <BenchmarkTeaserSection />
         <SolutionsSection />
