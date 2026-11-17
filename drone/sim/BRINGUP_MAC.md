@@ -9,7 +9,7 @@ runs on the GPU host runs here, only the engine is local Godot instead of Isaac.
 This is the only sim bring-up: the Isaac / GPU path has been removed.
 
 > **Region note:** the `coybot` AWS profile defaults to `us-east-1`, but the entire IoT/Lambda/
-> DynamoDB stack is in **`us-west-2`**. Every `aws` call here pins `--region us-west-2`.
+> DynamoDB stack is in **`us-east-2`**. Every `aws` call here pins `--region us-east-2`.
 
 ## Architecture
 
@@ -56,7 +56,7 @@ DRONES="sim-quadcopter-mac01:quadcopter" ENV=plaza bash drone/sim/launch_fleet_m
   which leaves per-vehicle camera SubViewports blank (no photos/video).
 - Verify Online in the cloud:
   ```bash
-  AWS_PROFILE=coybot aws dynamodb get-item --region us-west-2 --table-name drone-status-dev \
+  AWS_PROFILE=coybot aws dynamodb get-item --region us-east-2 --table-name drone-status-dev \
     --key '{"droneId":{"S":"sim-quadcopter-mac01"}}' \
     --query 'Item.{status:status.S,ttl:ttl.N,variant:variant.S}'
   ```
@@ -65,7 +65,7 @@ DRONES="sim-quadcopter-mac01:quadcopter" ENV=plaza bash drone/sim/launch_fleet_m
 
 Smoke-test the command + perception path without the app (publishes what the cloud Lambda does):
 ```bash
-AWS_PROFILE=coybot aws iot-data publish --region us-west-2 \
+AWS_PROFILE=coybot aws iot-data publish --region us-east-2 \
   --topic "drone/sim-quadcopter-mac01/chat/smoke/command" --cli-binary-format raw-in-base64-out \
   --payload '{"conversation_id":"smoke","action":"execute","code":"capture_photo(\"test\")"}' --qos 1
 # daemon log shows: exec on conv smoke → responded (success=True, imgs=1); JPEG lands in S3.
@@ -77,17 +77,17 @@ The drone must be registered under the **logged-in app user's** Cognito sub. The
 themselves via the onboarding dialog (`registerDrone` → `POST /drones`). For automated tests use
 a deterministic user:
 ```bash
-POOL=us-west-2_MkixOuF3S; CLIENT=4j965u17ohomik14cte9ni276h
-AWS_PROFILE=coybot aws cognito-idp admin-create-user --region us-west-2 --user-pool-id $POOL \
+POOL=us-east-2_MkixOuF3S; CLIENT=4j965u17ohomik14cte9ni276h
+AWS_PROFILE=coybot aws cognito-idp admin-create-user --region us-east-2 --user-pool-id $POOL \
   --username simtest@coy.bot --message-action SUPPRESS \
   --user-attributes Name=email,Value=simtest@coy.bot Name=email_verified,Value=true
-AWS_PROFILE=coybot aws cognito-idp admin-set-user-password --region us-west-2 --user-pool-id $POOL \
+AWS_PROFILE=coybot aws cognito-idp admin-set-user-password --region us-east-2 --user-pool-id $POOL \
   --username simtest@coy.bot --password '${E2E_TEST_PASSWORD}' --permanent
 ```
 If re-running the onboarding test, clear the prior registry row first (direct delete avoids the
 factory-reset that the `DELETE /drones` API triggers):
 ```bash
-AWS_PROFILE=coybot aws dynamodb delete-item --region us-west-2 --table-name drone-registry-dev \
+AWS_PROFILE=coybot aws dynamodb delete-item --region us-east-2 --table-name drone-registry-dev \
   --key '{"userId":{"S":"<TEST_USER_SUB>"},"droneId":{"S":"sim-quadcopter-mac01"}}'
 ```
 

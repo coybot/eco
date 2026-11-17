@@ -19,8 +19,8 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-IOT_PLACEHOLDER = "YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com"
-CREDENTIALS_PLACEHOLDER = "YOUR_CREDENTIALS_ENDPOINT.credentials.iot.us-west-2.amazonaws.com"
+IOT_PLACEHOLDER = "YOUR_IOT_ENDPOINT.iot.us-east-2.amazonaws.com"
+CREDENTIALS_PLACEHOLDER = "YOUR_CREDENTIALS_ENDPOINT.credentials.iot.us-east-2.amazonaws.com"
 
 _cache: Optional[Dict[str, str]] = None
 

@@ -9,7 +9,7 @@ export const OPERATOR_CONFIG = {
     process.env.NEXT_PUBLIC_OPERATOR_API_ENDPOINT ??
     "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod",
 
-  region: process.env.NEXT_PUBLIC_OPERATOR_REGION ?? "us-west-2",
+  region: process.env.NEXT_PUBLIC_OPERATOR_REGION ?? "us-east-2",
 
   // Cognito Identity Pool – used to exchange social tokens for AWS credentials
   // (needed for IoT WebSocket SigV4 signing)
@@ -28,9 +28,9 @@ export const OPERATOR_CONFIG = {
     process.env.NEXT_PUBLIC_OPERATOR_COGNITO_APP_CLIENT_ID ?? "",
 
   cognitoRegion:
-    process.env.NEXT_PUBLIC_OPERATOR_COGNITO_REGION ?? "us-west-2",
+    process.env.NEXT_PUBLIC_OPERATOR_COGNITO_REGION ?? "us-east-2",
 
-  // Cognito Hosted UI URL (e.g., https://<domain>.auth.us-west-2.amazoncognito.com)
+  // Cognito Hosted UI URL (e.g., https://<domain>.auth.us-east-2.amazoncognito.com)
   cognitoHostedUiUrl:
     process.env.NEXT_PUBLIC_OPERATOR_COGNITO_HOSTED_UI_URL ?? "",
 

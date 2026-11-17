@@ -28,7 +28,7 @@ import planning
 # AWS clients (real boto3 by default; clients.configure() lets a GCS process
 # inject local stand-ins before this module is imported - see clients.py)
 dynamodb = clients.get_dynamodb()
-AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
+AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
 STATUS_TTL_SECONDS = int(os.environ.get("STATUS_TTL_SECONDS", "30"))
 
 # Bedrock model - Claude 4.5 Sonnet via cross-region inference profile
@@ -47,7 +47,7 @@ MISSION_EFFORT = os.environ.get("MISSION_EFFORT", "medium") or None
 MISSION_MAX_TOKENS = int(os.environ.get("MISSION_MAX_TOKENS", "16000" if MISSION_EFFORT else "2048"))
 # Fallback model for code generation (faster, cheaper)
 BEDROCK_CODE_MODEL_ID = os.environ.get(
-    "BEDROCK_CODE_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0"
+    "BEDROCK_CODE_MODEL_ID", "us.anthropic.claude-3-haiku-20240307-v1:0"
 )
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
 iot = clients.get_iot()

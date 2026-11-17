@@ -50,7 +50,7 @@ def load_config():
 def get_iot_credentials(config):
     """Get temporary AWS credentials from IoT credential provider."""
     drone_id = config.get('drone_id')
-    region = config.get('region', 'us-west-2')
+    region = config.get('region', 'us-east-2')
     role_alias = config.get('video_role_alias', 'drone-video-role-alias-dev')
     credentials_endpoint = config.get('credentials_endpoint')
     
@@ -99,7 +99,7 @@ def get_signaling_channel(config, credentials):
     import boto3
     
     drone_id = config.get('drone_id')
-    region = config.get('region', 'us-west-2')
+    region = config.get('region', 'us-east-2')
     environment = config.get('environment', 'dev')
     channel_name = f"drone-{drone_id}-{environment}"
     

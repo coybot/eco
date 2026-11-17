@@ -15,7 +15,7 @@ from urllib.parse import urlparse, quote
 
 # Initialize clients
 kvs_region_env = os.environ.get("KVS_REGION")
-KVS_REGION = kvs_region_env or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
+KVS_REGION = kvs_region_env or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
 kvs = boto3.client('kinesisvideo', region_name=KVS_REGION)
 dynamodb = boto3.resource('dynamodb')
 drone_table = dynamodb.Table(os.environ.get('DRONE_TABLE', 'drone-registry-dev'))

@@ -216,8 +216,8 @@ def main():
                     default=credentials_endpoint())
     ap.add_argument("--video-role-alias", default="drone-video-role-alias-dev")
     ap.add_argument("--s3-role-alias", default="drone-s3-access-role-alias-dev")
-    ap.add_argument("--images-bucket", default="drone-images-dev-us-west-2-041686205727")
-    ap.add_argument("--region", default="us-west-2")
+    ap.add_argument("--images-bucket", default="coybot-drone-images-dev-us-east-2")
+    ap.add_argument("--region", default="us-east-2")
     # --control-plane gcs options
     ap.add_argument("--mqtt-host", default="127.0.0.1", help="GCS mosquitto broker host")
     ap.add_argument("--mqtt-port", type=int, default=1883)

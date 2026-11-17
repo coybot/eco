@@ -2925,7 +2925,7 @@ def _get_iot_credentials():
         config = yaml.safe_load(f) or {}
     
     _, thing_name = _drone_identity(config)
-    region = config.get('region', 'us-west-2')
+    region = config.get('region', 'us-east-2')
     role_alias = config.get('s3_role_alias', 'drone-s3-access-role-alias-dev')
     credentials_endpoint = config.get('credentials_endpoint')
 
@@ -3029,10 +3029,10 @@ def _get_s3():
                 with open(config_path, 'r') as f:
                     config = yaml.safe_load(f) or {}
                 _s3_bucket = config.get('images_bucket', 'drone-images-dev')
-                region = config.get('region', 'us-west-2')
+                region = config.get('region', 'us-east-2')
             else:
                 _s3_bucket = 'drone-images-dev'
-                region = 'us-west-2'
+                region = 'us-east-2'
             
             # Try to get credentials from IoT credential provider
             creds = _get_iot_credentials()

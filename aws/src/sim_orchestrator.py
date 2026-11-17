@@ -29,7 +29,7 @@ INSTANCE_ID = os.environ.get("SIM_INSTANCE_ID", "")
 HOST_BASE = os.environ.get("SIM_HOST_BASE", "https://sim.coy.bot").rstrip("/")
 SHARED_SECRET = os.environ.get("SIM_SHARED_SECRET", "")
 PUBLIC_WSS = os.environ.get("SIM_PUBLIC_WSS", "wss://sim.coy.bot")
-REGION = os.environ.get("AWS_REGION", "us-west-2")
+REGION = os.environ.get("AWS_REGION", "us-east-2")
 
 ec2 = boto3.client("ec2", region_name=REGION)
 

@@ -36,7 +36,7 @@ final class AWSIoTMQTTClient: NSObject, MQTTClientProtocol {
 
         // Create credentials provider with custom identity provider for social logins
         credentialsProvider = AWSCognitoCredentialsProvider(
-            regionType: .USWest2,
+            regionType: .USEast2,
             identityPoolId: AWSConfig.identityPoolId,
             identityProviderManager: identityProvider
         )
@@ -48,7 +48,7 @@ final class AWSIoTMQTTClient: NSObject, MQTTClientProtocol {
 
         // Create IoT configuration
         let iotConfiguration = AWSServiceConfiguration(
-            region: .USWest2,
+            region: .USEast2,
             endpoint: iotEndpoint,
             credentialsProvider: credentialsProvider
         )

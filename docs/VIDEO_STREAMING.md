@@ -68,7 +68,7 @@ This document explains how to set up live video streaming from the drone's OAK-D
    
    # Video streaming
    video_role_alias: "drone-video-role-alias-dev"
-  credentials_endpoint: "xxxx.credentials.iot.us-west-2.amazonaws.com"
+  credentials_endpoint: "xxxx.credentials.iot.us-east-2.amazonaws.com"
    
    # Get credentials endpoint with:
    # aws iot describe-endpoint --endpoint-type iot:CredentialProvider

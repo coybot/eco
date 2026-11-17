@@ -1,8 +1,22 @@
 version = 0.1
 
+# Stack drone-api lives in the coybot AWS account, us-east-2: that org's
+# region-restriction SCP allows Lambda, DynamoDB, S3, API Gateway, IoT and
+# Cognito only there. no_execute_changeset: every deploy stops at a change set
+# for review; run `aws cloudformation execute-change-set` after reading it.
+[default.global.parameters]
+profile = "coybot"
+region = "us-east-2"
+
+[default.build.parameters]
+profile = "coybot"
+region = "us-east-2"
+
 [default.deploy.parameters]
 stack_name = "drone-api"
-region = "us-west-2"
+profile = "coybot"
+region = "us-east-2"
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
 resolve_s3 = true
 confirm_changeset = false
+no_execute_changeset = true

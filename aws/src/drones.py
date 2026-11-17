@@ -13,7 +13,7 @@ import uuid
 import clients
 
 dynamodb = clients.get_dynamodb()
-AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
+AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
 iot_data = clients.get_iot()
 # Control-plane IoT client (Cognito identity <-> IoT policy attach/detach) -
 # cloud-only, no GCS equivalent, intentionally NOT routed through clients.py.
@@ -827,7 +827,7 @@ def attach_iot_policy_handler(event, context):
     POST /auth/iot-policy - Attach IoT policy to Cognito Identity for MQTT access.
     
     This must be called after the iOS app gets Cognito credentials.
-    Body: { "identityId": "us-west-2:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }
+    Body: { "identityId": "us-east-2:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }
     """
     user_id = get_user_id(event)
     if not user_id:
@@ -842,7 +842,7 @@ def attach_iot_policy_handler(event, context):
     if not identity_id:
         return json_response(400, {'error': 'Missing identityId'})
     
-    # Basic validation: identity ID should look like "us-west-2:uuid"
+    # Basic validation: identity ID should look like "<region>:uuid"
     if ':' not in identity_id or len(identity_id) < 20:
         return json_response(400, {'error': 'Invalid identityId format'})
     

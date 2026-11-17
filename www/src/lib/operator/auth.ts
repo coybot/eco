@@ -46,10 +46,11 @@ export function cognitoSignIn(): void {
     throw new Error("Cognito Hosted UI URL not configured")
   }
 
-  const redirectUri = encodeURIComponent(
+  // Raw, not encodeURIComponent'd: URLSearchParams encodes it once, and it has
+  // to match the redirect_uri the token exchange sends byte for byte.
+  const redirectUri =
     OPERATOR_CONFIG.cognitoCallbackUrl ||
-      `${window.location.origin}/operator/auth/callback`
-  )
+    `${window.location.origin}/operator/auth/callback`
 
   const params = new URLSearchParams({
     client_id: OPERATOR_CONFIG.cognitoAppClientId,

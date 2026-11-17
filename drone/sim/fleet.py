@@ -34,7 +34,7 @@ def parse_roster(spec: str) -> list[dict]:
 
 
 def register_fleet(user_sub: str, roster: list[dict], environment: str = "office",
-                   isaac_host: str = "hoopoe", region: str = "us-west-2") -> int:
+                   isaac_host: str = "hoopoe", region: str = "us-east-2") -> int:
     """Bulk write drone-registry-dev rows (one per vehicle). Needs AWS creds."""
     import boto3
     from datetime import datetime
@@ -59,7 +59,7 @@ def main():
     ap.add_argument("--user-sub", required=True, help="owner Cognito sub")
     ap.add_argument("--env", default="office")
     ap.add_argument("--isaac-host", default="hoopoe")
-    ap.add_argument("--region", default="us-west-2")
+    ap.add_argument("--region", default="us-east-2")
     args = ap.parse_args()
     roster = parse_roster(args.fleet)
     n = register_fleet(args.user_sub, roster, args.env, args.isaac_host, args.region)

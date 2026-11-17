@@ -43,7 +43,7 @@ def configure(dynamodb=None, iot=None, s3=None, image_url_fn=None):
 
 
 def _region() -> str:
-    return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
+    return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
 
 
 def get_dynamodb():

@@ -16,10 +16,10 @@
 # control_plane: "gcs"
 
 # AWS IoT Configuration (control_plane: aws)
-iot_endpoint: "YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com"  # Get from: aws iot describe-endpoint --endpoint-type iot:Data-ATS
+iot_endpoint: "YOUR_IOT_ENDPOINT.iot.us-east-2.amazonaws.com"  # Get from: aws iot describe-endpoint --endpoint-type iot:Data-ATS
 
 # AWS Region (match your deployed SAM stack)
-region: "us-west-2"
+region: "us-east-2"
 
 # Ground Control Station Configuration (control_plane: gcs) - the GCS prints
 # this drone's auth_token on first `POST /drones` registration (see
@@ -79,11 +79,11 @@ provisioning_timeout: 60  # seconds to wait for setup (default: 60)
 
 # Video Streaming (Kinesis Video Streams WebRTC)
 video_role_alias: "drone-video-role-alias-dev"  # IoT role alias for Kinesis access
-credentials_endpoint: "YOUR_CREDENTIALS_ENDPOINT.credentials.iot.us-west-2.amazonaws.com"  # Get from: aws iot describe-endpoint --endpoint-type iot:CredentialProvider
+credentials_endpoint: "YOUR_CREDENTIALS_ENDPOINT.credentials.iot.us-east-2.amazonaws.com"  # Get from: aws iot describe-endpoint --endpoint-type iot:CredentialProvider
 
 # S3 Image Upload
 s3_role_alias: "drone-s3-access-role-alias-dev"  # IoT role alias for S3 access
-images_bucket: "drone-images-dev-us-west-2-YOUR_ACCOUNT_ID"
+images_bucket: "coybot-drone-images-dev-us-east-2"
 
 
 # Peer-to-peer team link (team_link.py): position, task claims and sightings

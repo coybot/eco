@@ -70,7 +70,7 @@ import androidx.core.net.toUri
 // Constants
 // ============================================================
 private const val API_BASE = "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod"
-private const val COGNITO_REGION = "us-west-2"
+private const val COGNITO_REGION = "us-east-2"
 private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
 private const val COGNITO_URL = "https://cognito-idp.$COGNITO_REGION.amazonaws.com/"
 private const val COGNITO_HOSTED_UI = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"

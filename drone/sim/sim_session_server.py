@@ -460,7 +460,7 @@ def main():
                     help="skip DynamoDB registration — dev/test without AWS creds")
     ap.add_argument("--rendering-driver", default=None,
                     help="Godot rendering driver override (e.g. opengl3 for CPU instances)")
-    ap.add_argument("--region", default="us-west-2")
+    ap.add_argument("--region", default="us-east-2")
     args = ap.parse_args()
 
     host = SimHost(args)

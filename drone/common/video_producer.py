@@ -30,7 +30,7 @@ from provisioning import get_or_create_drone_id
 SCRIPT_DIR = Path(__file__).parent.absolute()
 CONFIG_PATH = SCRIPT_DIR / "config.yaml"
 CERT_DIR = SCRIPT_DIR / "certs"
-DEFAULT_REGION = "us-west-2"
+DEFAULT_REGION = "us-east-2"
 
 # Global state
 _streaming = False

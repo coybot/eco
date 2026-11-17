@@ -68,15 +68,15 @@ DroneOperator/
 After deploying the SAM stack, get your configuration values:
 
 ```bash
-sam list stack-outputs --stack-name drone-api --region us-west-2
+sam list stack-outputs --stack-name drone-api --region us-east-2
 ```
 
 Update `Config/AWSConfig.swift`:
 
 ```swift
 enum AWSConfig {
-    static let region = "us-west-2"
-    static let apiEndpoint = "https://XXXXXXXXXX.execute-api.us-west-2.amazonaws.com/prod"
+    static let region = "us-east-2"
+    static let apiEndpoint = "https://XXXXXXXXXX.execute-api.us-east-2.amazonaws.com/prod"
     static let googleClientId = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 }
 ```

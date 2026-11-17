@@ -34,8 +34,20 @@ Three targets, two deploy steps. Mobile (iOS) has no deploy step unless the app 
 
 ```bash
 cd eco/aws
-PATH="/opt/homebrew/bin:$PATH" AWS_PROFILE=coybot sam build && AWS_PROFILE=coybot sam deploy
+PATH="/opt/homebrew/bin:$PATH" sam build && PATH="/opt/homebrew/bin:$PATH" sam deploy
 ```
+
+`samconfig.toml` pins stack `drone-api`, profile `coybot`, region **us-east-2** and
+`no_execute_changeset = true`. The coybot org's region SCP denies Lambda, DynamoDB,
+S3, API Gateway, IoT and Cognito everywhere except us-east-2. `sam deploy` stops at
+a change set: read it with `aws cloudformation describe-change-set`, then run
+`aws cloudformation execute-change-set`. Pass `GoogleClientSecret` on every deploy
+that touches the Cognito Google IdP (it is `NoEcho`, never in git).
+
+After a deploy that **replaces** the stack (new account, region or user pool), run
+`python3 aws/scripts/write_client_configs.py`. It reads the stack outputs and
+rewrites the iOS, Android, website `/operator` and drone stack configs. Each
+aircraft then needs a new IoT certificate for the new account.
 
 **Do NOT use `sst deploy` for `eco/aws`.** The `sst.config.ts` uses a `create`-only Pulumi command resource — SST only runs SAM on the very first deploy and silently skips it on all subsequent ones (exits 0, deploys nothing). Always run SAM directly.
 

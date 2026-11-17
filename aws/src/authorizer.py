@@ -16,7 +16,7 @@ USER_POOL_REGION = (
     os.environ.get("USER_POOL_REGION")
     or os.environ.get("AWS_REGION")
     or os.environ.get("AWS_DEFAULT_REGION")
-    or "us-west-2"
+    or "us-east-2"
 )
 
 # JWKS cache TTL in seconds

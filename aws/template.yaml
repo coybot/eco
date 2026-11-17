@@ -12,7 +12,9 @@ Parameters:
   GoogleClientId:
     Type: String
     Default: "1023808862480-0meugvago280fchkbguebfb2e6ll17sp.apps.googleusercontent.com"
-    Description: Google OAuth Web Client ID for Cognito federation (must be Web type, not iOS)
+    Description: >-
+      Google OAuth Web Client ID for Cognito federation (must be Web type, not
+      iOS). GoogleClientSecret must belong to this same client.
   GoogleClientSecret:
     Type: String
     Default: ""
@@ -21,6 +23,12 @@ Parameters:
       Google OAuth Web Client Secret for Cognito federation. Never give this a
       default: pass it at deploy time, e.g.
       sam deploy --parameter-overrides GoogleClientSecret=$GOOGLE_CLIENT_SECRET
+  WebOperatorOrigin:
+    Type: String
+    Default: "https://coy.bot"
+    Description: >-
+      Origin of the website's /operator console. Its Hosted UI callback
+      (<origin>/operator/auth/callback) is allowed on the app client.
   AppleServicesId:
     Type: String
     Default: ""
@@ -115,10 +123,14 @@ Resources:
         - droneoperator://callback
         - com.coybot.drone://callback
         - http://localhost:3000/callback
+        - http://localhost:3000/operator/auth/callback
+        - !Sub ${WebOperatorOrigin}/operator/auth/callback
       LogoutURLs:
         - droneoperator://logout
         - com.coybot.drone://logout
         - http://localhost:3000/logout
+        - http://localhost:3000/operator
+        - !Sub ${WebOperatorOrigin}/operator
       AllowedOAuthFlows:
         - code
       AllowedOAuthScopes:
@@ -130,7 +142,8 @@ Resources:
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: !Sub drone-auth-${Environment}-${AWS::AccountId}
+      # No account id in the prefix: the domain is baked into public client code.
+      Domain: !Sub coybot-drone-auth-${Environment}
       UserPoolId: !Ref UserPool
 
   # ============================================
@@ -1436,7 +1449,8 @@ Resources:
   DroneImagesBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub drone-images-${Environment}-${AWS::Region}-${AWS::AccountId}
+      # No account id in the name: the bucket name is baked into public client code.
+      BucketName: !Sub coybot-drone-images-${Environment}-${AWS::Region}
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders:
@@ -1447,11 +1461,13 @@ Resources:
             AllowedOrigins:
               - "*"
             MaxAge: 3600
+      # Nothing reads this bucket anonymously: apps, the share page and the
+      # drones all use presigned URLs or IoT role-alias credentials.
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldImages
@@ -1971,7 +1987,7 @@ Outputs:
   
   UserPoolDomain:
     Description: Cognito User Pool Domain
-    Value: !Sub 'https://drone-auth-${Environment}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com'
+    Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'
   
   ThingName:
     Description: IoT Thing name

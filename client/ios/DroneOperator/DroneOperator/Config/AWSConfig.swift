@@ -1,10 +1,10 @@
 import Foundation
 
 /// AWS and auth endpoints for the DroneOperator app.
-/// Values are sourced from the deployed `drone-api` SAM stack in us-west-2.
+/// Values are sourced from the deployed `drone-api` SAM stack in us-east-2.
 enum AWSConfig {
     // MARK: - AWS
-    static let region = "us-west-2"
+    static let region = "us-east-2"
 
     // MARK: - API Gateway
     static let apiEndpoint = "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod"

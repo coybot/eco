@@ -34,7 +34,7 @@ from aiortc import (RTCPeerConnection, RTCSessionDescription, VideoStreamTrack,
 from aiortc.sdp import candidate_from_sdp
 from av import VideoFrame
 
-DEFAULT_REGION = "us-west-2"
+DEFAULT_REGION = "us-east-2"
 
 # Credential source (set once by run_video_producer). A sim drone authenticates
 # to KVS exactly like an IRL drone: present its IoT device cert to the IoT
