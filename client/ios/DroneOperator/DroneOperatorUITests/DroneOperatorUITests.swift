@@ -124,8 +124,7 @@ final class DroneOperatorUITests: XCTestCase {
             NSPredicate(format: "placeholderValue CONTAINS[c] %@", "drone-001")).firstMatch
         XCTAssertTrue(idField.waitForExistence(timeout: 10), "Drone ID field not found.")
         screenshot(app, name: "03_already_configured_entry")
-        idField.tap()
-        idField.typeText(droneId)
+        typeWhenFocused(idField, droneId)
 
         // The submit button is the one inside the form (label "Add Drone").
         let submit = app.buttons["Add Drone"].firstMatch
@@ -163,15 +162,36 @@ final class DroneOperatorUITests: XCTestCase {
         screenshot(app, name: "06_chat_sent")
 
         // A drone reply mentioning "photo" should arrive within the cloud round-trip window.
+        // Exclude the bubble holding our own phrase (it contains "photo" too, which let
+        // this pass with no reply at all), and stop early on a backend error reply.
         let reply = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] 'photo'")).firstMatch
-        XCTAssertTrue(reply.waitForExistence(timeout: 150),
-                      "No assistant reply mentioning 'photo' arrived within 150s.")
+            NSPredicate(format: "label CONTAINS[c] 'photo' AND label != %@", phrase)).firstMatch
+        let errorReply = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'service error' OR label CONTAINS[c] %@",
+                        "couldn't process")).firstMatch
+        let deadline = Date().addingTimeInterval(150)
+        while Date() < deadline && !reply.exists && !errorReply.exists {
+            _ = reply.waitForExistence(timeout: 2)
+        }
         screenshot(app, name: "07_chat_reply")
+        XCTAssertFalse(errorReply.exists, "Backend error reply: \(errorReply.label)")
+        XCTAssertTrue(reply.exists, "No drone reply mentioning 'photo' arrived within 150s.")
     }
 
     /// Saves a screenshot as an XCTAttachment so it appears in the xcresult bundle
     /// and is also written to /tmp/ios_screenshots/ for easy retrieval.
+    /// Taps until the field really has keyboard focus, then types. A tap that lands
+    /// while a sheet is still animating in does not focus the field, and typeText
+    /// then fails with "Neither element nor any descendant has keyboard focus".
+    private func typeWhenFocused(_ field: XCUIElement, _ text: String) {
+        for _ in 0..<5 {
+            field.tap()
+            if (field.value(forKey: "hasKeyboardFocus") as? Bool) == true { break }
+            Thread.sleep(forTimeInterval: 0.6)
+        }
+        field.typeText(text)
+    }
+
     private func screenshot(_ app: XCUIApplication, name: String) {
         let shot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: shot)
