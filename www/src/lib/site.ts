@@ -17,3 +17,20 @@ export const SITE = {
   appStore:
     "https://apps.apple.com/us/app/coybot-drone-operator/id6471107516",
 } as const;
+
+/** Public contact details (Contact page, footer, structured data). */
+export const CONTACT = {
+  legalName: "Coybot LLC",
+  email: "hello@coy.bot",
+  phoneDisplay: "+1 408-908-8273",
+  phoneE164: "+14089088273",
+  address: {
+    street: "2150 N First St",
+    city: "San Jose",
+    region: "CA",
+    postalCode: "95131",
+    country: "US",
+  },
+  mapsUrl:
+    "https://www.google.com/maps/search/?api=1&query=2150+N+First+St%2C+San+Jose%2C+CA+95131",
+} as const;
