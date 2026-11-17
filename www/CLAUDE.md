@@ -9,7 +9,7 @@ This is the marketing site at https://coy.bot. It is **informational only**: the
 | Source code | `coybot/eco` GitHub repo, this directory (`www/`) |
 | Production site | AWS, deployed via SST → CloudFront + Lambda + S3 |
 | Stage | `production` (live at https://coy.bot) |
-| AWS profile | `coybot` (account `041686205727`, IAM user `yusuf`) |
+| AWS profile | `coybot` (the coybot AWS org's "Sunrise Sprint" account). Region **us-east-2** — the org's region-restriction SCP denies Lambda/DynamoDB/SQS in us-east-1 and us-west-2 |
 | Git identity | `yusuf-coybot <218167113+yusuf-coybot@users.noreply.github.com>` (set as repo-local config) |
 
 ## The single most important rule
