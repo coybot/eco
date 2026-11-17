@@ -126,10 +126,13 @@ final class DroneOperatorUITests: XCTestCase {
         screenshot(app, name: "03_already_configured_entry")
         typeWhenFocused(idField, droneId)
 
-        // The submit button is the one inside the form (label "Add Drone").
-        let submit = app.buttons["Add Drone"].firstMatch
-        XCTAssertTrue(submit.waitForExistence(timeout: 5))
-        submit.tap()
+        // The submit button is the one inside the form (label "Add Drone"). Another
+        // "Add Drone" button sits behind the sheet, and firstMatch sometimes picked
+        // that one (hit point {-1,-1}), so the tap did nothing. Tap the hittable one.
+        let submit = firstHittable(app.buttons.matching(NSPredicate(format: "label == %@", "Add Drone")),
+                                   timeout: 5)
+        XCTAssertNotNil(submit, "No tappable Add Drone button on the sheet.")
+        submit?.tap()
 
         // The new drone card should appear and report Online.
         let cell = app.descendants(matching: .any)
@@ -173,8 +176,11 @@ final class DroneOperatorUITests: XCTestCase {
         // A drone reply mentioning "photo" should arrive within the cloud round-trip window.
         // Exclude the bubble holding our own phrase (it contains "photo" too, which let
         // this pass with no reply at all), and stop early on a backend error reply.
-        let reply = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] 'photo' AND label != %@", phrase)).firstMatch
+        // The model words it differently each time ("Here's the photo", "Here's what
+        // I captured"), so accept any of the usual words for the picture.
+        let reply = app.staticTexts.matching(NSPredicate(
+            format: "(label CONTAINS[c] 'photo' OR label CONTAINS[c] 'captured' OR label CONTAINS[c] 'image' OR label CONTAINS[c] 'picture') AND label != %@",
+            phrase)).firstMatch
         let errorReply = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] 'service error' OR label CONTAINS[c] %@",
                         "couldn't process")).firstMatch
@@ -184,11 +190,23 @@ final class DroneOperatorUITests: XCTestCase {
         }
         screenshot(app, name: "07_chat_reply")
         XCTAssertFalse(errorReply.exists, "Backend error reply: \(errorReply.label)")
-        XCTAssertTrue(reply.exists, "No drone reply mentioning 'photo' arrived within 150s.")
+        XCTAssertTrue(reply.exists, "No drone reply about the photo arrived within 150s.")
     }
 
     /// Saves a screenshot as an XCTAttachment so it appears in the xcresult bundle
     /// and is also written to /tmp/ios_screenshots/ for easy retrieval.
+    /// The first element of `query` that can actually be tapped, waiting up to `timeout`.
+    private func firstHittable(_ query: XCUIElementQuery, timeout: TimeInterval) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let hit = query.allElementsBoundByIndex.first(where: { $0.exists && $0.isHittable }) {
+                return hit
+            }
+            Thread.sleep(forTimeInterval: 0.3)
+        } while Date() < deadline
+        return nil
+    }
+
     /// Taps until the field really has keyboard focus, then types. A tap that lands
     /// while a sheet is still animating in does not focus the field, and typeText
     /// then fails with "Neither element nor any descendant has keyboard focus".
