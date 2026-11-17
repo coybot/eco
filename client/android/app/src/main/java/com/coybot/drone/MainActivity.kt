@@ -69,11 +69,11 @@ import androidx.core.net.toUri
 // ============================================================
 // Constants
 // ============================================================
-private const val API_BASE = "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod"
+private const val API_BASE = "https://w3zf9y7b29.execute-api.us-east-2.amazonaws.com/prod"
 private const val COGNITO_REGION = "us-east-2"
-private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
+private const val COGNITO_CLIENT_ID = "5fvrfsuln61as13mtu4um6oquu"
 private const val COGNITO_URL = "https://cognito-idp.$COGNITO_REGION.amazonaws.com/"
-private const val COGNITO_HOSTED_UI = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"
+private const val COGNITO_HOSTED_UI = "https://coybot-drone-auth-dev.auth.us-east-2.amazoncognito.com"
 private const val OAUTH_REDIRECT_URI = "com.coybot.drone://callback"
 private const val PREFS_NAME = "coybot_drone_prefs"
 

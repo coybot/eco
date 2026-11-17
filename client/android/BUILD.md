@@ -50,9 +50,9 @@ Sideload it: `adb install app/build/outputs/apk/debug/app-debug.apk`
 ## Config values (top of MainActivity.kt)
 
 ```kotlin
-private const val API_BASE    = "https://03bnj3wwef.execute-api.us-east-2.amazonaws.com/prod"
+private const val API_BASE    = "https://w3zf9y7b29.execute-api.us-east-2.amazonaws.com/prod"
 private const val COGNITO_REGION    = "us-east-2"
-private const val COGNITO_CLIENT_ID = "4j965u17ohomik14cte9ni276h"
+private const val COGNITO_CLIENT_ID = "5fvrfsuln61as13mtu4um6oquu"
 ```
 
 These are read from the CloudFormation stack outputs. If you redeploy the stack, update these three constants.
@@ -61,13 +61,13 @@ These are read from the CloudFormation stack outputs. If you redeploy the stack,
 
 ```bash
 aws cognito-idp admin-create-user \
-  --user-pool-id us-east-2_MkixOuF3S \
+  --user-pool-id us-east-2_K16WBUtfm \
   --username new@example.com \
   --temporary-password TempPass1 \
   --profile coybot --region us-east-2
 
 aws cognito-idp admin-set-user-password \
-  --user-pool-id us-east-2_MkixOuF3S \
+  --user-pool-id us-east-2_K16WBUtfm \
   --username new@example.com \
   --password "$E2E_TEST_PASSWORD" --permanent \
   --profile coybot --region us-east-2

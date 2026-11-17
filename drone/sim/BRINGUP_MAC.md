@@ -77,7 +77,7 @@ The drone must be registered under the **logged-in app user's** Cognito sub. The
 themselves via the onboarding dialog (`registerDrone` → `POST /drones`). For automated tests use
 a deterministic user:
 ```bash
-POOL=us-east-2_MkixOuF3S; CLIENT=4j965u17ohomik14cte9ni276h
+POOL=us-east-2_K16WBUtfm; CLIENT=5fvrfsuln61as13mtu4um6oquu
 AWS_PROFILE=coybot aws cognito-idp admin-create-user --region us-east-2 --user-pool-id $POOL \
   --username simtest@coy.bot --message-action SUPPRESS \
   --user-attributes Name=email,Value=simtest@coy.bot Name=email_verified,Value=true

@@ -7,20 +7,20 @@ enum AWSConfig {
     static let region = "us-east-2"
 
     // MARK: - API Gateway
-    static let apiEndpoint = "https://03bnj3wwef.execute-api.us-west-2.amazonaws.com/prod"
+    static let apiEndpoint = "https://w3zf9y7b29.execute-api.us-east-2.amazonaws.com/prod"
 
     // MARK: - Cognito
-    static let identityPoolId = "us-west-2:4f98bb63-512b-4772-861f-8a9bed4e8727"
-    static let userPoolId = "us-west-2_MkixOuF3S"
+    static let identityPoolId = "us-east-2:6da3c153-6ccf-487c-833c-02e81d728135"
+    static let userPoolId = "us-east-2_K16WBUtfm"
 
     // MARK: - IoT Core (for MQTT)
-    static let iotEndpoint = "a3c6a8oie6d6k5-ats.iot.us-west-2.amazonaws.com"
+    static let iotEndpoint = "a8n91fgngz353-ats.iot.us-east-2.amazonaws.com"
 
     // MARK: - S3 (for drone images)
-    static let imagesBucket = "drone-images-dev-us-west-2-041686205727"
+    static let imagesBucket = "coybot-drone-images-dev-us-east-2"
 
     // MARK: - Cognito App Client
-    static let cognitoClientId = "4j965u17ohomik14cte9ni276h"
-    static let cognitoHostedUIDomain = "https://drone-auth-dev-041686205727.auth.us-west-2.amazoncognito.com"
+    static let cognitoClientId = "5fvrfsuln61as13mtu4um6oquu"
+    static let cognitoHostedUIDomain = "https://coybot-drone-auth-dev.auth.us-east-2.amazoncognito.com"
     static let callbackURLScheme = "droneoperator"
 }
