@@ -161,6 +161,15 @@ final class DroneOperatorUITests: XCTestCase {
         sendBtn.tap()
         screenshot(app, name: "06_chat_sent")
 
+        // Nothing that moves an aircraft is sent until the operator says OK: the
+        // backend holds the command and the app asks with a No / OK alert. Answer it
+        // like an operator would. (Error alerts have OK but no "No" button.)
+        let confirm = app.alerts.firstMatch
+        if confirm.waitForExistence(timeout: 60), confirm.buttons["No"].exists {
+            screenshot(app, name: "06b_confirm_flight")
+            confirm.buttons["OK"].tap()
+        }
+
         // A drone reply mentioning "photo" should arrive within the cloud round-trip window.
         // Exclude the bubble holding our own phrase (it contains "photo" too, which let
         // this pass with no reply at all), and stop early on a backend error reply.

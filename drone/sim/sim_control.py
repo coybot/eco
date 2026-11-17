@@ -217,8 +217,20 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
                 urls.append(u)
         return urls
 
+    # The real drone_sdk's battery calls, so planner code that checks them runs
+    # here too. The sim has no battery model: always a full, healthy pack.
+    def get_battery(*_, **__):
+        return {"voltage": 16.8, "current": None, "remaining": 100, "source": "sim",
+                "warnings": [], "consumed_mah": 0, "fc_remaining": 100, "armed": bool(armed.get("v"))}
+
+    def battery_status(planned_alt_m=5.0, *_, **__):
+        return {**get_battery(), "can_takeoff": True, "takeoff_reason": "sim",
+                "in_flight": {"must_return": False, "reason": "sim"}, "actions_left": 99,
+                "reserve_pct": 20, "min_takeoff_pct": 30, "guard": None}
+
     ns = {
         "arm": arm, "safe_disarm": safe_disarm, "wait": wait,
+        "get_battery": get_battery, "battery_status": battery_status,
         "survey_rect": survey_rect,
         "get_position": get_position, "get_attitude": get_attitude,
         "set_velocity": set_velocity, "set_yaw": set_yaw,
@@ -267,15 +279,18 @@ def build_namespace(engine, did, vtype, conversation_id, upload_conf, armed):
                    "turn_right": lambda a=90, *x, **k: turn(-abs(float(a))),
                    "takeoff": lambda *a, **k: None, "land": lambda *a, **k: None})
     else:
+        # True like drone_sdk.takeoff / land: planner code branches on the result.
         def takeoff(altitude_m=2.0, *_, **__):
             arm()
             p = _pos()
             _goto_xyz(float(p[0]), float(p[1]), float(altitude_m))
+            return True
 
         def land(*_, **__):
             p = _pos()
             _goto_xyz(float(p[0]), float(p[1]), 0.15)
             safe_disarm()
+            return True
 
         def goto(lat, lon, alt=2.0):
             x, y = latlon_to_xy(lat, lon)
