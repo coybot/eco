@@ -344,3 +344,68 @@ def test_model_id_env_empty_string_falls_back_to_default(monkeypatch):
     assert handler.BEDROCK_MODEL_ID == NOVA
     monkeypatch.delenv("BEDROCK_MODEL_ID")
     importlib.reload(handler)
+
+
+# --- Anthropic API path (LLM_PROVIDER=anthropic) --------------------------------
+
+def _anthropic_msg(content, stop="end_turn"):
+    msg = MagicMock()
+    msg.to_dict.return_value = {"content": content, "stop_reason": stop}
+    return msg
+
+
+def test_anthropic_model_id_mapping():
+    m = llm.anthropic_api_model_id
+    assert m("us.anthropic.claude-sonnet-4-6") == "claude-sonnet-4-6"
+    assert m("global.anthropic.claude-opus-5-5") == "claude-opus-5-5"
+    assert m("anthropic.claude-haiku-4-5-20251001-v1:0") == "claude-haiku-4-5-20251001"
+    assert m("claude-opus-5-5") == "claude-opus-5-5"
+
+
+@patch.object(llm, "_anthropic")
+def test_anthropic_text_call_and_effort(mock_fn, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    client = mock_fn.return_value
+    client.messages.create.return_value = _anthropic_msg(
+        [{"type": "thinking", "thinking": ""}, {"type": "text", "text": "plan"}])
+    out = llm.invoke("SYS", [{"role": "user", "content": "go"}], max_tokens=16000,
+                     model="us.anthropic.claude-opus-5-5", effort="medium")
+    kw = client.messages.create.call_args.kwargs
+    assert kw["model"] == "claude-opus-5-5"
+    assert kw["system"] == "SYS" and kw["max_tokens"] == 16000
+    assert kw["thinking"] == {"type": "adaptive"}
+    assert kw["output_config"] == {"effort": "medium"}
+    assert out["content"][-1] == {"type": "text", "text": "plan"}
+
+
+@patch.object(llm, "_anthropic")
+def test_anthropic_forced_tool_kept_on_models_that_allow_it(mock_fn, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    client = mock_fn.return_value
+    client.messages.create.return_value = _anthropic_msg(
+        [{"type": "tool_use", "id": "t", "name": "decide", "input": {"a": 1}}], stop="tool_use")
+    llm.invoke("S", [{"role": "user", "content": "x"}], max_tokens=200,
+               model="us.anthropic.claude-sonnet-5", tools=[{"name": "decide", "input_schema": {"type": "object"}}],
+               tool_choice={"type": "tool", "name": "decide"})
+    assert client.messages.create.call_args.kwargs["tool_choice"] == {"type": "tool", "name": "decide"}
+
+
+@patch.object(llm, "_anthropic")
+def test_anthropic_forced_tool_becomes_auto_on_opus_5_5(mock_fn, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    client = mock_fn.return_value
+    client.messages.create.return_value = _anthropic_msg([{"type": "text", "text": '{"a": 2}'}])
+    out = llm.invoke("S", [{"role": "user", "content": "x"}], max_tokens=200,
+                     model="us.anthropic.claude-opus-5-5",
+                     tools=[{"name": "decide", "input_schema": {"type": "object"}}],
+                     tool_choice={"type": "tool", "name": "decide"})
+    kw = client.messages.create.call_args.kwargs
+    assert kw["tool_choice"] == {"type": "auto"}
+    assert "decide tool" in kw["system"]
+    assert out["content"] == [{"type": "tool_use", "name": "decide", "input": {"a": 2}}]
+
+
+def test_anthropic_rejects_non_claude_model(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    with pytest.raises(llm.LLMError, match="needs a Claude model id"):
+        llm.invoke("S", [{"role": "user", "content": "x"}], max_tokens=10, model="us.amazon.nova-pro-v1:0")

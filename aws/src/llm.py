@@ -6,6 +6,10 @@ Cloud (Lambda) default: Bedrock, calling Claude via the Anthropic messages wire
 format. Behavior is byte-identical to the inline `bedrock.invoke_model(...)`
 calls this replaces — same body shape, same key order, same client.
 
+Claude API mode: set LLM_PROVIDER=anthropic (and ANTHROPIC_API_KEY) to call
+Claude through the official `anthropic` SDK instead of Bedrock; Bedrock-style
+model ids are mapped to Claude API ids.
+
 GCS (local ground control station) mode: set LLM_PROVIDER=openai to route
 through an OpenAI-compatible /v1/chat/completions endpoint (vLLM, Ollama, ...)
 instead. No AWS credentials needed. Stdlib-only (urllib) so the Lambda
@@ -50,6 +54,9 @@ def invoke(system, messages, *, max_tokens, tools=None, tool_choice=None, model=
     if _provider_name() == "openai":
         return _invoke_openai(system, messages, max_tokens=max_tokens,
                                tools=tools, tool_choice=tool_choice)
+    if _provider_name() == "anthropic":
+        return _invoke_anthropic(system, messages, max_tokens=max_tokens,
+                                 tools=tools, tool_choice=tool_choice, model=model, effort=effort)
     return _invoke_bedrock(system, messages, max_tokens=max_tokens,
                             tools=tools, tool_choice=tool_choice, model=model, effort=effort)
 
@@ -121,6 +128,76 @@ def _invoke_bedrock(system, messages, *, max_tokens, tools, tool_choice, model, 
         return json.loads(response["body"].read())
     except Exception as e:
         raise LLMError(f"bedrock invoke_model failed: {e}") from e
+
+
+# --- Anthropic API (LLM_PROVIDER=anthropic) ------------------------------------
+#
+# Calls Claude directly through the official `anthropic` SDK, with the key in
+# ANTHROPIC_API_KEY. Call sites keep passing their Bedrock-style model ids; they
+# are mapped to Claude API ids here, so no other config changes.
+
+_anthropic_client = None
+
+# Models that reject a forced tool_choice ("any" / {"type": "tool"}) with a 400.
+_NO_FORCED_TOOL_CHOICE = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1",
+                          "claude-fable-5-2", "claude-mythos-5-1", "claude-mythos-5-2")
+
+
+def _anthropic():
+    global _anthropic_client
+    if _anthropic_client is None:
+        import anthropic
+        _anthropic_client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+    return _anthropic_client
+
+
+def anthropic_api_model_id(model) -> str:
+    """"us.anthropic.claude-sonnet-4-6" -> "claude-sonnet-4-6";
+    "anthropic.claude-haiku-4-5-20251001-v1:0" -> "claude-haiku-4-5-20251001".
+    An id that is already a Claude API id is returned unchanged."""
+    m = str(model or "")
+    if "anthropic." in m:
+        m = m.split("anthropic.", 1)[1]
+    return re.sub(r"(-v\d+)?:\d+$", "", m)
+
+
+def _invoke_anthropic(system, messages, *, max_tokens, tools, tool_choice, model, effort=None):
+    api_model = anthropic_api_model_id(model)
+    if not api_model.startswith("claude"):
+        raise LLMError(f"LLM_PROVIDER=anthropic needs a Claude model id, got {model!r}")
+    kwargs = {"model": api_model, "max_tokens": max_tokens, "messages": messages}
+    if system:
+        kwargs["system"] = system
+    if tools is not None:
+        kwargs["tools"] = tools
+    if tool_choice is not None:
+        if (tool_choice.get("type") in ("tool", "any")
+                and api_model.startswith(_NO_FORCED_TOOL_CHOICE)):
+            # These models 400 on a forced choice. Ask for the tool in auto
+            # mode; the JSON-in-text fallback below still recovers a prose answer.
+            name = tool_choice.get("name")
+            kwargs["tool_choice"] = {"type": "auto"}
+            if name:
+                note = f"Respond by calling the {name} tool."
+                kwargs["system"] = f"{system}\n\n{note}" if isinstance(system, str) and system else note
+        else:
+            kwargs["tool_choice"] = tool_choice
+    if effort:
+        kwargs["thinking"] = {"type": "adaptive"}
+        kwargs["output_config"] = {"effort": effort}
+    try:
+        out = _anthropic().messages.create(**kwargs).to_dict()
+    except Exception as e:
+        raise LLMError(f"anthropic messages.create failed: {e}") from e
+
+    content = out.get("content") or []
+    forced = tool_choice and tool_choice.get("type") == "tool"
+    if forced and not any(b.get("type") == "tool_use" for b in content):
+        text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
+        parsed = _try_parse_tool_json(text) if text else None
+        if parsed is not None:
+            out["content"] = [{"type": "tool_use", "name": tool_choice.get("name"), "input": parsed}]
+    return out
 
 
 # --- Bedrock Converse (non-Claude models, e.g. Amazon Nova) ---------------------

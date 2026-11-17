@@ -29,6 +29,21 @@ Parameters:
     Description: >-
       Origin of the website's /operator console. Its Hosted UI callback
       (<origin>/operator/auth/callback) is allowed on the app client.
+  LlmProvider:
+    Type: String
+    Default: bedrock
+    AllowedValues: [bedrock, anthropic]
+    Description: >-
+      Where the Lambdas call the model. bedrock = Amazon Bedrock (Claude or
+      Nova, by model id). anthropic = the Claude API with AnthropicApiKey; the
+      model-id parameters below still apply, mapped to Claude API ids.
+  AnthropicApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >-
+      Claude API key, used only when LlmProvider=anthropic. Never give this a
+      default; pass it at deploy time from a private file.
   BedrockModelId:
     Type: String
     Default: ""
@@ -82,6 +97,8 @@ Globals:
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         MISSION_MODEL_ID: !Ref MissionModelId
         BEDROCK_CODE_MODEL_ID: !Ref CodeModelId
+        LLM_PROVIDER: !Ref LlmProvider
+        ANTHROPIC_API_KEY: !Ref AnthropicApiKey
 
 Resources:
   # ============================================
