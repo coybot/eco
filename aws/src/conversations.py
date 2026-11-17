@@ -34,21 +34,20 @@ STATUS_TTL_SECONDS = int(os.environ.get("STATUS_TTL_SECONDS", "30"))
 # Bedrock model - Claude 4.5 Sonnet via cross-region inference profile
 # (only used by the bedrock LLM provider; see llm.py - the openai provider
 # resolves its own model via LLM_MODEL / endpoint auto-discovery instead)
-BEDROCK_MODEL_ID = os.environ.get(
-    "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"
-)
+# `or`, not get() defaults: the template passes "" for each model id it does
+# not override (BedrockModelId / MissionModelId / CodeModelId parameters).
+# Any non-Claude id (e.g. us.amazon.nova-pro-v1:0) goes through Bedrock Converse.
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID") or "us.anthropic.claude-sonnet-4-6"
 # The mission planner (drones with an on-device VLM - the quadcopter). Chosen
 # by benchmark on 27 scenarios mostly from the real chat log (see README,
 # "Recommended Models"): Opus 5.5 at medium effort passed 81/81, Sonnet 4.6
 # 77/81, at 4.3 s vs 1.9 s median. The other planners stay on BEDROCK_MODEL_ID.
-MISSION_MODEL_ID = os.environ.get("MISSION_MODEL_ID", "us.anthropic.claude-opus-5-5")
+MISSION_MODEL_ID = os.environ.get("MISSION_MODEL_ID") or "us.anthropic.claude-opus-5-5"
 MISSION_EFFORT = os.environ.get("MISSION_EFFORT", "medium") or None
 # Room for thinking as well as the plan; 2048 was sized for a plan alone.
 MISSION_MAX_TOKENS = int(os.environ.get("MISSION_MAX_TOKENS", "16000" if MISSION_EFFORT else "2048"))
 # Fallback model for code generation (faster, cheaper)
-BEDROCK_CODE_MODEL_ID = os.environ.get(
-    "BEDROCK_CODE_MODEL_ID", "us.anthropic.claude-3-haiku-20240307-v1:0"
-)
+BEDROCK_CODE_MODEL_ID = os.environ.get("BEDROCK_CODE_MODEL_ID") or "us.anthropic.claude-3-haiku-20240307-v1:0"
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
 iot = clients.get_iot()
 s3 = clients.get_s3()

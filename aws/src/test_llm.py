@@ -90,7 +90,7 @@ def test_bedrock_failure_raises_llm_error(mock_bedrock_fn):
 
     with pytest.raises(llm.LLMError):
         llm.invoke("SYSTEM", [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
-                    max_tokens=100, model="m")
+                    max_tokens=100, model="us.anthropic.claude-sonnet-4-6")
 
 
 def test_default_provider_is_bedrock(monkeypatch):
@@ -235,3 +235,112 @@ def test_openai_no_model_available_raises_llm_error(monkeypatch):
 
     with pytest.raises(llm.LLMError):
         llm.invoke("SYS", [{"role": "user", "content": [{"type": "text", "text": "hi"}]}], max_tokens=16)
+
+
+# --- Bedrock Converse path (non-Claude models, e.g. Amazon Nova) ----------------
+
+NOVA = "us.amazon.nova-pro-v1:0"
+
+
+def _converse_out(content, stop="end_turn"):
+    return {"output": {"message": {"role": "assistant", "content": content}},
+            "stopReason": stop, "usage": {"inputTokens": 11, "outputTokens": 7}}
+
+
+def test_claude_ids_still_use_invoke_model():
+    for m in ("us.anthropic.claude-opus-5-5", "anthropic.claude-3-haiku-20240307-v1:0",
+              "global.anthropic.claude-sonnet-4-6"):
+        assert llm._is_anthropic_model(m)
+    assert not llm._is_anthropic_model(NOVA)
+
+
+@patch.object(llm, "_bedrock")
+def test_converse_text_round_trip(mock_bedrock_fn):
+    client = mock_bedrock_fn.return_value
+    client.converse.return_value = _converse_out([{"text": "hello"}])
+    out = llm.invoke("sys prompt", [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                     max_tokens=1024, model=NOVA, effort="medium")
+    client.invoke_model.assert_not_called()
+    kw = client.converse.call_args.kwargs
+    assert kw["modelId"] == NOVA
+    assert kw["system"] == [{"text": "sys prompt"}]
+    assert kw["messages"] == [{"role": "user", "content": [{"text": "hi"}]}]
+    assert kw["inferenceConfig"] == {"maxTokens": 1024}
+    assert "toolConfig" not in kw
+    assert out["content"] == [{"type": "text", "text": "hello"}]
+    assert out["stop_reason"] == "end_turn"
+    assert out["usage"] == {"input_tokens": 11, "output_tokens": 7}
+
+
+@patch.object(llm, "_bedrock")
+def test_converse_caps_max_tokens_below_model_limit(mock_bedrock_fn):
+    client = mock_bedrock_fn.return_value
+    client.converse.return_value = _converse_out([{"text": "ok"}])
+    # The mission planner asks for 16000; Nova Pro rejects anything >= 10000.
+    llm.invoke("s", [{"role": "user", "content": "x"}], max_tokens=16000, model=NOVA)
+    assert client.converse.call_args.kwargs["inferenceConfig"]["maxTokens"] == 9999
+
+
+@patch.object(llm, "_bedrock")
+def test_converse_image_block_becomes_bytes(mock_bedrock_fn):
+    import base64
+    client = mock_bedrock_fn.return_value
+    client.converse.return_value = _converse_out([{"text": "a field"}])
+    raw = b"\xff\xd8\xff fake jpeg"
+    llm.invoke("s", [{"role": "user", "content": [
+        {"type": "text", "text": "what is this"},
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                     "data": base64.b64encode(raw).decode()}},
+    ]}], max_tokens=200, model=NOVA)
+    content = client.converse.call_args.kwargs["messages"][0]["content"]
+    assert content[0] == {"text": "what is this"}
+    assert content[1] == {"image": {"format": "jpeg", "source": {"bytes": raw}}}
+
+
+@patch.object(llm, "_bedrock")
+def test_converse_forced_tool_maps_both_ways(mock_bedrock_fn):
+    client = mock_bedrock_fn.return_value
+    client.converse.return_value = _converse_out(
+        [{"toolUse": {"toolUseId": "t1", "name": "decide", "input": {"action": "stop"}}}],
+        stop="tool_use")
+    tool = {"name": "decide", "description": "pick", "input_schema": {
+        "type": "object", "properties": {"action": {"type": "string"}}}}
+    out = llm.invoke("s", [{"role": "user", "content": "go"}], max_tokens=200, model=NOVA,
+                     tools=[tool], tool_choice={"type": "tool", "name": "decide"})
+    tc = client.converse.call_args.kwargs["toolConfig"]
+    assert tc["tools"] == [{"toolSpec": {"name": "decide", "description": "pick",
+                                         "inputSchema": {"json": tool["input_schema"]}}}]
+    assert tc["toolChoice"] == {"tool": {"name": "decide"}}
+    assert out["content"] == [{"type": "tool_use", "id": "t1", "name": "decide",
+                               "input": {"action": "stop"}}]
+    assert out["stop_reason"] == "tool_use"
+
+
+@patch.object(llm, "_bedrock")
+def test_converse_forced_tool_answered_in_prose_is_recovered(mock_bedrock_fn):
+    client = mock_bedrock_fn.return_value
+    client.converse.return_value = _converse_out([{"text": '```json\n{"action": "left"}\n```'}])
+    out = llm.invoke("s", [{"role": "user", "content": "go"}], max_tokens=200, model=NOVA,
+                     tools=[{"name": "decide", "input_schema": {"type": "object"}}],
+                     tool_choice={"type": "tool", "name": "decide"})
+    assert out["content"] == [{"type": "tool_use", "name": "decide", "input": {"action": "left"}}]
+
+
+@patch.object(llm, "_bedrock")
+def test_converse_failure_raises_llm_error(mock_bedrock_fn):
+    mock_bedrock_fn.return_value.converse.side_effect = RuntimeError("Too many tokens per day")
+    with pytest.raises(llm.LLMError, match="converse failed"):
+        llm.invoke("s", [{"role": "user", "content": "x"}], max_tokens=10, model=NOVA)
+
+
+def test_model_id_env_empty_string_falls_back_to_default(monkeypatch):
+    import importlib
+    import handler
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "")
+    importlib.reload(handler)
+    assert handler.BEDROCK_MODEL_ID == "us.anthropic.claude-sonnet-4-6"
+    monkeypatch.setenv("BEDROCK_MODEL_ID", NOVA)
+    importlib.reload(handler)
+    assert handler.BEDROCK_MODEL_ID == NOVA
+    monkeypatch.delenv("BEDROCK_MODEL_ID")
+    importlib.reload(handler)

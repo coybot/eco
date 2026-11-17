@@ -4,7 +4,7 @@ import os
 import llm
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
-BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-5")
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID") or "us.anthropic.claude-sonnet-5"
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
 
 RAMP_AGENT_SYSTEM_PROMPT = """You are the voice of an autonomous baggage-handling robot working \

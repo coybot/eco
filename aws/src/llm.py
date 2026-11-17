@@ -69,7 +69,37 @@ def _bedrock():
     return _bedrock_client
 
 
+def _is_anthropic_model(model) -> bool:
+    """Claude ids ("anthropic.claude-...", "us.anthropic...", "global.anthropic...",
+    or an inference-profile ARN naming one) speak the Anthropic messages wire
+    format through invoke_model. Everything else (Amazon Nova, ...) goes through
+    the Converse API."""
+    return "anthropic" in str(model or "")
+
+
+# Output-token ceilings Bedrock enforces per model family (it rejects a larger
+# maxTokens outright instead of truncating). Matched by substring of the id.
+_CONVERSE_MAX_OUTPUT = {
+    "nova-premier": 32000,
+    "nova-2": 65000,
+    "nova-pro": 10000,
+    "nova-lite": 10000,
+    "nova-micro": 10000,
+}
+
+
+def _converse_max_tokens(model: str, requested: int) -> int:
+    for key, ceiling in _CONVERSE_MAX_OUTPUT.items():
+        if key in model:
+            # Bedrock wants strictly below the limit ("lower than 10000").
+            return min(requested, ceiling - 1)
+    return requested
+
+
 def _invoke_bedrock(system, messages, *, max_tokens, tools, tool_choice, model, effort=None):
+    if not _is_anthropic_model(model):
+        return _invoke_bedrock_converse(system, messages, max_tokens=max_tokens,
+                                        tools=tools, tool_choice=tool_choice, model=model)
     body = {
         "anthropic_version": ANTHROPIC_VERSION,
         "system": system,
@@ -91,6 +121,127 @@ def _invoke_bedrock(system, messages, *, max_tokens, tools, tool_choice, model, 
         return json.loads(response["body"].read())
     except Exception as e:
         raise LLMError(f"bedrock invoke_model failed: {e}") from e
+
+
+# --- Bedrock Converse (non-Claude models, e.g. Amazon Nova) ---------------------
+
+_CONVERSE_IMAGE_FORMATS = {"image/jpeg": "jpeg", "image/jpg": "jpeg", "image/png": "png",
+                           "image/gif": "gif", "image/webp": "webp"}
+
+
+def _anthropic_content_to_converse(content):
+    """Anthropic content (str or block list) -> Converse content blocks.
+
+    Handles the block types call sites send: text, base64 image, and (for
+    completeness) tool_use / tool_result. Unknown blocks are skipped rather
+    than mistranslated, as in the OpenAI mapping."""
+    import base64
+
+    if isinstance(content, str):
+        return [{"text": content}]
+    blocks = []
+    for block in content or []:
+        btype = block.get("type")
+        if btype == "text":
+            if block.get("text"):
+                blocks.append({"text": block["text"]})
+        elif btype == "image":
+            source = block.get("source", {})
+            if source.get("type") != "base64":
+                continue
+            fmt = _CONVERSE_IMAGE_FORMATS.get(source.get("media_type", "image/jpeg"), "jpeg")
+            blocks.append({"image": {"format": fmt,
+                                     "source": {"bytes": base64.b64decode(source.get("data", ""))}}})
+        elif btype == "tool_use":
+            blocks.append({"toolUse": {"toolUseId": block.get("id") or block.get("name", "tool"),
+                                       "name": block.get("name"),
+                                       "input": block.get("input") or {}}})
+        elif btype == "tool_result":
+            inner = block.get("content")
+            inner_blocks = ([{"text": inner}] if isinstance(inner, str)
+                            else [b for b in _anthropic_content_to_converse(inner) if "text" in b])
+            result = {"toolUseId": block.get("tool_use_id"), "content": inner_blocks or [{"text": ""}]}
+            if block.get("is_error"):
+                result["status"] = "error"
+            blocks.append({"toolResult": result})
+    return blocks
+
+
+def _anthropic_tools_to_converse(tools, tool_choice):
+    if not tools:
+        return None
+    config = {"tools": [
+        {"toolSpec": {"name": t["name"],
+                      "description": t.get("description") or t["name"],
+                      "inputSchema": {"json": t.get("input_schema")
+                                      or {"type": "object", "properties": {}}}}}
+        for t in tools
+    ]}
+    if tool_choice:
+        ttype = tool_choice.get("type")
+        if ttype == "tool" and tool_choice.get("name"):
+            config["toolChoice"] = {"tool": {"name": tool_choice["name"]}}
+        elif ttype == "any":
+            config["toolChoice"] = {"any": {}}
+        else:
+            config["toolChoice"] = {"auto": {}}
+    return config
+
+
+_CONVERSE_STOP_REASONS = {"end_turn": "end_turn", "tool_use": "tool_use",
+                          "max_tokens": "max_tokens", "stop_sequence": "stop_sequence"}
+
+
+def _invoke_bedrock_converse(system, messages, *, max_tokens, tools, tool_choice, model):
+    """Call a non-Claude Bedrock model through Converse and return the same
+    Anthropic-messages-shaped dict the Claude path returns. `effort` (adaptive
+    thinking) is a Claude feature and is not forwarded."""
+    if isinstance(system, list):  # Anthropic system blocks
+        system_text = "\n\n".join(b.get("text", "") for b in system if isinstance(b, dict))
+    else:
+        system_text = system or ""
+    kwargs = {
+        "modelId": model,
+        "messages": [{"role": m.get("role", "user"),
+                      "content": _anthropic_content_to_converse(m.get("content"))}
+                     for m in messages],
+        "inferenceConfig": {"maxTokens": _converse_max_tokens(str(model), max_tokens)},
+    }
+    if system_text:
+        kwargs["system"] = [{"text": system_text}]
+    tool_config = _anthropic_tools_to_converse(tools, tool_choice)
+    if tool_config:
+        kwargs["toolConfig"] = tool_config
+    try:
+        out = _bedrock().converse(**kwargs)
+    except Exception as e:
+        raise LLMError(f"bedrock converse failed: {e}") from e
+
+    content_blocks = []
+    for block in (out.get("output", {}).get("message", {}).get("content") or []):
+        if "text" in block:
+            content_blocks.append({"type": "text", "text": block["text"]})
+        elif "toolUse" in block:
+            tu = block["toolUse"]
+            content_blocks.append({"type": "tool_use", "id": tu.get("toolUseId"),
+                                   "name": tu.get("name"), "input": tu.get("input") or {}})
+        # reasoningContent and other blocks are skipped: callers read text/tool_use only.
+
+    # Same fallback as the OpenAI path: a forced tool came back as prose JSON.
+    tool_uses = [b for b in content_blocks if b["type"] == "tool_use"]
+    if tool_choice and tool_choice.get("type") == "tool" and not tool_uses:
+        text = "".join(b["text"] for b in content_blocks if b["type"] == "text")
+        parsed = _try_parse_tool_json(text) if text else None
+        if parsed is not None:
+            content_blocks = [{"type": "tool_use", "name": tool_choice.get("name"), "input": parsed}]
+
+    usage = out.get("usage") or {}
+    return {
+        "content": content_blocks,
+        "stop_reason": _CONVERSE_STOP_REASONS.get(out.get("stopReason"), out.get("stopReason")),
+        "usage": {"input_tokens": usage.get("inputTokens"),
+                  "output_tokens": usage.get("outputTokens")},
+    }
 
 
 # --- OpenAI-compatible provider (vLLM / Ollama / etc.) ------------------------

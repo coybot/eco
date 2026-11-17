@@ -29,6 +29,23 @@ Parameters:
     Description: >-
       Origin of the website's /operator console. Its Hosted UI callback
       (<origin>/operator/auth/callback) is allowed on the app client.
+  BedrockModelId:
+    Type: String
+    Default: ""
+    Description: >-
+      Bedrock model for chat, code planning, groups and the rover. Empty = the
+      code's Claude defaults. Any non-Claude id (e.g. us.amazon.nova-pro-v1:0)
+      is called through the Converse API, so it needs no Anthropic use-case form.
+  MissionModelId:
+    Type: String
+    Default: ""
+    Description: >-
+      Bedrock model for the quadcopter mission planner. Empty = Claude Opus 5.5,
+      the benchmark winner (81/81). Anything else is untested on that benchmark.
+  CodeModelId:
+    Type: String
+    Default: ""
+    Description: Bedrock model for the code-generation fallback. Empty = the code's default.
   AppleServicesId:
     Type: String
     Default: ""
@@ -62,6 +79,9 @@ Globals:
       Variables:
         STATUS_TTL_SECONDS: "30"
         LOGS_TABLE: !Ref DroneLogsTable
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        MISSION_MODEL_ID: !Ref MissionModelId
+        BEDROCK_CODE_MODEL_ID: !Ref CodeModelId
 
 Resources:
   # ============================================

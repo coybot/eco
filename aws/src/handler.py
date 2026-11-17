@@ -5,9 +5,8 @@ import llm
 import clients
 
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
-BEDROCK_MODEL_ID = os.environ.get(
-    "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"
-)
+# `or`, not a get() default: the template passes "" when no override is set.
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID") or "us.anthropic.claude-sonnet-4-6"
 ANTHROPIC_VERSION = "bedrock-2023-05-31"
 iot = clients.get_iot()
 dynamodb = clients.get_dynamodb()
