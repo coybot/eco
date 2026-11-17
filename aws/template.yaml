@@ -11,7 +11,7 @@ Parameters:
     Default: drone-001
   GoogleClientId:
     Type: String
-    Default: "1023808862480-0meugvago280fchkbguebfb2e6ll17sp.apps.googleusercontent.com"
+    Default: "1044759490843-gvsvpg5tbed5thjfmgb04unb9rkssb15.apps.googleusercontent.com"
     Description: >-
       Google OAuth Web Client ID for Cognito federation (must be Web type, not
       iOS). GoogleClientSecret must belong to this same client.
