@@ -329,12 +329,32 @@ Resources:
         AllowHeaders: "'Content-Type, Authorization'"
       Auth:
         DefaultAuthorizer: TokenAuthorizer
+        # Browsers send CORS preflights (OPTIONS) without the Authorization
+        # header. SAM puts the default authorizer on OPTIONS unless told not
+        # to, so every preflight got a 401 and coy.bot/operator showed
+        # "Failed to fetch". The native apps never send preflights.
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           TokenAuthorizer:
             FunctionArn: !GetAtt AuthorizerFunction.Arn
             Identity:
               Header: Authorization
               ReauthorizeEvery: 300
+      # Errors that API Gateway produces itself (authorizer 401/403, throttling,
+      # integration failures) carry no CORS headers by default, so a browser
+      # reports them only as "Failed to fetch". Add the headers so the web
+      # operator sees the real status.
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type, Authorization'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type, Authorization'"
       Tags:
         Project: drone-api
         Environment: !Ref Environment
