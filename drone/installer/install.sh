@@ -23,7 +23,7 @@ ACTUAL_HOME=$(eval echo "~$ACTUAL_USER")
 S3_BASE="https://coybot-drone-installer.s3.amazonaws.com"
 INSTALL_DIR="$ACTUAL_HOME/drone-api"
 # Replace when building a hosted installer artifact for your fleet.
-IOT_ENDPOINT="${COYBOT_IOT_ENDPOINT:-REPLACE.iot.us-west-2.amazonaws.com}"
+IOT_ENDPOINT="${COYBOT_IOT_ENDPOINT:-REPLACE.iot.us-east-2.amazonaws.com}"
 
 # Colors
 RED='\033[0;31m'
@@ -95,7 +95,7 @@ chmod 600 certs/*.key certs/*.pem
 echo -e "${CYAN}Creating configuration...${NC}"
 cat > config.yaml <<EOF
 # Drone API Configuration (auto-generated)
-region: "us-west-2"
+region: "us-east-2"
 iot_endpoint: "$IOT_ENDPOINT"
 serial_port: "/dev/ttyACM0"
 baud_rate: 115200

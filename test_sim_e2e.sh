@@ -14,7 +14,7 @@ TUNNEL_URL="${1:?Usage: $0 <tunnel-url>}"
 USER_ID="28a1f320-4051-70cd-1c82-9f5b07b8a5d9"
 DRONE_ID="sim-quadcopter-e2e"
 CONV_ID="e2e-conv-$(date +%s)"
-REGION="us-west-2"
+REGION="us-east-2"
 
 echo "=== Step 1: Register sim drone with tunnel URL ==="
 AWS_PROFILE=coybot aws dynamodb put-item \

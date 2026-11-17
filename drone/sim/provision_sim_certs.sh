@@ -9,10 +9,10 @@
 #   AWS_PROFILE=coybot bash provision_sim_certs.sh sim-quadcopter-001 [sim-rover-004 ...]
 #
 # Region is pinned: the `coybot` profile defaults to us-east-1 but the IoT stack
-# lives in us-west-2.
+# lives in us-east-2 (the coybot org SCP allows IoT only there).
 set -euo pipefail
 
-REGION="${REGION:-us-west-2}"
+REGION="${REGION:-us-east-2}"
 POLICY="${POLICY:-drone-policy-dev}"
 CERTS_BASE="${CERTS_BASE:-$HOME/eco-certs-fleet}"
 ROOT_CA_URL="https://www.amazontrust.com/repository/AmazonRootCA1.pem"

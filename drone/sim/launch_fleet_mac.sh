@@ -29,7 +29,7 @@ VENV_PY="${VENV_PY:-$SCRIPT_DIR/.venv-mac/bin/python}"
 CERTS_BASE="${CERTS_BASE:-$HOME/eco-certs-fleet}"
 # shellcheck source=secrets_env.sh
 source "$SCRIPT_DIR/secrets_env.sh"
-IOT_ENDPOINT="${IOT_ENDPOINT:-YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com}"
+IOT_ENDPOINT="${IOT_ENDPOINT:-YOUR_IOT_ENDPOINT.iot.us-east-2.amazonaws.com}"
 FLEET="${FLEET:-quad:1}"
 ENV="${ENV:-plaza}"
 IPC_PORT="${IPC_PORT:-9999}"

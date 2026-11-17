@@ -46,7 +46,7 @@ class AppClient:
             iot_endpoint
             or os.environ.get("ISHMAEL_IOT_ENDPOINT")
             or os.environ.get("IOT_ENDPOINT")
-            or "YOUR_IOT_ENDPOINT.iot.us-west-2.amazonaws.com")
+            or "YOUR_IOT_ENDPOINT.iot.us-east-2.amazonaws.com")
         self.certs_dir = os.path.expanduser(
             certs_dir or os.environ.get("ISHMAEL_MOBILE_CERTS", "~/eco-certs"))
         self.conn = None
