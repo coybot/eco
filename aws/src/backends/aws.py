@@ -41,9 +41,8 @@ class AwsBackend:
     @property
     def s3(self):
         if self._s3 is None:
-            from botocore.config import Config as BotoConfig
-            self._s3 = boto3.client("s3", region_name=_region(),
-                                     config=BotoConfig(signature_version="s3v4"))
+            from clients import regional_s3_client
+            self._s3 = regional_s3_client()
         return self._s3
 
     def image_url_fn(self, key: str) -> str:

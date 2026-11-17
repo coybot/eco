@@ -62,11 +62,24 @@ def get_iot():
     return _iot
 
 
+def regional_s3_client():
+    """S3 client whose presigned URLs use the bucket's regional hostname
+    (bucket.s3.<region>.amazonaws.com). With the default client botocore signs
+    for the global bucket.s3.amazonaws.com, which a new bucket outside us-east-1
+    rejects (400/403) until its DNS settles - photo fetches failed that way on
+    the day the stack moved to us-east-2."""
+    from botocore.config import Config as BotoConfig
+    region = _region()
+    return boto3.client("s3", region_name=region,
+                        endpoint_url=f"https://s3.{region}.amazonaws.com",
+                        config=BotoConfig(signature_version="s3v4",
+                                          s3={"addressing_style": "virtual"}))
+
+
 def get_s3():
     global _s3
     if _s3 is None:
-        from botocore.config import Config as BotoConfig
-        _s3 = boto3.client("s3", region_name=_region(), config=BotoConfig(signature_version="s3v4"))
+        _s3 = regional_s3_client()
     return _s3
 
 

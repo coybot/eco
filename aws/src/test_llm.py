@@ -409,3 +409,4 @@ def test_anthropic_rejects_non_claude_model(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     with pytest.raises(llm.LLMError, match="needs a Claude model id"):
         llm.invoke("S", [{"role": "user", "content": "x"}], max_tokens=10, model="us.amazon.nova-pro-v1:0")
+
