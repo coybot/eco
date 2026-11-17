@@ -24,6 +24,7 @@ import boto3
 import llm
 import clients
 import planning
+import code_check
 
 # AWS clients (real boto3 by default; clients.configure() lets a GCS process
 # inject local stand-ins before this module is imported - see clients.py)
@@ -1274,6 +1275,27 @@ def publish_to_app(drone_id, conversation_id, message_type, text, image_urls=Non
         # message is saved and the app polls history, while a raised error
         # makes AWS retry the whole reply - analysing and saving it twice.
         print(f"⚠️ Could not notify the app on {topic}: {e}")
+
+
+def checked_code(code, instruction, conversation_id, drone_id, vehicle_type=None):
+    """Make sure every function `code` calls exists on the aircraft before it is
+    sent. If not, ask the model once more, naming the missing calls.
+    Returns (code, None) when the code can run, else (None, operator-facing error)."""
+    bad = code_check.unknown_calls(code)
+    if not bad:
+        return code, None
+    publish_log(drone_id, "WARNING", f"Generated code calls functions the drone lacks: {', '.join(bad)}; asking again", code=code)
+    try:
+        code = generate_code(instruction + code_check.retry_hint(bad), conversation_id,
+                             drone_id=drone_id, vehicle_type=vehicle_type)
+    except Exception as e:
+        return None, f"Sorry, I couldn't process that command. AI service error: {str(e)}"
+    bad = code_check.unknown_calls(code)
+    if not bad:
+        return code, None
+    publish_log(drone_id, "ERROR", f"Code still calls functions the drone lacks: {', '.join(bad)}; not sent", code=code)
+    return None, ("Sorry, I couldn't turn that into commands this drone can run "
+                  f"(it needed {', '.join(bad)}, which the drone doesn't have). Nothing was sent to the drone.")
 
 
 def publish_log(drone_id, level, message, code=None, source="aws"):
@@ -2674,6 +2696,12 @@ def message_handler(event, context):
                     'message_id': error_msg['id'],
                     'immediate_response': error_msg
                 })
+        code, error_text = checked_code(code, message, conversation_id, drone_id, vehicle_type)
+        if error_text:
+            error_msg = save_message(conversation_id, drone_id, 'drone', 'text', error_text)
+            publish_to_app(drone_id, conversation_id, 'error', error_text)
+            return json_response(200, {'status': 'error', 'message_id': error_msg['id'],
+                                       'immediate_response': error_msg})
         payload = {
             'action': 'execute',
             'code': code,
@@ -3140,6 +3168,11 @@ def select_handler(event, context):
                 error_msg = save_message(conversation_id, drone_id, 'drone', 'text', error_text)
                 publish_to_app(drone_id, conversation_id, 'error', error_text)
                 return json_response(200, {'status': 'error', 'message_id': error_msg['id'], 'immediate_response': error_msg})
+        code, error_text = checked_code(code, agent_response.get('message', ''), conversation_id, drone_id)
+        if error_text:
+            error_msg = save_message(conversation_id, drone_id, 'drone', 'text', error_text)
+            publish_to_app(drone_id, conversation_id, 'error', error_text)
+            return json_response(200, {'status': 'error', 'message_id': error_msg['id'], 'immediate_response': error_msg})
         
         loading_msg = save_message(
             conversation_id, drone_id, 'drone', 'loading',

@@ -231,7 +231,14 @@ def message_handler(event, context):
     codes = {}
     for drone_id, order in orders.items():
         try:
-            codes[drone_id] = C.generate_code(order, conversation_id, vehicle_type=member_types.get(drone_id, 'quadcopter'))
+            vtype = member_types.get(drone_id, 'quadcopter')
+            code, error_text = C.checked_code(
+                C.generate_code(order, conversation_id, vehicle_type=vtype),
+                order, conversation_id, drone_id, vtype)
+            if error_text:
+                print(f"[group {group_id}] {drone_id} skipped: {error_text}")
+            else:
+                codes[drone_id] = code
         except Exception as e:
             print(f"[group {group_id}] codegen {drone_id} failed: {e}")
 
