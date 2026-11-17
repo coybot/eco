@@ -131,18 +131,22 @@ def qwen3_vl_32b(models_dir: Path) -> None:
     print("Qwen3-VL 30B ready: vlm.gguf, vlm_mmproj.gguf")
 
 
-DOMAIN_DETECTOR_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/yolov8n_domain_v3.onnx"
+# Public Hugging Face model repo (no auth). These used to come from the dev
+# images bucket, whose 30-day lifecycle rule deleted them; the HF copies are
+# the same files. The repo keeps its pre-rename "astral" name.
+DRONE_MODELS_BASE_URL = "https://huggingface.co/astralhf/astral-drone-models/resolve/main"
 
-POLICY_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models"
-DEPTH_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models/depth_v1.onnx"
-VLM_DRONE_BASE_URL = "https://drone-images-dev-us-west-2-041686205727.s3.us-west-2.amazonaws.com/models"
+DOMAIN_DETECTOR_URL = f"{DRONE_MODELS_BASE_URL}/yolov8n_domain_v3.onnx"
+POLICY_BASE_URL = DRONE_MODELS_BASE_URL
+DEPTH_URL = f"{DRONE_MODELS_BASE_URL}/depth_v1.onnx"
+VLM_DRONE_BASE_URL = DRONE_MODELS_BASE_URL
 
 
 def domain_detector(models_dir: Path) -> None:
     """Coybot domain-trained YOLOv8n (9 classes: person, drone, vehicle, ...).
 
     Trained on 18 k sim frames (office/warehouse/hospital) plus public aerial sets.
-    Stored in the dev S3 bucket after training on hoopoe. Falls back to curl if requests
+    Hosted on the public Hugging Face model repo. Falls back to curl if requests
     is unavailable.
     """
     out = models_dir / "yolov8n_domain_v1.onnx"
@@ -199,16 +203,20 @@ def reactive_policy(models_dir: Path) -> None:
 
     Trained via behavioral cloning of the reactive_planner rule-set on 200k synthetic
     state→velocity-command pairs. Input: 12-dim state, output: [vx, vy, vz] m/s.
-    Requires policy_v1.onnx, policy_v1.onnx.data, and policy_v1_state_norm.npy co-located.
+    Requires policy_v1.onnx, its external weights, and policy_v1_state_norm.npy co-located.
+    The ONNX graph names its weights file "policy.onnx.data" (the name at export),
+    so the published policy_v1.onnx.data is saved under that name.
     """
     onnx_file = models_dir / "policy_v1.onnx"
     if onnx_file.exists():
         print("policy_v1.onnx already exists, skipping.")
         return
     print("Downloading reactive policy v1 ...")
-    for fname in ("policy_v1.onnx", "policy_v1.onnx.data", "policy_v1_state_norm.npy"):
+    for fname, local in (("policy_v1.onnx", "policy_v1.onnx"),
+                         ("policy_v1.onnx.data", "policy.onnx.data"),
+                         ("policy_v1_state_norm.npy", "policy_v1_state_norm.npy")):
         url = f"{POLICY_BASE_URL}/{fname}"
-        dest = models_dir / fname
+        dest = models_dir / local
         try:
             import requests
             r = requests.get(url, stream=True, timeout=60)
@@ -222,7 +230,7 @@ def reactive_policy(models_dir: Path) -> None:
     print("Reactive policy v1 ready.")
 
 
-NAV_POLICIES_HF_REPO = "coybothf/eco-drone-policies"
+NAV_POLICIES_HF_REPO = "astralhf/eco-drone-policies"
 NAV_POLICY_FILES = {
     "quadcopter": ["policy_v26rnn_dr.onnx"],
     "rover": ["policy_rover_v2.onnx", "policy_rover_v2.onnx.data"],
@@ -232,7 +240,7 @@ NAV_POLICY_FILES = {
 
 def nav_policies(models_dir: Path, vehicles: list[str] | None = None) -> None:
     """L5 learned-planner ONNX policies (quadcopter / rover / fixed-wing), hosted on the
-    Hugging Face Hub at coybothf/eco-drone-policies. Filenames match each vehicle class's
+    Hugging Face Hub at astralhf/eco-drone-policies. Filenames match each vehicle class's
     default `policy_onnx` in vehicle_class.py, so no renaming is needed after download.
 
     These are optional -- the platform's benchmarked L5 fleet controller
@@ -283,6 +291,11 @@ def depth_model(models_dir: Path) -> None:
     except Exception:
         run(["curl", "-fL", DEPTH_URL, "-o", str(out)])
     print(f"Saved {out}")
+    # The graph keeps its ~99 MB weights in an external file it names
+    # "depth_model.onnx.data", and that file was never published, so this ONNX
+    # does not load on its own.
+    print("WARNING: depth_v1.onnx needs depth_model.onnx.data next to it, which is not "
+          "published yet; the model will not load until it is.")
 
 
 def setup_device(variant: str) -> None:
@@ -344,7 +357,7 @@ def main() -> None:
     parser.add_argument("--reactive-policy", action="store_true", help="Download reactive policy MLP v1 (12-dim state → velocity cmd ONNX)")
     parser.add_argument("--nav-policies", type=str, nargs="*", metavar="VEHICLE",
                         help="Download L5 learned-planner ONNX policies from Hugging Face "
-                             "(coybothf/eco-drone-policies). No args = all vehicles, or "
+                             "(astralhf/eco-drone-policies). No args = all vehicles, or "
                              "specify: quadcopter rover fixedwing")
     parser.add_argument("--depth-model", action="store_true", help="Download depth model v1 (Depth Anything V2 Small, aerial fine-tuned ONNX)")
     parser.add_argument("--qwen3-vl-2b", action="store_true", help="Small VLM for Nano (7B Q4_K_M)")
