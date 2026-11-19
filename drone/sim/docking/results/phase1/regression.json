@@ -1,0 +1,356 @@
+{
+ "pytest": {
+  "ok": true,
+  "tail": [
+   "947 passed, 5 skipped, 31 warnings in 189.67s (0:03:09)"
+  ]
+ },
+ "e2e": {
+  "quadcopter": {
+   "ok": true,
+   "lines": [
+    "[PASS] behaviour gate",
+    "[PASS] quadcopter (fast): ok"
+   ]
+  },
+  "rover": {
+   "ok": true,
+   "lines": [
+    "[PASS] behaviour gate",
+    "[PASS] rover (fast): ok"
+   ]
+  },
+  "fixedwing": {
+   "ok": true,
+   "lines": [
+    "[PASS] behaviour gate",
+    "[PASS] fixedwing (fast): ok"
+   ]
+  }
+ },
+ "scenarios_kinematic": {
+  "scenarios/asymmetric_extract.yaml": {
+   "t_end": 10.4,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/cascading_doom.yaml": {
+   "t_end": 11.1,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/dense_urban.yaml": {
+   "t_end": 21.9,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 45
+  },
+  "scenarios/final_boss.yaml": {
+   "t_end": 60.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 46
+  },
+  "scenarios/formation_crush.yaml": {
+   "t_end": 45.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/gauntlet_alpha.yaml": {
+   "t_end": 45.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 28
+  },
+  "scenarios/gauntlet_beta.yaml": {
+   "t_end": 9.2,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 8
+  },
+  "scenarios/gauntlet_delta.yaml": {
+   "t_end": 40.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 10
+  },
+  "scenarios/gauntlet_gamma.yaml": {
+   "t_end": 10.6,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 12
+  },
+  "scenarios/hostile_recon.yaml": {
+   "t_end": 10.7,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 8
+  },
+  "scenarios/multi_chokepoint.yaml": {
+   "t_end": 13.3,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/night_shift.yaml": {
+   "t_end": 13.4,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 25
+  },
+  "scenarios/pursuit_corridor.yaml": {
+   "t_end": 60.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/relay_dependency.yaml": {
+   "t_end": 11.0,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 15
+  },
+  "scenarios/sensor_hell.yaml": {
+   "t_end": 7.6,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/time_siege.yaml": {
+   "t_end": 12.7,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 1
+  },
+  "scenarios_demo/cf_team_search.yaml": {
+   "t_end": 62.1,
+   "mission_complete": true,
+   "targets_found": 8,
+   "targets_total": 8,
+   "collisions": 48
+  },
+  "scenarios_fw/fw_replan.yaml": {
+   "t_end": 20.6,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 28
+  },
+  "scenarios_fw/fw_sweep.yaml": {
+   "t_end": 20.0,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios_indoor/cf_apartment_search.yaml": {
+   "t_end": 60.0,
+   "mission_complete": false,
+   "targets_found": 1,
+   "targets_total": 2,
+   "collisions": 513
+  },
+  "scenarios_indoor/cf_doorway.yaml": {
+   "t_end": 9.5,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios_indoor/cf_flow_drift.yaml": {
+   "t_end": 11.8,
+   "mission_complete": true,
+   "targets_found": 2,
+   "targets_total": 2,
+   "collisions": 0
+  },
+  "scenarios_indoor/cf_furniture_slalom.yaml": {
+   "t_end": 6.6,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios_indoor/cf_hover_room.yaml": {
+   "t_end": 4.3,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios_indoor/cf_low_beam.yaml": {
+   "t_end": 6.4,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios_indoor/cf_texture_blackout.yaml": {
+   "t_end": 5.4,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios_indoor/cf_two_cf_corridor.yaml": {
+   "t_end": 45.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  }
+ },
+ "scenarios_vs_base": {
+  "n_base": 27,
+  "n_now": 27,
+  "diffs": {}
+ },
+ "scenarios_dynamic_smoke": {
+  "scenarios/asymmetric_extract.yaml": {
+   "t_end": 14.8,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/cascading_doom.yaml": {
+   "t_end": 11.3,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/dense_urban.yaml": {
+   "t_end": 36.3,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 73
+  },
+  "scenarios/final_boss.yaml": {
+   "t_end": 60.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 12
+  },
+  "scenarios/formation_crush.yaml": {
+   "t_end": 45.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/gauntlet_alpha.yaml": {
+   "t_end": 45.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 16
+  },
+  "scenarios/gauntlet_beta.yaml": {
+   "t_end": 9.6,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 7
+  },
+  "scenarios/gauntlet_delta.yaml": {
+   "t_end": 40.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/gauntlet_gamma.yaml": {
+   "t_end": 10.8,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 6
+  },
+  "scenarios/hostile_recon.yaml": {
+   "t_end": 10.3,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 12
+  },
+  "scenarios/multi_chokepoint.yaml": {
+   "t_end": 14.0,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/night_shift.yaml": {
+   "t_end": 13.3,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 91
+  },
+  "scenarios/pursuit_corridor.yaml": {
+   "t_end": 20.0,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/relay_dependency.yaml": {
+   "t_end": 11.0,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 15
+  },
+  "scenarios/sensor_hell.yaml": {
+   "t_end": 7.7,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 0
+  },
+  "scenarios/time_siege.yaml": {
+   "t_end": 12.7,
+   "mission_complete": true,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 4
+  },
+  "scenarios_fw/fw_replan.yaml": {
+   "t_end": 60.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 24
+  },
+  "scenarios_fw/fw_sweep.yaml": {
+   "t_end": 45.0,
+   "mission_complete": false,
+   "targets_found": 0,
+   "targets_total": 0,
+   "collisions": 13
+  }
+ },
+ "ok": true
+}

@@ -497,12 +497,22 @@ class ScenarioRunner:
 
     def __init__(self, scenario: Scenario, controller=None, dt: float = 0.1,
                  sensing: str | None = None, impairment=None,
-                 impair_seed: int | None = None):
+                 impair_seed: int | None = None, backend: str = "kinematic"):
         self.scenario = scenario
-        backend = KinematicWorld(static_obstacles=[
-            Box(np.asarray(o[:3], np.float32), np.asarray(o[3:], np.float32))
-            for o in scenario.obstacles
-        ])
+        boxes = [Box(np.asarray(o[:3], np.float32), np.asarray(o[3:], np.float32))
+                 for o in scenario.obstacles]
+        if backend == "dynamic":
+            # Opt-in rigid-body dynamics (flight/dynamic_world.py); classes without a
+            # dynamics model still integrate kinematically.
+            try:
+                from flight.dynamic_world import DynamicWorld
+            except ImportError:  # pragma: no cover - packaged import path
+                from .flight.dynamic_world import DynamicWorld  # type: ignore
+            backend = DynamicWorld(static_obstacles=boxes, seed=scenario.seed)
+        elif backend == "kinematic":
+            backend = KinematicWorld(static_obstacles=boxes)
+        else:
+            raise ValueError(f"unknown backend {backend!r}")
         # Precedence: explicit caller argument > scenario YAML > built-in default. The YAML
         # block lets an indoor scenario carry its own sensor model so it reproduces without
         # remembering flags; but an explicit argument must still win, or ablation is

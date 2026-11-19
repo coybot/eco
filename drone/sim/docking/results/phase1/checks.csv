@@ -1,0 +1,28 @@
+case_label,check_label,error_frac,expected_nd,measured_nd,note_label,pass_bool,row_id,tolerance_frac
+mass_1.0_kg,E1_hover_thrust_equals_weight,0.0004741383952160912,9.80665,9.811299709293445,mean total thrust N over last 10 s vs m g,1,0,0.01
+mass_1.4_kg,E1_hover_thrust_equals_weight,0.0004743031953925143,13.729309999999998,13.735821855603533,mean total thrust N over last 10 s vs m g,1,1,0.01
+speed_5_m_s,E2_trim_tilt_atan_drag_over_weight,0.013059374665715495,4.517544448070748,4.530603822736463,tilt deg at measured speed 5.03 m/s (error column in deg),1,2,1.0
+speed_10_m_s,E2_trim_tilt_atan_drag_over_weight,0.0029525891003210347,17.438930239265176,17.441882828365497,tilt deg at measured speed 10.03 m/s (error column in deg),1,3,1.0
+speed_15_m_s,E2_trim_tilt_atan_drag_over_weight,0.0008352187739149031,35.187420997923994,35.18825621669791,tilt deg at measured speed 15.03 m/s (error column in deg),1,4,1.0
+speed_20_m_s,E2_trim_tilt_atan_drag_over_weight,-0.002505526381426648,51.38723121831937,51.384725691937945,tilt deg at measured speed 20.02 m/s (error column in deg),1,5,1.0
+speed_12_m_s,E3_level_out_decel_equals_drag_over_mass,0.0002104645695089058,2.4412617359561994,2.4840236677568006,|fit(a vs D/m)-1| over 2 s once level; speed vs closed form max err 0.0051 m/s,1,6,0.02
+speed_12_m_s,E3b_level_out_speed_closed_form,0.0005661462988858225,5.774447123173279,5.77176339219486,"v(t)=v1/(1+k v1 t), worst error / v1",1,7,0.01
+speed_18_m_s,E3_level_out_decel_equals_drag_over_mass,0.0012518652102817551,3.795144562094768,3.743998678312269,|fit(a vs D/m)-1| over 2 s once level; speed vs closed form max err 0.0038 m/s,1,8,0.02
+speed_18_m_s,E3b_level_out_speed_closed_form,0.0003380227238091626,6.622343236027722,6.618580341806636,"v(t)=v1/(1+k v1 t), worst error / v1",1,9,0.01
+no_drag,E4_free_fall_conserves_energy,3.4518221548680446e-10,4927.83136,4927.831361701,total energy J after 8 s of free fall with spin,1,10,1e-09
+drag_on,E4b_free_fall_energy_budget_with_drag,1.7323067240272205e-09,981.9560606006137,981.9560588995646,energy lost J vs integral of drag power,1,11,0.005
+16_seeds_1_vs_8_workers_x2,E5_batch_reproduces_from_seeds,0.0,1.0,1.0,sha256 58591236fb00 identical across 3 runs; other seeds differ: True,1,12,0.0
+u_moderate_50m,S1_turbulence_sigma,-0.02039942743769607,2.4592001127398486,2.409033838485238,"std m/s along a 80 km straight path at 20 m/s, 4 seeds",1,13,0.15
+w_moderate_50m,S1_turbulence_sigma,-0.005996217076356225,1.5433320000000001,1.5340778463071132,"std m/s along a 80 km straight path at 20 m/s, 4 seeds",1,14,0.15
+u_0p02_to_4_hz,S1_turbulence_psd_vs_von_karman,0.1094995340899223,1.0,1.1094995340899223,"geometric-mean ratio over third-octave bands (worst band x1.39), 4 seeds",1,15,0.25
+w_0p02_to_4_hz,S1_turbulence_psd_vs_von_karman,0.08436749015224976,1.0,1.0843674901522498,"geometric-mean ratio over third-octave bands (worst band x1.19), 4 seeds",1,16,0.25
+step_0_to_5_n,S2_motor_lag_tau_up,0.08333333333333348,0.03,0.0325,time to 63 % s,1,17,0.1
+step_10_to_0_n,S2_motor_lag_tau_down,0.0,0.05,0.05,time to 37 % s,1,18,0.1
+command_50_n_max_10_n,S2_motor_saturation,-2.888874417461551e-08,10.0,9.999999711112558,thrust N never exceeds max,1,19,1e-06
+50hz_80ms_10pct_drop,S3_sensor_delay_s,-5.81756864903582e-14,0.08,0.07999999999994183,absolute error vs configured (error column in the check's unit),1,20,0.002500001
+50hz_80ms_10pct_drop,S3_sensor_rate_hz,0.0,50.0,50.0,absolute error vs configured (error column in the check's unit),1,21,0.5
+50hz_80ms_10pct_drop,S3_sensor_dropout_frac,0.001799999999999996,0.1,0.1018,absolute error vs configured (error column in the check's unit),1,22,0.01
+50hz_80ms_10pct_drop,S3_sensor_noise_std,0.0005656268863632047,0.1,0.10056562688636321,absolute error vs configured (error column in the check's unit),1,23,0.005
+fixedwing_reference,S4_wing_lift_slope_attached,-1.5626629989995422e-09,5.61,5.609999991233461,dCL/dalpha per rad at 2 deg vs the coefficient,1,24,0.01
+fixedwing_reference,S4_wing_stalls_past_clmax,-0.637082736235622,0.85,0.21291726376437803,CL 8 deg past CLmax / CLmax (< 0.85 = lift breaks down); CLmax 2.431 at 23.6 deg,1,25,0.0
+fixedwing_reference_25_m_s,S4_wing_lift_equals_weight_level_flight,0.00010101550994612296,132.389775,132.40314842063327,"vertical lift + thrust component N vs weight, mean of last 10 s",1,26,0.02

@@ -1,0 +1,16 @@
+{
+ "seeds": [
+  200,
+  215,
+  16
+ ],
+ "workers": 8,
+ "wall_s": 0.9,
+ "python": "3.9.6",
+ "numpy": "2.0.2",
+ "platform": "macOS-27.2.1-arm64-arm-64bit",
+ "machine": "arm64",
+ "git_commit": "dfc4e4e7fb54500431fedfedc9cff7b24215b8be",
+ "common": {},
+ "csv_sha256": "7e1ee233ef9d6e06dcb77d20289b3bf34a8d5fdf62408b320b96a36a1fac186b"
+}
