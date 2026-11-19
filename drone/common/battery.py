@@ -141,10 +141,6 @@ class BatteryConfig:
     hover_sag_per_cell_v: float = 0.15  # loaded-vs-resting drop at hover
     min_flight_current_a: float = 2.0   # a flying quad always draws more
 
-    # Escape hatch for a pack that can't be read at all. Default off: an
-    # unknown battery is treated as not fit to fly.
-    allow_unknown_battery: bool = False
-
     @classmethod
     def from_dict(cls, d: Optional[Dict[str, Any]]) -> "BatteryConfig":
         d = dict(d or {})
@@ -189,7 +185,7 @@ class BatteryConfig:
         The default is drone_sdk's: $COYBOT_SDK_CONFIG_DIR/config.yaml if set, else beside
         this file (~/drone-api on the aircraft). Beside-this-file only, a SITL harness's
         config reached drone_sdk but not the mission loop: with the battery not yet read,
-        the loop refused a takeoff that the harness's allow_unknown_battery permits."""
+        the loop priced takeoffs against a different battery config from the one the harness set."""
         if config_path is None:
             config_path = Path(os.environ.get("COYBOT_SDK_CONFIG_DIR") or Path(__file__).parent) / "config.yaml"
         try:
@@ -227,7 +223,7 @@ class BatterySample:
 @dataclass
 class BatteryEstimate:
     pct: Optional[float]                  # None = cannot be trusted at all
-    source: str                           # 'voltage_rest' | 'voltage_loaded' | 'current' | 'fc' | 'unknown'
+    source: str                           # 'voltage_rest' | 'voltage_loaded' | 'current' | 'unknown'
     voltage: Optional[float] = None
     cell_voltage: Optional[float] = None
     current_a: Optional[float] = None
@@ -446,15 +442,10 @@ class BatteryEstimator:
         # The FC's own % is computed from these same inputs (consumed mAh from
         # the current pin, or the voltage): with either pinned it is as made up
         # as they are. The quadcopter's current pin pinned at a constant 78 A
-        # "consumed" 10.7 Ah while it sat on the bench and read 0%, which
-        # refused every takeoff despite allow_unknown_battery. Unknown it is.
-        fc_inputs_real = not (voltage_railed or current_railed)
+        # "consumed" 10.7 Ah while it sat on the bench and read 0%. It is never
+        # taken as the level on its own: unknown it is.
         if pct is None and s.fc_remaining is not None and s.fc_remaining >= 0 \
-                and cfg.allow_unknown_battery and fc_inputs_real:
-            pct, source = float(s.fc_remaining), "fc"
-            warnings.append("only the FC's own % is available and it is unverified")
-        elif pct is None and s.fc_remaining is not None and s.fc_remaining >= 0 \
-                and not fc_inputs_real:
+                and (voltage_railed or current_railed):
             warnings.append(f"the FC's own {s.fc_remaining:.0f}% comes from the pinned "
                             f"input(s) above - ignored, battery level unknown")
 
@@ -534,22 +525,17 @@ class BatteryGovernor:
 
     # ---- decisions --------------------------------------------------------
 
-    def _unknown(self, pct: Optional[float]) -> Optional[Verdict]:
-        if pct is None and not self.config.allow_unknown_battery:
-            return Verdict(False, "deny",
-                           "battery level cannot be determined - fix the FC battery "
-                           "monitor (see batteryWarnings) or set "
-                           "battery.allow_unknown_battery")
-        return None
+    @staticmethod
+    def _unknown() -> Verdict:
+        return Verdict(False, "deny",
+                       "battery level cannot be determined - fix the FC battery "
+                       "monitor (see batteryWarnings)")
 
     def preflight(self, pct: Optional[float], planned_alt_m: float) -> Verdict:
         """May we take off at all?"""
         cfg = self.config
-        bad = self._unknown(pct)
-        if bad:
-            return bad
         if pct is None:
-            return Verdict(True, "ok", "battery unknown - allowed by config")
+            return self._unknown()
         if pct < cfg.min_takeoff_pct:
             return Verdict(False, "deny",
                            f"battery {pct:.0f}% is below the {cfg.min_takeoff_pct:.0f}% "
@@ -567,8 +553,6 @@ class BatteryGovernor:
         """Standing check, independent of any action: must we go home now?"""
         cfg = self.config
         if pct is None:
-            if cfg.allow_unknown_battery:
-                return Verdict(True, "ok", "battery unknown - allowed by config")
             return Verdict(False, "return_home", "battery level lost in flight - returning home")
         home = self.home_cost(dist_home_m, alt_m)
         if pct - home >= cfg.landing_reserve_pct:
@@ -587,11 +571,8 @@ class BatteryGovernor:
                      kind: str = "action") -> Verdict:
         """Can we afford `cost_pct` now and still get home from where it leaves us?"""
         cfg = self.config
-        bad = self._unknown(pct)
-        if bad:
-            return bad
         if pct is None:
-            return Verdict(True, "ok", "battery unknown - allowed by config", cost_pct=cost_pct)
+            return self._unknown()
         if pct < cfg.low_battery_pct:
             if kind in ("takeoff", "start_recording"):
                 return Verdict(False, "deny",
