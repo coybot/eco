@@ -1,0 +1,18 @@
+{
+ "seeds": [
+  0,
+  800029,
+  270
+ ],
+ "workers": 26,
+ "wall_s": 425.6,
+ "python": "3.12.3",
+ "numpy": "2.4.4",
+ "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+ "machine": "x86_64",
+ "git_commit": "",
+ "common": {
+  "exp": "'baseline'"
+ },
+ "csv_sha256": "e3a14d5eb8936e5357fbb599102e7c61f85cdf9b49d6f6208a0c1da1983a4e99"
+}

@@ -310,3 +310,186 @@ docking_guidance:
   contact_jump_m_s2: 6.0
   motor_stop_delay_s: 0.3
   trim_tilt_estimate_deg: 48.0
+
+# ---------------------------------------------------------------------------------------
+# Delivery HEXACOPTER (addendum, replaces small_quadcopter for the scenario). [A] = given in
+# the addendum (still an estimate), [E] = my estimate, [D] = derived. Sizing check:
+# docking/hex_sizing.py; changes from [A] values are listed in PHASE_2.md.
+hexacopter:
+  rotors_count: 6
+  across_m: 0.48                     # [A] full cage
+  prop_diameter_m: 0.127             # [A] 5 in
+  arm_length_m: 0.160                # [D] 0.24 - 0.0635 prop radius - 0.015 cage gap; adjacent props 0.16 m apart
+  spin_pattern_label: PPNNPN         # [D] CHANGED from PNPNPN after the Phase 2 rotor-out check. PNPNPN can make
+                                     #     zero moments at hover with one rotor out (LP: up to 20 N) but then has
+                                     #     roll/pitch authority in only half the directions: falls in 6/6 simulated
+                                     #     failures. PPNNPN keeps full control for 4/6 failures (sim: height within
+                                     #     0.13 m) and falls for the other 2 (10 N available). No flat 6-rotor pattern
+                                     #     does 6/6; 20 deg dihedral rotor tilt gives 6/6 in the LP but only ~3 mN m of
+                                     #     worst-axis authority. Meeting "fly level with one rotor failed" for every
+                                     #     rotor needs a coaxial Y6 or an octocopter (see PHASE_2.md).
+  mass_empty_kg: 1.0                 # CHANGED from [A] 1.1: three loaded hexes + lean rail must fit 5 kg
+                                     #     (3 x 1.4 + 0.75 = 4.95 kg). Mass breakdown in PHASE_2.md (~0.85-0.95 kg buildable)
+  mass_loaded_kg: 1.4                # CHANGED from [A] 1.5 (empty + 0.4 kg drink)
+  thrust_max_total_n: 30.0           # [A]
+  battery_wh: 40.0                   # [A]
+  battery_usable_frac: 0.85          # [E]
+  avionics_power_w: 6.0              # [E] 2 radars, 10 IR rangefinders, 2 radios, computer
+  figure_of_merit_nd: 0.55           # [E] small 5 in props
+  motor_esc_efficiency_nd: 0.80      # [E]
+  cage_loss_frac: 0.05               # [E] thrust lost to cage blockage
+  yaw_torque_per_thrust_m: 0.012     # [E]
+  drag_area_m2: 0.07                 # [E] frontal CdA of a 0.48 m open cage + body
+  plan_drag_ratio_nd: 1.6            # [E] plan-view CdA / frontal (the cage disc faces the flow when tilted)
+  drag_area_cases_m2: [0.03, 0.05, 0.07, 0.10]
+  prop_zero_thrust_axial_speed_m_s: 42.0   # [E] 5x4.3 at ~22k rpm
+  max_tilt_deg: 65.0
+  rail_mass_per_dock_lean_kg: 0.15   # [E] lightest credible dock (funnel 0.08, latch 0.05, fittings); CHANGED
+                                     #     rail to this value (was 0.25 per dock) so three hexes fit
+  sensing_budget_kg: 0.075           # [A]
+  mission_energy:                    # [E] phase durations for one sortie
+    descent_s: 20
+    inbound_s: 90
+    deliver_landing_s: 10
+    deliver_hover_s: 0
+    outbound_s: 90
+    climb_m: 40
+    wait_s: 60
+    attempts_count: 3
+    attempt_s: 25
+    reposition_s: 15
+    docking_airspeed_m_s: 18.5
+  # ---- flight model (Phase 2, hexacopter addendum) ----
+  inertia_kg_m2: [0.008, 0.008, 0.014]   # [E] six 30 g motor+prop at 0.16 m, 0.15 kg cage ring at 0.24 m
+  motor_tau_up_s: 0.030              # [E] 5 in props
+  motor_tau_down_s: 0.045
+  rot_damping_nm_s2: 4.0e-5          # [E] cage and props
+  cage_radius_m: 0.24                # [A] 0.48 m across
+  cage_half_height_m: 0.10           # [E] cage modelled as a cylinder 0.48 m x 0.20 m
+  cage_impact_rating_m_s: 1.0        # [E] contact faster than this along the normal counts as a collision
+  rotor_fail_detect_delay_s: 0.10    # [E] ESC rpm telemetry
+  controller:
+    att_p_per_s: [7.0, 7.0, 2.5]
+    rate_max_deg_s: [250.0, 250.0, 90.0]
+    rate_p_per_s: [18.0, 18.0, 6.0]
+    rate_i_per_s2: [30.0, 30.0, 6.0]
+    rate_d_s: [0.010, 0.010, 0.0]
+    rate_d_lpf_hz: 40.0
+    thrust_usable_fraction_nd: 0.95
+  outer:
+    kv_per_s: 2.2
+    ki_per_s2: 0.4
+    kp_pos_per_s: 1.0
+    a_max_m_s2: 6.0                  # [D] ~31 deg tilt: holds position against ~12 m/s of wind (3.0 lost S2/19 downwind)
+    yaw_rate_max_deg_s: 60.0
+  sensors:
+    accel: {rate_hz: 400, delay_s: 0.003, noise_std: 0.05, bias_std: 0.05, bias_rw_std_per_sqrt_s: 0.002}
+    gyro: {rate_hz: 400, delay_s: 0.003, noise_std: 0.005, bias_std: 0.003, bias_rw_std_per_sqrt_s: 0.0002}
+    ahrs: {rate_hz: 200, delay_s: 0.010, noise_std_deg: 0.3, bias_std_deg: 0.5, bias_rw_deg_per_sqrt_s: 0.02,
+           yaw_noise_std_deg: 1.0, yaw_bias_std_deg: 4.0}     # [E] magnetometer near steel and concrete
+    baro_diff:                       # hex baro minus the beacon's (beacon baro arrives over the long-range radio)
+      rate_hz: 25
+      delay_s: 0.04
+      noise_std_m: 0.12              # [E] sensor noise plus pressure fluctuation
+      offset_std_m: 0.25             # [E] mismatch between the two sensors after matching
+      drift_rw_m_per_sqrt_s: 0.01    # [E] weather and temperature drift (~0.2 m in 6 min)
+      gust_coeff_m_per_m2_s2: 0.004  # [E] dynamic-pressure error per (local wind speed)^2 near facades
+    radar:                           # [A] the user's estimates, UNVALIDATED
+      rate_hz: 15
+      delay_s: 0.03
+      mounts_pitch_deg: [-45.0, 45.0]   # radar 1 forward and 45 deg down, radar 2 forward and 45 deg up
+      half_fov_deg: 60.0
+      angular_resolution_deg: 15.0
+      angle_noise_std_deg: 3.0       # [E] angle accuracy of a single return (resolution is 15 deg)
+      range_resolution_m: 0.1
+      range_noise_std_m: 0.05
+      subrays_per_beam_count: 2      # per axis (2 x 2 rays sample each 15 deg beam)
+      range_solid_m: 20.0
+      range_glass_m: 8.0
+      range_foliage_m: 8.0
+      p_detect_foliage_nd: 0.35      # "weakly": chance per beam per scan
+      range_person_m: 8.0            # [E] not in the user's list
+      p_detect_person_nd: 0.7
+      range_fabric_m: 4.0            # [E] awnings, not in the user's list
+      p_detect_fabric_nd: 0.5
+      wire_range_m: 10.0             # metal wire >= 3 mm, within 20 deg of perpendicular
+      wire_full_range_within_deg: 20.0
+      wire_zero_range_at_deg: 60.0   # [E] "less at shallow angles": linear taper to zero here
+      wire_min_diameter_m: 0.003
+      wire_range_scale_nd: 1.0       # ablation knob (0.5 and 2.0)
+      velocity_noise_std_m_s: 0.2    # [A] "to 0.2 m/s", taken as 1 sigma per axis (pessimistic reading)
+      velocity_bias_std_m_s: 0.03    # [E]
+      velocity_structure_range_m: 30.0
+    ir:                              # 8 x 8 multizone time-of-flight, [A]
+      rate_hz: 15
+      delay_s: 0.03
+      zones_count: 8
+      fov_deg: 45.0
+      range_shade_m: 4.0
+      range_sun_m: 1.5
+      noise_std_frac: 0.02
+      noise_std_min_m: 0.01
+      ring_count: 8
+      min_object_diameter_m: 0.05    # [E] thinner things are not seen ("no thin objects")
+    ranging_radio:                   # 3-antenna UWB-like ranging to the beacon, [A]
+      rate_hz: 10
+      delay_s: 0.02
+      max_range_m: 100.0
+      range_err_std_min_m: 0.1
+      range_err_std_max_m: 0.3
+      bearing_err_std_min_deg: 5.0
+      bearing_err_std_max_deg: 10.0
+      p_reflection_nd: 0.05          # [E] false reading from a reflection, line of sight
+      p_reflection_near_facade_nd: 0.15   # [E] within 5 m of a facade
+      p_nlos_reflection_nd: 0.3      # [E] blocked: chance of a reflected (wrong) reading instead of none
+      reflection_extra_range_m: [1.0, 8.0]
+      reflection_bearing_err_deg: 40.0
+    long_range_radio:                # coarse distance only, [E]
+      rate_hz: 1
+      delay_s: 0.2
+      range_err_std_m: 5.0
+      range_err_frac: 0.1
+    contact:                         # contact detection from IMU and motor effort, [E]
+      delay_s: 0.05
+      force_threshold_n: 1.5
+      p_detect_nd: 0.95
+      false_rate_per_s: 0.002
+      direction_err_deg: 20.0
+  sensing_mass_breakdown_kg:         # [E] the 75 g budget (addendum)
+    radars_2x: 0.020                 # 60 GHz single-chip radar modules ~8-10 g each
+    ir_multizone_10x: 0.015          # VL53L5CX-class boards ~1.5 g each with cabling
+    ranging_radio_3_antenna: 0.010
+    long_range_radio: 0.006
+    baro_imu: 0.002
+    computer: 0.018                  # [E] microcontroller-class (no camera, no neural nets)
+    harness: 0.004
+
+delivery:                            # navigation and scenario settings (addendum sections 2-3)
+  grid_cell_m: 0.2
+  margin_solid_m: 1.0
+  margin_wire_m: 2.0
+  margin_tree_m: 3.0
+  speed_open_m_s: 3.0
+  speed_near_m_s: 1.0                # within 5 m of structure
+  speed_close_m_s: 0.5               # within 2 m and inside the balcony
+  near_m: 5.0
+  close_m: 2.0
+  replan_hz: 2.0
+  path_record_spacing_m: 0.5
+  cross_height_above_beacon_m: 0.6   # [D] railing crossing height above the beacon
+  entry_standoff_m: 1.6              # [D] entry point this far out from the railing
+  unseen_cost_nd: 0.6                # extra cost per metre through unseen cells (plans may cross them; flight may not)
+  max_contacts_inbound_count: 3
+  give_up_reserve_frac: 0.15         # [D] energy kept back beyond the estimated return
+  release_pos_err_std_m: 0.5         # [E] mothership's estimate of the release point in the beacon frame
+  time_window_s: 420                 # [D] the pickup run passes this long after release
+  pickup_radius_m: 3.0               # [D] handover: within this of the pickup point, in open sky; the
+                                     #     mothership's own ranging antennas take over from here
+  land_settle_s: 3.0
+  line_length_m: 1.6                 # drink-lowering option
+  line_speed_m_s: 0.3
+  line_cd_area_m2: 0.006             # [E] cup drag area on the line
+  scan_match_hz: 2.0
+  scan_match_search_m: 0.6
+  beacon_mount_label: railing        # railing | wall
+  delivery_method_label: land        # land | line

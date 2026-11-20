@@ -1,0 +1,247 @@
+[
+ {
+  "check_label": "H1 hover thrust = weight (loaded)",
+  "value": 0.999956905125039,
+  "target": "1.00 +/- 0.01",
+  "pass_bool": true
+ },
+ {
+  "check_label": "H2 hover power sim vs calc (loaded)",
+  "value": 1.0000204502377128,
+  "target": "1.00 +/- 0.03",
+  "pass_bool": true,
+  "detail": {
+   "power_sim_w": 288.03209040201335,
+   "power_calc_w": 288.0262001977518,
+   "endurance_s": 424.9526496480422
+  }
+ },
+ {
+  "check_label": "H1 hover thrust = weight (empty)",
+  "value": 0.999956897497795,
+  "target": "1.00 +/- 0.01",
+  "pass_bool": true
+ },
+ {
+  "check_label": "H2 hover power sim vs calc (empty)",
+  "value": 1.0000201632611339,
+  "target": "1.00 +/- 0.03",
+  "pass_bool": true,
+  "detail": {
+   "power_sim_w": 176.2575846003666,
+   "power_calc_w": 176.2540307443188,
+   "endurance_s": 694.4382012128482
+  }
+ },
+ {
+  "check_label": "H3 hover, 3 m/s wind, one rotor out: rotors held level",
+  "value": 4.0,
+  "target": "6 of 6 (height dev < 0.5 m, tilt < 20 deg)",
+  "pass_bool": false,
+  "detail": {
+   "spin_pattern_label": "PPNNPN",
+   "per_rotor": [
+    {
+     "rotor_index": 0,
+     "height_dev_max_m": 0.08857481261802036,
+     "tilt_max_deg": 11.731185342676019,
+     "yaw_rate_max_rad_s": 0.20944273030555857,
+     "horizontal_dev_max_m": 0.17707010938112733,
+     "motors_saturated_max_count": 0
+    },
+    {
+     "rotor_index": 1,
+     "height_dev_max_m": 0.1262831214553941,
+     "tilt_max_deg": 15.270079044437777,
+     "yaw_rate_max_rad_s": 0.2126409642872079,
+     "horizontal_dev_max_m": 0.1839454876094271,
+     "motors_saturated_max_count": 1
+    },
+    {
+     "rotor_index": 2,
+     "height_dev_max_m": 0.13369379615687293,
+     "tilt_max_deg": 14.31261237509488,
+     "yaw_rate_max_rad_s": 0.1925851857948344,
+     "horizontal_dev_max_m": 0.1305995727154268,
+     "motors_saturated_max_count": 2
+    },
+    {
+     "rotor_index": 3,
+     "height_dev_max_m": 0.09557420183382348,
+     "tilt_max_deg": 8.941901689309212,
+     "yaw_rate_max_rad_s": 0.20279291379749093,
+     "horizontal_dev_max_m": 0.11385183487989878,
+     "motors_saturated_max_count": 0
+    },
+    {
+     "rotor_index": 4,
+     "height_dev_max_m": 19.94382099502943,
+     "tilt_max_deg": 179.95113264291103,
+     "yaw_rate_max_rad_s": 14.338725714616139,
+     "horizontal_dev_max_m": 9.971747407756578,
+     "motors_saturated_max_count": 1
+    },
+    {
+     "rotor_index": 5,
+     "height_dev_max_m": 19.943141086987016,
+     "tilt_max_deg": 85.36256048143699,
+     "yaw_rate_max_rad_s": 7.513595040558222,
+     "horizontal_dev_max_m": 13.896476598844702,
+     "motors_saturated_max_count": 1
+    }
+   ]
+  }
+ },
+ {
+  "check_label": "H4 3 m/s forward, one rotor out: rotors held level",
+  "value": 4.0,
+  "target": "6 of 6 (height dev < 0.5 m, tilt < 20 deg)",
+  "pass_bool": false,
+  "detail": {
+   "spin_pattern_label": "PPNNPN",
+   "per_rotor": [
+    {
+     "rotor_index": 0,
+     "height_dev_max_m": 0.07359613514509178,
+     "tilt_max_deg": 9.00739207979161,
+     "yaw_rate_max_rad_s": 0.20685559570964684,
+     "horizontal_dev_max_m": 0.2638112314760084,
+     "motors_saturated_max_count": 0
+    },
+    {
+     "rotor_index": 1,
+     "height_dev_max_m": 0.10106210875789756,
+     "tilt_max_deg": 14.626860333491178,
+     "yaw_rate_max_rad_s": 0.2119672825550217,
+     "horizontal_dev_max_m": 0.22124762271926512,
+     "motors_saturated_max_count": 1
+    },
+    {
+     "rotor_index": 2,
+     "height_dev_max_m": 0.09648330451266318,
+     "tilt_max_deg": 15.91745180550501,
+     "yaw_rate_max_rad_s": 0.19335578994942254,
+     "horizontal_dev_max_m": 0.16214090511802484,
+     "motors_saturated_max_count": 1
+    },
+    {
+     "rotor_index": 3,
+     "height_dev_max_m": 0.06316212038208491,
+     "tilt_max_deg": 10.780479203101022,
+     "yaw_rate_max_rad_s": 0.20488078047874214,
+     "horizontal_dev_max_m": 0.16042887476062873,
+     "motors_saturated_max_count": 0
+    },
+    {
+     "rotor_index": 4,
+     "height_dev_max_m": 19.94370743436959,
+     "tilt_max_deg": 78.25262933629642,
+     "yaw_rate_max_rad_s": 9.552700287006791,
+     "horizontal_dev_max_m": 9.807166018181862,
+     "motors_saturated_max_count": 1
+    },
+    {
+     "rotor_index": 5,
+     "height_dev_max_m": 19.940741433237832,
+     "tilt_max_deg": 78.88993635171425,
+     "yaw_rate_max_rad_s": 11.083350958564676,
+     "horizontal_dev_max_m": 7.8659666603090805,
+     "motors_saturated_max_count": 1
+    }
+   ]
+  }
+ },
+ {
+  "check_label": "S1 radar wire detection by angle and material",
+  "value": null,
+  "target": "metal across: to 10 m; metal along the approach: not seen; non-metal: never",
+  "pass_bool": true,
+  "detail": {
+   "metal_across_5.0m": true,
+   "metal_across_9.5m": true,
+   "metal_across_10.5m": false,
+   "metal_along_offset_0.5m": false,
+   "metal_along_offset_1.5m": false,
+   "metal_along_offset_3.0m": false,
+   "nonmetal_across_5.0m": false,
+   "nonmetal_across_9.5m": false,
+   "nonmetal_across_10.5m": false,
+   "nonmetal_along_offset_0.5m": false,
+   "nonmetal_along_offset_1.5m": false,
+   "nonmetal_along_offset_3.0m": false
+  }
+ },
+ {
+  "check_label": "S2 infrared (glass, sun, thin wire) and radar glass range",
+  "value": null,
+  "target": "no glass reading; 4 m shade, 1.5 m sun; no wire; radar glass 8 m",
+  "pass_bool": true,
+  "detail": {
+   "ir": {
+    "shade_glass_1.0m": {
+     "valid": 0,
+     "invalid": 64
+    },
+    "shade_concrete_1.4m": {
+     "valid": 64,
+     "invalid": 0
+    },
+    "shade_concrete_3.5m": {
+     "valid": 64,
+     "invalid": 0
+    },
+    "shade_wire_metal_0.8m": {
+     "valid": 0,
+     "invalid": 0
+    },
+    "sun_glass_1.0m": {
+     "valid": 0,
+     "invalid": 64
+    },
+    "sun_concrete_1.4m": {
+     "valid": 44,
+     "invalid": 0
+    },
+    "sun_concrete_3.5m": {
+     "valid": 0,
+     "invalid": 0
+    },
+    "sun_wire_metal_0.8m": {
+     "valid": 0,
+     "invalid": 0
+    }
+   },
+   "radar": {
+    "radar_glass_7.5m": true,
+    "radar_glass_8.5m": false
+   }
+  }
+ },
+ {
+  "check_label": "S3 ranging radio blocked by concrete",
+  "value": 0.255,
+  "target": "blocked: only reflections (~30 %); line of sight: ~all",
+  "pass_bool": true,
+  "detail": {
+   "blocked_readings_frac": 0.255,
+   "los_readings_frac": 1.0
+  }
+ },
+ {
+  "check_label": "L corridor-3m label fraction per scenario (100 seeds)",
+  "value": null,
+  "target": "S9 = 0",
+  "pass_bool": true,
+  "detail": {
+   "S1": 1.0,
+   "S2": 1.0,
+   "S3": 1.0,
+   "S4": 0.82,
+   "S5": 0.2,
+   "S6": 0.97,
+   "S7": 1.0,
+   "S8": 0.38,
+   "S9": 0.0
+  }
+ }
+]

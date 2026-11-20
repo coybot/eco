@@ -1,0 +1,62 @@
+# Docking and delivery simulator tasks (flight/, docking/, delivery/).
+# Run from drone/sim:   just test   |   just sizing   |   just remote-run "python -m delivery.report"
+# Local Python is the repo venv (../../.venv, created by `just venv`).
+# Batch runs go to a remote Linux box named by $SIM_REMOTE (user@host; kept out of the repo).
+
+set shell := ["bash", "-cu"]
+
+venv_dir := "../../.venv"
+py := venv_dir / "bin/python"
+remote := env_var_or_default("SIM_REMOTE", "")
+remote_dir := "~/docking-sim"
+
+# Create the repo venv with uv and install the simulator's dependencies
+venv:
+    test -x {{py}} || uv venv -q {{venv_dir}} --python 3.12
+    uv pip install -q --python {{py}} numpy scipy pyyaml numba pytest matplotlib
+
+# Unit tests for the flight model, docking and delivery
+test *args:
+    {{py}} -m pytest -q tests/test_flight.py tests/test_docking.py tests/test_delivery.py {{args}}
+
+# Phase 1 exit criteria
+phase1:
+    {{py}} -m flight.checks_phase1
+
+# Hexacopter sizing check (writes docking/results/sizing/)
+sizing:
+    {{py}} docking/hex_sizing.py
+
+# Phase 2 hexacopter checks (rotor out, sensors, scenarios)
+phase2:
+    {{py}} -m delivery.checks_phase2
+
+# Existing scenes and vehicles still run (pytest + scenario comparison)
+regression:
+    {{py}} docking/run_regression.py
+
+# One delivery trial, verbose: just trial S4 7
+trial scenario="S1" seed="1" *args:
+    {{py}} -m delivery.trial --scenario {{scenario}} --seed {{seed}} {{args}}
+
+# Copy the simulator to the remote box (code only; results stay put)
+sync:
+    test -n "{{remote}}" || (echo "set SIM_REMOTE=user@host" && exit 1)
+    rsync -az --delete --exclude '__pycache__' --exclude 'results/' --exclude '*.pyc' \
+        ./ {{remote}}:{{remote_dir}}/sim/
+
+# Create the remote venv (system numpy/scipy plus numba)
+remote-venv:
+    ssh {{remote}} 'cd {{remote_dir}} && (test -d venv || python3 -m venv --system-site-packages venv) && venv/bin/pip install -q numba pyyaml'
+
+# Run a command on the remote box in the background, logging to logs/<name>.log
+remote-run name cmd: sync
+    ssh {{remote}} 'mkdir -p {{remote_dir}}/logs && cd {{remote_dir}}/sim && setsid nohup timeout 20h ../venv/bin/{{cmd}} > ../logs/{{name}}.log 2>&1 < /dev/null & echo started {{name}}'
+
+# Tail a remote log
+remote-log name lines="20":
+    ssh {{remote}} 'tail -n {{lines}} {{remote_dir}}/logs/{{name}}.log'
+
+# Fetch results from the remote box
+pull what="":
+    rsync -az {{remote}}:{{remote_dir}}/sim/{{what}} ./{{what}}

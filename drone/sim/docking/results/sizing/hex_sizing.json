@@ -1,0 +1,268 @@
+{
+ "hover": [
+  {
+   "case_label": "loaded",
+   "mass_kg": 1.4,
+   "hover_power_w": 288.0262001977518,
+   "hover_endurance_s": 424.96134003074417,
+   "thrust_to_weight_nd": 2.185106170666989
+  },
+  {
+   "case_label": "empty",
+   "mass_kg": 1.0,
+   "hover_power_w": 176.2540307443188,
+   "hover_endurance_s": 694.4522033516406,
+   "thrust_to_weight_nd": 3.059148638933785
+  }
+ ],
+ "rotor_out": [
+  {
+   "pattern_label": "PNPNPN",
+   "max_level_thrust_one_out_n": 20.0,
+   "loaded_weight_n": 13.729309999999998,
+   "margin_frac": 0.45673744711132636,
+   "full_attitude_and_yaw_control_bool": false
+  },
+  {
+   "pattern_label": "PPNNPN",
+   "max_level_thrust_one_out_n": 10.0,
+   "loaded_weight_n": 13.729309999999998,
+   "margin_frac": -0.2716312764443368,
+   "full_attitude_and_yaw_control_bool": false
+  }
+ ],
+ "payload": [
+  {
+   "hexes_count": 3,
+   "rail_per_dock_kg": 0.25,
+   "rail_kg": 1.05,
+   "payload_total_kg": 5.249999999999999,
+   "limit_kg": 5.0,
+   "fits_bool": false,
+   "max_hex_loaded_mass_kg": 1.3166666666666667
+  },
+  {
+   "hexes_count": 3,
+   "rail_per_dock_kg": 0.15,
+   "rail_kg": 0.75,
+   "payload_total_kg": 4.949999999999999,
+   "limit_kg": 5.0,
+   "fits_bool": true,
+   "max_hex_loaded_mass_kg": 1.4166666666666667
+  }
+ ],
+ "forward": [
+  {
+   "drag_area_frontal_m2": 0.03,
+   "airspeed_m_s": 16.0,
+   "tilt_deg": 28.62204176366169,
+   "thrust_required_n": 11.171865898785029,
+   "thrust_available_n": 24.52537618576968,
+   "thrust_margin_frac": 1.1952802162114105,
+   "power_w": 300.6535556263708,
+   "feasible_bool": true
+  },
+  {
+   "drag_area_frontal_m2": 0.03,
+   "airspeed_m_s": 18.0,
+   "tilt_deg": 36.308564635950304,
+   "thrust_required_n": 12.169478675615334,
+   "thrust_available_n": 22.386853158497043,
+   "thrust_margin_frac": 0.8395901546181133,
+   "power_w": 410.97610452805446,
+   "feasible_bool": true
+  },
+  {
+   "drag_area_frontal_m2": 0.03,
+   "airspeed_m_s": 18.5,
+   "tilt_deg": 38.269324518223044,
+   "thrust_required_n": 12.490828008101055,
+   "thrust_available_n": 21.815616081601522,
+   "thrust_margin_frac": 0.746530819850596,
+   "power_w": 445.3795757938225,
+   "feasible_bool": true
+  },
+  {
+   "drag_area_frontal_m2": 0.03,
+   "airspeed_m_s": 20.0,
+   "tilt_deg": 44.03100038199341,
+   "thrust_required_n": 13.639976586670894,
+   "thrust_available_n": 20.070750373659937,
+   "thrust_margin_frac": 0.4714651631640814,
+   "power_w": 566.3297527567966,
+   "feasible_bool": true
+  },
+  {
+   "drag_area_frontal_m2": 0.03,
+   "airspeed_m_s": 22.0,
+   "tilt_deg": 51.017771989339124,
+   "thrust_required_n": 15.588893019855396,
+   "thrust_available_n": 17.784639440765165,
+   "thrust_margin_frac": 0.14085326123625785,
+   "power_w": 770.059709908753,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.05,
+   "airspeed_m_s": 16.0,
+   "tilt_deg": 46.431993489492974,
+   "thrust_required_n": 14.228722648076406,
+   "thrust_available_n": 21.71935055578007,
+   "thrust_margin_frac": 0.5264441575657763,
+   "power_w": 536.8088669894207,
+   "feasible_bool": true
+  },
+  {
+   "drag_area_frontal_m2": 0.05,
+   "airspeed_m_s": 18.0,
+   "tilt_deg": 54.790392840932086,
+   "thrust_required_n": 17.008622536671634,
+   "thrust_available_n": 19.49509415148875,
+   "thrust_margin_frac": 0.14618888798643925,
+   "power_w": 776.5420065274901,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.05,
+   "airspeed_m_s": 18.5,
+   "tilt_deg": 56.58270811047066,
+   "thrust_required_n": 17.806552054795077,
+   "thrust_available_n": 18.970277668721998,
+   "thrust_margin_frac": 0.06535378720966611,
+   "power_w": 847.1380712449904,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.05,
+   "airspeed_m_s": 20.0,
+   "tilt_deg": 61.28859303972374,
+   "thrust_required_n": 20.413589543163063,
+   "thrust_available_n": 17.470706584286887,
+   "thrust_margin_frac": -0.1441629338462822,
+   "power_w": 1084.8691266953808,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.05,
+   "airspeed_m_s": 22.0,
+   "tilt_deg": 66.23523929385108,
+   "thrust_required_n": 24.33517694965248,
+   "thrust_available_n": 15.618164840518174,
+   "thrust_margin_frac": -0.35820623483318415,
+   "power_w": 1464.4901508761643,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.07,
+   "airspeed_m_s": 16.0,
+   "tilt_deg": 58.03620001086363,
+   "thrust_required_n": 18.524666350643827,
+   "thrust_available_n": 20.30419731620468,
+   "thrust_margin_frac": 0.09606278093634901,
+   "power_w": 824.5384871692482,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.07,
+   "airspeed_m_s": 18.0,
+   "tilt_deg": 64.64899697461796,
+   "thrust_required_n": 22.904038577399213,
+   "thrust_available_n": 18.380977242159993,
+   "thrust_margin_frac": -0.19747876864398906,
+   "power_w": 1190.8968979584952,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.07,
+   "airspeed_m_s": 18.5,
+   "tilt_deg": 65.99533074092666,
+   "thrust_required_n": 24.106152062951786,
+   "thrust_available_n": 17.928587358099815,
+   "thrust_margin_frac": -0.2562650682995622,
+   "power_w": 1296.7827014073337,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.07,
+   "airspeed_m_s": 20.0,
+   "tilt_deg": 69.45992563808875,
+   "thrust_required_n": 27.950128347226755,
+   "thrust_available_n": 16.622471217676708,
+   "thrust_margin_frac": -0.40528104160473344,
+   "power_w": 1650.6903617066198,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.07,
+   "airspeed_m_s": 22.0,
+   "tilt_deg": 73.03288426842938,
+   "thrust_required_n": 33.604811298091725,
+   "thrust_available_n": 14.969719398710076,
+   "thrust_margin_frac": -0.5545364243851552,
+   "power_w": 2212.419056804408,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.1,
+   "airspeed_m_s": 16.0,
+   "tilt_deg": 67.53308522633468,
+   "thrust_required_n": 25.661790219947218,
+   "thrust_available_n": 19.438853056728572,
+   "thrust_margin_frac": -0.24249816984247197,
+   "power_w": 1299.3777909956852,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.1,
+   "airspeed_m_s": 18.0,
+   "tilt_deg": 72.25544360828957,
+   "thrust_required_n": 32.17681318795776,
+   "thrust_available_n": 17.754538797907657,
+   "thrust_margin_frac": -0.44821947735481993,
+   "power_w": 1863.2632534288418,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.1,
+   "airspeed_m_s": 18.5,
+   "tilt_deg": 73.20444834074848,
+   "thrust_required_n": 33.9380392155129,
+   "thrust_available_n": 17.349410150548746,
+   "thrust_margin_frac": -0.4887916169706581,
+   "power_w": 2025.5740030934085,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.1,
+   "airspeed_m_s": 20.0,
+   "tilt_deg": 75.63639337883498,
+   "thrust_required_n": 39.53105104071313,
+   "thrust_available_n": 16.160843862360807,
+   "thrust_margin_frac": -0.5911860819051659,
+   "power_w": 2567.431414067771,
+   "feasible_bool": false
+  },
+  {
+   "drag_area_frontal_m2": 0.1,
+   "airspeed_m_s": 22.0,
+   "tilt_deg": 78.13573558003858,
+   "thrust_required_n": 47.69914177603892,
+   "thrust_available_n": 14.621412206370236,
+   "thrust_margin_frac": -0.6934659270176823,
+   "power_w": 3426.964575896922,
+   "feasible_bool": false
+  }
+ ],
+ "mission_energy": {
+  "release_and_descent_j": 4896.44540336178,
+  "inbound_navigation_j": 27218.475918687545,
+  "delivery_j": 144.0131000988759,
+  "outbound_navigation_j": 16656.005905338126,
+  "climb_j": 4505.745614886376,
+  "wait_at_pickup_j": 10575.24184465913,
+  "docking_attempts_j": 136162.18364777003,
+  "total_j": 200158.11143480186,
+  "battery_usable_j": 122400.0,
+  "reserve_frac": -0.6352786881928256
+ }
+}

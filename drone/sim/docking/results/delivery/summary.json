@@ -1,0 +1,590 @@
+{
+ "baseline": {
+  "S1": {
+   "trials_count": 30,
+   "corridor_true_count": 30,
+   "errors_count": 0,
+   "delivered_count": 29,
+   "delivered_frac": 0.9666666666666667,
+   "delivered_ci95": [
+    0.8332924860304112,
+    0.9940915620051425
+   ],
+   "delivered_given_corridor_frac": 0.9666666666666667,
+   "pickup_count": 30,
+   "pickup_frac": 1.0,
+   "pickup_ci95": [
+    0.886482908609522,
+    1.0
+   ],
+   "delivered_and_pickup_frac": 0.9666666666666667,
+   "correct_give_up_count": 0,
+   "wrong_give_up_count": 1,
+   "no_corridor_but_tried_to_deliver_count": 0,
+   "give_up_reasons": {
+    "energy": 1
+   },
+   "fallback": {
+    "none": 29,
+    "sky": 1
+   },
+   "results": {
+    "pickup": 30
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 0,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 0,
+    "tree": 0,
+    "person": 0,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 5,
+   "cage_contacts_trials_count": 2,
+   "time_to_delivery_median_s": 32.65000000000655,
+   "time_to_delivery_p90_s": 41.91999999999812,
+   "time_total_median_s": 68.59499999997387,
+   "energy_total_median_j": 14754.530117500348,
+   "energy_total_p90_j": 21770.724362072095,
+   "release_err_median_m": 0.6389857238022216,
+   "delivery_err_median_m": 0.2598380768481595,
+   "delivery_err_p90_m": 0.40545867537729546,
+   "pickup_err_median_m": 0.9622963624552929,
+   "pickup_err_p90_m": 1.7542520965630044,
+   "nav_err_max_median_m": 1.1664727215245012,
+   "sensor_limits": {
+    "battery": 1
+   }
+  },
+  "S2": {
+   "trials_count": 30,
+   "corridor_true_count": 30,
+   "errors_count": 0,
+   "delivered_count": 28,
+   "delivered_frac": 0.9333333333333333,
+   "delivered_ci95": [
+    0.7867618227892791,
+    0.9815233646723066
+   ],
+   "delivered_given_corridor_frac": 0.9333333333333333,
+   "pickup_count": 29,
+   "pickup_frac": 0.9666666666666667,
+   "pickup_ci95": [
+    0.8332924860304112,
+    0.9940915620051425
+   ],
+   "delivered_and_pickup_frac": 0.9333333333333333,
+   "correct_give_up_count": 0,
+   "wrong_give_up_count": 2,
+   "no_corridor_but_tried_to_deliver_count": 0,
+   "give_up_reasons": {
+    "could_not_land": 1,
+    "energy": 1
+   },
+   "fallback": {
+    "none": 28,
+    "sky": 2
+   },
+   "results": {
+    "pickup": 30
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 0,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 0,
+    "tree": 0,
+    "person": 0,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 4,
+   "cage_contacts_trials_count": 2,
+   "time_to_delivery_median_s": 45.60499999999477,
+   "time_to_delivery_p90_s": 66.18999999997605,
+   "time_total_median_s": 96.97999999994805,
+   "energy_total_median_j": 22074.790956462595,
+   "energy_total_p90_j": 31135.639418086936,
+   "release_err_median_m": 0.5878092565086301,
+   "delivery_err_median_m": 0.23920373800785816,
+   "delivery_err_p90_m": 0.362507055119794,
+   "pickup_err_median_m": 1.1494551684838061,
+   "pickup_err_p90_m": 2.060791613918679,
+   "nav_err_max_median_m": 1.2060867333024805,
+   "sensor_limits": {
+    "could not land": 1,
+    "battery": 1
+   }
+  },
+  "S3": {
+   "trials_count": 30,
+   "corridor_true_count": 30,
+   "errors_count": 0,
+   "delivered_count": 24,
+   "delivered_frac": 0.8,
+   "delivered_ci95": [
+    0.6269395261897257,
+    0.9049502189759876
+   ],
+   "delivered_given_corridor_frac": 0.8,
+   "pickup_count": 27,
+   "pickup_frac": 0.9,
+   "pickup_ci95": [
+    0.7437855868473338,
+    0.9654007400402839
+   ],
+   "delivered_and_pickup_frac": 0.7333333333333333,
+   "correct_give_up_count": 0,
+   "wrong_give_up_count": 6,
+   "no_corridor_but_tried_to_deliver_count": 0,
+   "give_up_reasons": {
+    "repeated_contact": 5,
+    "blocked_at_the_railing": 1
+   },
+   "fallback": {
+    "sky": 6,
+    "none": 24
+   },
+   "results": {
+    "pickup": 30
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 0,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 0,
+    "tree": 0,
+    "person": 0,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 22,
+   "cage_contacts_trials_count": 9,
+   "time_to_delivery_median_s": 40.494999999999415,
+   "time_to_delivery_p90_s": 55.31999999998593,
+   "time_total_median_s": 78.09999999996522,
+   "energy_total_median_j": 17617.415730970606,
+   "energy_total_p90_j": 25689.882619204913,
+   "release_err_median_m": 0.6175057277179665,
+   "delivery_err_median_m": 0.21957300846433941,
+   "delivery_err_p90_m": 0.5462106889296048,
+   "pickup_err_median_m": 1.0715651436011462,
+   "pickup_err_p90_m": 3.012805203417609,
+   "nav_err_max_median_m": 1.293700096916673,
+   "sensor_limits": {
+    "contacts with unseen objects": 5,
+    "navigation drift at the pickup point": 2,
+    "person / obstacle on the balcony": 1
+   }
+  },
+  "S4": {
+   "trials_count": 30,
+   "corridor_true_count": 24,
+   "errors_count": 0,
+   "delivered_count": 19,
+   "delivered_frac": 0.6333333333333333,
+   "delivered_ci95": [
+    0.4551324643360493,
+    0.7812629779598231
+   ],
+   "delivered_given_corridor_frac": 0.7083333333333334,
+   "pickup_count": 30,
+   "pickup_frac": 1.0,
+   "pickup_ci95": [
+    0.886482908609522,
+    1.0
+   ],
+   "delivered_and_pickup_frac": 0.6333333333333333,
+   "correct_give_up_count": 4,
+   "wrong_give_up_count": 7,
+   "no_corridor_but_tried_to_deliver_count": 2,
+   "give_up_reasons": {
+    "dead_end": 10,
+    "could_not_land": 1
+   },
+   "fallback": {
+    "none": 19,
+    "sky": 11
+   },
+   "results": {
+    "pickup": 30
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 2,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 2,
+    "tree": 0,
+    "person": 0,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 6,
+   "cage_contacts_trials_count": 2,
+   "time_to_delivery_median_s": 42.14999999999791,
+   "time_to_delivery_p90_s": 55.33999999998591,
+   "time_total_median_s": 75.9199999999672,
+   "energy_total_median_j": 17093.902877075576,
+   "energy_total_p90_j": 25449.49839758838,
+   "release_err_median_m": 0.7878616162573947,
+   "delivery_err_median_m": 0.21952338981740566,
+   "delivery_err_p90_m": 0.37043342856704253,
+   "pickup_err_median_m": 0.9448132153076669,
+   "pickup_err_p90_m": 1.7432916351153802,
+   "nav_err_max_median_m": 1.2806784434927652,
+   "sensor_limits": {
+    "margins (2 m wire / 3 m tree) or unseen cells close the way": 6,
+    "non-metal line: radar and infrared cannot see it": 2,
+    "could not land": 1
+   }
+  },
+  "S5": {
+   "trials_count": 30,
+   "corridor_true_count": 8,
+   "errors_count": 0,
+   "delivered_count": 1,
+   "delivered_frac": 0.03333333333333333,
+   "delivered_ci95": [
+    0.005908437994857381,
+    0.16670751396958874
+   ],
+   "delivered_given_corridor_frac": 0.125,
+   "pickup_count": 30,
+   "pickup_frac": 1.0,
+   "pickup_ci95": [
+    0.886482908609522,
+    1.0
+   ],
+   "delivered_and_pickup_frac": 0.03333333333333333,
+   "correct_give_up_count": 22,
+   "wrong_give_up_count": 7,
+   "no_corridor_but_tried_to_deliver_count": 0,
+   "give_up_reasons": {
+    "dead_end": 29
+   },
+   "fallback": {
+    "sky": 29,
+    "none": 1
+   },
+   "results": {
+    "pickup": 30
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 0,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 0,
+    "tree": 0,
+    "person": 0,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 0,
+   "cage_contacts_trials_count": 0,
+   "time_to_delivery_median_s": 35.800000000003685,
+   "time_to_delivery_p90_s": 35.800000000003685,
+   "time_total_median_s": 20.855000000001443,
+   "energy_total_median_j": 6220.682897823797,
+   "energy_total_p90_j": 13962.915152935826,
+   "release_err_median_m": 0.6706394088255923,
+   "delivery_err_median_m": 0.29855861774289955,
+   "delivery_err_p90_m": 0.29855861774289955,
+   "pickup_err_median_m": 1.1139796116841634,
+   "pickup_err_p90_m": 1.8313522598038459,
+   "nav_err_max_median_m": 1.3408170328905507,
+   "sensor_limits": {
+    "margins (2 m wire / 3 m tree) or unseen cells close the way": 7
+   }
+  },
+  "S6": {
+   "trials_count": 30,
+   "corridor_true_count": 27,
+   "errors_count": 0,
+   "delivered_count": 30,
+   "delivered_frac": 1.0,
+   "delivered_ci95": [
+    0.886482908609522,
+    1.0
+   ],
+   "delivered_given_corridor_frac": 1.0,
+   "pickup_count": 28,
+   "pickup_frac": 0.9333333333333333,
+   "pickup_ci95": [
+    0.7867618227892791,
+    0.9815233646723066
+   ],
+   "delivered_and_pickup_frac": 0.9333333333333333,
+   "correct_give_up_count": 0,
+   "wrong_give_up_count": 1,
+   "no_corridor_but_tried_to_deliver_count": 3,
+   "give_up_reasons": {
+    "way_out_blocked": 1
+   },
+   "fallback": {
+    "none": 29,
+    "stuck": 1
+   },
+   "results": {
+    "pickup": 28,
+    "stuck": 1,
+    "battery": 1
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 1,
+   "collisions_by_kind": {
+    "structure": 1,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 0,
+    "tree": 0,
+    "person": 0,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 2715,
+   "cage_contacts_trials_count": 3,
+   "time_to_delivery_median_s": 40.01499999999985,
+   "time_to_delivery_p90_s": 49.73999999999101,
+   "time_total_median_s": 79.01499999996439,
+   "energy_total_median_j": 17645.45015774783,
+   "energy_total_p90_j": 32526.794253058335,
+   "release_err_median_m": 0.4161786673123823,
+   "delivery_err_median_m": 0.19475696810618764,
+   "delivery_err_p90_m": 0.5641014887216074,
+   "pickup_err_median_m": 0.989957787405735,
+   "pickup_err_p90_m": 2.308272463897878,
+   "nav_err_max_median_m": 1.276485539825909,
+   "sensor_limits": {
+    "way out blocked": 1,
+    "navigation drift": 1
+   }
+  },
+  "S7": {
+   "trials_count": 30,
+   "corridor_true_count": 30,
+   "errors_count": 0,
+   "delivered_count": 27,
+   "delivered_frac": 0.9,
+   "delivered_ci95": [
+    0.7437855868473338,
+    0.9654007400402839
+   ],
+   "delivered_given_corridor_frac": 0.9,
+   "pickup_count": 29,
+   "pickup_frac": 0.9666666666666667,
+   "pickup_ci95": [
+    0.8332924860304112,
+    0.9940915620051425
+   ],
+   "delivered_and_pickup_frac": 0.9,
+   "correct_give_up_count": 0,
+   "wrong_give_up_count": 3,
+   "no_corridor_but_tried_to_deliver_count": 0,
+   "give_up_reasons": {
+    "repeated_contact": 1,
+    "could_not_land": 2
+   },
+   "fallback": {
+    "none": 27,
+    "sky": 3
+   },
+   "results": {
+    "pickup": 30
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 0,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 0,
+    "tree": 0,
+    "person": 0,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 28,
+   "cage_contacts_trials_count": 6,
+   "time_to_delivery_median_s": 38.6400000000011,
+   "time_to_delivery_p90_s": 54.75999999998644,
+   "time_total_median_s": 74.15499999996881,
+   "energy_total_median_j": 17271.204280928283,
+   "energy_total_p90_j": 25457.007726990185,
+   "release_err_median_m": 0.6119340752813527,
+   "delivery_err_median_m": 0.23309844328324772,
+   "delivery_err_p90_m": 0.35920567185580116,
+   "pickup_err_median_m": 0.7526903796230341,
+   "pickup_err_p90_m": 1.3425598526284017,
+   "nav_err_max_median_m": 0.8549618292453232,
+   "sensor_limits": {
+    "could not land": 2,
+    "contacts with unseen objects": 1
+   }
+  },
+  "S8": {
+   "trials_count": 30,
+   "corridor_true_count": 11,
+   "errors_count": 0,
+   "delivered_count": 0,
+   "delivered_frac": 0.0,
+   "delivered_ci95": [
+    -1.2302421700937121e-17,
+    0.11351709139047801
+   ],
+   "delivered_given_corridor_frac": 0.0,
+   "pickup_count": 27,
+   "pickup_frac": 0.9,
+   "pickup_ci95": [
+    0.7437855868473338,
+    0.9654007400402839
+   ],
+   "delivered_and_pickup_frac": 0.0,
+   "correct_give_up_count": 19,
+   "wrong_give_up_count": 11,
+   "no_corridor_but_tried_to_deliver_count": 0,
+   "give_up_reasons": {
+    "dead_end": 25,
+    "repeated_contact": 4,
+    "could_not_land": 1
+   },
+   "fallback": {
+    "sky": 30
+   },
+   "results": {
+    "pickup": 29,
+    "battery": 1
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 4,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 2,
+    "tree": 0,
+    "person": 8,
+    "netting": 0,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 37,
+   "cage_contacts_trials_count": 4,
+   "time_to_delivery_median_s": null,
+   "time_to_delivery_p90_s": null,
+   "time_total_median_s": 35.700000000003776,
+   "energy_total_median_j": 10780.927579329433,
+   "energy_total_p90_j": 45971.651019006276,
+   "release_err_median_m": 0.6521210753814457,
+   "delivery_err_median_m": null,
+   "delivery_err_p90_m": null,
+   "pickup_err_median_m": 1.2108336733765042,
+   "pickup_err_p90_m": 2.323541642140325,
+   "nav_err_max_median_m": 1.3970258995496185,
+   "sensor_limits": {
+    "margins (2 m wire / 3 m tree) or unseen cells close the way": 7,
+    "moving person": 3,
+    "non-metal line: radar and infrared cannot see it": 1,
+    "navigation drift at the pickup point": 1
+   }
+  },
+  "S9": {
+   "trials_count": 30,
+   "corridor_true_count": 0,
+   "errors_count": 0,
+   "delivered_count": 7,
+   "delivered_frac": 0.23333333333333334,
+   "delivered_ci95": [
+    0.11792239210501229,
+    0.40928672330324267
+   ],
+   "delivered_given_corridor_frac": null,
+   "pickup_count": 30,
+   "pickup_frac": 1.0,
+   "pickup_ci95": [
+    0.886482908609522,
+    1.0
+   ],
+   "delivered_and_pickup_frac": 0.23333333333333334,
+   "correct_give_up_count": 23,
+   "wrong_give_up_count": 0,
+   "no_corridor_but_tried_to_deliver_count": 7,
+   "give_up_reasons": {
+    "repeated_contact": 16,
+    "dead_end": 7
+   },
+   "fallback": {
+    "sky": 23,
+    "none": 7
+   },
+   "results": {
+    "pickup": 30
+   },
+   "crashes_count": 0,
+   "trials_with_collision_count": 13,
+   "collisions_by_kind": {
+    "structure": 0,
+    "railing": 0,
+    "glass": 0,
+    "eave": 0,
+    "awning": 0,
+    "wire_metal": 0,
+    "wire_nonmetal": 0,
+    "tree": 0,
+    "person": 0,
+    "netting": 31,
+    "ground": 0
+   },
+   "cage_contacts_total_count": 9,
+   "cage_contacts_trials_count": 3,
+   "time_to_delivery_median_s": 44.38999999999587,
+   "time_to_delivery_p90_s": 52.719999999988296,
+   "time_total_median_s": 63.8199999999782,
+   "energy_total_median_j": 18667.707420538318,
+   "energy_total_p90_j": 26905.352788375527,
+   "release_err_median_m": 0.5097290242449045,
+   "delivery_err_median_m": 0.19008080688167134,
+   "delivery_err_p90_m": 0.40078628315677484,
+   "pickup_err_median_m": 0.9717282722617674,
+   "pickup_err_p90_m": 1.832010502777201,
+   "nav_err_max_median_m": 1.2916639807197021,
+   "sensor_limits": {
+    "netting: radar and infrared cannot see it": 13
+   }
+  }
+ }
+}

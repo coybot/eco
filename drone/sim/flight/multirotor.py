@@ -32,23 +32,43 @@ from .sensors import AttitudeSensor, GnssSensor, SensorChannel, channel_from_cfg
 def quad_params(cfg: dict) -> dict:
     """Derived quantities from a unit-suffixed config block."""
     p = dict(cfg)
-    m_ref = p.get("thrust_to_weight_reference_mass_kg", p["mass_empty_kg"])
-    p["thrust_max_total_n"] = p["thrust_to_weight_nd"] * m_ref * GRAVITY_M_S2
-    p["thrust_max_per_motor_n"] = p["thrust_max_total_n"] / 4.0
+    n = int(p.get("rotors_count", 4))
+    if "thrust_max_total_n" not in p:
+        m_ref = p.get("thrust_to_weight_reference_mass_kg", p["mass_empty_kg"])
+        p["thrust_max_total_n"] = p["thrust_to_weight_nd"] * m_ref * GRAVITY_M_S2
+    p["thrust_max_per_motor_n"] = p["thrust_max_total_n"] / n
     return p
+
+
+def rotor_layout(p: dict):
+    """Rotor positions (body FLU, m) and spins (+1 = CCW seen from above).
+
+    4 rotors: X layout FR, RL, FL, RR (unchanged from Phase 1).
+    6 rotors: 60 deg spacing starting 30 deg right of the nose, going clockwise seen from
+    above, spins from ``spin_pattern_label`` (P = +1, N = -1)."""
+    n = int(p.get("rotors_count", 4))
+    if n == 4:
+        a = p["arm_length_m"] / math.sqrt(2.0)
+        return [(a, -a), (-a, a), (a, a), (-a, -a)], [1, 1, -1, -1]
+    r = p["arm_length_m"]
+    ang = [math.radians(30 + 360.0 / n * i) for i in range(n)]
+    pos = [(r * math.cos(t), -r * math.sin(t)) for t in ang]
+    pat = p.get("spin_pattern_label", "PN" * (n // 2))
+    return pos, [1 if c == "P" else -1 for c in pat]
 
 
 class Multirotor:
     def __init__(self, p: dict, mass_kg: float, pos_m, vel_m_s, quat, rho_kg_m3: float,
                  thrust_max_scale: float = 1.0, cda_scale: float = 1.0, tau_scale: float = 1.0):
-        a = p["arm_length_m"] / math.sqrt(2.0)
-        pos = [(a, -a), (-a, a), (a, a), (-a, -a)]            # X layout: FR, RL, FL, RR (FLU)
-        spins = [1, 1, -1, -1]
+        pos, spins = rotor_layout(p)
+        self.n_rotors = len(spins)
+        self.rotor_pos_m = np.array(pos, float)
+        self.spins = list(spins)
         self.tmax = p["thrust_max_per_motor_n"] * thrust_max_scale
         k_yaw = p.get("yaw_torque_per_thrust_m", 0.016)
-        self.motors = MotorBank(4, self.tmax, p["motor_tau_up_s"] * tau_scale,
+        self.motors = MotorBank(self.n_rotors, self.tmax, p["motor_tau_up_s"] * tau_scale,
                                 p["motor_tau_down_s"] * tau_scale, yaw_torque_per_thrust_m=k_yaw,
-                                initial_thrust_n=np.full(4, 0.0))
+                                initial_thrust_n=np.full(self.n_rotors, 0.0))
         self.mixer = MultirotorMixer(pos, spins, k_yaw, self.tmax)
         cda = p["drag_area_m2"]
         cda = np.asarray(cda if np.ndim(cda) else [cda, cda, cda], dtype=float) * cda_scale
@@ -71,7 +91,7 @@ class Multirotor:
         self.body.set_mass(mass_kg, I)
 
     def hover_thrust_per_motor_n(self) -> float:
-        return self.body.mass_kg * GRAVITY_M_S2 / 4.0
+        return self.body.mass_kg * GRAVITY_M_S2 / self.n_rotors
 
     def step(self, motor_cmd_n: np.ndarray, wind_world_m_s: np.ndarray, dt_s: float) -> None:
         b = self.body
@@ -172,7 +192,7 @@ class MultirotorFC:
         self.s = sensors
         self.mass_est_kg = mass_est_kg
         self.mixer = mixer
-        self.tmax_total = 4 * tmax_per_motor_n
+        self.tmax_total = mixer.n * tmax_per_motor_n
         self.thrust_margin = g.get("thrust_usable_fraction_nd", 0.92)
         self.max_tilt = math.radians(p.get("max_tilt_deg", 60.0))
         self.k_att = np.array(g.get("att_p_per_s", [8.0, 8.0, 3.0]))
@@ -240,7 +260,7 @@ class MultirotorFC:
     def run(self, t_s: float, dt_s: float) -> np.ndarray:
         if self.motors_off:
             self.rate_int[:] = 0.0
-            return np.zeros(4)
+            return np.zeros(self.mixer.n)
         _, q = self._R_est(t_s)
         qe = quat_mul(quat_conj(q), self.q_des)
         e = quat_to_rotvec(qe)
