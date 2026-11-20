@@ -61,6 +61,9 @@ class Multirotor:
         self.ext_moment_body_nm = np.zeros(3)
         self.last_thrust_total_n = 0.0
         self.last_drag_world_n = np.zeros(3)
+        self.rot_damping_nm_s2 = p.get("rot_damping_nm_s2", 2e-5)
+        self.v_zero_axial = p.get("prop_zero_thrust_axial_speed_m_s", 1e9)
+        self.inflow_factor = 1.0
         self.p = p
 
     def set_mass(self, mass_kg: float) -> None:
@@ -72,17 +75,26 @@ class Multirotor:
 
     def step(self, motor_cmd_n: np.ndarray, wind_world_m_s: np.ndarray, dt_s: float) -> None:
         b = self.body
-        thrust = self.motors.step(motor_cmd_n, dt_s) * self.thrust_scale
-        w = self.mixer.wrench(thrust)               # Fz, Mx, My, Mz (body)
         R = b.R
         v_air_b = R.T @ (b.vel - wind_world_m_s)
+        # Propeller inflow: air flowing axially through the discs (the body moving along
+        # its thrust axis relative to the air, e.g. ~V sin(tilt) in fast forward flight)
+        # cuts thrust at a given throttle, roughly linearly to zero at v_zero (a prop's
+        # T(J) curve near the operating point). The controller does not know this factor;
+        # it sees less acceleration and its loops add throttle, up to saturation.
+        self.inflow_factor = min(1.05, max(0.2, 1.0 - float(v_air_b[2]) / self.v_zero_axial))
+        thrust = self.motors.step(motor_cmd_n, dt_s) * self.thrust_scale * self.inflow_factor
+        w = self.mixer.wrench(thrust)               # Fz, Mx, My, Mz (body)
         F_b = body_drag_body(v_air_b, self.cda_m2, self.rho)
         drag_w = R @ F_b
         F_b[2] += w[0]
         self.last_thrust_total_n = float(w[0])
         self.last_drag_world_n = drag_w
         F_w = R @ F_b + self.ext_force_world_n
-        b.step(F_w, np.array([w[1], w[2], w[3]]) + self.ext_moment_body_nm, dt_s)
+        # rotational aerodynamic damping (props and guards), quadratic in body rate
+        om = b.omega
+        M_damp = -self.rot_damping_nm_s2 * np.abs(om) * om
+        b.step(F_w, np.array([w[1], w[2], w[3]]) + self.ext_moment_body_nm + M_damp, dt_s)
 
 
 class QuadSensors:
@@ -111,6 +123,7 @@ class MultirotorNav:
         self.vel_var = cfg.get("gnss_vel_var_m2_s2", 0.05 ** 2)
         self.accel_world = np.zeros(3)
         self.R = np.eye(3)
+        self.n_reinit = 0
 
     def step(self, t_s: float) -> None:
         a = self.s.acc.read(t_s)
@@ -123,13 +136,24 @@ class MultirotorNav:
             gp = self.s.gnss.pos.read(t_s)
             gv = self.s.gnss.vel.read(t_s)
             if gp is not None and gv is not None:
-                self.kf.reset(t_s, gp.value, gv.value, 4 * self.pos_var, 4 * self.vel_var)
+                # the fix is late: extrapolate it to now with its own velocity (at 20 m/s a
+                # 0.1 s GNSS delay is 2 m; resetting to the stale fix would bias the filter)
+                age = t_s - gp.t_meas_s
+                self.kf.reset(t_s, gp.value + gv.value * age, gv.value, 4 * self.pos_var, 4 * self.vel_var)
             return
         self.kf.predict(self.accel_world)
-        for m in self.s.gnss.pos.read_new(t_s):
-            self.kf.update(m.t_meas_s, pos=m.value, pos_var=np.full(3, self.pos_var))
-        for m in self.s.gnss.vel.read_new(t_s):
+        newp = self.s.gnss.pos.read_new(t_s)
+        newv = self.s.gnss.vel.read_new(t_s)
+        for m in newp:
+            var = self.pos_var if not self.s.gnss.is_float(m.t_meas_s) else self.s.gnss.float_var
+            self.kf.update(m.t_meas_s, pos=m.value, pos_var=np.full(3, var))
+        for m in newv:
             self.kf.update(m.t_meas_s, vel=m.value, vel_var=np.full(3, self.vel_var))
+        if self.kf.needs_reinit() and newp and newv:     # gate kept rejecting: start over
+            age = t_s - newp[-1].t_meas_s
+            self.kf.reset(t_s, newp[-1].value + newv[-1].value * age, newv[-1].value,
+                          4 * self.pos_var, 4 * self.vel_var)
+            self.n_reinit += 1
 
     @property
     def pos(self):

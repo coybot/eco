@@ -181,8 +181,9 @@ def check_free_fall(cfg):
     res = []
     for drag_on in (False, True):
         pp = dict(p)
-        if not drag_on:
+        if not drag_on:                 # all aerodynamics off: body drag and rotational damping
             pp["drag_area_m2"] = 0.0
+            pp["rot_damping_nm_s2"] = 0.0
         q0 = quat_from_euler(0.2, -0.3, 0.5)
         mr = Multirotor(pp, 1.0, [0, 0, 500], [6.0, -2.0, 3.0], q0, env["air_density_kg_m3"])
         mr.body.omega = np.array([0.5, -0.3, 1.0])
@@ -192,8 +193,11 @@ def check_free_fall(cfg):
         dt = env["physics_dt_s"]
         for _ in range(int(8.0 / dt)):
             v_before = mr.body.vel.copy()
+            w_before = mr.body.omega.copy()
+            M_rot = -mr.rot_damping_nm_s2 * np.abs(w_before) * w_before
             mr.step(np.zeros(4), np.zeros(3), dt)
             work += float(mr.last_drag_world_n @ (0.5 * (v_before + mr.body.vel))) * dt
+            work += float(M_rot @ (0.5 * (w_before + mr.body.omega))) * dt   # rotational damping
         E1 = mr.body.kinetic_energy_j() + mr.body.potential_energy_j()
         if not drag_on:
             err = abs(E1 - E0) / E0
@@ -205,7 +209,7 @@ def check_free_fall(cfg):
             err = abs(loss + work) / abs(work)
             res.append(dict(check_label="E4b_free_fall_energy_budget_with_drag", case_label="drag_on",
                             measured_nd=loss, expected_nd=-work, error_frac=err, tolerance_frac=0.005,
-                            pass_bool=err < 0.005, note_label="energy lost J vs integral of drag power"))
+                            pass_bool=err < 0.005, note_label="energy lost J vs integral of drag + rotational damping power"))
     return res
 
 

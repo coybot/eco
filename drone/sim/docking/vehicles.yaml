@@ -8,32 +8,38 @@ environment:
   guidance_dt_s: 0.01               # 100 Hz navigation filters and outer loops
 
 small_quadcopter:
-  mass_empty_kg: 1.0                # includes probe and latch fitting (see docking budget)
-  mass_loaded_kg: 1.4               # with one drink
+  # NEW vehicle (Phase 2). Not the existing kinematic "quadcopter" class, which is unchanged.
+  # Target from the task: ~1.0 kg empty, 1.4 kg with a drink, ~0.30 m across including prop
+  # guards, thrust-to-weight 2.5, drag area ~0.05 m^2. Everything else is an ESTIMATE.
+  mass_empty_kg: 1.0                # includes the docking probe and latch fitting
+  mass_loaded_kg: 1.4               # with one drink (0.4 kg)
   thrust_to_weight_nd: 2.5
-  thrust_to_weight_reference_mass_kg: 1.4   # T/W quoted at all-up weight -> 34.3 N total.
-                                            # Sensitivity case: 1.0 kg reference (24.5 N).
-  arm_length_m: 0.14                # motor to centre, 280 mm X frame, 6 in props
-  body_radius_m: 0.23               # outer edge of the prop guards, used for strike checks
-  inertia_kg_m2: [0.008, 0.008, 0.010]   # at mass_empty_kg, scaled with mass
-  motor_tau_up_s: 0.030
-  motor_tau_down_s: 0.050
-  yaw_torque_per_thrust_m: 0.016
-  drag_area_m2: 0.05                # isotropic CdA; per-axis drag is a sensitivity case
+  thrust_to_weight_reference_mass_kg: 1.4   # T/W quoted at all-up weight -> 34.3 N total,
+                                            # 8.6 N per motor. Sensitivity: 1.0 kg reference.
+  across_m: 0.30                    # outer edge of guards, tip to tip
+  prop_diameter_m: 0.102            # 4 in: the largest that fits 0.30 m with guards (5 in overlaps)
+  arm_length_m: 0.089               # motor to centre: 0.15 - 0.051 prop radius - 0.010 guard
+  body_radius_m: 0.15               # used for strike and collision checks
+  inertia_kg_m2: [0.0045, 0.0045, 0.0070]   # at mass_empty_kg; probe adds to x/y; scaled with mass
+  motor_tau_up_s: 0.025             # small high-kv motors on 4 in props
+  motor_tau_down_s: 0.040
+  yaw_torque_per_thrust_m: 0.012
+  drag_area_m2: 0.05                # isotropic CdA (task figure); per-axis is a sensitivity case
   max_tilt_deg: 65.0
   controller:
-    att_p_per_s: [9.0, 9.0, 3.0]
-    rate_max_deg_s: [300.0, 300.0, 120.0]
-    rate_p_per_s: [20.0, 20.0, 8.0]
+    att_p_per_s: [8.0, 8.0, 3.0]
+    rate_max_deg_s: [360.0, 360.0, 150.0]
+    rate_p_per_s: [24.0, 24.0, 8.0]
     rate_i_per_s2: [30.0, 30.0, 8.0]
-    rate_d_s: [0.015, 0.015, 0.0]
+    rate_d_s: [0.012, 0.012, 0.0]
     rate_d_lpf_hz: 40.0
-    thrust_usable_fraction_nd: 0.92
+    thrust_usable_fraction_nd: 0.95
   nav:
     accel_noise_std_m_s2: 1.0
     history_s: 0.8
     gnss_pos_var_m2: 0.0004
     gnss_vel_var_m2_s2: 0.0025
+  landing_gear_feet_m: [[0.06, 0.06, -0.05], [0.06, -0.06, -0.05], [-0.06, 0.06, -0.05], [-0.06, -0.06, -0.05]]
   sensors:
     accel: {rate_hz: 400, delay_s: 0.003, noise_std: 0.05, bias_std: 0.05, bias_rw_std_per_sqrt_s: 0.002}
     gyro: {rate_hz: 400, delay_s: 0.003, noise_std: 0.005, bias_std: 0.003, bias_rw_std_per_sqrt_s: 0.0002}
@@ -140,3 +146,167 @@ quadcopter_existing_dynamics:
     gnss: {rate_hz: 10, delay_s: 0.10, pos_noise_std_m: 0.015, pos_noise_std_vertical_m: 0.025,
            vel_noise_std_m_s: 0.03, dropout_p: 0.01}
     baro: {rate_hz: 50, delay_s: 0.02, noise_std: 0.10, bias_std: 0.5}
+
+# ---------------------------------------------------------------------------------------
+# Quadplane mothership modelled on the Makeflyeasy Pioneer 3200 mm VTOL.
+# [P] = published (task brief / manufacturer listings; sources in PHASE_2.md "Sources"),
+# [D] = derived from published numbers, [E] = estimate (not published).
+quadplane:
+  mtow_kg: 24.9                     # [P]
+  max_payload_kg: 5.0               # [P]
+  mass_airframe_kg: 19.6            # [D] airframe + 4x 6S 30 Ah batteries: endurance tests list
+                                    #     20.6 kg take-off at 1 kg payload, 24.6 kg at 5 kg
+  inertia_kg_m2: [3.0, 2.4, 5.1]    # [E] wing, 4 lift motors on a 1 m square, fuselage, batteries
+  cruise_airspeed_m_s: 21.5         # [P] ArduPilot TRIM_ARSPD 21.5 m/s (MFE param file); set per run
+  max_airspeed_m_s: 35.0            # [P]
+  published_stall_speed_m_s: 14.0   # [P] mass not stated
+  min_safe_cruise_airspeed_m_s: 20.0   # replaced by the Phase 2 result (see performance.py)
+  design_turbulence_sigma_w_m_s: 0.77  # light turbulence at 50 m (MIL-HDBK-1797, W20 = 15 kt)
+  design_gust_k_sigma_nd: 2.0          # a 2-sigma vertical gust must not reach CLmax
+  turn_speed_factor_nd: 1.15           # turns flown 15 % faster than the straights: at 25 deg bank
+                                       # the load factor raises stall speed 5 %; this keeps 1.3 Vs
+  turn_bank_deg: 25.0                  # sets the racetrack turn radius
+  aero:
+    wing_area_m2: 1.0               # [P]
+    span_m: 3.2                     # [P]
+    chord_m: 0.3125                 # [D] area / span
+    cl0_nd: 0.36                    # [E] cambered section (zero-lift alpha about -4 deg)
+    cl_alpha_per_rad: 5.18          # [D] Helmbold, aspect ratio 10.24
+    cl_q_nd: 6.0                    # [E]
+    cl_de_per_rad: 0.30             # [E]
+    cd0_nd: 0.045                   # [D] from the 5 kg endurance point (22.5 m/s, 24.6 kg, 176 min,
+                                    #     2.66 kWh): CD0 0.037-0.048 for 55-65 % total efficiency
+    oswald_nd: 0.80                 # [E]
+    alpha_stall_deg: 19.0           # blend parameter: CLmax = 1.63 [D] at alpha 15.5 deg; 1.63 is the
+                                    #     published 14 m/s stall read at 20 kg (the lightest published
+                                    #     mass). Conservative case: CLmax 1.30 = alpha_stall_deg 15.0.
+    stall_sharpness_per_rad: 40.0
+    cd_flat_plate_nd: 1.98
+    cm0_nd: 0.03                    # [E] near-zero elevator at cruise
+    cm_alpha_per_rad: -0.52         # [E] 10 % static margin
+    cm_q_nd: -12.0                  # [E] tailplane on the fuselage
+    cm_de_per_rad: -0.90            # [E]
+    cy_beta_per_rad: -0.40
+    cy_dr_per_rad: 0.15
+    croll_beta_per_rad: -0.06
+    croll_p_nd: -0.55
+    croll_r_nd: 0.15
+    croll_da_per_rad: 0.18
+    croll_dr_per_rad: 0.003
+    cyaw_beta_per_rad: 0.06
+    cyaw_p_nd: -0.05
+    cyaw_r_nd: -0.07
+    cyaw_da_per_rad: -0.01
+    cyaw_dr_per_rad: -0.05
+  pusher:                           # [P] MFE 6525 kv180, 12S 160 A ESC, APC 21x13 prop
+    thrust_static_max_n: 120.0      # [E] APC 21x13 at ~6400 rpm (kv180 x 44 V x 0.8)
+    v_zero_thrust_m_s: 55.0         # [D] linear fall-off sized so drag = thrust at the published 35 m/s
+    tau_s: 0.15
+  servos: {limit_deg: 22.0, tau_s: 0.04, rate_deg_s: 250.0}   # [P] stabilizer 28 up / 22 down
+  autopilot:
+    throttle_trim_nd: 0.40
+    pitch_trim_deg: 2.0
+    max_pitch_deg: 15.0
+    max_bank_deg: 30.0
+    alt_p_rad_per_m: 0.03
+    alt_i_rad_per_m_s: 0.004
+    alt_i_limit_m_s: 30.0
+    alt_d_rad_per_m_s: 0.04
+    pitch_p_nd: 1.2
+    pitch_i_per_s: 0.8
+    pitch_d_s: 0.12
+    speed_p_per_m_s: 0.10
+    speed_i_per_m: 0.04
+    course_p_rad_per_rad: 1.0
+    roll_p_nd: 0.6
+    roll_i_per_s: 0.3
+    roll_d_s: 0.05
+    yaw_ay_rad_per_m_s2: 0.04
+    alpha_protect_deg: 10.5          # stall protection: pitch <= flight path + 10.5 deg (CLmax at 15.5)
+    underspeed_margin_m_s: 2.0       # full throttle when 2 m/s below the commanded airspeed
+  nav: {accel_noise_std_m_s2: 1.0, history_s: 0.8, gnss_pos_var_m2: 0.0004, gnss_vel_var_m2_s2: 0.0025}
+  sensors:
+    accel: {rate_hz: 400, delay_s: 0.003, noise_std: 0.05, bias_std: 0.05, bias_rw_std_per_sqrt_s: 0.002}
+    gyro: {rate_hz: 400, delay_s: 0.003, noise_std: 0.005, bias_std: 0.003, bias_rw_std_per_sqrt_s: 0.0002}
+    ahrs: {rate_hz: 200, delay_s: 0.010, noise_std_deg: 0.3, bias_std_deg: 0.5, bias_rw_deg_per_sqrt_s: 0.02}
+    gnss: {rate_hz: 10, delay_s: 0.10, pos_noise_std_m: 0.015, pos_noise_std_vertical_m: 0.025,
+           vel_noise_std_m_s: 0.03, dropout_p: 0.01}
+    baro: {rate_hz: 50, delay_s: 0.02, noise_std: 0.10, bias_std: 0.5}
+    airspeed: {rate_hz: 50, delay_s: 0.02, noise_std: 0.3, bias_std: 0.2}
+  link: {rate_hz: 50, latency_s: 0.04, jitter_s: 0.01, loss_p: 0.05, burst_rate_hz: 0.02, burst_len_s: 0.3}
+  rail:                              # external rail under the fuselage (quads do not fit the bay)
+    mass_base_kg: 0.30               # [E] carbon rail, mounts, wiring
+    mass_per_dock_kg: 0.25           # [E] funnel, latch servo, fittings
+    mass_kg: 0.80                    # 2 docks
+    drag_area_m2: 0.012              # [E] rail + 2 empty funnels
+    dock_offsets_m: [[0.10, 0.0, -0.50], [-0.32, 0.0, -0.50]]   # quad CG when docked (Phase 2 baseline)
+    mount_pitch_deg: 45.0            # Phase 2 baseline; Phase 3 decides
+  geometry:                          # body FLU, origin at the airframe CG
+    fuselage: {length_m: 1.68, width_m: 0.25, height_m: 0.41, center_x_m: -0.14, center_z_m: 0.0}  # [P] L, H; [E] width, CG
+    wing: {span_m: 3.2, chord_m: 0.3125, thickness_m: 0.04, center_x_m: -0.03, center_z_m: 0.20}
+    lift_arms: {y_m: 0.50, front_x_m: 0.54, rear_x_m: -0.54, z_m: 0.18, radius_m: 0.015}  # [P] 1 m square, 1.082 m arm
+    lift_rotors: {front_x_m: 0.50, rear_x_m: -0.50, z_m: 0.24, diameter_m: 0.559}       # [P] 22 in, 1 m square
+    pusher: {x_m: -1.02, z_m: 0.0, diameter_m: 0.533}                                   # [P] APC 21 in at the tail; [E] x
+    tailplane: {x_m: -0.86, z_m: 0.12, span_m: 0.90, chord_m: 0.20, thickness_m: 0.03}  # [E] size
+    ventral_fin: {x_m: -0.86, top_z_m: -0.20, bottom_z_m: -0.50, chord_m: 0.24, thickness_m: 0.03}  # [P] fin below fuselage; [E] size
+    rail: {center_x_m: -0.10, z_m: -0.235, length_m: 0.80, width_m: 0.08, height_m: 0.05}
+
+mission:                             # small-quad delivery guidance (Phase 2)
+  spinup_ramp_s: 1.2                 # rotor thrust ramp on the rail before the latch opens
+  separate_drop_m: 3.0
+  separate_sink_m_s: 2.0
+  transit_speed_m_s: 12.0
+  decel_m_s2: 3.0
+  approach_height_m: 1.5
+  standoff_m: 2.0
+  hover_height_m: 0.6
+  descend_speed_m_s: 0.4
+  deliver_s: 5.0
+  takeoff_climb_m: 1.5
+
+vision:                              # quad camera seeing a fiducial at the throat [E]
+  rate_hz: 30
+  delay_s: 0.04
+  jitter_s: 0.01
+  dropout_p: 0.03
+  burst_rate_hz: 0.05                # glare / blur bursts
+  burst_len_s: 0.5
+  fov_half_deg: 40.0
+  range_min_m: 0.15
+  range_max_m: 6.0
+  noise_floor_m: 0.005
+  noise_per_m2: 0.002
+
+relnav:
+  rel_accel_noise_std_m_s2: 1.5
+  history_s: 0.8
+  gate_sigma: 6.0
+  link_pos_std_m: 0.03               # two RTK receivers on one correction stream
+  link_vel_std_m_s: 0.05
+  attitude_err_std_deg: 0.6
+
+docking_guidance:
+  station_m: 1.5                     # station: tip this far out of the mouth on the axis
+  station_tol_m: 0.15                # on the ~0.2 s low-passed error
+  station_dwell_s: 0.6
+  close_speed_m_s: 0.5
+  commit_m: 0.15
+  mouth_margin_m: 0.02               # abort if the tip will pass outside mouth radius minus this
+  past_throat_m: 0.10                # abort if the estimate puts the tip this far past the throat
+  push_start_m: 0.06                 # within this of the throat, push in with push_force_n
+  push_force_n: 6.0                  # 2x the latch detent (3 N)
+  corridor_slope_nd: 0.25
+  max_nav_age_s: 0.25
+  approach_timeout_s: 8.0
+  final_timeout_s: 2.5
+  abort_speed_m_s: 1.0
+  max_attempts: 3
+  kp_per_s2: 9.0
+  kd_per_s: 6.0
+  ki_per_s3: 2.0
+  dob_enabled: false                 # acceleration disturbance observer: tried, made it worse (DESIGN_LOG)
+  dob_bandwidth_hz: 1.5
+  accel_max_m_s2: 6.0
+  contact_jump_m_s2: 6.0
+  motor_stop_delay_s: 0.3
+  trim_tilt_estimate_deg: 48.0

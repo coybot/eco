@@ -5,6 +5,10 @@ input (from the IMU, rotated by the AHRS attitude) with white acceleration proce
 The three axes are filtered independently (diagonal measurement noise), which keeps it
 cheap enough to run inside thousands of Monte Carlo trials.
 
+If the gate keeps rejecting (every update for ``reinit_after_s``), the filter is assumed
+to have diverged and ``needs_reinit()`` tells the owner to re-initialise from the latest
+measurement, instead of trusting a wrong state forever.
+
 Measurements arrive late (sensor delay, radio latency). Each one carries the time it was
 taken; the filter rolls back to the stored state at that time, applies the update, and
 replays the stored inputs up to now. Measurements older than the history window are
@@ -21,7 +25,7 @@ import numpy as np
 
 class DelayedKF:
     def __init__(self, dt_s: float, accel_noise_std_m_s2: float, history_s: float = 0.8,
-                 gate_sigma: float = 6.0):
+                 gate_sigma: float = 6.0, reinit_after_s: float = 1.0):
         self.dt = dt_s
         self.q = accel_noise_std_m_s2 ** 2
         self.maxlen = int(history_s / dt_s) + 2
@@ -35,6 +39,8 @@ class DelayedKF:
         self.n_late_dropped = 0
         self.n_gated = 0
         self.last_update_s = -1e9
+        self.reinit_after_s = reinit_after_s
+        self.last_accepted_s = -1e9
 
     def reset(self, t_s: float, pos: np.ndarray, vel: np.ndarray, pos_var: float, vel_var: float) -> None:
         self.t = t_s
@@ -47,6 +53,7 @@ class DelayedKF:
         self.hist.append((t_s, self.xp.copy(), self.xv.copy(), self.P.copy(), np.zeros(3)))
         self.initialised = True
         self.last_update_s = t_s
+        self.last_accepted_s = t_s
 
     def _predict_once(self, xp, xv, P, u):
         dt = self.dt
@@ -104,6 +111,8 @@ class DelayedKF:
             xp, xv, P, r = self._update_axis(xp, xv, P, np.asarray(vel, float), np.asarray(vel_var, float), 1, self.gate)
             rejected += r
         self.n_gated += rejected
+        if rejected == 0:
+            self.last_accepted_s = self.t
         # replay forward, rewriting history
         hist = list(self.hist)
         hist[k] = (hist[k][0], xp.copy(), xv.copy(), P.copy(), hist[k][4])
@@ -114,6 +123,21 @@ class DelayedKF:
         self.xp, self.xv, self.P = xp, xv, P
         self.last_update_s = t_meas_s
         return True
+
+    def state_at(self, t_s: float):
+        """(pos, vel) the filter had at time t_s (nearest stored step), or None if older
+        than the history window. Used to difference two vehicles' estimates at the same
+        measurement time."""
+        if not self.hist or t_s < self.hist[0][0] - 1e-9:
+            return None
+        times = [h[0] for h in self.hist]
+        k = max(0, bisect.bisect_right(times, t_s + 1e-9) - 1)
+        h = self.hist[k]
+        dt = t_s - h[0]
+        return h[1] + h[2] * dt, h[2].copy()
+
+    def needs_reinit(self) -> bool:
+        return self.initialised and self.t - self.last_accepted_s > self.reinit_after_s
 
     def pos_std(self) -> np.ndarray:
         return np.sqrt(np.maximum(self.P[:, 0, 0], 0.0))

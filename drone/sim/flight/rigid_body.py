@@ -31,6 +31,7 @@ class RigidBody:
         self.R = quat_to_rot(self.quat)
         self.specific_force_body = np.array([0.0, 0.0, 0.0])   # accelerometer truth
         self.accel_world = np.zeros(3)
+        self.omega_max_rad_s = 200.0
 
     def set_mass(self, mass_kg: float, inertia_kg_m2=None) -> None:
         """Change mass (and optionally inertia) between steps, e.g. a payload release."""
@@ -48,6 +49,9 @@ class RigidBody:
         w = self.omega
         wdot = (moment_body_nm - np.cross(w, I * w)) / I
         self.omega = w + wdot * dt_s
+        n = float(np.sqrt(self.omega @ self.omega))
+        if n > self.omega_max_rad_s:              # guard: no airframe spins faster than this
+            self.omega *= self.omega_max_rad_s / n
         self.quat = quat_normalize(quat_mul(self.quat, quat_from_rotvec(self.omega * dt_s)))
         self.R = quat_to_rot(self.quat)
 

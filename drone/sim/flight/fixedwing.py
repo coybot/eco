@@ -162,6 +162,10 @@ class FixedWingAutopilot:
         self.pitch_cmd = self.roll_cmd = 0.0
         self.airspeed_meas = self.airspeed_cmd
         self.stiffness = 1.0      # scales the altitude/airspeed loop gains (docking "soft" mode)
+        a = p["aero"]
+        self.S, self.cl0, self.cla = a["wing_area_m2"], a.get("cl0_nd", 0.25), a.get("cl_alpha_per_rad", 5.0)
+        self.rho = 1.225
+        self.mass_est_kg = p["mass_airframe_kg"]   # owners update it when payloads change
 
     def run(self, t_s: float, dt_s: float):
         g = self.g
@@ -179,18 +183,36 @@ class FixedWingAutopilot:
         k = self.stiffness
         e_h = self.alt_cmd - self.nav.pos[2]
         climb = self.nav.vel[2]
-        self.i_h = max(-g["alt_i_limit_m_s"], min(g["alt_i_limit_m_s"], self.i_h + e_h * dt_s))
+        lim_i = g["alt_i_limit_m_s"]
+        self.i_h = max(-lim_i, min(lim_i, self.i_h + e_h * dt_s))
         th_c = g["pitch_trim_deg"] * math.pi / 180 + k * (g["alt_p_rad_per_m"] * e_h + g["alt_i_rad_per_m_s"] * self.i_h) \
             - k * g["alt_d_rad_per_m_s"] * climb
         lim = math.radians(g["max_pitch_deg"])
         th_c = max(-lim, min(lim, th_c))
+        if "alpha_protect_deg" in g and V > 5.0:
+            # stall protection from an AERODYNAMIC alpha estimate: lift coefficient implied
+            # by the measured normal load factor (accelerometer) and dynamic pressure (pitot),
+            # through the nominal lift curve. Responds to gust alpha; blind to steady
+            # vertical air motion (a GNSS flight-path estimate is not: it reads a downdraft
+            # as alpha and dives with it).
+            acc = self.s.acc.read(t_s)
+            if acc is not None:
+                qS = 0.5 * self.rho * V * V * self.S
+                cl_est = self.mass_est_kg * float(acc.value[2]) / qS
+                a_est = (cl_est - self.cl0) / self.cla
+                self.alpha_est = 0.8 * getattr(self, "alpha_est", a_est) + 0.2 * a_est
+                excess = self.alpha_est - math.radians(g["alpha_protect_deg"])
+                if excess > 0:
+                    th_c = min(th_c, pitch - g.get("alpha_protect_gain_nd", 1.5) * excess)
         self.pitch_cmd = th_c
         e_th = th_c - pitch
         self.i_th = max(-0.3, min(0.3, self.i_th + e_th * dt_s))
         ele = -(g["pitch_p_nd"] * e_th + g["pitch_i_per_s"] * self.i_th - g["pitch_d_s"] * q_up)
         e_v = self.airspeed_cmd - V
-        self.i_v = max(-1.0, min(1.0, self.i_v + e_v * dt_s))
+        self.i_v = max(-15.0, min(15.0, self.i_v + e_v * dt_s))
         thr = g["throttle_trim_nd"] + k * (g["speed_p_per_m_s"] * e_v + g["speed_i_per_m"] * self.i_v)
+        if "underspeed_margin_m_s" in g and e_v > g["underspeed_margin_m_s"]:
+            thr = 1.0                                   # underspeed: full power
         # lateral
         vel = self.nav.vel
         chi = math.atan2(vel[1], vel[0])

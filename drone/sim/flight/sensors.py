@@ -151,8 +151,10 @@ class AttitudeSensor:
 
     def __init__(self, cfg: dict, rng: np.random.Generator):
         c = dict(cfg)
-        c["noise_std"] = math.radians(c.pop("noise_std_deg", 0.3))
-        c["bias_std"] = math.radians(c.pop("bias_std_deg", 0.5))
+        n, b = c.pop("noise_std_deg", 0.3), c.pop("bias_std_deg", 0.5)
+        ny, by = c.pop("yaw_noise_std_deg", n), c.pop("yaw_bias_std_deg", b)
+        c["noise_std"] = np.radians([n, n, ny])         # roll, pitch, heading (body axes)
+        c["bias_std"] = np.radians([b, b, by])
         c["bias_rw_std_per_sqrt_s"] = math.radians(c.pop("bias_rw_deg_per_sqrt_s", 0.02))
         self.ch = channel_from_cfg(c, 3, rng)
         self._q = None
@@ -184,11 +186,33 @@ class GnssSensor:
         self.vel = SensorChannel(3, g("rate_hz", 10.0), g("delay_s", 0.1), g("vel_noise_std_m_s", 0.03), rng,
                                  dropout_p=0.0)
         self.common = common
+        # RTK fix-loss ("float") episodes: Poisson starts, uniform length; during one the
+        # receiver's position carries an extra offset (drawn per episode, slowly drifting)
+        # and every fix is FLAGGED float, so a navigation filter can widen its variance.
+        self.float_rate = g("rtk_float_rate_hz", 0.0)
+        self.float_len = g("rtk_float_len_s", [3.0, 15.0])
+        self.float_std = g("rtk_float_err_std_m", 0.25)
+        self.float_var = g("rtk_float_var_m2", 0.3 ** 2)
+        self.episodes: list = []          # (t0, t1, offset)
+        self.rng = rng
+        self._next_check = 0.0
+
+    def is_float(self, t_s: float) -> bool:
+        return any(a <= t_s <= b for a, b, _ in self.episodes[-3:])
+
+    def _float_offset(self, t_s: float):
+        for a, b, off in self.episodes[-3:]:
+            if a <= t_s <= b:
+                return off * (1.0 + 0.3 * math.sin(0.5 * (t_s - a)))
+        return 0.0
 
     def push(self, t_s: float, pos_m: np.ndarray, vel_m_s: np.ndarray) -> None:
         if self.pos.due(t_s):
+            if self.float_rate > 0 and not self.is_float(t_s) and self.rng.random() < self.float_rate * self.pos.period_s:
+                L = self.rng.uniform(*self.float_len)
+                self.episodes.append((t_s, t_s + L, self.rng.normal(0.0, self.float_std, 3) * np.array([1, 1, 1.5])))
             dropped_before = self.pos.n_dropped
-            p = pos_m + (self.common.value(t_s) if self.common is not None else 0.0)
+            p = pos_m + (self.common.value(t_s) if self.common is not None else 0.0) + self._float_offset(t_s)
             self.pos.push(t_s, p)
             if self.pos.n_dropped == dropped_before:     # velocity comes in the same fix
                 self.vel.next_sample_s = t_s
@@ -254,4 +278,94 @@ class RadioLink:
         return self.ch.read(t_s)
 
     def read_new(self, t_s: float):
+        return self.ch.read_new(t_s)
+
+
+class TargetCamera:
+    """Camera (visible-light fiducial, or IR beacon ring) measuring a target's position in
+    its own frame, with the failure modes that make real ones worse than a noise term:
+
+      * field of view and range limits; for a beacon ring, at least ``min_points`` of the
+        ring's points must be inside the field of view (a pattern needs its points);
+      * occlusion: the caller passes a geometric visibility test (e.g. a marker at the
+        bottom of a funnel is visible only through the mouth);
+      * sun: a per-run sun direction; inside ``glare_cone_deg`` of the optical axis no
+        detection at all, inside ``glare_noise_cone_deg`` the noise is doubled;
+      * motion blur: noise x (1 + |omega| / blur_rate_ref) and an extra dropout
+        probability |omega| / (4 blur_rate_ref) (capped at 0.6);
+      * dropouts and dropout bursts; outliers: with probability ``outlier_p`` a detection
+        is wrong by N(0, outlier_std_m) (reflections, a wrong blob, a mis-decoded tag);
+      * noise split into bearing (lateral = bearing_noise * range + floor) and range
+        (floor + per_m2 * range^2) parts.
+    Measurement = target position in the camera frame, timestamped when taken.
+    """
+
+    def __init__(self, cfg: dict, rng: np.random.Generator, mount_R: np.ndarray, sun_dir_world=None):
+        g = cfg.get
+        self.ch = SensorChannel(3, g("rate_hz", 30.0), g("delay_s", 0.04), 0.0, rng,
+                                dropout_p=g("dropout_p", 0.03), burst_rate_hz=g("burst_rate_hz", 0.05),
+                                burst_len_s=g("burst_len_s", 0.5), jitter_s=g("jitter_s", 0.01))
+        self.fov_cos = math.cos(math.radians(g("fov_half_deg", 40.0)))
+        self.rmin, self.rmax = g("range_min_m", 0.15), g("range_max_m", 6.0)
+        self.floor = g("noise_floor_m", 0.005)
+        self.k2 = g("noise_per_m2", 0.002)
+        self.bearing = math.radians(g("bearing_noise_deg", 0.0))
+        self.min_points = g("min_points", 0)
+        self.outlier_p = g("outlier_p", 0.0)
+        self.outlier_std = g("outlier_std_m", 0.3)
+        self.glare_cos = math.cos(math.radians(g("glare_cone_deg", 0.0))) if g("glare_cone_deg", 0.0) > 0 else 2.0
+        self.glare_noise_cos = math.cos(math.radians(g("glare_noise_cone_deg", 0.0))) if g("glare_noise_cone_deg", 0.0) > 0 else 2.0
+        self.blur_ref = g("blur_rate_ref_rad_s", 1e9)
+        self.mount_R = mount_R
+        self.rng = rng
+        self.sun = None if sun_dir_world is None else np.asarray(sun_dir_world, float) / np.linalg.norm(sun_dir_world)
+        self.n_glare = 0
+        self.n_occluded = 0
+        self.n_fov = 0
+
+    def push(self, t_s, target_world_m, cam_world_m, R_body, omega_body=None, visible=True, ring_points_world=None):
+        if not self.ch.due(t_s):
+            return
+        skip = lambda: setattr(self.ch, "next_sample_s", self.ch.next_sample_s + self.ch.period_s)
+        Rc = R_body @ self.mount_R
+        rel_c = Rc.T @ (target_world_m - cam_world_m)
+        r = float(np.linalg.norm(rel_c))
+        if not (self.rmin <= r <= self.rmax) or rel_c[2] < self.fov_cos * r:
+            self.n_fov += 1
+            return skip()
+        if ring_points_world is not None:
+            n_in = 0
+            for pw in ring_points_world:
+                pc = Rc.T @ (pw - cam_world_m)
+                n_in += float(np.linalg.norm(pc)) > 0 and pc[2] >= self.fov_cos * float(np.linalg.norm(pc))
+            if n_in < self.min_points:
+                self.n_fov += 1
+                return skip()
+        if not visible:
+            self.n_occluded += 1
+            return skip()
+        noise_scale = 1.0
+        if self.sun is not None:
+            c = float(Rc[:, 2] @ self.sun)
+            if c >= self.glare_cos:
+                self.n_glare += 1
+                return skip()
+            if c >= self.glare_noise_cos:
+                noise_scale *= 2.0
+        if omega_body is not None:
+            w = float(np.linalg.norm(omega_body))
+            noise_scale *= 1.0 + w / self.blur_ref
+            if self.rng.random() < min(0.6, w / (4 * self.blur_ref)):
+                return skip()
+        u = rel_c / r
+        lat_sd = (self.floor + self.bearing * r) * noise_scale
+        rng_sd = (self.floor + self.k2 * r * r) * noise_scale
+        n = self.rng.normal(0.0, lat_sd, 3)
+        n -= float(n @ u) * u
+        n += u * self.rng.normal(0.0, rng_sd)
+        if self.outlier_p > 0 and self.rng.random() < self.outlier_p:
+            n += self.rng.normal(0.0, self.outlier_std, 3)
+        self.ch.push(t_s, rel_c + n)
+
+    def read_new(self, t_s):
         return self.ch.read_new(t_s)

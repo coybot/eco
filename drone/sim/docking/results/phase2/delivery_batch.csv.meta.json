@@ -1,0 +1,19 @@
+{
+ "seeds": [
+  1,
+  40,
+  40
+ ],
+ "workers": 14,
+ "wall_s": 53.7,
+ "python": "3.12.3",
+ "numpy": "2.4.4",
+ "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+ "machine": "x86_64",
+ "git_commit": "",
+ "common": {
+  "airspeed_light_m_s": "20.0",
+  "airspeed_moderate_m_s": "30.0"
+ },
+ "csv_sha256": "adc6b580ec51beccca3b90757835862c8ecc71dcc520b703331748868ecd556b"
+}
