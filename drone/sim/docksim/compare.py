@@ -38,6 +38,14 @@ VARIANTS = [("baseline", "spec as built: 3 anchors, 38 mm lip, 1 post, wind from
             ("pd_ff", "pocket_drift + mothership acceleration feedforward"),
             ("pd_dob", "pocket_drift + gust observer (0.1 s), free flight only"),
             ("pd_ctl", "pocket_drift + all four controller options"),
+            ("pd_nodob", "pd_ctl without the disturbance observer"),
+            ("sp_rotors", "spec mothership: lift rotors 0.51 m clear of the dock (with pd_nodob's options)"),
+            ("sp_steady", "spec mothership: half the hover motion"),
+            ("sp_bcast", "spec mothership: motion broadcast at 50 Hz, 10-20 ms"),
+            ("sp_all", "spec mothership: all three"),
+            ("lite_base", "249 g drone (Orin Nano), spec dock"),
+            ("lite_pd", "249 g drone, pocket beacons + drift"),
+            ("lite_pd_push", "as lite_pd, approach push 0.25 N (was 0.5 N)"),
             ("base_ctl", "spec baseline + all four controller options")]
 POST_FREE = ("prop_strike", "never_left_magnets", "slow_clear", "touched_ridge", "touched_parked")
 

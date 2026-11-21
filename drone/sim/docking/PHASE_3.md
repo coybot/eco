@@ -407,38 +407,40 @@ Each option alone on `pocket_drift`, moderate hover, nominal sensors, 60 trials 
 | + disturbance observer | 0.968 | 0.972 | 0.964 | **0.956** | 0.981 | touchdown speed 25, prop strike 11, post speed 4 |
 | spec baseline + all four (`base_ctl`) | 0.670 | 0.944 | 0.947 | **0.672** | 0.117 | prop strike 152, not seated 128 |
 
-All four together on `pocket_drift` (`pd_ctl`), full 288-cell matrix at 30 trials per cell
+All four together on `pocket_drift` (`pd_ctl`), and the same without the disturbance
+observer (`pd_nodob`), full 288-cell matrix at 30 trials per cell
 (8,640 recoveries), against `pocket_drift` and the baseline on the same seeds (1–30):
 
-| condition | baseline | pocket_drift | pd_ctl |
-|---|---|---|---|
-| all 288 cells | 0.382 | 0.915 | **0.940** |
-| calm / moderate / gusty hover | 0.420 / 0.389 / 0.339 | 0.955 / 0.933 / 0.858 | 0.986 / 0.968 / **0.867** |
-| ranging noise × 1 / × 2 | 0.483 / 0.282 | 0.944 / 0.887 | 0.954 / 0.927 |
-| no anchor lost / one lost | 0.472 / 0.292 | 0.933 / 0.898 | 0.947 / 0.933 |
-| 0 / 3 / 6 / 9 m/s | 0.576 / 0.567 / 0.350 / 0.036 | 0.922 / 0.922 / 0.915 / 0.902 | 0.944 / 0.937 / 0.949 / 0.931 |
-| **target cell, all four sensor conditions** (n = 720) | 0.361 | 0.938 | **0.969** |
-| target cell, nominal sensors (n = 180) | 0.589 | 0.972 | 0.983 |
-| moderate hover, nominal sensors | 0.601 | 0.969 | 0.986 |
-| gusty hover, nominal sensors | 0.521 | 0.915 | **0.908** |
-| cells at 95 % or better (30 trials per cell) | 3 of 288 | 122 of 288 | **172 of 288** |
+| condition | baseline | pocket_drift | pd_ctl | pd_nodob (no observer) |
+|---|---|---|---|---|
+| all 288 cells | 0.382 | 0.915 | **0.940** | **0.943** |
+| calm / moderate / gusty hover | 0.420 / 0.389 / 0.339 | 0.955 / 0.933 / 0.858 | 0.986 / 0.968 / **0.867** | 0.984 / 0.969 / **0.876** |
+| ranging noise × 1 / × 2 | 0.483 / 0.282 | 0.944 / 0.887 | 0.954 / 0.927 | 0.952 / 0.935 |
+| no anchor lost / one lost | 0.472 / 0.292 | 0.933 / 0.898 | 0.947 / 0.933 | 0.956 / 0.931 |
+| 0 / 3 / 6 / 9 m/s | 0.576 / 0.567 / 0.350 / 0.036 | 0.922 / 0.922 / 0.915 / 0.902 | 0.944 / 0.937 / 0.949 / 0.931 | 0.945 / 0.947 / 0.946 / 0.935 |
+| **target cell, all four sensor conditions** (n = 720) | 0.361 | 0.938 | **0.969** | **0.967** |
+| target cell, nominal sensors (n = 180) | 0.589 | 0.972 | 0.983 | 0.978 |
+| moderate hover, nominal sensors | 0.601 | 0.969 | 0.986 | 0.988 |
+| gusty hover, nominal sensors | 0.521 | 0.915 | **0.908** | 0.918 |
+| cells at 95 % or better (30 trials per cell) | 3 of 288 | 122 of 288 | **172 of 288** | 162 of 288 |
 
-Paired trial for trial: 668 recoveries fail without the options and pass with them; 451 go
-the other way.
+Paired trial for trial, 668 recoveries fail without the options and pass with them, and 451
+go the other way. Between `pd_ctl` and `pd_nodob` the counts are 436 and 409. About one trial
+in ten flips with any change to the software, because each trial is chaotic. Only the net
+difference means anything; 436 against 409 is within chance.
 
 What the options show:
 
-1. **The soft cutoff is the one clear gain.** Touchdown-speed failures fall from 150 to 28
-   in the full matrix. It costs nothing measurable.
+1. **The soft cutoff is the one clear gain.** Touchdown-speed failures fall from 150 to
+   28–46 in the full matrix. It costs nothing measurable.
 2. **Feedforward of the dock's acceleration helps at 9 m/s** (96.7 % to 99.2 %) and is
    otherwise within noise.
 3. **Parked bias calibration adds nothing** with pocket beacons. The beacons already fix the
    geometry that made bias matter. The result depends on the assumed 50 % residual.
-4. **The disturbance observer hurts** on its own: 97.4 % to 96.8 %, prop strikes 4 to 11. In
-   the combination, gusty hover with nominal sensors drops slightly (0.915 to 0.908) while
-   every other condition improves. The observer's estimate is wrong at the hand-over near
-   the dock, where contact begins. The 451 lost trials suggest the combination would do
-   better without it; that combination has not been run.
+4. **The disturbance observer hurts on its own and makes no difference in combination.**
+   Alone: 97.4 % to 96.8 %, prop strikes 4 to 11; its estimate goes wrong at the hand-over
+   near the dock, where contact begins. With the other three options, removing it changes
+   recovery from 0.940 to 0.943, within noise. It is not worth its complexity.
 5. **The controller alone does not close the gap.** On the spec dock the four options take
    recovery from 60 % to 67 %; at 0–3 m/s they reach 94–95 %, but 6 and 9 m/s stay at 67 %
    and 12 %. Drift and pocket beacons are what move the target cell.

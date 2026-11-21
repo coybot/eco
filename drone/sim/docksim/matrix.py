@@ -43,6 +43,25 @@ DUAL = {"dock": {"post": {"x_offsets_m": [-0.075, 0.075]}},
 WINDWARD = {"mothership_airframe": {"wind_from_centre_deg": -90.0, "wind_from_nose_max_deg": 20.0}}
 SLOT20 = {"bee35": {"bracket": {"slot_width_m": 0.020}}}
 
+# 249 g drone (empty, with bracket) carrying a Jetson Orin Nano on a custom carrier, same 0.21 m
+# footprint so it fits the same pockets, posts and brackets. Mass budget and sources: PHASE_3 section 5.7.
+LITE = {"bee35": {"mass_kg": 0.239,                   # (E) 249 g minus the 10 g bracket
+                  "inertia_kg_m2": [0.0009, 0.0016, 0.0009],   # (E) Bee35 scaled by mass, a little more central
+                  "thrust_max_total_n": 12.0,         # (P) four 1404-class motors on 3.5 in props, ~300 gf each
+                  "motor_tau_s": 0.03,                # (E) smaller motors spin up faster
+                  "drag_area_m2": 0.022},             # (E) prop guards instead of the Bee35's ducts
+        "dock": {"magnet": {"force_per_pad_n": 1.35}}}  # [D] scaled with mass: same g margin as the Bee35 dock
+LITE_PUSH = _merge(_merge({}, LITE), {"dock_ops": {"recovery": {"push_force_n": 0.25}}})  # push scaled to yaw authority
+
+# a mothership built to the REPORT section 5 spec (only the rows the dock sim can represent)
+ROTORS_OUT = {"mothership_airframe": {"rotors": {"pos_m": [[0.50, -0.10, 1.00], [0.50, -0.10, -1.00],
+                                                            [-0.50, -0.10, 1.00], [-0.50, -0.10, -1.00]]}}}
+#     lift rotors moved outboard: strike zone starts 0.51 m outboard of the dock floor (was 0.06 m)
+STEADY = {"mothership_airframe": {"hover_motion_scale": 0.5}}   # half the hover motion: gusty becomes moderate
+BCAST50 = {"dock_sensors": {"broadcast": {"rate_hz": 50, "delay_s": [0.01, 0.02]}},
+           "bee35": {"controller": {"dock_accel_lpf_s": 0.1}}}  # 50 Hz, 10-20 ms (was 10 Hz, 50-100 ms)
+CTL_SPEC = dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True)  # controller options used with the spec
+
 POCKET = {"dock_sensors": {"pocket_beacons": {"enabled": True}}}
 POCKET_SAME = {"dock_sensors": {"pocket_beacons": {"enabled": True, "sigma_m": 0.05, "bias_max_m": 0.05}}}
 STILL = {"mothership_airframe": {"hover_motion_scale": 0.0}}
@@ -78,6 +97,17 @@ EXPS = {
     "pd_ctl": dict(cfg=_merge(_merge({}, POCKET), DRIFT),
                    opts=dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True, dob_tau_s=0.1)),
     # the same four on the spec's dock without beacons or drift (do they help where navigation is weak?)
+    "pd_nodob": dict(cfg=_merge(_merge({}, POCKET), DRIFT),         # pd_ctl without the disturbance observer
+                     opts=dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True)),
+    # a 249 g drone in the same dock (section 5.7)
+    "lite_base": dict(cfg=LITE),
+    "lite_pd": dict(cfg=_merge(_merge(_merge({}, LITE), POCKET), DRIFT)),
+    "lite_pd_push": dict(cfg=_merge(_merge(_merge({}, LITE_PUSH), POCKET), DRIFT)),
+    # the mothership spec (REPORT section 5), each row alone and together, on drift + beacons + controller
+    "sp_rotors": dict(cfg=_merge(_merge(_merge({}, POCKET), DRIFT), ROTORS_OUT), opts=CTL_SPEC),
+    "sp_steady": dict(cfg=_merge(_merge(_merge({}, POCKET), DRIFT), STEADY), opts=CTL_SPEC),
+    "sp_bcast": dict(cfg=_merge(_merge(_merge({}, POCKET), DRIFT), BCAST50), opts=CTL_SPEC),
+    "sp_all": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, POCKET), DRIFT), ROTORS_OUT), STEADY), BCAST50), opts=CTL_SPEC),
     "base_ctl": dict(opts=dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True, dob_tau_s=0.1)),
     "pocket_all_drift_nodual": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, LIP10), WINDWARD), SLOT20), DRIFT),
                                                POCKET), cell=dict(anchor_set="spec4")),

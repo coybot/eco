@@ -22,6 +22,7 @@ Nominal sensors, the 72 cells hover x wind x neighbours x box, seeds 1-60 (spec4
 | pd_ff | pocket_drift + mothership acceleration feedforward | **0.984** | **0.978** | 0.983 | 0.983 | 0.978 | 0.992 | 0.087 | 1.000 | 0.912 | 1440 |
 | pd_dob | pocket_drift + gust observer (0.1 s), free flight only | **0.968** | **0.956** | 0.972 | 0.964 | 0.956 | 0.981 | 0.087 | 1.000 | 0.912 | 1440 |
 | pd_ctl | pocket_drift + all four controller options | **0.964** | **0.983** | 0.967 | 0.963 | 0.965 | 0.961 | 0.092 | 1.000 | 0.908 | 2160 |
+| pd_nodob | pd_ctl without the disturbance observer | **0.967** | **0.978** | 0.969 | 0.965 | 0.978 | 0.956 | 0.092 | 1.000 | 0.908 | 2160 |
 | base_ctl | spec baseline + all four controller options | **0.670** | **0.672** | 0.944 | 0.947 | 0.672 | 0.117 | 0.111 | 1.000 | 0.889 | 1440 |
 
 Main recovery failures:
@@ -46,4 +47,5 @@ Main recovery failures:
 - pd_ff: {'touchdown_speed': 15, 'prop_strike': 5, 'final_position': 1, 'timeout_not_landed': 1, 'over_time': 1}
 - pd_dob: {'touchdown_speed': 25, 'prop_strike': 11, 'post_speed': 4, 'over_time': 2, 'touched_parked': 1}
 - pd_ctl: {'prop_strike': 27, 'not_seated': 21, 'final_position': 15, 'timeout_not_landed': 6, 'post_speed': 6}
+- pd_nodob: {'final_position': 22, 'prop_strike': 15, 'not_seated': 15, 'post_speed': 6, 'touchdown_speed': 6}
 - base_ctl: {'prop_strike': 152, 'not_seated': 128, 'touched_parked': 83, 'timeout_not_landed': 40, 'final_position': 26}

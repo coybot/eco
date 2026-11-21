@@ -124,13 +124,30 @@ and failure counts: `PHASE_3.md` section 5.4.
 
 The four controller options were: soft motor cutoff, parked bias calibration, feedforward of
 the dock's acceleration, and a gust observer. Alone, at moderate hover: soft cutoff
-+1.4 points, feedforward +1.0, calibration +0.2 (noise), gust observer **−0.6**. The
-observer's estimate goes wrong at the hand-over to contact. The next run worth doing is the
-combination without it. On the spec dock, the same options take recovery only from 60 % to
++1.4 points, feedforward +1.0, calibration +0.2 (noise), gust observer **−0.6**. In
+combination the observer makes no difference: without it, 0.943 over all cells against
+0.940. On the spec dock, the same options take recovery only from 60 % to
 67 %: the controller does not replace drift and pocket beacons.
 
 **Gusty hover is now the limit (87 %).** Its failures are prop strikes, final position and
 not seated: the dock moving under the drone during contact.
+
+**A mothership spec drawn from these results** (2026-11-21). Not simulated as a new airframe.
+"Simulated" means the sim measured the effect on the Pioneer model.
+
+| spec | target | basis |
+|---|---|---|
+| hover steadiness in 6–9 m/s turbulence | sway ≤ 0.5 m, up-down ≤ 0.2 m, yaw ≤ 5°, tilt ≤ 2° rms or better (calm: 99 %, moderate: 97 %, gusty: 87 %) | simulated |
+| hover relative to the air | a firmware mode with a hover wind estimate to about ± 0.5 m/s | simulated with a perfect estimate |
+| lift-rotor clearance | rotor tips ≥ 0.5 m outboard of the dock, or well below the deck; dock out of the rotor inflow (on the Pioneer model the strike zone starts 0.06 m outboard of the floor) | inferred: prop strike is the largest remaining failure class |
+| dock position | pocket row centred on the CG and the yaw axis | geometry |
+| hover thrust margin | thrust/weight ≥ 1.6 at full weight; 8 rotors | judgement |
+| wing | small area in hover (gust load) | judgement |
+| motion broadcast | acceleration at ≥ 50 Hz, ≤ 20 ms latency | 10 Hz simulated (+2.5 points at 9 m/s); the faster rate is inferred |
+| payload | ≥ 6 kg (4.08 kg load + fairing + margin) | sizing |
+| hover endurance at full weight | ≥ 8 min on top of the cruise reserve | rough estimate |
+| drone row | faired or in an internal bay (37 N exposed against about 7 N faired at cruise) | sizing |
+| UWB | four pocket beacons; the airframe anchors matter less | simulated |
 
 To re-run a variant: `just remote-run <name> "python -m docksim.matrix run --exp pocket_drift
 --trials 60"` on the remote box, then `python -m docksim.compare --hover moderate`.
