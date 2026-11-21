@@ -103,6 +103,58 @@ triangle, IMU, and a weak barometer. Guidance there works in dock coordinates. S
 - the estimated return energy reaching into a 20 % reserve;
 - 60 s near the mothership without a handover.
 
-## 3. Results
+## 3. Results (300 missions per scenario per variant; `docking/results/mission/summary.md`)
 
-*Filled from `docking/results/mission/summary.md` and `endtoend.md`.*
+### Baseline: 0.6 m sign, no sign barometer
+
+| scen | delivered | delivered and back at the dock | collisions | box from mark, median / p90 | handover error, median / p90 | time | energy |
+|---|---|---|---|---|---|---|---|
+| B1 typical | 1.000 | 0.997 | 0 | 0.06 / 0.10 m | 0.26 / 0.40 m | 72 s | 5.5 Wh |
+| B2 glass railing | 0.993 | 0.990 | 2 | 0.05 / 0.09 m | 0.25 / 0.39 m | 71 s | 5.5 Wh |
+| B3 small | 1.000 | 0.997 | 0 | 0.06 / 0.10 m | 0.26 / 0.38 m | 71 s | 5.5 Wh |
+| B4 loggia | 0.993 | 0.987 | 2 | 0.06 / 0.09 m | 0.26 / 0.39 m | 72 s | 5.5 Wh |
+| B5 strong wind | 1.000 | 0.917 | 9 (sign) | 0.07 / 0.13 m | 0.22 / 0.38 m | 71 s | 5.9 Wh |
+| B6 sign by a divider | 0.950 | 0.947 | 15 (divider 10, railing 4) | 0.06 / 0.09 m | 0.25 / 0.38 m | 71 s | 5.5 Wh |
+| **all** | **0.989** | **0.972** | 28 | 0.06 / 0.10 m | 0.25 / 0.39 m | 71 s | 5.5 Wh |
+
+How the failures happen:
+
+- **B6 (sign 0.4–0.6 m from a divider):** lateral error at the balcony. At the gate, 4 m out,
+  the drone is about 0.5 m from where it thinks it is (median). A 0.6 m triangle gives
+  lateral DOP of about 7 at that distance.
+- **B5 (strong wind):** returns that time out at the mothership (16), and set-down contacts
+  with the sign in facade gusts (9).
+
+An earlier version of the mission lost 54 % of the B5 returns. The cause was the Bee35 tilt
+limit of 35° borrowed from the dock approach: it caps airspeed at about 14 m/s, below the
+gusts above a roof in 10 m/s wind. Transit now allows 55°; the airframe has a thrust/weight
+ratio of about 6.
+
+### Variants (all scenarios)
+
+| variant | delivered and back | collisions | box from mark, median | gate error, median |
+|---|---|---|---|---|
+| baseline (0.6 m sign) | **0.972** | 28 | 0.06 m | 0.48 m |
+| **0.3 m sign** | **0.861** | 222 (railing 136, slab 36) | 0.08 m | 0.78 m |
+| 1.0 m sign | 0.917 (B1–B5: 0.971) | 123 (divider 87, all in B6) | 0.05 m | 0.33 m |
+| sign with a barometer | 0.967 | 37 | 0.06 m | 0.47 m |
+| UWB noise and bias ×2 | **0.849** | 245 (railing 140) | 0.10 m | 0.79 m |
+
+- **Sign size matters most.** A 0.3 m triangle loses 11 points, mostly to railing and slab
+  strikes. Its vertical baseline (0.26 m) gives about 0.4 m height error at the railing,
+  against 0.57–0.69 m of clearance.
+- **A 1.0 m sign is not better than 0.6 m here**, but only because of a scenario artifact.
+  In B6 a 1.0 m sign 0.4–0.6 m from a divider overlaps the divider itself, which can't
+  happen in reality. Without B6, 0.6 m and 1.0 m perform the same (0.977 vs 0.971). The gate
+  error does fall from 0.48 to 0.33 m. Recommendation: at least 0.6 m.
+- **A barometer in the sign does not help** (0.967 vs 0.972). Once the drone is over the
+  balcony, the down range fixes height better. Before that, the sign triangle's vertical
+  information and the drone's own barometer suffice for a 1.6 m tall entry slot.
+- **UWB quality matters as much as sign size.** Doubling noise and bias costs 12 points.
+
+### What the user's beacon concept needs
+
+The three-beacon sign works for the balcony, provided it is at least 0.6 m across and the
+drop mark is at least 1 m from a divider. The three-beacon mothership triangle works for
+the return to within 0.3 m of the recovery start point (handover error p90 0.39 m). The
+weak link is the dock itself (Phase 3), not the delivery.
