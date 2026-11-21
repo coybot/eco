@@ -162,7 +162,7 @@ class Nav:
 def run_mission(cfg, sid, seed, opts=None, verbose=False):
     opts = opts or {}
     bm, b, ds, ma = cfg["balcony_mission"], cfg["bee35"], cfg["dock_sensors"], cfg["mothership_airframe"]
-    sc = make(sid, seed, cfg, sign_side=opts.get("sign_side_m"))
+    sc = make(sid, seed, cfg, sign_side=opts.get("sign_side_m"), b6_offset_m=tuple(opts.get("b6_offset_m", (0.4, 0.6))))
     rng = np.random.default_rng([seed, SCENARIOS.index(sid) + 901, int(opts.get("variant_id", 0))])
     wind = UrbanWind(_WindShim(sc), seed + 7919 * (SCENARIOS.index(sid) + 1), t_end_s=400.0)
     noise = opts.get("uwb_noise_scale", 1.0)

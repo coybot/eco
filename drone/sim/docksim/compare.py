@@ -1,0 +1,96 @@
+"""Design variants against the baseline on the same cells and seeds (nominal sensors).
+
+    python -m docksim.compare [--max-seed 60]     # writes docking/results/dock/variants.{md,json}
+
+Seeds are deterministic per (trial, cell), so the baseline and spec4 rows for the same cell and
+seed are the same trials the variants would have flown: no re-run is needed for them.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import gzip
+import json
+import os
+from collections import Counter
+
+from delivery.summarise import wilson
+
+from .matrix import OUT
+
+VARIANTS = [("baseline", "spec as built: 3 anchors, 38 mm lip, 1 post, wind from the nose"),
+            ("spec4", "+ dock anchor A4"),
+            ("lip10", "starboard lip 0.10 m (was 0.038 m)"),
+            ("dual", "two posts and two brackets per pocket"),
+            ("windward", "mothership yaws: wind from starboard"),
+            ("slot20", "launch slot 20 mm (was 12 mm)"),
+            ("all", "all of the above")]
+POST_FREE = ("prop_strike", "never_left_magnets", "slow_clear", "touched_ridge", "touched_parked")
+
+
+def _open(path):
+    if os.path.exists(path):
+        return open(path)
+    if os.path.exists(path + ".gz"):
+        return gzip.open(path + ".gz", "rt")
+    return None
+
+
+def load(exp, kind, max_seed):
+    f = _open(os.path.join(OUT, f"{exp}_{kind}.csv"))
+    if f is None:
+        return []
+    with f:
+        return [r for r in csv.DictReader(f) if r.get("error_label", "none") == "none"
+                and r["noise_scale"] == "1.0" and r["anchor_loss_label"] == "none" and int(r["seed"]) <= max_seed]
+
+
+def frac(rows, ok):
+    n = len(rows)
+    k = sum(ok(r) for r in rows)
+    return (k / n if n else None), wilson(k, n) if n else (None, None), n
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--max-seed", type=int, default=60)
+    a = ap.parse_args()
+    res = {}
+    passed = lambda r: str(r["passed_bool"]).lower() == "true"
+    for exp, desc in VARIANTS:
+        rec = load(exp, "recovery", a.max_seed)
+        lau = load(exp, "launch", a.max_seed)
+        if not rec:
+            continue
+        d = dict(desc=desc)
+        d["recovery"] = frac(rec, passed)
+        d["target"] = frac([r for r in rec if r["hover"] == "moderate" and r["wind_m_s"] == "6"], passed)
+        for w in ("0", "3", "6", "9"):
+            d[f"wind{w}"] = frac([r for r in rec if r["wind_m_s"] == w], passed)
+        d["fails"] = dict(Counter(r["fail_reason_label"] for r in rec if not passed(r)).most_common(5))
+        d["launch_spec"] = frac(lau, passed)
+        d["launch_no_post"] = frac(lau, lambda r: not any(f in r["fail_all_label"].split() for f in POST_FREE))
+        d["post_contact_frac"] = frac(lau, lambda r: float(r.get("post_contacts_count") or 0) > 0)
+        res[exp] = d
+    f2 = lambda t: "-" if t[0] is None else f"{t[0]:.3f}"
+    L = [f"Nominal sensors, the 72 cells hover x wind x neighbours x box, seeds 1-{a.max_seed} "
+         f"(spec4: 1-50).\n",
+         "| variant | change | recovery | target cell (moderate, 6 m/s) | 0 m/s | 3 m/s | 6 m/s | 9 m/s | "
+         "launch, spec criteria | launch without the post clause | launches touching a post | n recoveries |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for exp, d in res.items():
+        L.append(f"| {exp} | {d['desc']} | **{f2(d['recovery'])}** | **{f2(d['target'])}** | {f2(d['wind0'])} | "
+                 f"{f2(d['wind3'])} | {f2(d['wind6'])} | {f2(d['wind9'])} | {f2(d['launch_spec'])} | "
+                 f"{f2(d['launch_no_post'])} | {f2(d['post_contact_frac'])} | {d['recovery'][2]} |")
+    L.append("\nMain recovery failures:\n")
+    for exp, d in res.items():
+        L.append(f"- {exp}: {d['fails']}")
+    with open(os.path.join(OUT, "variants.json"), "w") as f:
+        json.dump(res, f, indent=1, default=str)
+    with open(os.path.join(OUT, "variants.md"), "w") as f:
+        f.write("\n".join(L) + "\n")
+    print("\n".join(L))
+
+
+if __name__ == "__main__":
+    main()

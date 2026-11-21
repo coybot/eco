@@ -27,6 +27,8 @@ EXPS = {
     "sign1.0": dict(sign_side_m=1.0, variant_id=2),
     "sign_baro": dict(sign_baro=True, variant_id=3),
     "uwb_x2": dict(uwb_noise_scale=2.0, variant_id=4),
+    "divider1m": dict(b6_offset_m=(1.0, 1.2), variant_id=5),               # drop mark >= 1 m from a divider
+    "sign1.0_divider1m": dict(sign_side_m=1.0, b6_offset_m=(1.0, 1.2), variant_id=6),
 }
 
 
@@ -41,8 +43,8 @@ def _task(a):
     return r
 
 
-def run(exp, trials, workers):
-    tasks = [(exp, sid, s) for s in range(1, trials + 1) for sid in SCENARIOS]
+def run(exp, trials, workers, scen=None):
+    tasks = [(exp, sid, s) for s in range(1, trials + 1) for sid in (scen or SCENARIOS)]
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, f"{exp}.csv")
     t0 = time.time()
@@ -124,9 +126,10 @@ def main():
     ap.add_argument("--exp", default="baseline", choices=list(EXPS))
     ap.add_argument("--trials", type=int, default=300)
     ap.add_argument("--workers", type=int, default=os.cpu_count())
+    ap.add_argument("--scenarios", default="", help="subset, e.g. B6")
     a = ap.parse_args()
     if a.cmd == "run":
-        run(a.exp, a.trials, a.workers)
+        run(a.exp, a.trials, a.workers, a.scenarios.split(",") if a.scenarios else None)
     else:
         summary()
 

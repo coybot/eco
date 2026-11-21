@@ -130,11 +130,13 @@ def build_xml(cfg, drones: list[DroneSpec]) -> str:
     # guide posts: capsule shaft + soft tip sphere
     p = d["post"]
     pr = p["radius_sim_m"]
-    for i, xp in enumerate(d["pocket_x_m"]):
-        dgeom(f"post{i}", "capsule", mu=ct["post_bracket_mu"], fromto=_v([xp, pr, p["z_m"], xp, p["height_m"] - pr, p["z_m"]]),
-              size=f"{pr}")
-        dgeom(f"post_tip{i}", "sphere", mu=ct["post_bracket_mu"], solref="0.02 1.0",
-              pos=_v([xp, p["height_m"], p["z_m"]]), size=f'{p["tip_radius_m"]}')
+    for i, xc in enumerate(d["pocket_x_m"]):
+        for k, dx in enumerate(p.get("x_offsets_m", [0.0])):      # variant: two posts per pocket
+            xp = xc + dx
+            dgeom(f"post{i}_{k}", "capsule", mu=ct["post_bracket_mu"],
+                  fromto=_v([xp, pr, p["z_m"], xp, p["height_m"] - pr, p["z_m"]]), size=f"{pr}")
+            dgeom(f"post_tip{i}_{k}", "sphere", mu=ct["post_bracket_mu"], solref="0.02 1.0",
+                  pos=_v([xp, p["height_m"], p["z_m"]]), size=f'{p["tip_radius_m"]}')
 
     # support, fairing, airframe shapes
     py = d["pylon"]
@@ -181,25 +183,27 @@ def build_xml(cfg, drones: list[DroneSpec]) -> str:
         for k, (sx_, sz_) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)]):
             bgeom(f"pad{k}", "box", 2, ct["skid_seat_mu"], solref=sr_skid, pos=_v([sx_ * o, pad_h, sz_ * o]),
                   size=_v([0.012, pad_h, 0.012]))
-        # bracket: end plate, slot walls, fences
+        # bracket(s): end plate, slot walls, fences (variant: one bracket per post offset)
         ze = br["slot_end_z_m"]
-        bgeom("br_end", "box", 3, ct["post_bracket_mu"], pos=_v([0, yb, ze + th / 2]), size=_v([sw + th, hb_y, th / 2]))
         zm = br["slot_mouth_z_m"]
-        for s, sn in [(1, "p"), (-1, "n")]:
-            bgeom(f"br_wall{sn}", "box", 3, ct["post_bracket_mu"], pos=_v([s * (sw + th / 2), yb, (ze + zm) / 2]),
-                  size=_v([th / 2, hb_y, (ze - zm) / 2]))
-            a = np.array([s * sw, zm])
-            e = np.array([s * br["mouth_half_width_m"], br["mouth_z_m"]])
-            dv = e - a
-            L = float(np.linalg.norm(dv))
-            u = dv / L
-            n1 = np.array([-u[1], u[0]])                   # pick the normal away from the channel centre
-            if np.dot(n1, np.array([0.0, br["mouth_z_m"]]) - a) > 0:
-                n1 = -n1
-            mid = (a + e) / 2 + n1 * th / 2
-            ang = math.atan2(-u[1], u[0])                 # rotation about +y mapping local x onto (u_x, ., u_z)
-            bgeom(f"br_fence{sn}", "box", 3, ct["post_bracket_mu"], pos=_v([mid[0], yb, mid[1]]),
-                  size=_v([L / 2, hb_y, th / 2]), euler=f"0 {math.degrees(ang):.4f} 0")
+        for kb, bx0 in enumerate(br.get("x_offsets_m", [0.0])):
+            bgeom(f"br_end{kb}", "box", 3, ct["post_bracket_mu"], pos=_v([bx0, yb, ze + th / 2]),
+                  size=_v([sw + th, hb_y, th / 2]))
+            for s, sn in [(1, "p"), (-1, "n")]:
+                bgeom(f"br_wall{sn}{kb}", "box", 3, ct["post_bracket_mu"], pos=_v([bx0 + s * (sw + th / 2), yb, (ze + zm) / 2]),
+                      size=_v([th / 2, hb_y, (ze - zm) / 2]))
+                a = np.array([s * sw, zm])
+                e = np.array([s * br["mouth_half_width_m"], br["mouth_z_m"]])
+                dv = e - a
+                L = float(np.linalg.norm(dv))
+                u = dv / L
+                n1 = np.array([-u[1], u[0]])               # pick the normal away from the channel centre
+                if np.dot(n1, np.array([0.0, br["mouth_z_m"]]) - a) > 0:
+                    n1 = -n1
+                mid = (a + e) / 2 + n1 * th / 2
+                ang = math.atan2(-u[1], u[0])             # rotation about +y mapping local x onto (u_x, ., u_z)
+                bgeom(f"br_fence{sn}{kb}", "box", 3, ct["post_bracket_mu"], pos=_v([bx0 + mid[0], yb, mid[1]]),
+                      size=_v([L / 2, hb_y, th / 2]), euler=f"0 {math.degrees(ang):.4f} 0")
         if ds.box:
             bx = b["box"]
             bgeom("box", "box", 4, ct["body_body_mu"], pos=_v([0, -bx["rim_drop_m"] - bx["size_m"][1] / 2, 0]),

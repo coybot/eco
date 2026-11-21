@@ -11,6 +11,7 @@ Experiments (EXPS) change one thing against the baseline.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import itertools
 import os
@@ -23,6 +24,25 @@ from .trial import run_launch, run_recovery
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docking", "results", "dock")
 
+def _merge(dst, src):
+    """Deep-merge src into dst (src is copied, never aliased)."""
+    src = copy.deepcopy(src)
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _merge(dst[k], v)
+        else:
+            dst[k] = v
+    return dst
+
+
+# design variants: config overrides (same keys as docking/vehicles.yaml)
+LIP10 = {"dock": {"starboard_lip": {"z_inner_m": 0.107, "z_outer_m": 0.165, "height_m": 0.10}}}
+DUAL = {"dock": {"post": {"x_offsets_m": [-0.075, 0.075]}},
+        "bee35": {"bracket": {"x_offsets_m": [-0.075, 0.075], "mouth_half_width_m": 0.070},
+                  "down_sensor_pos_m": [0.0, 0.0, -0.100]}}
+WINDWARD = {"mothership_airframe": {"wind_from_centre_deg": -90.0, "wind_from_nose_max_deg": 20.0}}
+SLOT20 = {"bee35": {"bracket": {"slot_width_m": 0.020}}}
+
 EXPS = {
     "baseline": dict(),                                         # user's 3-anchor triangle, spec sequence
     "spec4": dict(cell=dict(anchor_set="spec4")),               # the spec's four anchors (adds A4 at the dock rear)
@@ -30,6 +50,12 @@ EXPS = {
     "stiff_x": dict(opts=dict(comply_x=False)),                 # no x compliance on the approach (spec as written)
     "magnet8": dict(opts=dict(magnet_scale=8 / 12)),
     "magnet16": dict(opts=dict(magnet_scale=16 / 12)),
+    "lip10": dict(cfg=LIP10),                                   # starboard lip 0.10 m high, ~60 deg
+    "dual": dict(cfg=DUAL),                                     # two posts and two brackets per pocket
+    "windward": dict(cfg=WINDWARD),                             # mothership yaws: wind from starboard +-20 deg
+    "slot20": dict(cfg=SLOT20),                                 # launch slot 20 mm (5 mm clearance each side)
+    "all": dict(cfg=_merge(_merge(_merge(_merge({}, LIP10), DUAL), WINDWARD), SLOT20),
+                cell=dict(anchor_set="spec4")),                 # every change at once, plus the dock anchor A4
 }
 
 
@@ -50,8 +76,8 @@ def cells(cfg, only=None):
 
 def _task(a):
     exp, cell, seed = a
-    cfg = load_cfg()
     e = EXPS[exp]
+    cfg = _merge(load_cfg(), e.get("cfg", {}))
     cell = dict(cell, **e.get("cell", {}))
     opts = dict(e.get("opts", {}))
     rows = []

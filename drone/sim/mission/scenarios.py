@@ -57,7 +57,7 @@ def _sign_anchors(side):
     return pts                      # centroid at the origin
 
 
-def make(sid, seed, cfg, sign_side=None):
+def make(sid, seed, cfg, sign_side=None, b6_offset_m=(0.4, 0.6)):
     bm = cfg["balcony_mission"]
     rng = np.random.default_rng([seed, SCENARIOS.index(sid) + 501])
     side = sign_side or bm["sign"]["triangle_side_m"]
@@ -77,7 +77,7 @@ def make(sid, seed, cfg, sign_side=None):
     ceil = float(rng.uniform(2.6, 2.9))
     # sign position along the balcony (x of the balcony centre relative to the sign)
     if sid == "B6":
-        off = w / 2 - float(rng.uniform(0.4, 0.6))
+        off = w / 2 - float(rng.uniform(*b6_offset_m))
         cx = -off if rng.random() < 0.5 else off
     else:
         cx = float(rng.uniform(-0.2, 0.2)) * w

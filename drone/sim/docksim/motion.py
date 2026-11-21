@@ -117,7 +117,9 @@ class Wind:
     def __init__(self, mean_m_s, cfg, rng):
         mc, ma = cfg["dock_matrix"], cfg["mothership_airframe"]
         lim = math.radians(ma["wind_from_nose_max_deg"])
-        self.dir_from_nose_rad = float(rng.uniform(-lim, lim))
+        # variant: the mothership yaws so the wind arrives from a chosen side (centre, e.g. -90 = starboard)
+        ctr = math.radians(ma.get("wind_from_centre_deg", 0.0))
+        self.dir_from_nose_rad = ctr + float(rng.uniform(-lim, lim))
         # air moves from the nose towards the tail: from +x towards -x (rotated about y)
         self.mean = -mean_m_s * np.array([math.cos(self.dir_from_nose_rad), 0.0, -math.sin(self.dir_from_nose_rad)])
         self.sigma = mc["wind_turbulence_frac"] * mean_m_s
