@@ -36,12 +36,12 @@ The user's concept of 2026-11-20:
 | Flight time and energy | Bee35 hover 3.7 min loaded and 7.0 min empty (6S 1100 mAh, estimated). A delivery uses about 5.5 Wh of 20.7 usable, 71 s at 20–60 m standoff. Reach is about 450 m slant at a 20 % reserve. |
 | **Does the balcony delivery work?** | **Yes: 97 %** of missions deliver and return to the dock hand-off point. The box lands 6 cm from the mark (median), at 0.6 m sign size. |
 | Does the sign size matter? | **Yes.** A 0.3 m triangle gives 86 % (railing strikes). 0.6 m and 1.0 m perform the same. A sign barometer adds nothing. |
-| **Does the passive dock recovery meet 95 % at moderate hover, 6 m/s?** | **Not as specified: 35 %**; 56 % with nominal sensors; 62 % with the spec's fourth anchor. **With two changes it does: 98 %** (nominal sensors), see section 5. |
+| **Does the passive dock recovery meet 95 % at moderate hover, 6 m/s?** | **Not as specified: 35 %**; 56 % with nominal sensors; 62 % with the spec's fourth anchor. **With two changes it does: 98 %** with nominal sensors, 93 % over all four sensor conditions. With the four controller options added (section 5), 97 % over all four. |
 | What gets it there? | The mothership holds position relative to the air (drifts with the mean wind) instead of over the ground: 89 %. Add a short-range UWB beacon at each pocket: **98 %**, and 97 % or better at every wind from 0 to 9 m/s. |
-| Where does the dock work? | Up to 3 m/s with nominal sensors: 78–87 %, best 87 %. No cell reaches 95 %. |
+| Where does the dock work? | As specified: up to 3 m/s with nominal sensors, 78–87 %; no cell reaches 95 %. With drift, pocket beacons and the controller options: 94 % over all 288 cells, 172 of 288 cells at 95 % or better, every wind 93–95 %. Gusty hover is the limit at 87 %. |
 | Does the launch meet the spec? | Every criterion except "does not touch a post", which the slot geometry makes impossible (100 % touch). Without that clause, 99.995 %. |
 | Do the magnets hold? | Yes: lift-off at −2.3 g empty and −1.5 g with box; every hold-test case passes. |
-| Three or four mothership beacons? | Four. The dock anchor adds about 10 points. With three, losing the fin anchor drops recovery to 11 %, because fore–aft position becomes unobservable. |
+| Three or four mothership beacons? | Without pocket beacons: four. The dock anchor adds about 10 points, and with three, losing the fin anchor drops recovery to 11 %. With a beacon at each pocket, losing any one airframe anchor costs only 3–4 points. |
 | **One delivery end to end** (launch × mission × recovery, nominal sensors, mission weather) | **62 %** with three anchors, 67 % with four. By weather: 83–86 % in calm or 3 m/s, 54 % at 6 m/s, under 10 % at 9 m/s. |
 | A full four-drone sortie (dock steps only) | 54–59 % at 0–3 m/s, 9 % at 6 m/s, 0 % at 9 m/s |
 
@@ -103,13 +103,34 @@ and failure counts: `PHASE_3.md` section 5.4.
 3. **Drop the two-post bracket.** As modelled it halves recovery and launch success.
 4. The lip, windward orientation and wider slot add nothing measurable once 1 and 2 are in.
    The wider slot still reduces launch post contact somewhat.
-5. **Remaining failures** with 1 and 2 (37 of 1,440) are mostly touchdowns at 0.50–0.70 m/s
-   from the hard motor cutoff. A thrust ramp-down is the next thing to try.
+5. **Ramp the motors down instead of cutting them.** With 1 and 2, most remaining failures
+   were touchdowns at 0.50–0.70 m/s after the hard cutoff. A 0.5 s collective ramp removes
+   almost all of them (moderate hover 97.4 % to 98.8 %, target cell 99.4 %).
 6. For the balcony: sign at least 0.6 m across, and drop marks at least 1 m from a divider
    (`PHASE_4.md`).
 
-Not yet checked: the beacon variant in gusty hover, with ranging noise × 2 and with an anchor
-lost (the full 288-cell run).
+**Full matrix** (all 288 cells: 3 hover levels × 4 winds × neighbours × box × ranging noise
+× 1 or × 2 × an anchor lost or not; `PHASE_3.md` sections 5.5 and 5.6):
+
+| | baseline | drift + pocket beacons | + four controller options |
+|---|---|---|---|
+| all cells | 0.38 | 0.91 | **0.94** |
+| target cell, all four sensor conditions | 0.36 | 0.93 | **0.97** |
+| calm / moderate / gusty hover | 0.42 / 0.39 / 0.34 | 0.95 / 0.93 / 0.86 | 0.99 / 0.97 / **0.87** |
+| ranging noise × 2 | 0.28 | 0.88 | 0.93 |
+| one airframe anchor lost | 0.29 | 0.90 | 0.93 |
+| 9 m/s | 0.04 | 0.90 | 0.93 |
+| cells at 95 % or better | 0–3 of 288 | 122–126 of 288 | **172 of 288** |
+
+The four controller options were: soft motor cutoff, parked bias calibration, feedforward of
+the dock's acceleration, and a gust observer. Alone, at moderate hover: soft cutoff
++1.4 points, feedforward +1.0, calibration +0.2 (noise), gust observer **−0.6**. The
+observer's estimate goes wrong at the hand-over to contact. The next run worth doing is the
+combination without it. On the spec dock, the same options take recovery only from 60 % to
+67 %: the controller does not replace drift and pocket beacons.
+
+**Gusty hover is now the limit (87 %).** Its failures are prop strikes, final position and
+not seated: the dock moving under the drone during contact.
 
 To re-run a variant: `just remote-run <name> "python -m docksim.matrix run --exp pocket_drift
 --trials 60"` on the remote box, then `python -m docksim.compare --hover moderate`.
@@ -128,6 +149,7 @@ Several model inputs are estimates or placeholders from the spec:
 The dock and mission results are combined as independent events, sharing only the wind.
 The dock controller is this project's own design (`DESIGN_LOG.md` section C). A better
 controller could move the 6 m/s numbers, but not the physical limits listed in section 3.
+Section 5 tested four controller options; on the spec dock they move recovery 60 % to 67 %.
 
 ## 7. Reproduce
 

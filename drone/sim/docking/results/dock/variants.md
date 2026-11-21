@@ -14,9 +14,15 @@ Nominal sensors, the 72 cells hover x wind x neighbours x box, seeds 1-60 (spec4
 | all | all geometry changes + A4 | **0.326** | **0.353** | 0.480 | 0.383 | 0.316 | 0.126 | 0.092 | 0.857 | 0.908 | 4320 |
 | all_drift | all geometry changes + A4 + drifting hover | **0.491** | **0.472** | 0.486 | 0.508 | 0.472 | 0.497 | 0.151 | 0.878 | 0.849 | 1440 |
 | all_drift_nodual | as all_drift, without the two-post bracket | **0.872** | **0.889** | 0.875 | 0.853 | 0.889 | 0.869 | 0.166 | 1.000 | 0.834 | 1440 |
-| pocket_drift | 3 anchors + a short-range beacon per pocket (3 cm, +-2 cm bias), drifting hover | **0.974** | **0.981** | 0.972 | 0.978 | 0.981 | 0.967 | 0.087 | 1.000 | 0.912 | 1440 |
+| pocket_drift | 3 anchors + a short-range beacon per pocket (3 cm, +-2 cm bias), drifting hover | **0.958** | **0.981** | 0.965 | 0.955 | 0.961 | 0.951 | 0.087 | 1.000 | 0.913 | 4320 |
 | pocket_same_drift | as pocket_drift, beacons as noisy as A1-A3 (5 cm, +-5 cm) | **0.965** | **0.961** | 0.975 | 0.972 | 0.961 | 0.953 | 0.087 | 1.000 | 0.912 | 1440 |
 | pocket_all_drift_nodual | pocket beacons + all_drift_nodual | **0.980** | **0.978** | 0.978 | 0.981 | 0.978 | 0.983 | 0.172 | 1.000 | 0.828 | 1440 |
+| pd_soft | pocket_drift + collective ramped to 0 over 0.5 s at cutoff | **0.988** | **0.994** | 0.989 | 0.994 | 0.994 | 0.972 | 0.087 | 1.000 | 0.912 | 1440 |
+| pd_cal | pocket_drift + UWB bias calibrated while parked (half the bias left) | **0.976** | **0.975** | 0.981 | 0.978 | 0.975 | 0.972 | 0.087 | 1.000 | 0.912 | 1440 |
+| pd_ff | pocket_drift + mothership acceleration feedforward | **0.984** | **0.978** | 0.983 | 0.983 | 0.978 | 0.992 | 0.087 | 1.000 | 0.912 | 1440 |
+| pd_dob | pocket_drift + gust observer (0.1 s), free flight only | **0.968** | **0.956** | 0.972 | 0.964 | 0.956 | 0.981 | 0.087 | 1.000 | 0.912 | 1440 |
+| pd_ctl | pocket_drift + all four controller options | **0.964** | **0.983** | 0.967 | 0.963 | 0.965 | 0.961 | 0.092 | 1.000 | 0.908 | 2160 |
+| base_ctl | spec baseline + all four controller options | **0.670** | **0.672** | 0.944 | 0.947 | 0.672 | 0.117 | 0.111 | 1.000 | 0.889 | 1440 |
 
 Main recovery failures:
 
@@ -32,6 +38,12 @@ Main recovery failures:
 - all: {'not_seated': 1114, 'post_speed': 635, 'touched_parked': 409, 'timeout_not_landed': 295, 'prop_strike': 229}
 - all_drift: {'not_seated': 409, 'post_speed': 134, 'touched_parked': 93, 'timeout_not_landed': 38, 'over_time': 19}
 - all_drift_nodual: {'touched_parked': 50, 'post_speed': 40, 'prop_strike': 36, 'timeout_not_landed': 20, 'touchdown_speed': 16}
-- pocket_drift: {'touchdown_speed': 24, 'prop_strike': 4, 'over_time': 3, 'final_position': 2, 'not_seated': 2}
+- pocket_drift: {'touchdown_speed': 59, 'prop_strike': 45, 'final_position': 29, 'not_seated': 18, 'post_speed': 14}
 - pocket_same_drift: {'touchdown_speed': 11, 'over_time': 10, 'not_seated': 9, 'timeout_not_landed': 7, 'prop_strike': 6}
 - pocket_all_drift_nodual: {'touchdown_speed': 14, 'prop_strike': 7, 'post_speed': 3, 'timeout_not_landed': 2, 'touched_parked': 2}
+- pd_soft: {'final_position': 6, 'prop_strike': 4, 'over_time': 3, 'not_seated': 2, 'touchdown_speed': 1}
+- pd_cal: {'touchdown_speed': 21, 'prop_strike': 3, 'final_position': 3, 'timeout_not_landed': 2, 'post_speed': 2}
+- pd_ff: {'touchdown_speed': 15, 'prop_strike': 5, 'final_position': 1, 'timeout_not_landed': 1, 'over_time': 1}
+- pd_dob: {'touchdown_speed': 25, 'prop_strike': 11, 'post_speed': 4, 'over_time': 2, 'touched_parked': 1}
+- pd_ctl: {'prop_strike': 27, 'not_seated': 21, 'final_position': 15, 'timeout_not_landed': 6, 'post_speed': 6}
+- base_ctl: {'prop_strike': 152, 'not_seated': 128, 'touched_parked': 83, 'timeout_not_landed': 40, 'final_position': 26}

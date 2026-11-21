@@ -340,7 +340,107 @@ What the variants show:
    0.5 m/s (24, all between 0.50 and 0.70 m/s, at every wind speed), prop strike (4),
    over 40 s (3), and single cases of the rest. The touchdown failures come from the motor
    cutoff sequence (five range samples at 0.02 m, then a drop), not from navigation or
-   wind. A thrust ramp-down instead of a hard cutoff is the likely fix (not yet simulated).
+   wind. Section 5.6 simulates a thrust ramp-down (`pd_soft`): it removes them.
 
-**Not yet checked:** the beacon variant in gusty hover, with ranging noise × 2 and with an
-anchor lost. A full 288-cell run of `pocket_drift` is the next result.
+### 5.5 Pocket beacons with drift, full matrix (2026-11-21)
+
+`pocket_drift` over all 288 cells (3 hover levels × 4 winds × 3 neighbour counts × box or
+none × ranging noise × 1 or × 2 × no anchor or one anchor lost), 60 trials each, 17,280
+recoveries. The baseline on the same seeds is shown for comparison.
+
+| condition | baseline | pocket_drift |
+|---|---|---|
+| all 288 cells | 0.380 | **0.913** |
+| calm / moderate / gusty hover | 0.416 / 0.386 / 0.338 | 0.951 / 0.933 / 0.855 |
+| ranging noise × 1 / × 2 | 0.484 / 0.277 | 0.943 / 0.884 |
+| no anchor lost / one lost | 0.466 / 0.294 | 0.930 / 0.896 |
+| A1 / A2 / A3 (fin) lost | — | 0.893 / 0.908 / 0.888 |
+| 0 / 3 / 6 / 9 m/s | 0.566 / 0.569 / 0.345 / 0.040 | 0.920 / 0.917 / 0.912 / 0.903 |
+| **target cell, moderate 6 m/s, all four sensor conditions** | 0.358 | **0.931** |
+| target cell: nominal / one lost / noise × 2 / both | 0.581 / 0.364 / 0.306 / 0.183 | 0.981 / 0.950 / 0.917 / 0.878 |
+| cells at 95 % or better | 0 of 288 | **126 of 288** |
+| cells at 90 % or better | 8 of 288 | 188 of 288 |
+
+Nominal sensors, no anchor lost, by hover and wind:
+
+| hover | 0 m/s | 3 m/s | 6 m/s | 9 m/s |
+|---|---|---|---|---|
+| calm | 0.983 | 0.978 | 0.989 | 0.975 |
+| moderate | 0.972 | 0.978 | 0.981 | 0.967 |
+| gusty | 0.939 | 0.908 | 0.914 | 0.911 |
+
+What the full run shows:
+
+1. **Wind speed no longer matters much** (90–92 % at every speed, over all conditions). The
+   remaining sensitivity is to **gusty hover** and to **ranging noise × 2**.
+2. **Losing an anchor is no longer critical.** Without pocket beacons, losing the fin anchor
+   A3 dropped recovery to 11 % (section 5.3). With them, losing any one airframe anchor
+   costs 3–4 points, and A3 is no worse than A1.
+3. **Gusty hover is the weak spot: 86 %**, and 92 % even with nominal sensors. Its failures
+   are prop strikes (249 of 834), final position (122), post speed (105) and not seated
+   (89): the dock moving under the drone during contact, not navigation.
+4. The worst cells are all gusty with noise × 2, 63–77 %.
+5. Every failure class is still present at a few percent. Touchdown speed (278) is the class
+   the soft cutoff addresses.
+
+### 5.6 Navigation and controller options (2026-11-21)
+
+Four options in the drone's software, each off by default (`Pilot` options in
+`docksim/drone.py`, experiments `pd_*` and `base_ctl` in `docksim/matrix.py`):
+
+| option | what it does |
+|---|---|
+| `soft_cutoff_s` 0.5 | at the cutoff, ramps the collective from the estimated thrust to 0 over 0.5 s instead of switching the motors off |
+| `bias_cal_frac` 0.5 | measures each anchor's bias while parked and subtracts it in flight. Half the bias is left as residual, a guess for multipath that does not carry from the pocket to the approach. The filter's noise per anchor includes the residual |
+| `dock_ff` | uses the mothership's broadcast acceleration as position-loop feedforward |
+| `dob_tau_s` 0.1 | a disturbance observer: measured acceleration minus thrust over mass, low-passed at 0.1 s, cancelled as feedforward. Active in free flight only, handed over to the integrator without a bump before contact |
+
+Each option alone on `pocket_drift`, moderate hover, nominal sensors, 60 trials × 24 cells
+(1,440 recoveries):
+
+| variant | recovery | 0 m/s | 3 m/s | **6 m/s** | 9 m/s | main failures |
+|---|---|---|---|---|---|---|
+| pocket_drift | 0.974 | 0.972 | 0.978 | **0.981** | 0.967 | touchdown speed 24, prop strike 4 |
+| + soft cutoff | **0.988** | 0.989 | 0.994 | **0.994** | 0.972 | final position 6, prop strike 4, touchdown speed 1 |
+| + parked bias calibration | 0.976 | 0.981 | 0.978 | **0.975** | 0.972 | touchdown speed 21 |
+| + dock acceleration feedforward | 0.984 | 0.983 | 0.983 | **0.978** | **0.992** | touchdown speed 15 |
+| + disturbance observer | 0.968 | 0.972 | 0.964 | **0.956** | 0.981 | touchdown speed 25, prop strike 11, post speed 4 |
+| spec baseline + all four (`base_ctl`) | 0.670 | 0.944 | 0.947 | **0.672** | 0.117 | prop strike 152, not seated 128 |
+
+All four together on `pocket_drift` (`pd_ctl`), full 288-cell matrix at 30 trials per cell
+(8,640 recoveries), against `pocket_drift` and the baseline on the same seeds (1–30):
+
+| condition | baseline | pocket_drift | pd_ctl |
+|---|---|---|---|
+| all 288 cells | 0.382 | 0.915 | **0.940** |
+| calm / moderate / gusty hover | 0.420 / 0.389 / 0.339 | 0.955 / 0.933 / 0.858 | 0.986 / 0.968 / **0.867** |
+| ranging noise × 1 / × 2 | 0.483 / 0.282 | 0.944 / 0.887 | 0.954 / 0.927 |
+| no anchor lost / one lost | 0.472 / 0.292 | 0.933 / 0.898 | 0.947 / 0.933 |
+| 0 / 3 / 6 / 9 m/s | 0.576 / 0.567 / 0.350 / 0.036 | 0.922 / 0.922 / 0.915 / 0.902 | 0.944 / 0.937 / 0.949 / 0.931 |
+| **target cell, all four sensor conditions** (n = 720) | 0.361 | 0.938 | **0.969** |
+| target cell, nominal sensors (n = 180) | 0.589 | 0.972 | 0.983 |
+| moderate hover, nominal sensors | 0.601 | 0.969 | 0.986 |
+| gusty hover, nominal sensors | 0.521 | 0.915 | **0.908** |
+| cells at 95 % or better (30 trials per cell) | 3 of 288 | 122 of 288 | **172 of 288** |
+
+Paired trial for trial: 668 recoveries fail without the options and pass with them; 451 go
+the other way.
+
+What the options show:
+
+1. **The soft cutoff is the one clear gain.** Touchdown-speed failures fall from 150 to 28
+   in the full matrix. It costs nothing measurable.
+2. **Feedforward of the dock's acceleration helps at 9 m/s** (96.7 % to 99.2 %) and is
+   otherwise within noise.
+3. **Parked bias calibration adds nothing** with pocket beacons. The beacons already fix the
+   geometry that made bias matter. The result depends on the assumed 50 % residual.
+4. **The disturbance observer hurts** on its own: 97.4 % to 96.8 %, prop strikes 4 to 11. In
+   the combination, gusty hover with nominal sensors drops slightly (0.915 to 0.908) while
+   every other condition improves. The observer's estimate is wrong at the hand-over near
+   the dock, where contact begins. The 451 lost trials suggest the combination would do
+   better without it; that combination has not been run.
+5. **The controller alone does not close the gap.** On the spec dock the four options take
+   recovery from 60 % to 67 %; at 0–3 m/s they reach 94–95 %, but 6 and 9 m/s stay at 67 %
+   and 12 %. Drift and pocket beacons are what move the target cell.
+6. **Gusty hover is now the limit** (87 %). Its failures are prop strikes, final position
+   and not seated: the dock moving under the drone during contact.

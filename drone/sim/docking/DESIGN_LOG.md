@@ -61,6 +61,10 @@ committed; this table is the record of why the controller looks as it does.
 | C15 | Catch must be an abrupt stop | 10/32 (calm 22/32) | rejects real catches: approaches run slower than the threshold | **dropped** (option `abrupt_catch`) |
 | C16 | After a "no catch" abort, retry at x ± 0.08 m | 19/32 (calm 29/32) | a constant UWB bias makes a plain retry miss the same way | kept |
 | C17 | Integrator limit 3 → 6 m/s² | 14/24 (9 m/s: 1/24) | no effect in the dock sim. In the mission sim the 2 m/s² limit let 10 m/s gusts blow the drone 100 m downwind | kept |
+| C18 | Soft cutoff: collective ramps from the estimated thrust to 0 over 0.5 s, instead of motors off (`soft_cutoff_s`) | pocket_drift moderate 0.974 → **0.988**; target cell 0.981 → 0.994 | replays of three 0.54–0.62 m/s touchdowns gave 0.19–0.35 m/s. Touchdown failures 24 → 1 of 1,440 | option, on in `pd_ctl` |
+| C19 | UWB bias calibrated in the pocket before launch, half the bias left as residual (`bias_cal_frac`) | 0.974 → 0.976 | within noise. With pocket beacons the remaining bias does not decide the catch. The 0.5 residual is a guess for multipath that does not carry from the pocket to the approach | option, on in `pd_ctl` |
+| C20 | Mothership acceleration from the broadcast, as feedforward (`dock_ff`) | 0.974 → 0.984; 9 m/s 0.967 → 0.992 | small gain, mostly at 9 m/s | option, on in `pd_ctl` |
+| C21 | Disturbance observer (thrust and IMU, 0.1 s low-pass), free flight only, handed over to the integrator without a bump (`dob_tau_s`) | 0.974 → **0.968** | prop strikes 4 → 11, post speed 0 → 4. It cancels gusts well in free flight, but its estimate is wrong at the hand-over near the dock, where ground effect and contact begin | option, on in `pd_ctl`; likely better off (Phase 3 section 5.6) |
 
 What remains is not a tuning problem. See Phase 3: wind above about 6 m/s, the one-sided
 bracket's yaw torque against a small quad's yaw authority, and the UWB bias against the

@@ -123,6 +123,7 @@ class FlightControl:
         self.R_des = np.eye(3)
         self.collective_override = None
         self.yaw_frac = 1.0
+        self.T_cmd = mass_kg * G_M_S2
 
     def accel_cmd(self, r_ref, v_ref, r, v, dt, freeze_axes=(), a_ff=None):
         e = r_ref - r
@@ -189,7 +190,9 @@ class FlightControl:
             elif y_ < -1e-12:
                 k = min(k, (lo - b_) / y_)
         self.yaw_frac = max(k, 0.0)
-        return np.clip(base + self.yaw_frac * yaw, lo, hi)
+        out = np.clip(base + self.yaw_frac * yaw, lo, hi)
+        self.T_cmd = float(out.sum())
+        return out
 
 
 class Pilot:
@@ -214,7 +217,27 @@ class Pilot:
         self.nav = RelNav(b["controller"]["accel_process_sigma_m_s2"])
         self.tag_B = np.array(b["tag_pos_m"])
         self.down_B = np.array(b["down_sensor_pos_m"])
-        self.uwb_sigma_eff = np.sqrt(self.uwb.sig ** 2 + self.uwb.bias_max ** 2 / 3)   # per anchor
+        # option: per-anchor bias measured while parked in the pocket before launch. Only a fraction of it is
+        # assumed to transfer to the approach (the rest is position-dependent multipath); the residual is
+        # drawn uniformly within +-bias_cal_frac of each anchor's bias bound.
+        self.bias_cal_frac = self.opts.get("bias_cal_frac", None)
+        self.bias_hat = np.zeros(len(self.uwb.names))
+        res = self.uwb.bias_max
+        if self.bias_cal_frac is not None:
+            res = self.bias_cal_frac * self.uwb.bias_max
+            self.bias_hat = self.uwb.bias + np.random.default_rng(int(rng.integers(2 ** 31))).uniform(-1, 1, len(res)) * res
+        self.uwb_sigma_eff = np.sqrt(self.uwb.sig ** 2 + res ** 2 / 3)   # per anchor
+        # option: feed the mothership's acceleration (from its broadcast) forward into the position loop
+        self.dock_ff = self.opts.get("dock_ff", False)
+        # option: disturbance observer: external acceleration = measured inertial minus thrust/m minus gravity,
+        # low-passed, cancelled in free flight; handed to the integrator (bumpless) when contact is expected
+        self.dob_tau = self.opts.get("dob_tau_s", None)
+        self.d_hat = np.zeros(3)
+        self.T_est = None
+        self.dob_on = False
+        self.a_rel_meas = np.zeros(3)
+        # option: ramp the collective to zero over this time at cutoff instead of cutting the motors
+        self.soft_cutoff_s = self.opts.get("soft_cutoff_s", None)
         rs = cfg["dock_sensors"]["range"]
         self.rng_sigma = rs["sigma_per_acc_nd"] * rs["acc_near_m"]
         self.flow_sigma = cfg["dock_sensors"]["flow"]["sigma_m_s"]
@@ -353,13 +376,14 @@ class Pilot:
         if self.k % self.nav_every:
             return False
         a = self.acc_sum / max(self.acc_n, 1)
+        self.a_rel_meas = a
         self.acc_sum[:] = 0
         self.acc_n = 0
         if self.state != "INIT":
             self.nav.predict(a, self.dt_nav)
         tag_off = self.R_LB @ self.tag_B
         for k, z in self.pend_uwb:
-            self.nav.range(self.uwb.A[k], z, tag_off, self.uwb_sigma_eff[k])
+            self.nav.range(self.uwb.A[k], z - self.bias_hat[k], tag_off, self.uwb_sigma_eff[k])
         self.pend_uwb = []
         z_rng, z_flow = self.pend_rng, self.pend_flow
         self.pend_rng = self.pend_flow = None
@@ -392,9 +416,14 @@ class Pilot:
                 self._launch(t)
             elif self.mode == "hold":
                 self._hold(t)
+            if self.dob_tau is not None:
+                self._dob_update()
             if not self.motors_off and self.r_ref is not None and self.fc.collective_override is None:
+                a_ff = self.a_dock.copy() if self.dock_ff else None
+                if self.dob_on:
+                    a_ff = (a_ff if a_ff is not None else 0.0) - self.d_hat
                 a = self.fc.accel_cmd(self.r_ref, self.v_ref, self.nav.r, self.nav.v, self.dt_nav,
-                                      freeze_axes=self.freeze)
+                                      freeze_axes=self.freeze, a_ff=a_ff)
                 comply_now = self.state == "APPROACH" and self.comply_x and \
                     (self.travel0 - self.nav.r[2]) > self.comply_after_m
                 if comply_now:
@@ -412,10 +441,30 @@ class Pilot:
                     # the wind integrator running (a fixed push alone loses the post in a port-side gust)
                     a[2] -= self.rec["push_force_n"] / self.fc.m
                 self.fc.set_accel(a, self.psi)
+        if self.T_est is None:
+            self.T_est = self.fc.T_cmd
+        self.T_est += (self.fc.T_cmd - self.T_est) * (1 - math.exp(-self.sim.dt / self.sim.tau_motor))
         if self.motors_off:
             self.sim.set_motors(self.i, np.zeros(4))
         else:
             self.sim.set_motors(self.i, self.fc.motors(self.R_WB, self.att.rates_B(self.sim, self.i)))
+
+    def _dob_update(self):
+        """External acceleration estimate (wind, inflow, model error) from the IMU and the thrust the motors
+        are producing. Used only in free flight: in contact it would cancel the contact force itself."""
+        a_abs = self.a_rel_meas + self.a_dock
+        thrust = self.R_LB[:, 1] * (self.T_est if self.T_est is not None else self.fc.T_cmd) / self.fc.m
+        d = a_abs - thrust + np.array([0.0, G_M_S2, 0.0])
+        al = 1 - math.exp(-self.dt_nav / self.dob_tau)
+        self.d_hat += al * (d - self.d_hat)
+        free = self.mode in ("recovery", "hold") and not self.motors_off and self.fc.collective_override is None \
+            and self.state not in ("PUSH_DESCEND", "SPOOL_DOWN", "MOTORS_OFF", "INIT") \
+            and not (self.state == "APPROACH" and (self.travel0 - self.nav.r[2]) > self.comply_after_m - 0.02)
+        if self.dob_on and not free:
+            self.fc.integ = np.clip(self.fc.integ - self.d_hat, -self.fc.imax, self.fc.imax)   # bumpless handover
+        elif free and not self.dob_on:
+            self.fc.integ = np.clip(self.fc.integ + self.d_hat, -self.fc.imax, self.fc.imax)
+        self.dob_on = free
 
     # ------------------------------------------------------------ hold at a point (checks)
     def _hold(self, t):
@@ -523,6 +572,18 @@ class Pilot:
             else:
                 self.v_ref = np.zeros(3)
             if self.range_low_count >= rec["cutoff_samples"]:
+                if self.soft_cutoff_s:
+                    self.T0_spool = self.T_est
+                    self.push = False
+                    self._goto("SPOOL_DOWN", t)
+                else:
+                    self.motors_off = True
+                    self.t_motors_off = t
+                    self._goto("MOTORS_OFF", t)
+        elif s == "SPOOL_DOWN":
+            k = max(0.0, 1.0 - (t - self.t_state) / self.soft_cutoff_s)
+            self.fc.set_level(self.psi, k * self.T0_spool)
+            if k <= 0.0:
                 self.motors_off = True
                 self.t_motors_off = t
                 self._goto("MOTORS_OFF", t)

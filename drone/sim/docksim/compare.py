@@ -32,7 +32,13 @@ VARIANTS = [("baseline", "spec as built: 3 anchors, 38 mm lip, 1 post, wind from
             ("all_drift_nodual", "as all_drift, without the two-post bracket"),
             ("pocket_drift", "3 anchors + a short-range beacon per pocket (3 cm, +-2 cm bias), drifting hover"),
             ("pocket_same_drift", "as pocket_drift, beacons as noisy as A1-A3 (5 cm, +-5 cm)"),
-            ("pocket_all_drift_nodual", "pocket beacons + all_drift_nodual")]
+            ("pocket_all_drift_nodual", "pocket beacons + all_drift_nodual"),
+            ("pd_soft", "pocket_drift + collective ramped to 0 over 0.5 s at cutoff"),
+            ("pd_cal", "pocket_drift + UWB bias calibrated while parked (half the bias left)"),
+            ("pd_ff", "pocket_drift + mothership acceleration feedforward"),
+            ("pd_dob", "pocket_drift + gust observer (0.1 s), free flight only"),
+            ("pd_ctl", "pocket_drift + all four controller options"),
+            ("base_ctl", "spec baseline + all four controller options")]
 POST_FREE = ("prop_strike", "never_left_magnets", "slow_clear", "touched_ridge", "touched_parked")
 
 

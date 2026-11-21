@@ -70,6 +70,15 @@ EXPS = {
                              cell=dict(anchor_set="spec4")),    # the same without the two-post bracket
     "pocket_drift": dict(cfg=_merge(_merge({}, POCKET), DRIFT)),          # triangle + a beacon per pocket, drifting
     "pocket_same_drift": dict(cfg=_merge(_merge({}, POCKET_SAME), DRIFT)),  # same, beacons as noisy as A1-A3
+    # navigation and control options (Pilot opts), on top of drift + pocket beacons
+    "pd_soft": dict(cfg=_merge(_merge({}, POCKET), DRIFT), opts=dict(soft_cutoff_s=0.5)),
+    "pd_cal": dict(cfg=_merge(_merge({}, POCKET), DRIFT), opts=dict(bias_cal_frac=0.5)),
+    "pd_ff": dict(cfg=_merge(_merge({}, POCKET), DRIFT), opts=dict(dock_ff=True)),
+    "pd_dob": dict(cfg=_merge(_merge({}, POCKET), DRIFT), opts=dict(dob_tau_s=0.1)),
+    "pd_ctl": dict(cfg=_merge(_merge({}, POCKET), DRIFT),
+                   opts=dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True, dob_tau_s=0.1)),
+    # the same four on the spec's dock without beacons or drift (do they help where navigation is weak?)
+    "base_ctl": dict(opts=dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True, dob_tau_s=0.1)),
     "pocket_all_drift_nodual": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, LIP10), WINDWARD), SLOT20), DRIFT),
                                                POCKET), cell=dict(anchor_set="spec4")),
 }
