@@ -493,3 +493,173 @@ delivery:                            # navigation and scenario settings (addendu
   scan_match_search_m: 0.6
   beacon_mount_label: railing        # railing | wall
   delivery_method_label: land        # land | line
+
+# =====================================================================================
+# 2026-11-20: Bee35 delivery drones on a passive four-pocket dock on top of the Pioneer 3200.
+# Source: "Passive four-drone dock: simulation spec" v0.1 (dock-sim-spec.md), transcribed with
+# unit suffixes. Tags: (E) estimate, (P) placeholder, both from the spec; [D] decided here,
+# with the reason; [U] from the user. The hexacopter and delivery blocks above are superseded.
+# Frame D (spec section 2): origin at the centre of the pocket row on the seat surface,
+# +x forward, +y up, +z starboard. Godot: dock +x -> Godot -z, dock +z -> Godot +x.
+# =====================================================================================
+
+bee35:                               # SpeedyBee Bee35 class, 3.5 in (89 mm) ducted props [U]
+  size_m: [0.210, 0.060, 0.210]      # collision box, underside at y = 0
+  mass_kg: 0.545                     # (E) without box
+  bracket_mass_kg: 0.010             # (E)
+  inertia_kg_m2: [0.0022, 0.0040, 0.0022]   # (E) Ixx, Iyy (yaw, y is up), Izz
+  thrust_max_total_n: 35.0           # (P) check against motor data
+  motor_tau_s: 0.04                  # (E)
+  drag_area_m2: 0.03                 # (E) Cd x A, isotropic
+  skid_pad_offset_m: 0.085           # four steel pads at (+-0.085, 0, +-0.085)
+  rotor_offset_m: 0.0575             # [D] rotor centres at (+-0.0575, +-0.0575): 89 mm props in ducts inside 0.21 m
+  rotor_diameter_m: 0.089
+  yaw_torque_per_thrust_m: 0.012     # [E] small-prop drag/thrust ratio
+  tag_pos_m: [0.0, 0.060, 0.0]       # UWB tag
+  down_sensor_pos_m: [0.085, 0.0, -0.100]   # [D] range+flow sensor. MOVED off the centre: at the centre it looks
+                                     #     down the 0.130 m box well and reads the fuselage (0.146 m), so the spec's
+                                     #     "range <= 0.02" cutoff could never fire. Chosen so the beam sees flat floor
+                                     #     (1) seated: x-offset 0.085 lies between the well edge 0.065 and the seat edge
+                                     #     0.107; (2) during the descent at hold z +0.18: beam at z 0.08, inboard of the
+                                     #     starboard lip (0.107); (3) clear of the post (beam x is not the post x).
+  battery_wh: 24.4                   # [E] 6S 1100 mAh LiPo, typical for this class
+  battery_usable_frac: 0.85
+  hover_efficiency_nd: 0.29          # [E] momentum-theory ideal power / electrical power, open-rotor basis:
+                                     #     FoM 0.45 x motor+ESC 0.65; ducts taken as no net gain (cinewhoop ducts
+                                     #     are short). Gives ~180 W hover at 0.555 kg, in line with the 5-7 min
+                                     #     hover times reported for 3.5 in cinewhoops on 6S 1100 mAh.
+  bracket:                           # catch bracket, port side, drone frame B
+    slot_z_m: -0.111
+    slot_end_z_m: -0.106
+    slot_width_m: 0.012
+    slot_mouth_z_m: -0.117
+    mouth_half_width_m: 0.100
+    mouth_z_m: -0.165
+    y_min_m: 0.015
+    y_max_m: 0.045
+    thickness_m: 0.003
+  box:
+    size_m: [0.100, 0.125, 0.100]
+    rim_m: [0.120, 0.004, 0.120]
+    mass_kg: 0.290                   # (E) 8 oz (237 ml) coffee
+    rim_drop_m: 0.010                # rim top this far below the drone underside
+  controller:                        # [D] tuned in docksim/checks
+    kp_pos_per_s2: 9.0
+    kv_per_s: 6.0
+    ki_pos_per_s3: 4.0
+    i_max_m_s2: 3.0
+    a_max_m_s2: 6.0
+    max_tilt_deg: 35.0
+    att_kp_per_s2: [150.0, 120.0, 150.0]  # about x, y (yaw), z. Yaw is stiff on purpose: the port-side bracket yaws the drone at post contact
+    att_kd_per_s: [22.0, 22.0, 22.0]
+    accel_process_sigma_m_s2: 0.6      # relative-navigation filter process noise
+    dock_accel_lpf_s: 0.3
+    thrust_usable_frac: 0.95
+
+dock:
+  mass_kg: 0.7                       # (E) dock, posts, fairing, beacons: 0.6-0.8
+  pocket_x_m: [0.435, 0.145, -0.145, -0.435]   # P1 (front) .. P4 (rear)
+  pocket_pitch_m: 0.290              # (E)
+  seat_size_m: 0.214
+  seat_corner_radius_m: 0.030
+  well_size_m: 0.130
+  floor: {x_min_m: -0.630, x_max_m: 0.580, z_half_m: 0.190, thickness_m: 0.006}
+  ridge: {x_m: [0.290, 0.0, -0.290], base_m: 0.076, height_m: 0.038, z_half_m: 0.107}
+  end_wedge: {x_inner_m: 0.542, x_outer_m: 0.580, height_m: 0.038}
+  starboard_lip: {z_inner_m: 0.107, z_outer_m: 0.145, height_m: 0.038}
+  post: {z_m: -0.111, height_m: 0.280, radius_real_m: 0.004, radius_sim_m: 0.005, tip_radius_m: 0.010}
+  fuselage_top_y_m: -0.146
+  pylon: {x_m: [0.560, 0.290, 0.0, -0.290, -0.600], size_m: [0.010, 0.140, 0.060], top_y_m: -0.006}
+  fairing: {x_min_m: 0.580, x_max_m: 0.800, z_half_m: 0.190, top_y_m: 0.070}
+  magnet: {pads_per_pocket: 4, pad_offset_m: 0.085, force_per_pad_n: 3.0, max_gap_m: 0.006, align_tol_m: 0.010}
+  contact:                           # friction coefficients (E); restitution via MuJoCo damping ratio
+    skid_seat_mu: 0.40
+    skid_ridge_mu: 0.15
+    post_bracket_mu: 0.20
+    body_body_mu: 0.40
+    restitution_skid_nd: 0.1
+    restitution_body_nd: 0.2
+    contact_timeconst_s: 0.004       # [D] MuJoCo solref time constant (>= 2 physics steps)
+  physics_hz: 1000                   # [D] spec: 240 Hz or more. 1 kHz needs no continuous collision detection:
+                                     #     at the 0.3 m/s worst contact speed a step moves 0.3 mm, a tenth of
+                                     #     the 3 mm fence (MuJoCo has no CCD).
+  control_hz: 500                    # [D]
+
+mothership_airframe:                 # Makeflyeasy Pioneer 3200 [U]; shapes in frame D for blocking and strikes
+  mass_kg: 25.0                      # (P) kinematic body in the dock sim
+  hover_height_m: 70.0
+  fuselage_box_m: [[-1.00, -0.556, -0.125], [0.85, -0.146, 0.125]]   # [E] 1.68 m x 0.41 m x 0.25 m under the dock
+  wing_box_m: [[-0.06, -0.186, -1.60], [0.25, -0.146, 1.60]]          # [E] 3.2 m span, 0.31 m chord, 0.04 m thick, top flush with the fuselage top
+  fin_box_m: [[-1.17, -0.146, -0.015], [-0.93, 0.28, 0.015]]          # [E] fin; A3 sits on a 0.02 m mast above its top (an anchor flush with the top is blocked by the fin itself from anywhere below it)
+  rotors:                            # all (P)
+    pos_m: [[0.50, -0.10, 0.55], [0.50, -0.10, -0.55], [-0.50, -0.10, 0.55], [-0.50, -0.10, -0.55]]
+    radius_m: 0.28
+    strike_radius_m: 0.30
+    strike_half_height_m: 0.08
+    inflow_speed_m_s: 4.0
+    inflow_height_m: 0.5
+  anchors_m:                         # UWB anchors, frame D (spec section 5)
+    A1: [0.10, -0.10, 1.55]          # (P) starboard wingtip
+    A2: [0.10, -0.10, -1.55]         # (P) port wingtip
+    A3: [-1.05, 0.30, 0.0]           # (P) fin top
+    A4: [-0.62, 0.02, 0.0]           # (E) dock rear
+  anchor_set_label: triangle         # [U] "mothership has 3 beacons in a triangle": A1, A2, A3 (the widest
+                                     #     triangle around the dock). The spec's four-anchor set is a variant.
+  anchor_sets:
+    triangle: [A1, A2, A3]
+    spec4: [A1, A2, A3, A4]
+  hover_motion:                      # filtered random process per axis (spec 8.2)
+    calm: {h_rms_m: 0.2, v_rms_m: 0.1, yaw_rms_deg: 2, tilt_rms_deg: 1}
+    moderate: {h_rms_m: 0.5, v_rms_m: 0.2, yaw_rms_deg: 5, tilt_rms_deg: 2}
+    gusty: {h_rms_m: 1.0, v_rms_m: 0.4, yaw_rms_deg: 10, tilt_rms_deg: 4}
+    tau_pos_s: 3.0                   # (E)
+    tau_yaw_s: 4.0
+    tau_tilt_s: 1.0
+    filter_order: 3                  # [D] three cascaded first-order lags, so position, velocity and acceleration are all continuous
+  wind_from_nose_max_deg: 45.0       # [D] a hovering quadplane points into wind; wind arrives within +-45 deg
+
+dock_sensors:                        # spec section 6, drone side
+  uwb: {rate_hz: 20, sigma_m: 0.05, bias_max_m: 0.05, dropout_p: 0.02, blocked_bias_m: [0.10, 0.30]}
+                                     # rate is per drone; divided by drones in flight
+  range: {min_m: 0.02, max_m: 8.0, acc_near_m: 0.04, acc_far_frac: 0.02, rate_hz: 100, beam_deg: 6,
+          sigma_per_acc_nd: 0.5}     # [D] the quoted accuracy is taken as 2 sigma
+  flow: {min_height_m: 0.08, sigma_m_s: 0.05, rate_hz: 100}
+  baro: {sigma_m: 0.3, drift_rw_m_per_sqrt_s: 0.02, rate_hz: 25}
+  compass: {sigma_deg: 3.0, bias_frac_nd: 0.7}   # [D] 70 % of the variance is a per-run bias (magnetic
+                                                 #     disturbance near the carbon airframe), 30 % white
+  imu: {accel_sigma_m_s2: 0.05, gyro_sigma_rad_s: 0.005, attitude_sigma_deg: 0.3}   # [E]
+  broadcast: {rate_hz: 10, delay_s: [0.05, 0.10], pos_sigma_m: 0.5, vel_sigma_m_s: 0.1, heading_sigma_deg: 2,
+              error_tau_s: 5.0}      # [D] errors are Gauss-Markov with 5 s correlation (GNSS-like)
+
+dock_ops:
+  launch_order: [P4, P1, P3, P2]
+  recovery_order: [P2, P3, P1, P4]
+  recovery: {hold_y_m: 2.0, hold_z_m: 0.18, descent_speed_m_s: 0.3, approach_y_m: 0.17, approach_speed_m_s: 0.10,
+             stop_speed_m_s: 0.02, push_force_n: 0.5, final_descent_speed_m_s: 0.15, cutoff_range_m: 0.02,
+             max_travel_m: 0.30, max_aborts: 3, abort_err_m: 0.20, abort_below_y_m: 0.5, time_limit_s: 40.0,
+             start_offset_m: [0.0, 3.0, 3.0],   # [D] drone cleared to land from 3 m up and 3 m starboard of the pocket
+             cutoff_samples: 5,      # [D] range must read at or below the cutoff on this many consecutive samples
+             catch_travel_m: [0.08, 0.30],   # [D] a stop counts as the post only inside this travel window ...
+             catch_height_tol_m: 0.05}       # [D] ... and with the range within this of the approach height
+  launch: {thrust_ramp_n_s: 20.0, climb_speed_m_s: 1.0, clear_y_m: 1.0, depart_y_m: 2.0, gap_s: 5.0,
+           depart_z_m: 3.0, clear_time_s: 3.0,
+           sidestep_y_m: 0.05, sidestep_z_m: 0.07}   # [D] variant: rise past the lip, step off the post, then climb
+  pass:
+    final_xz_err_m: 0.005
+    final_heading_err_deg: 5.0
+    post_contact_speed_m_s: 0.3
+    touchdown_speed_m_s: 0.5
+    parked_touch_above_y_m: 0.06
+  hold_test: {vertical_g: [-0.5, 1.5], sideways_g: 0.3, rear_force_n: 3.0, max_shift_m: 0.003}   # [D] "stays seated": no lift-off and the shift stays inside the 2 mm pocket clearance (+1 mm)
+
+dock_matrix:                         # spec section 13
+  hover_level: [calm, moderate, gusty]
+  wind_mean_m_s: [0, 3, 6, 9]
+  wind_turbulence_frac: 0.15
+  wind_time_scale_s: [1.0, 5.0]
+  ranging_noise_scale: [1.0, 2.0]
+  anchor_loss: [none, one]
+  parked_neighbours: [0, 1, 2]
+  launch_box: [false, true]
+  trials_per_cell: 200
+  target_pass_frac: 0.95             # moderate hover, 6 m/s

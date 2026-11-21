@@ -1,0 +1,1018 @@
+{
+ "hover": {
+  "empty": {
+   "mass_kg": 0.555,
+   "thrust_frac_of_max": 0.156,
+   "hover_power_w": 177.3,
+   "hover_time_min": 7.0,
+   "power_at_6_m_s_w": 170.8
+  },
+  "loaded": {
+   "mass_kg": 0.845,
+   "thrust_frac_of_max": 0.237,
+   "hover_power_w": 333.1,
+   "hover_time_min": 3.7,
+   "power_at_6_m_s_w": 321.3
+  }
+ },
+ "mission_80m": {
+  "legs": [
+   {
+    "leg": "launch and climb-away, loaded",
+    "mass_kg": 0.845,
+    "speed_m_s": 0.0,
+    "time_s": 8.0,
+    "power_w": 333.1,
+    "energy_wh": 0.74
+   },
+   {
+    "leg": "transit out, loaded",
+    "mass_kg": 0.845,
+    "speed_m_s": 6.0,
+    "time_s": 13.3,
+    "power_w": 321.3,
+    "energy_wh": 1.19
+   },
+   {
+    "leg": "balcony approach and set-down, loaded",
+    "mass_kg": 0.845,
+    "speed_m_s": 0.0,
+    "time_s": 35.0,
+    "power_w": 333.1,
+    "energy_wh": 3.24
+   },
+   {
+    "leg": "transit back, empty",
+    "mass_kg": 0.555,
+    "speed_m_s": 6.0,
+    "time_s": 13.3,
+    "power_w": 170.8,
+    "energy_wh": 0.63
+   },
+   {
+    "leg": "recovery, nominal",
+    "mass_kg": 0.555,
+    "speed_m_s": 0.0,
+    "time_s": 20.0,
+    "power_w": 177.3,
+    "energy_wh": 0.99
+   },
+   {
+    "leg": "2 extra docking attempts (abort, climb, retry)",
+    "mass_kg": 0.555,
+    "speed_m_s": 0.0,
+    "time_s": 28.0,
+    "power_w": 177.3,
+    "energy_wh": 1.38
+   }
+  ],
+  "total_wh": 8.17,
+  "usable_wh": 20.74,
+  "reserve_frac": 0.606,
+  "slant_m": 80.0,
+  "speed_m_s": 6.0
+ },
+ "max_slant_m_at_20pct_reserve": 449.0,
+ "carry": {
+  "rows": [
+   {
+    "item": "dock, posts, fairing, beacons (E 0.6-0.8)",
+    "mass_kg": 0.7
+   },
+   {
+    "item": "4 x Bee35 incl. bracket",
+    "mass_kg": 2.22
+   },
+   {
+    "item": "4 x coffee box 0.290",
+    "mass_kg": 1.16
+   }
+  ],
+  "total_kg": 4.08,
+  "total_with_dock_0p8_kg": 4.18,
+  "max_payload_kg": 5.0,
+  "margin_kg": 0.92,
+  "margin_with_dock_0p8_kg": 0.82
+ },
+ "cruise_drag": {
+  "airspeed_m_s": 21.5,
+  "clean_drag_n": 20.9,
+  "cases": {
+   "drones fully exposed (4 x 0.03) + dock 0.010": {
+    "extra_cda_m2": 0.13,
+    "extra_drag_n": 36.8,
+    "drag_increase_frac": 1.76
+   },
+   "rear three half-shielded (0.03 + 3 x 0.015) + dock 0.010": {
+    "extra_cda_m2": 0.085,
+    "extra_drag_n": 24.1,
+    "drag_increase_frac": 1.15
+   },
+   "fully faired enclosure, 0.025": {
+    "extra_cda_m2": 0.025,
+    "extra_drag_n": 7.1,
+    "drag_increase_frac": 0.34
+   }
+  }
+ },
+ "hold": {
+  "empty": {
+   "mass_kg": 0.555,
+   "weight_n": 5.44,
+   "magnet_n": 12.0,
+   "liftoff_load_factor_g": -2.2,
+   "release_thrust_n": 17.4,
+   "release_thrust_frac_of_max": 0.5,
+   "excess_accel_at_release_m_s2": 21.6
+  },
+  "with box": {
+   "mass_kg": 0.845,
+   "weight_n": 8.29,
+   "magnet_n": 12.0,
+   "liftoff_load_factor_g": -1.45,
+   "release_thrust_n": 20.3,
+   "release_thrust_frac_of_max": 0.58,
+   "excess_accel_at_release_m_s2": 14.2
+  }
+ },
+ "rotor_clearance": {
+  "pockets": [
+   {
+    "pocket": "P1",
+    "footprint_to_rotor_axis_m": 0.265,
+    "inside_disk_radius": true,
+    "inside_strike_radius": true
+   },
+   {
+    "pocket": "P2",
+    "footprint_to_rotor_axis_m": 0.364,
+    "inside_disk_radius": false,
+    "inside_strike_radius": false
+   },
+   {
+    "pocket": "P3",
+    "footprint_to_rotor_axis_m": 0.364,
+    "inside_disk_radius": false,
+    "inside_strike_radius": false
+   },
+   {
+    "pocket": "P4",
+    "footprint_to_rotor_axis_m": 0.265,
+    "inside_disk_radius": true,
+    "inside_strike_radius": true
+   }
+  ],
+  "strike_zone_top_y_m": -0.020000000000000004,
+  "drone_underside_min_y_m": 0.0,
+  "vertical_clearance_to_strike_m": 0.02,
+  "inflow_top_y_m": 0.4,
+  "approach_height_y_m": 0.17,
+  "note": "The drone never goes below y = 0, so the strike zones (y <= -0.02) are out of reach unless it tumbles; P1/P4 descend partly through the inflow of the starboard rotors."
+ },
+ "uwb_dop": {
+  "triangle": {
+   "anchors": [
+    "A1",
+    "A2",
+    "A3"
+   ],
+   "worst_h_dop": 2.63,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 1.62,
+     "z_dop": 1.23,
+     "h_dop": 2.03
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 0.97,
+     "z_dop": 0.74,
+     "h_dop": 1.22
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 0.97,
+     "z_dop": 0.73,
+     "h_dop": 1.21
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 1.88,
+     "z_dop": 1.22,
+     "h_dop": 2.24
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 1.02,
+     "z_dop": 0.72,
+     "h_dop": 1.25
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 0.71,
+     "h_dop": 1.25
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 2.16,
+     "z_dop": 1.22,
+     "h_dop": 2.48
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 1.01,
+     "z_dop": 0.73,
+     "h_dop": 1.25
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 0.72,
+     "h_dop": 1.24
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 2.33,
+     "z_dop": 1.23,
+     "h_dop": 2.63
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 0.97,
+     "z_dop": 0.77,
+     "h_dop": 1.24
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 0.97,
+     "z_dop": 0.75,
+     "h_dop": 1.23
+    }
+   ]
+  },
+  "triangle-minus-A1": {
+   "anchors": [
+    "A2",
+    "A3"
+   ],
+   "worst_h_dop": 3.53,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 1.66,
+     "z_dop": 1.73,
+     "h_dop": 2.4
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 1.04,
+     "z_dop": 1.08,
+     "h_dop": 1.5
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 1.05,
+     "h_dop": 1.46
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 1.88,
+     "z_dop": 1.68,
+     "h_dop": 2.53
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 1.03,
+     "z_dop": 1.03,
+     "h_dop": 1.45
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 1.01,
+     "h_dop": 1.44
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 2.26,
+     "z_dop": 1.7,
+     "h_dop": 2.83
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 1.02,
+     "z_dop": 1.01,
+     "h_dop": 1.43
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 1.04,
+     "z_dop": 1.03,
+     "h_dop": 1.46
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 2.98,
+     "z_dop": 1.9,
+     "h_dop": 3.53
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 1.0,
+     "z_dop": 1.02,
+     "h_dop": 1.43
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 1.09,
+     "z_dop": 1.13,
+     "h_dop": 1.56
+    }
+   ]
+  },
+  "triangle-minus-A2": {
+   "anchors": [
+    "A1",
+    "A3"
+   ],
+   "worst_h_dop": 4.75,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 1.62,
+     "z_dop": 1.93,
+     "h_dop": 2.52
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 0.99,
+     "z_dop": 1.06,
+     "h_dop": 1.45
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 1.05,
+     "h_dop": 1.46
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 1.93,
+     "z_dop": 1.96,
+     "h_dop": 2.75
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 1.02,
+     "z_dop": 1.03,
+     "h_dop": 1.45
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 1.01,
+     "h_dop": 1.44
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 2.5,
+     "z_dop": 2.15,
+     "h_dop": 3.3
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 1.08,
+     "z_dop": 1.1,
+     "h_dop": 1.55
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 1.04,
+     "z_dop": 1.03,
+     "h_dop": 1.46
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 3.82,
+     "z_dop": 2.83,
+     "h_dop": 4.75
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 1.24,
+     "z_dop": 1.33,
+     "h_dop": 1.82
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 1.09,
+     "z_dop": 1.13,
+     "h_dop": 1.56
+    }
+   ]
+  },
+  "triangle-minus-A3": {
+   "anchors": [
+    "A1",
+    "A2"
+   ],
+   "worst_h_dop": 46.16,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 6.24,
+     "z_dop": 1.23,
+     "h_dop": 6.36
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 3.4,
+     "z_dop": 0.74,
+     "h_dop": 3.48
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 3.37,
+     "z_dop": 0.73,
+     "h_dop": 3.45
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 46.14,
+     "z_dop": 1.22,
+     "h_dop": 46.16
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 24.78,
+     "z_dop": 0.73,
+     "h_dop": 24.79
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 24.54,
+     "z_dop": 0.71,
+     "h_dop": 24.55
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 8.5,
+     "z_dop": 1.22,
+     "h_dop": 8.59
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 4.6,
+     "z_dop": 0.74,
+     "h_dop": 4.66
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 4.56,
+     "z_dop": 0.72,
+     "h_dop": 4.62
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 3.95,
+     "z_dop": 1.24,
+     "h_dop": 4.14
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 2.2,
+     "z_dop": 0.77,
+     "h_dop": 2.33
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 2.18,
+     "z_dop": 0.75,
+     "h_dop": 2.31
+    }
+   ]
+  },
+  "spec4": {
+   "anchors": [
+    "A1",
+    "A2",
+    "A3",
+    "A4"
+   ],
+   "worst_h_dop": 2.59,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 1.4,
+     "z_dop": 1.22,
+     "h_dop": 1.86
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 0.71,
+     "z_dop": 0.74,
+     "h_dop": 1.03
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 0.7,
+     "z_dop": 0.73,
+     "h_dop": 1.01
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 1.68,
+     "z_dop": 1.21,
+     "h_dop": 2.07
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 0.75,
+     "z_dop": 0.72,
+     "h_dop": 1.04
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 0.71,
+     "z_dop": 0.71,
+     "h_dop": 1.01
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 2.01,
+     "z_dop": 1.22,
+     "h_dop": 2.35
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 0.79,
+     "z_dop": 0.73,
+     "h_dop": 1.07
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 0.71,
+     "z_dop": 0.72,
+     "h_dop": 1.01
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 2.28,
+     "z_dop": 1.23,
+     "h_dop": 2.59
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 0.9,
+     "z_dop": 0.74,
+     "h_dop": 1.16
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 0.7,
+     "z_dop": 0.75,
+     "h_dop": 1.03
+    }
+   ]
+  },
+  "spec4-minus-A1": {
+   "anchors": [
+    "A2",
+    "A3",
+    "A4"
+   ],
+   "worst_h_dop": 3.48,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 1.42,
+     "z_dop": 1.72,
+     "h_dop": 2.23
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 0.76,
+     "z_dop": 1.08,
+     "h_dop": 1.32
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 0.71,
+     "z_dop": 1.04,
+     "h_dop": 1.26
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 1.68,
+     "z_dop": 1.68,
+     "h_dop": 2.37
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 0.76,
+     "z_dop": 1.03,
+     "h_dop": 1.28
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 0.72,
+     "z_dop": 1.01,
+     "h_dop": 1.23
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 2.11,
+     "z_dop": 1.7,
+     "h_dop": 2.71
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 0.79,
+     "z_dop": 0.99,
+     "h_dop": 1.27
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 0.72,
+     "z_dop": 1.02,
+     "h_dop": 1.25
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 2.92,
+     "z_dop": 1.89,
+     "h_dop": 3.48
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 0.9,
+     "z_dop": 0.93,
+     "h_dop": 1.29
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 0.74,
+     "z_dop": 1.09,
+     "h_dop": 1.32
+    }
+   ]
+  },
+  "spec4-minus-A2": {
+   "anchors": [
+    "A1",
+    "A3",
+    "A4"
+   ],
+   "worst_h_dop": 4.73,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 1.41,
+     "z_dop": 1.9,
+     "h_dop": 2.37
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 0.71,
+     "z_dop": 1.04,
+     "h_dop": 1.26
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 0.71,
+     "z_dop": 1.04,
+     "h_dop": 1.26
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 1.75,
+     "z_dop": 1.95,
+     "h_dop": 2.62
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 0.76,
+     "z_dop": 1.03,
+     "h_dop": 1.27
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 0.72,
+     "z_dop": 1.01,
+     "h_dop": 1.23
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 2.39,
+     "z_dop": 2.14,
+     "h_dop": 3.21
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 0.86,
+     "z_dop": 1.1,
+     "h_dop": 1.4
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 0.72,
+     "z_dop": 1.02,
+     "h_dop": 1.25
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 3.82,
+     "z_dop": 2.79,
+     "h_dop": 4.73
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 1.21,
+     "z_dop": 1.28,
+     "h_dop": 1.76
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 0.74,
+     "z_dop": 1.09,
+     "h_dop": 1.32
+    }
+   ]
+  },
+  "spec4-minus-A3": {
+   "anchors": [
+    "A1",
+    "A2",
+    "A4"
+   ],
+   "worst_h_dop": 4.05,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 2.27,
+     "z_dop": 1.23,
+     "h_dop": 2.58
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 1.0,
+     "z_dop": 0.74,
+     "h_dop": 1.24
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 0.96,
+     "z_dop": 0.73,
+     "h_dop": 1.2
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 3.06,
+     "z_dop": 1.22,
+     "h_dop": 3.29
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 1.08,
+     "z_dop": 0.72,
+     "h_dop": 1.3
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 1.0,
+     "z_dop": 0.71,
+     "h_dop": 1.23
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 3.86,
+     "z_dop": 1.22,
+     "h_dop": 4.05
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 1.17,
+     "z_dop": 0.74,
+     "h_dop": 1.38
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 0.98,
+     "z_dop": 0.72,
+     "h_dop": 1.22
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 3.54,
+     "z_dop": 1.23,
+     "h_dop": 3.75
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 1.48,
+     "z_dop": 0.75,
+     "h_dop": 1.66
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 0.93,
+     "z_dop": 0.75,
+     "h_dop": 1.19
+    }
+   ]
+  },
+  "spec4-minus-A4": {
+   "anchors": [
+    "A1",
+    "A2",
+    "A3"
+   ],
+   "worst_h_dop": 2.63,
+   "rows": [
+    {
+     "px": 0.435,
+     "point": "hold",
+     "x_dop": 1.62,
+     "z_dop": 1.23,
+     "h_dop": 2.03
+    },
+    {
+     "px": 0.435,
+     "point": "approach",
+     "x_dop": 0.97,
+     "z_dop": 0.74,
+     "h_dop": 1.22
+    },
+    {
+     "px": 0.435,
+     "point": "seated",
+     "x_dop": 0.97,
+     "z_dop": 0.73,
+     "h_dop": 1.21
+    },
+    {
+     "px": 0.145,
+     "point": "hold",
+     "x_dop": 1.88,
+     "z_dop": 1.22,
+     "h_dop": 2.24
+    },
+    {
+     "px": 0.145,
+     "point": "approach",
+     "x_dop": 1.02,
+     "z_dop": 0.72,
+     "h_dop": 1.25
+    },
+    {
+     "px": 0.145,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 0.71,
+     "h_dop": 1.25
+    },
+    {
+     "px": -0.145,
+     "point": "hold",
+     "x_dop": 2.16,
+     "z_dop": 1.22,
+     "h_dop": 2.48
+    },
+    {
+     "px": -0.145,
+     "point": "approach",
+     "x_dop": 1.01,
+     "z_dop": 0.73,
+     "h_dop": 1.25
+    },
+    {
+     "px": -0.145,
+     "point": "seated",
+     "x_dop": 1.02,
+     "z_dop": 0.72,
+     "h_dop": 1.24
+    },
+    {
+     "px": -0.435,
+     "point": "hold",
+     "x_dop": 2.33,
+     "z_dop": 1.23,
+     "h_dop": 2.63
+    },
+    {
+     "px": -0.435,
+     "point": "approach",
+     "x_dop": 0.97,
+     "z_dop": 0.77,
+     "h_dop": 1.24
+    },
+    {
+     "px": -0.435,
+     "point": "seated",
+     "x_dop": 0.97,
+     "z_dop": 0.75,
+     "h_dop": 1.23
+    }
+   ]
+  }
+ }
+}

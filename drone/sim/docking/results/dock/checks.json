@@ -1,0 +1,244 @@
+{
+ "H1_hold_test": [
+  {
+   "box": false,
+   "case": "vertical load factor -0.5 g",
+   "max_shift_m": 2e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "vertical load factor +0.0 g",
+   "max_shift_m": 3e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "vertical load factor +1.0 g",
+   "max_shift_m": 4e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "vertical load factor +1.5 g",
+   "max_shift_m": 5e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g +x",
+   "max_shift_m": 9e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g +x at -0.5 g",
+   "max_shift_m": 9e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g -x",
+   "max_shift_m": 9e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g -x at -0.5 g",
+   "max_shift_m": 9e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g +z",
+   "max_shift_m": 0.00111,
+   "max_lift_m": 0.0,
+   "passed": false
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g +z at -0.5 g",
+   "max_shift_m": 0.0011,
+   "max_lift_m": 0.0,
+   "passed": false
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g -z",
+   "max_shift_m": 4e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "sideways 0.3 g -z at -0.5 g",
+   "max_shift_m": 2e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "steady 3.0 N rearward",
+   "max_shift_m": 0.00017,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": false,
+   "case": "steady 3.0 N rearward at -0.5 g",
+   "max_shift_m": 0.00017,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "vertical load factor -0.5 g",
+   "max_shift_m": 1e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "vertical load factor +0.0 g",
+   "max_shift_m": 2e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "vertical load factor +1.0 g",
+   "max_shift_m": 3e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "vertical load factor +1.5 g",
+   "max_shift_m": 4e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g +x",
+   "max_shift_m": 8e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g +x at -0.5 g",
+   "max_shift_m": 9e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g -x",
+   "max_shift_m": 8e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g -x at -0.5 g",
+   "max_shift_m": 9e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g +z",
+   "max_shift_m": 0.0011,
+   "max_lift_m": 0.0,
+   "passed": false
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g +z at -0.5 g",
+   "max_shift_m": 0.0011,
+   "max_lift_m": 0.0,
+   "passed": false
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g -z",
+   "max_shift_m": 3e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "sideways 0.3 g -z at -0.5 g",
+   "max_shift_m": 1e-05,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "steady 3.0 N rearward",
+   "max_shift_m": 0.0001,
+   "max_lift_m": 0.0,
+   "passed": true
+  },
+  {
+   "box": true,
+   "case": "steady 3.0 N rearward at -0.5 g",
+   "max_shift_m": 0.00102,
+   "max_lift_m": 0.0,
+   "passed": false
+  }
+ ],
+ "H1_liftoff_load_factor_g": {
+  "empty": -2.3,
+  "with box": -1.5
+ },
+ "H2_gusty_parked": {
+  "empty": {
+   "max_shift_m": 0.00254,
+   "max_lift_m": 0.0
+  },
+  "with box": {
+   "max_shift_m": 0.00042,
+   "max_lift_m": 0.0
+  }
+ },
+ "P1_position_hold": {
+  "calm y=2.0": {
+   "p95_horiz_err_m_median": 0.081,
+   "p95_horiz_err_m_worst": 0.111,
+   "seeds_meeting_0p10": 8,
+   "seeds": 12,
+   "p95_heading_err_deg_median": 3.69
+  },
+  "calm y=0.17": {
+   "p95_horiz_err_m_median": 0.046,
+   "p95_horiz_err_m_worst": 0.066,
+   "seeds_meeting_0p10": 12,
+   "seeds": 12,
+   "p95_heading_err_deg_median": 4.2
+  },
+  "moderate y=2.0": {
+   "p95_horiz_err_m_median": 0.099,
+   "p95_horiz_err_m_worst": 0.119,
+   "seeds_meeting_0p10": 6,
+   "seeds": 12,
+   "p95_heading_err_deg_median": 4.08
+  },
+  "moderate y=0.17": {
+   "p95_horiz_err_m_median": 0.052,
+   "p95_horiz_err_m_worst": 0.083,
+   "seeds_meeting_0p10": 12,
+   "seeds": 12,
+   "p95_heading_err_deg_median": 4.26
+  }
+ }
+}

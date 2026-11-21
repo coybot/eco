@@ -13,11 +13,31 @@ remote_dir := "~/docking-sim"
 # Create the repo venv with uv and install the simulator's dependencies
 venv:
     test -x {{py}} || uv venv -q {{venv_dir}} --python 3.12
-    uv pip install -q --python {{py}} numpy scipy pyyaml numba pytest matplotlib
+    uv pip install -q --python {{py}} numpy scipy pyyaml numba pytest matplotlib mujoco
 
-# Unit tests for the flight model, docking and delivery
+# Unit tests for the flight model, docking, delivery and the passive dock
 test *args:
-    {{py}} -m pytest -q tests/test_flight.py tests/test_docking.py tests/test_delivery.py {{args}}
+    {{py}} -m pytest -q tests/test_flight.py tests/test_docking.py tests/test_delivery.py tests/test_docksim.py {{args}}
+
+# Bee35 + passive dock sizing (writes docking/results/dock/sizing.json)
+dock-sizing:
+    {{py}} -m docksim.sizing
+
+# Passive dock checks: hover hold, magnet hold test (writes docking/results/dock/checks.json)
+dock-checks:
+    {{py}} -m docksim.checks
+
+# One dock trial, verbose: just dock-trial recovery 3 moderate 6
+dock-trial kind="recovery" seed="1" hover="moderate" wind="6" *args:
+    {{py}} -m docksim.trial {{kind}} --seed {{seed}} --hover {{hover}} --wind {{wind}} {{args}}
+
+# Dock test matrix locally (small): just dock-matrix baseline 5
+dock-matrix exp="baseline" trials="5" *args:
+    {{py}} -m docksim.matrix run --exp {{exp}} --trials {{trials}} {{args}}
+
+# Summarise dock matrix CSVs (writes docking/results/dock/summary.{json,md})
+dock-summary:
+    {{py}} -m docksim.summarise
 
 # Phase 1 exit criteria
 phase1:
@@ -47,7 +67,7 @@ sync:
 
 # Create the remote venv (system numpy/scipy plus numba)
 remote-venv:
-    ssh {{remote}} 'cd {{remote_dir}} && (test -d venv || python3 -m venv --system-site-packages venv) && venv/bin/pip install -q numba pyyaml'
+    ssh {{remote}} 'cd {{remote_dir}} && (test -d venv || python3 -m venv --system-site-packages venv) && venv/bin/pip install -q numba pyyaml mujoco'
 
 # Run a command on the remote box in the background, logging to logs/<name>.log
 remote-run name cmd: sync
