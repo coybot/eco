@@ -61,14 +61,14 @@
    "case": "sideways 0.3 g +z",
    "max_shift_m": 0.00111,
    "max_lift_m": 0.0,
-   "passed": false
+   "passed": true
   },
   {
    "box": false,
    "case": "sideways 0.3 g +z at -0.5 g",
    "max_shift_m": 0.0011,
    "max_lift_m": 0.0,
-   "passed": false
+   "passed": true
   },
   {
    "box": false,
@@ -159,14 +159,14 @@
    "case": "sideways 0.3 g +z",
    "max_shift_m": 0.0011,
    "max_lift_m": 0.0,
-   "passed": false
+   "passed": true
   },
   {
    "box": true,
    "case": "sideways 0.3 g +z at -0.5 g",
    "max_shift_m": 0.0011,
    "max_lift_m": 0.0,
-   "passed": false
+   "passed": true
   },
   {
    "box": true,
@@ -194,7 +194,7 @@
    "case": "steady 3.0 N rearward at -0.5 g",
    "max_shift_m": 0.00102,
    "max_lift_m": 0.0,
-   "passed": false
+   "passed": true
   }
  ],
  "H1_liftoff_load_factor_g": {

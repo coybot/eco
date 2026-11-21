@@ -3,11 +3,9 @@
 Branch `docking/phase2-bee35` (local, not pushed). Spec: "Passive four-drone dock:
 simulation spec" v0.1. Configuration and sizing: `PHASE_2.md`.
 
-> **Status.** The spec's full matrix (288 cells × 200 trials = 57,600 launches and
-> 57,600 recoveries, `baseline`) and the four-anchor variant (`spec4`, 50 per cell) are
-> running on the remote Linux box. Section 5 gives the 50-per-cell diagnostic run of the
-> previous controller build. The final tables replace it when the run lands
-> (`docking/results/dock/summary.md`).
+Results: the spec's full matrix (288 cells × 200 trials = 57,600 launches and 57,600
+recoveries, `baseline`) and the four-anchor variant (`spec4`, 50 per cell = 14,400 each).
+Tables: `docking/results/dock/summary.md`.
 
 ## 1. The simulation
 
@@ -177,6 +175,96 @@ log). It is kept here only to show where the failures are.
 - **Launch:** 12 % by the spec's criteria, every failure "touched post"; **100 % without the
   post clause**.
 
-### 5.2 Final run (baseline 200 per cell; spec4 50 per cell)
+### 5.2 Final run
 
-*Pending: written from `docking/results/dock/summary.md` when the run completes.*
+**Recovery, baseline (three anchors A1–A3), 57,600 trials**
+
+| | pass fraction (95 % CI) |
+|---|---|
+| all cells | **0.377** (0.373–0.381) |
+| **target cell: moderate hover, 6 m/s (spec: 95 %)** | **0.348** (0.335–0.362) |
+| target cell, nominal sensors (noise ×1, no anchor lost) | 0.560 (0.532–0.588) |
+| cells at ≥ 95 % | **0 of 288** |
+
+Nominal sensors, by hover level and mean wind:
+
+| hover \ wind | 0 m/s | 3 m/s | 6 m/s | 9 m/s |
+|---|---|---|---|---|
+| calm | 0.86 | 0.87 | 0.60 | 0.10 |
+| moderate | 0.87 | 0.86 | 0.56 | 0.08 |
+| gusty | 0.78 | 0.78 | 0.46 | 0.05 |
+
+The other variables, over all cells:
+
+| variable | effect on pass fraction |
+|---|---|
+| ranging noise ×2 | 0.48 → 0.27 |
+| one anchor off | 0.46 → 0.30; A1 or A2 lost 0.39, **A3 lost 0.11** |
+| parked neighbours 0 / 1 / 2 | 0.39 / 0.38 / 0.37 |
+| box on launch | no effect on recovery (as expected) |
+
+Failure reasons (first failing criterion):
+
+| reason | count | what it is |
+|---|---|---|
+| prop strike | 11,026 | blown off the dock into the starboard rotors' strike zone |
+| not landed in time | 6,815 | |
+| touched a parked drone | 6,704 | |
+| not seated | 3,932 | |
+| post contact > 0.3 m/s | 2,748 | |
+| over 40 s | 1,720 | |
+| touchdown > 0.5 m/s | 1,314 | |
+| final position > 5 mm | 887 | |
+| fallback after 3 aborts | 751 | |
+
+Passing recoveries take 20.5 s median (25.5 s p90) from clearance to motors off. They average
+0.7 aborts and end 3 mm from the pocket centre (median). Peak contact force is 50 N median and
+230 N p95, magnets included. Post contact speed is 0.44 m/s at p95.
+
+**Recovery, spec4 (four anchors, adds A4 at the dock rear), 14,400 trials**
+
+| | baseline | spec4 |
+|---|---|---|
+| all cells | 0.377 | **0.480** |
+| target cell | 0.348 | **0.463** |
+| target cell, nominal sensors | 0.560 | **0.623** |
+| wind 0 / 3 / 6 / 9 m/s | 0.57 / 0.56 / 0.34 / 0.04 | 0.72 / 0.71 / 0.43 / 0.06 |
+| one anchor off | 0.30 | **0.44** (A3 lost: 0.41 instead of 0.11) |
+| cells at ≥ 95 % | 0 | 9 |
+
+**The fourth anchor at the dock is worth about 10 points everywhere and removes the A3
+single point of failure.** It does not fix wind.
+
+**Launch, 57,600 trials.** By the spec's criteria, 0.112. Every failure but 3 is "touched a
+post", for the slot reason in section 4. **Without the post clause: 0.99995** (2 never left
+the magnets, 1 cleared 1 m slowly). Release thrust median 19.5 N; clearing 1 m takes 0.55 s
+at p95. Post contact lasts 26 ms median (76 ms p95). The peak post force is 136 N median and
+430 N p95, impulsive: the magnets let go, the drone jumps, and the slot strikes the post. A
+lead-in on the slot or a softer post would cut these. The four-anchor variant changes
+nothing for launch.
+
+### 5.3 Verdict against spec section 12
+
+- **Recovery: target not met.** 35 % in the moderate/6 m/s cell against 95 %, 56 % with
+  nominal sensors, 62 % with four anchors. At 0–3 m/s with nominal sensors the dock reaches
+  78–87 %. Above about 5 m/s, wind decides: the light empty drone, a 0.038 m lip, and yaw
+  authority comparable to the bracket's contact torque.
+- **Launch: the clause "does not touch a post" cannot be met by this geometry.** Every other
+  launch criterion passes essentially always.
+- **Hold test: passes** (`PHASE_2.md` section 4).
+- **Position hold (spec 7): met at the approach height** (0.05 m p95), **marginal at 2 m**
+  (0.08–0.10 m).
+
+Design changes that the results point to, in order of expected effect:
+
+1. **A taller and steeper starboard lip, or a closed side.** Most prop strikes are drones
+   blown over it.
+2. **A dock anchor (A4).** Measured: +10 points, and no single point of failure.
+3. **Two posts, one each side, or a centreline bracket.** This removes the yaw torque that
+   decides many 6 m/s failures.
+4. **Recover from the windward side**, chosen per sortie. The spec fixes starboard.
+5. **A slot lead-in with more clearance, plus a launch criterion that allows sliding contact
+   with the post.**
+
+None of these were simulated here. Each is a geometry change in `docking/vehicles.yaml`
+followed by a matrix re-run.

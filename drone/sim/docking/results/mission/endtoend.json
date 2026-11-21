@@ -1,0 +1,49 @@
+{
+ "calm|0": {
+  "n": 121,
+  "mission_ok": 0.9752066115702479,
+  "one_delivery": 0.9069421487603306,
+  "sortie_dock": 0.7721827200000001,
+  "launch_spec": 0.05
+ },
+ "calm|3": {
+  "n": 606,
+  "mission_ok": 0.9851485148514851,
+  "one_delivery": 0.9161881188118812,
+  "sortie_dock": 0.7480520100000001,
+  "launch_spec": 0.04
+ },
+ "moderate|3": {
+  "n": 151,
+  "mission_ok": 0.9933774834437086,
+  "one_delivery": 0.8841059602649006,
+  "sortie_dock": 0.67677024,
+  "launch_spec": 0.05
+ },
+ "moderate|6": {
+  "n": 658,
+  "mission_ok": 0.9817629179331308,
+  "one_delivery": 0.5890577507598783,
+  "sortie_dock": 0.14256,
+  "launch_spec": 0.14
+ },
+ "moderate|9": {
+  "n": 44,
+  "mission_ok": 0.9772727272727273,
+  "one_delivery": 0.07818181818181819,
+  "sortie_dock": 7.680000000000001e-05,
+  "launch_spec": 0.11999999999999998
+ },
+ "gusty|9": {
+  "n": 220,
+  "mission_ok": 0.8909090909090909,
+  "one_delivery": 0.053454545454545456,
+  "sortie_dock": 2.376e-05,
+  "launch_spec": 0.13
+ },
+ "ALL": {
+  "n": 1800,
+  "one_delivery": 0.6673611111111111,
+  "mission_ok": 0.9722222222222222
+ }
+}
