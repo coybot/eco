@@ -123,6 +123,10 @@ class Wind:
         # air moves from the nose towards the tail: from +x towards -x (rotated about y)
         self.mean = -mean_m_s * np.array([math.cos(self.dir_from_nose_rad), 0.0, -math.sin(self.dir_from_nose_rad)])
         self.sigma = mc["wind_turbulence_frac"] * mean_m_s
+        if ma.get("drift_with_wind", False):
+            # variant: the mothership hovers relative to the air and drifts downwind with the mean wind.
+            # In the dock frame the mean wind vanishes; the turbulence (a fraction of the mean) remains.
+            self.mean = np.zeros(3)
         lo, hi = mc["wind_time_scale_s"]
         self.tau = float(rng.uniform(lo, hi))
         self.rng = rng

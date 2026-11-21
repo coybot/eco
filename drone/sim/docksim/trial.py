@@ -111,7 +111,8 @@ def run_recovery(cfg, cell, seed, verbose=False, opts=None):
     off = rec["start_offset_m"]
     start = (px + off[0], off[1], off[2])
     specs = [DroneSpec("a", pocket, start, active=True)] + _parked_specs(cfg, occ)
-    sim = DockSim(cfg, specs, cell.get("hover", "moderate"), cell.get("wind", 6.0), rng)
+    sim = DockSim(cfg, specs, cell.get("hover", "moderate"), cell.get("wind", 6.0), rng,
+                  hover_scale=cfg["mothership_airframe"].get("hover_motion_scale", 1.0))
     if "magnet_scale" in opts:
         sim.mag_scale = opts["magnet_scale"]
     pil = Pilot(sim, 0, cfg, rng, "recovery", pocket, use, cell.get("noise", 1.0), opts)
@@ -207,7 +208,8 @@ def run_launch(cfg, cell, seed, verbose=False, opts=None):
     box = bool(cell.get("launch_box", False))
     px = cfg["dock"]["pocket_x_m"][pocket]
     specs = [DroneSpec("a", pocket, (px, 0.0, 0.0), box=box, active=True)] + _parked_specs(cfg, occ)
-    sim = DockSim(cfg, specs, cell.get("hover", "moderate"), cell.get("wind", 6.0), rng)
+    sim = DockSim(cfg, specs, cell.get("hover", "moderate"), cell.get("wind", 6.0), rng,
+                  hover_scale=cfg["mothership_airframe"].get("hover_motion_scale", 1.0))
     pil = Pilot(sim, 0, cfg, rng, "launch", pocket, use, cell.get("noise", 1.0), opts)
     mon = Monitor(sim, box)
     lau = cfg["dock_ops"]["launch"]

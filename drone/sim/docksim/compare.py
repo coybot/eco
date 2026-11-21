@@ -24,7 +24,15 @@ VARIANTS = [("baseline", "spec as built: 3 anchors, 38 mm lip, 1 post, wind from
             ("dual", "two posts and two brackets per pocket"),
             ("windward", "mothership yaws: wind from starboard"),
             ("slot20", "launch slot 20 mm (was 12 mm)"),
-            ("all", "all of the above")]
+            ("still", "mothership hovers with no motion at all"),
+            ("drift", "mothership hovers relative to the air (drifts with the mean wind)"),
+            ("still_drift", "both"),
+            ("all", "all geometry changes + A4"),
+            ("all_drift", "all geometry changes + A4 + drifting hover"),
+            ("all_drift_nodual", "as all_drift, without the two-post bracket"),
+            ("pocket_drift", "3 anchors + a short-range beacon per pocket (3 cm, +-2 cm bias), drifting hover"),
+            ("pocket_same_drift", "as pocket_drift, beacons as noisy as A1-A3 (5 cm, +-5 cm)"),
+            ("pocket_all_drift_nodual", "pocket beacons + all_drift_nodual")]
 POST_FREE = ("prop_strike", "never_left_magnets", "slow_clear", "touched_ridge", "touched_parked")
 
 
@@ -36,13 +44,14 @@ def _open(path):
     return None
 
 
-def load(exp, kind, max_seed):
+def load(exp, kind, max_seed, hover=None):
     f = _open(os.path.join(OUT, f"{exp}_{kind}.csv"))
     if f is None:
         return []
     with f:
         return [r for r in csv.DictReader(f) if r.get("error_label", "none") == "none"
-                and r["noise_scale"] == "1.0" and r["anchor_loss_label"] == "none" and int(r["seed"]) <= max_seed]
+                and r["noise_scale"] == "1.0" and r["anchor_loss_label"] == "none" and int(r["seed"]) <= max_seed
+                and (hover is None or r["hover"] == hover)]
 
 
 def frac(rows, ok):
@@ -54,12 +63,13 @@ def frac(rows, ok):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--max-seed", type=int, default=60)
+    ap.add_argument("--hover", default=None, help="restrict to one hover level, e.g. moderate")
     a = ap.parse_args()
     res = {}
     passed = lambda r: str(r["passed_bool"]).lower() == "true"
     for exp, desc in VARIANTS:
-        rec = load(exp, "recovery", a.max_seed)
-        lau = load(exp, "launch", a.max_seed)
+        rec = load(exp, "recovery", a.max_seed, a.hover)
+        lau = load(exp, "launch", a.max_seed, a.hover)
         if not rec:
             continue
         d = dict(desc=desc)
@@ -73,8 +83,8 @@ def main():
         d["post_contact_frac"] = frac(lau, lambda r: float(r.get("post_contacts_count") or 0) > 0)
         res[exp] = d
     f2 = lambda t: "-" if t[0] is None else f"{t[0]:.3f}"
-    L = [f"Nominal sensors, the 72 cells hover x wind x neighbours x box, seeds 1-{a.max_seed} "
-         f"(spec4: 1-50).\n",
+    scope = f"{a.hover} hover only (24 cells)" if a.hover else "the 72 cells hover x wind x neighbours x box"
+    L = [f"Nominal sensors, {scope}, seeds 1-{a.max_seed} (spec4: 1-50).\n",
          "| variant | change | recovery | target cell (moderate, 6 m/s) | 0 m/s | 3 m/s | 6 m/s | 9 m/s | "
          "launch, spec criteria | launch without the post clause | launches touching a post | n recoveries |",
          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
@@ -85,9 +95,10 @@ def main():
     L.append("\nMain recovery failures:\n")
     for exp, d in res.items():
         L.append(f"- {exp}: {d['fails']}")
-    with open(os.path.join(OUT, "variants.json"), "w") as f:
+    tag = f"_{a.hover}" if a.hover else ""
+    with open(os.path.join(OUT, f"variants{tag}.json"), "w") as f:
         json.dump(res, f, indent=1, default=str)
-    with open(os.path.join(OUT, "variants.md"), "w") as f:
+    with open(os.path.join(OUT, f"variants{tag}.md"), "w") as f:
         f.write("\n".join(L) + "\n")
     print("\n".join(L))
 

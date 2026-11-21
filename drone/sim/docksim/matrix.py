@@ -43,6 +43,11 @@ DUAL = {"dock": {"post": {"x_offsets_m": [-0.075, 0.075]}},
 WINDWARD = {"mothership_airframe": {"wind_from_centre_deg": -90.0, "wind_from_nose_max_deg": 20.0}}
 SLOT20 = {"bee35": {"bracket": {"slot_width_m": 0.020}}}
 
+POCKET = {"dock_sensors": {"pocket_beacons": {"enabled": True}}}
+POCKET_SAME = {"dock_sensors": {"pocket_beacons": {"enabled": True, "sigma_m": 0.05, "bias_max_m": 0.05}}}
+STILL = {"mothership_airframe": {"hover_motion_scale": 0.0}}
+DRIFT = {"mothership_airframe": {"drift_with_wind": True}}
+
 EXPS = {
     "baseline": dict(),                                         # user's 3-anchor triangle, spec sequence
     "spec4": dict(cell=dict(anchor_set="spec4")),               # the spec's four anchors (adds A4 at the dock rear)
@@ -54,8 +59,19 @@ EXPS = {
     "dual": dict(cfg=DUAL),                                     # two posts and two brackets per pocket
     "windward": dict(cfg=WINDWARD),                             # mothership yaws: wind from starboard +-20 deg
     "slot20": dict(cfg=SLOT20),                                 # launch slot 20 mm (5 mm clearance each side)
+    "still": dict(cfg=STILL),                                   # hover with no motion at all (upper bound)
+    "drift": dict(cfg=DRIFT),                                   # hover relative to the air: drift with the wind
+    "still_drift": dict(cfg=_merge(_merge({}, STILL), DRIFT)),
     "all": dict(cfg=_merge(_merge(_merge(_merge({}, LIP10), DUAL), WINDWARD), SLOT20),
                 cell=dict(anchor_set="spec4")),                 # every change at once, plus the dock anchor A4
+    "all_drift": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, LIP10), DUAL), WINDWARD), SLOT20), DRIFT),
+                      cell=dict(anchor_set="spec4")),           # every geometry change + A4 + drifting hover
+    "all_drift_nodual": dict(cfg=_merge(_merge(_merge(_merge({}, LIP10), WINDWARD), SLOT20), DRIFT),
+                             cell=dict(anchor_set="spec4")),    # the same without the two-post bracket
+    "pocket_drift": dict(cfg=_merge(_merge({}, POCKET), DRIFT)),          # triangle + a beacon per pocket, drifting
+    "pocket_same_drift": dict(cfg=_merge(_merge({}, POCKET_SAME), DRIFT)),  # same, beacons as noisy as A1-A3
+    "pocket_all_drift_nodual": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, LIP10), WINDWARD), SLOT20), DRIFT),
+                                               POCKET), cell=dict(anchor_set="spec4")),
 }
 
 

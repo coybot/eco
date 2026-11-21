@@ -21,6 +21,20 @@ class UWB:
         self.A = np.array([anchors[n] for n in use], float)
         self.sigma = u["sigma_m"] * noise_scale
         self.bias = rng.uniform(-u["bias_max_m"], u["bias_max_m"], len(use)) * noise_scale
+        n = len(use)
+        self.sig = np.full(n, self.sigma)
+        self.bias_max = np.full(n, u["bias_max_m"] * noise_scale)
+        self.max_range = np.full(n, math.inf)
+        pb = cfg["dock_sensors"].get("pocket_beacons", {})
+        if pb.get("enabled", False):                    # one short-range beacon per pocket, at the port rail
+            P = [[x, pb["y_m"], pb["z_m"]] for x in cfg["dock"]["pocket_x_m"]]
+            k = len(P)
+            self.names += [f"PB{j + 1}" for j in range(k)]
+            self.A = np.vstack([self.A, np.array(P, float)])
+            self.sig = np.concatenate([self.sig, np.full(k, pb["sigma_m"] * noise_scale)])
+            self.bias_max = np.concatenate([self.bias_max, np.full(k, pb["bias_max_m"] * noise_scale)])
+            self.bias = np.concatenate([self.bias, rng.uniform(-1, 1, k) * pb["bias_max_m"] * noise_scale])
+            self.max_range = np.concatenate([self.max_range, np.full(k, pb["max_range_m"])])
         self.p_drop = u["dropout_p"]
         self.nlos = u["blocked_bias_m"]
         self.period = n_in_flight / u["rate_hz"]
@@ -28,7 +42,7 @@ class UWB:
         self.t_next = 0.0
         self.n_blocked = 0
         self.n_total = 0
-        self.blocked_by = np.zeros(len(use), int)
+        self.blocked_by = np.zeros(len(self.names), int)
 
     def sample(self, sim, i, t):
         if t + 1e-9 < self.t_next:
@@ -41,8 +55,10 @@ class UWB:
                 continue
             dv = a - tag
             r = float(np.linalg.norm(dv))
+            if r > self.max_range[k]:
+                continue
             hit, _ = sim.ray(tag, dv / r, sim.body_id[i], GROUP_UWB)
-            z = r + self.bias[k] + self.sigma * self.rng.standard_normal()
+            z = r + self.bias[k] + self.sig[k] * self.rng.standard_normal()
             self.n_total += 1
             if 0 <= hit < r - 0.02:
                 z += self.rng.uniform(*self.nlos)

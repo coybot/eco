@@ -214,7 +214,7 @@ class Pilot:
         self.nav = RelNav(b["controller"]["accel_process_sigma_m_s2"])
         self.tag_B = np.array(b["tag_pos_m"])
         self.down_B = np.array(b["down_sensor_pos_m"])
-        self.uwb_sigma_eff = math.sqrt(self.uwb.sigma ** 2 + (cfg["dock_sensors"]["uwb"]["bias_max_m"] * noise_scale) ** 2 / 3)
+        self.uwb_sigma_eff = np.sqrt(self.uwb.sig ** 2 + self.uwb.bias_max ** 2 / 3)   # per anchor
         rs = cfg["dock_sensors"]["range"]
         self.rng_sigma = rs["sigma_per_acc_nd"] * rs["acc_near_m"]
         self.flow_sigma = cfg["dock_sensors"]["flow"]["sigma_m_s"]
@@ -359,7 +359,7 @@ class Pilot:
             self.nav.predict(a, self.dt_nav)
         tag_off = self.R_LB @ self.tag_B
         for k, z in self.pend_uwb:
-            self.nav.range(self.uwb.A[k], z, tag_off, self.uwb_sigma_eff)
+            self.nav.range(self.uwb.A[k], z, tag_off, self.uwb_sigma_eff[k])
         self.pend_uwb = []
         z_rng, z_flow = self.pend_rng, self.pend_flow
         self.pend_rng = self.pend_flow = None

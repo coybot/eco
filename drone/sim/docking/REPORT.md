@@ -36,7 +36,8 @@ The user's concept of 2026-11-20:
 | Flight time and energy | Bee35 hover 3.7 min loaded and 7.0 min empty (6S 1100 mAh, estimated). A delivery uses about 5.5 Wh of 20.7 usable, 71 s at 20–60 m standoff. Reach is about 450 m slant at a 20 % reserve. |
 | **Does the balcony delivery work?** | **Yes: 97 %** of missions deliver and return to the dock hand-off point. The box lands 6 cm from the mark (median), at 0.6 m sign size. |
 | Does the sign size matter? | **Yes.** A 0.3 m triangle gives 86 % (railing strikes). 0.6 m and 1.0 m perform the same. A sign barometer adds nothing. |
-| **Does the passive dock recovery meet 95 % at moderate hover, 6 m/s?** | **No: 35 %**; 56 % with nominal sensors; 62 % with the spec's fourth anchor. |
+| **Does the passive dock recovery meet 95 % at moderate hover, 6 m/s?** | **Not as specified: 35 %**; 56 % with nominal sensors; 62 % with the spec's fourth anchor. **With two changes it does: 98 %** (nominal sensors), see section 5. |
+| What gets it there? | The mothership holds position relative to the air (drifts with the mean wind) instead of over the ground: 89 %. Add a short-range UWB beacon at each pocket: **98 %**, and 97 % or better at every wind from 0 to 9 m/s. |
 | Where does the dock work? | Up to 3 m/s with nominal sensors: 78–87 %, best 87 %. No cell reaches 95 %. |
 | Does the launch meet the spec? | Every criterion except "does not touch a post", which the slot geometry makes impossible (100 % touch). Without that clause, 99.995 %. |
 | Do the magnets hold? | Yes: lift-off at −2.3 g empty and −1.5 g with box; every hold-test case passes. |
@@ -70,21 +71,48 @@ The user's concept of 2026-11-20:
 - "Does not touch a post" for launch contradicts the slot geometry.
 - Three mothership anchors give no redundancy for the fin anchor.
 
-## 5. Recommended next steps (not simulated)
+## 5. Design changes, simulated (2026-11-21)
 
-1. A taller, steeper starboard lip or a closed side.
-2. Keep a dock anchor (A4).
-3. Two posts with brackets on both sides, or a centreline bracket.
-4. Recover from the windward side.
-5. A slot lead-in with more clearance, and a launch criterion that allows sliding post
-   contact.
-6. Sign at least 0.6 m across, and drop marks at least 1 m from a divider.
+Moderate hover, nominal sensors, 1,440 recoveries per variant on the same seeds. Full table
+and failure counts: `PHASE_3.md` section 5.4.
 
-Each is a change in `docking/vehicles.yaml` and a re-run:
+| variant | target cell (6 m/s) | 9 m/s | all winds |
+|---|---|---|---|
+| baseline | 0.581 | 0.081 | 0.601 |
+| taller lip (0.10 m) | 0.583 | 0.136 | 0.604 |
+| windward recovery | 0.692 | 0.142 | 0.640 |
+| 20 mm launch slot | 0.678 | 0.156 | 0.642 |
+| two posts, two brackets | **0.239** | 0.061 | 0.272 |
+| no hover motion at all | 0.636 | 0.097 | 0.614 |
+| **mothership drifts with the mean wind** | **0.894** | **0.850** | **0.864** |
+| drift + lip + windward + slot + A4 | 0.889 | 0.869 | 0.872 |
+| **drift + a short-range beacon at each pocket** | **0.981** | **0.967** | **0.974** |
+| same, beacons as noisy as the airframe anchors | 0.961 | 0.953 | 0.965 |
+| drift + beacons + lip + windward + slot + A4 | 0.978 | 0.983 | 0.980 |
 
-- `just remote-run <name> "python -m docksim.matrix run --exp baseline --trials 200"` on the
-  remote box;
-- `just missions` for the mission sim.
+1. **Drift with the wind.** The mothership holds position relative to the air, and still
+   hovers against gusts. This removes the mean airspeed from the approach. It is a
+   mothership flight-mode change, not hardware. **Cost:** the mothership moves downwind at
+   the wind speed, 120–180 m during one 20 s recovery at 6–9 m/s. It would drift only for
+   each drone's final approach and fly back upwind between drones. That operating pattern,
+   and the drone's return to a moving mothership, are **not simulated yet**: in the sim,
+   the turbulence stays and only the mean wind is removed in the dock frame.
+2. **A short-range UWB beacon at each pocket**, on the port rail beside the post. The gain
+   is geometry: beacons within a metre of the post, not 1.5–3 m away on the wingtips and
+   fin. Even beacons as noisy as the airframe anchors give 96 %.
+3. **Drop the two-post bracket.** As modelled it halves recovery and launch success.
+4. The lip, windward orientation and wider slot add nothing measurable once 1 and 2 are in.
+   The wider slot still reduces launch post contact somewhat.
+5. **Remaining failures** with 1 and 2 (37 of 1,440) are mostly touchdowns at 0.50–0.70 m/s
+   from the hard motor cutoff. A thrust ramp-down is the next thing to try.
+6. For the balcony: sign at least 0.6 m across, and drop marks at least 1 m from a divider
+   (`PHASE_4.md`).
+
+Not yet checked: the beacon variant in gusty hover, with ranging noise × 2 and with an anchor
+lost (the full 288-cell run).
+
+To re-run a variant: `just remote-run <name> "python -m docksim.matrix run --exp pocket_drift
+--trials 60"` on the remote box, then `python -m docksim.compare --hover moderate`.
 
 ## 6. Caveats
 

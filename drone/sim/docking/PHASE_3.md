@@ -266,5 +266,81 @@ Design changes that the results point to, in order of expected effect:
 5. **A slot lead-in with more clearance, plus a launch criterion that allows sliding contact
    with the post.**
 
-None of these were simulated here. Each is a geometry change in `docking/vehicles.yaml`
-followed by a matrix re-run.
+Section 5.4 simulates each of these, plus two changes to how the mothership hovers and a
+short-range beacon at each pocket.
+
+### 5.4 Design variants (2026-11-21)
+
+Each variant is a config override in `docksim/matrix.py` (`EXPS`) on top of
+`docking/vehicles.yaml`. Every variant runs the same seeds as the baseline, so the rows pair
+up trial for trial. The table below covers moderate hover with nominal sensors and no anchor
+lost: 24 cells (4 winds × 3 neighbour counts × box or none), 60 trials each, 1,440
+recoveries per variant (1,200 for `spec4`). The 6 m/s column is the spec's target cell
+(n = 360; a 0.98 result has a 95 % interval of about 0.96–0.99). Tables:
+`docking/results/dock/variants_moderate.md`, and `variants.md` for the geometry variants
+over all 72 hover × wind × neighbour × box cells.
+
+| variant | what changes | recovery | 0 m/s | 3 m/s | **6 m/s** | 9 m/s | launch without the post clause |
+|---|---|---|---|---|---|---|---|
+| baseline | spec as built: A1–A3, 38 mm lip, one post, wind from the nose | 0.601 | 0.869 | 0.872 | **0.581** | 0.081 | 1.000 |
+| spec4 | adds the dock anchor A4 | 0.631 | 0.903 | 0.893 | **0.623** | 0.103 | 1.000 |
+| lip10 | starboard lip 0.10 m high, about 60° | 0.604 | 0.853 | 0.844 | **0.583** | 0.136 | 1.000 |
+| dual | two posts at x ± 0.075 m, a bracket on each, range sensor on the centreline | 0.272 | 0.383 | 0.403 | **0.239** | 0.061 | 0.531 |
+| windward | mothership yaws so the wind comes from starboard ± 20° | 0.640 | 0.869 | 0.858 | **0.692** | 0.142 | 1.000 |
+| slot20 | launch slot 20 mm (5 mm clearance each side) | 0.642 | 0.878 | 0.856 | **0.678** | 0.156 | 0.985 |
+| all | lip10 + dual + windward + slot20 + A4 | 0.331 | 0.492 | 0.361 | **0.353** | 0.119 | 0.846 |
+| still | the mothership holds its position with no hover motion at all | 0.614 | 0.833 | 0.889 | **0.636** | 0.097 | 1.000 |
+| **drift** | the mothership holds position relative to the air, drifting with the mean wind | 0.864 | 0.869 | 0.842 | **0.894** | 0.850 | 1.000 |
+| still_drift | both | 0.853 | 0.833 | 0.850 | **0.847** | 0.883 | 1.000 |
+| all_drift | all + drift | 0.491 | 0.486 | 0.508 | **0.472** | 0.497 | 0.878 |
+| all_drift_nodual | lip10 + windward + slot20 + A4 + drift | 0.872 | 0.875 | 0.853 | **0.889** | 0.869 | 1.000 |
+| **pocket_drift** | A1–A3, **a short-range UWB beacon at each pocket**, drift | **0.974** | 0.972 | 0.978 | **0.981** | 0.967 | 1.000 |
+| pocket_same_drift | as pocket_drift, with beacons as noisy as A1–A3 | 0.965 | 0.975 | 0.972 | **0.961** | 0.953 | 1.000 |
+| pocket_all_drift_nodual | pocket beacons + all_drift_nodual | 0.980 | 0.978 | 0.981 | **0.978** | 0.983 | 1.000 |
+
+The pocket beacons (`dock_sensors.pocket_beacons` in `vehicles.yaml`, off by default) are
+modelled as follows:
+
+- one UWB beacon per pocket, on a 0.05 m stand on the port rail beside the post, at
+  (pocket x, 0.05, −0.19) m;
+- ranged by the drone's existing tag;
+- heard only within 2 m;
+- σ 0.03 m with a per-beacon bias within ± 0.02 m (estimates for a short, calibrated,
+  line-of-sight link);
+- blocked by bodies, with the same NLOS model as A1–A3.
+
+The filter weights each anchor by its own noise.
+
+What the variants show:
+
+1. **Wind against the hovering mothership was the main problem, and drifting removes most of
+   it.** A mothership that holds a ground position in 6–9 m/s wind puts the full airspeed on
+   the drone during the approach. A mothership that holds position relative to the air
+   (drifting with the mean wind, still hovering against gusts) leaves only turbulence.
+   Recovery at 9 m/s goes from 8 % to 85 %. Removing the hover motion alone (`still`) barely
+   helps; the hover motion was never the issue. The sim models drift by removing the mean
+   wind in the dock frame and keeping the turbulence. The mothership then travels downwind
+   at the wind speed, 120–180 m per 20 s recovery at 6–9 m/s. So in practice it would
+   drift only for each final approach. That pattern is not simulated.
+2. **Close-in navigation is the second problem, and pocket beacons solve it.** With drift
+   and four pocket beacons, the target cell reaches **98 %** and every wind is at 97 % or
+   better. Beacons as noisy and biased as the airframe anchors still give 96 %, so the gain
+   is geometry (beacons 0.1–1 m from the post, around it), not beacon quality. The
+   airframe triangle is 1.5–3 m away, so its ± 0.05 m biases multiply into 0.05–0.15 m at
+   the bracket.
+3. **The two-post bracket is harmful as modelled.** Its mouths catch ± 0.06 m instead of
+   ± 0.10 m and the drone can seat on the wrong post; "not seated" and "final position"
+   dominate. It also halves launch success, because both brackets ride their posts. Every
+   combination that includes it does worse than the same combination without it.
+4. **The other geometry changes are small next to drift and beacons.** The taller lip and
+   the windward orientation move the target cell by 0 and 11 points without drift, and by
+   less than 1 point (within noise) once drift or beacons are in. The 20 mm slot helps launches touch the post less
+   (82 % instead of 89 %), but most launches still touch it.
+5. **What fails with drift and pocket beacons (37 of 1,440):** touchdown faster than
+   0.5 m/s (24, all between 0.50 and 0.70 m/s, at every wind speed), prop strike (4),
+   over 40 s (3), and single cases of the rest. The touchdown failures come from the motor
+   cutoff sequence (five range samples at 0.02 m, then a drop), not from navigation or
+   wind. A thrust ramp-down instead of a hard cutoff is the likely fix (not yet simulated).
+
+**Not yet checked:** the beacon variant in gusty hover, with ranging noise × 2 and with an
+anchor lost. A full 288-cell run of `pocket_drift` is the next result.

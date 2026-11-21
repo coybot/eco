@@ -620,6 +620,13 @@ mothership_airframe:                 # Makeflyeasy Pioneer 3200 [U]; shapes in f
 
 dock_sensors:                        # spec section 6, drone side
   uwb: {rate_hz: 20, sigma_m: 0.05, bias_max_m: 0.05, dropout_p: 0.02, blocked_bias_m: [0.10, 0.30]}
+  pocket_beacons:                    # [D] variant only: one short-range UWB beacon per pocket, on a 0.05 m
+    enabled: false                   #     stand on the port rail beside the post, ranged by the same tag
+    y_m: 0.05
+    z_m: -0.19
+    sigma_m: 0.03                    # (E) short, clean, line-of-sight links
+    bias_max_m: 0.02                 # (E) antenna delay calibrated on the dock
+    max_range_m: 2.0                 # heard only near the dock
                                      # rate is per drone; divided by drones in flight
   range: {min_m: 0.02, max_m: 8.0, acc_near_m: 0.04, acc_far_frac: 0.02, rate_hz: 100, beam_deg: 6,
           sigma_per_acc_nd: 0.5}     # [D] the quoted accuracy is taken as 2 sigma
