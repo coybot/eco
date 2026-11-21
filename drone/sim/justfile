@@ -17,7 +17,7 @@ venv:
 
 # Unit tests for the flight model, docking, delivery and the passive dock
 test *args:
-    {{py}} -m pytest -q tests/test_flight.py tests/test_docking.py tests/test_delivery.py tests/test_docksim.py {{args}}
+    {{py}} -m pytest -q tests/test_flight.py tests/test_docking.py tests/test_delivery.py tests/test_docksim.py tests/test_mission.py {{args}}
 
 # Bee35 + passive dock sizing (writes docking/results/dock/sizing.json)
 dock-sizing:
@@ -34,6 +34,17 @@ dock-trial kind="recovery" seed="1" hover="moderate" wind="6" *args:
 # Dock test matrix locally (small): just dock-matrix baseline 5
 dock-matrix exp="baseline" trials="5" *args:
     {{py}} -m docksim.matrix run --exp {{exp}} --trials {{trials}} {{args}}
+
+# One balcony mission, verbose: just mission B5 3
+mission scenario="B1" seed="1":
+    {{py}} -m mission.sim {{scenario}} {{seed}}
+
+# Balcony missions: just missions baseline 300   (then: just mission-summary)
+missions exp="baseline" trials="300" *args:
+    {{py}} -m mission.report run --exp {{exp}} --trials {{trials}} {{args}}
+
+mission-summary:
+    {{py}} -m mission.report summary
 
 # Summarise dock matrix CSVs (writes docking/results/dock/summary.{json,md})
 dock-summary:

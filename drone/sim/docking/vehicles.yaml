@@ -663,3 +663,31 @@ dock_matrix:                         # spec section 13
   launch_box: [false, true]
   trials_per_cell: 200
   target_pass_frac: 0.95             # moderate hover, 6 m/s
+
+balcony_mission:                     # Phase 4: Bee35 from the dock to a balcony and back (user, 2026-11-20)
+  # The balcony is marked by a "drop the coffee here" sign on its back wall carrying three UWB
+  # beacons in a triangle [U]. The path from the sky to the balcony side of the building is clear [U].
+  sign:
+    triangle_side_m: 0.6             # [D] baseline: an A1/A2-poster-sized sign. Variants 0.3 and 1.0
+    centre_height_above_floor_m: 1.5 # [D] install data: sign centre height above the balcony floor
+    drop_out_from_wall_m: 0.6        # [D] the drop mark: on the floor, under the sign, this far out
+    barometer: false                 # [U] the user's sign has beacons only; variant: a barometer in the sign
+    baro_sigma_m: 0.3                # sign barometer, when present (same part as the drone's)
+    survey_sigma_m: [1.0, 1.0, 0.5]  # [E] mothership's prior of the sign position in the world (x, y, z)
+  hover_standoff_m: [20.0, 60.0]     # [D] mothership hover position from the facade, horizontal
+  hover_lateral_m: [-20.0, 20.0]
+  hover_height_agl_m: 70.0           # spec 8.1
+  hover_clear_above_roof_m: 10.0
+  cruise_speed_m_s: 5.0              # [D] transit
+  near_speed_m_s: 1.0                # within 6 m of the wall
+  inside_speed_m_s: 0.5              # inside the balcony
+  gate_out_m: 4.0                    # [D] gate: this far out from the wall, at entry height
+  entry_height_above_floor_m: 1.85   # [D] underside height crossing the railing: box bottom 0.57 m over a
+                                     #     1.15 m railing, drone top 0.69 m under a 2.6 m slab
+  setdown_range_m: 0.15              # box bottom touches the floor when the underside is ~0.135 m up
+  release_slide_m: 0.15              # slide off the fork rails (rim 0.12 m) along the drone's x axis
+  drop_tolerance_m: 0.30             # [D] box must land within this of the mark
+  balcony_time_limit_s: 120.0        # give up the drop after this long at the balcony
+  energy_reserve_frac: 0.20          # give up when the estimated return would eat into this reserve
+  drone_capsule_radius_m: 0.15       # collision shape: Bee35 footprint diagonal
+  handover_tol_m: 0.3                # recovery start point reached (dock frame) within this
