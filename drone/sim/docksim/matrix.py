@@ -99,13 +99,18 @@ def run(exp, trials, workers, only=None, seed0=1):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["run"])
-    ap.add_argument("--exp", default="baseline", choices=list(EXPS))
-    ap.add_argument("--trials", type=int, default=200)
+    ap.add_argument("--exp", default="baseline", help="one or more of %s, comma separated" % ",".join(EXPS))
+    ap.add_argument("--trials", default="200", help="trials per cell; one value or one per experiment")
     ap.add_argument("--workers", type=int, default=os.cpu_count())
     ap.add_argument("--cells", default="", help='filter, e.g. "hover=moderate,wind=6"')
     a = ap.parse_args()
     only = dict(kv.split("=") for kv in a.cells.split(",")) if a.cells else None
-    run(a.exp, a.trials, a.workers, only)
+    exps = a.exp.split(",")
+    trials = [int(x) for x in a.trials.split(",")]
+    trials = trials * len(exps) if len(trials) == 1 else trials
+    for e, n in zip(exps, trials):
+        print(f"== {e}: {n} trials per cell", flush=True)
+        run(e, n, a.workers, only)
 
 
 if __name__ == "__main__":

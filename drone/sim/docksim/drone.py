@@ -266,6 +266,15 @@ class Pilot:
         self.kv_comply = self.opts.get("kv_comply", 6.0)
         self.ix_hold = 0.0
         self.leash_m = self.opts.get("leash_m", 0.01)
+        # x stays stiff until the bracket mouth can reach the post (mouth tip at -0.165 meets the post at
+        # drone z ~ +0.06, i.e. ~0.12 m of travel from the hold z): limits gust drift before contact
+        self.comply_after_m = self.opts.get("comply_after_m", 0.10)
+        self.complying = False
+        self.abrupt_catch = self.opts.get("abrupt_catch", False)   # tested: rejects slow real catches
+        self.search_x = self.opts.get("search_x", True)
+        self.x_offset = 0.0
+        self.n_search = 0
+        self.moving_t = -1e9
         self.yaw_gate_deg = self.opts.get("yaw_gate_deg", 4.0)
         self.yaw_ok_t = 0.0
         self.descending = False
@@ -386,7 +395,13 @@ class Pilot:
             if not self.motors_off and self.r_ref is not None and self.fc.collective_override is None:
                 a = self.fc.accel_cmd(self.r_ref, self.v_ref, self.nav.r, self.nav.v, self.dt_nav,
                                       freeze_axes=self.freeze)
-                if self.state == "APPROACH" and self.comply_x:
+                comply_now = self.state == "APPROACH" and self.comply_x and \
+                    (self.travel0 - self.nav.r[2]) > self.comply_after_m
+                if comply_now:
+                    if not self.complying:                # switch: hold the wind integrator from here on
+                        self.complying = True
+                        self.ix_hold = float(self.fc.integ[0])
+                        self.freeze = (0,)
                     # compliant along x: the fences must be able to slide the drone onto the post (a free drone
                     # pushed with 0.5 N seats from +-0.09 m; a stiff x loop on a few-cm-wrong estimate stalls it).
                     # Weak spring to the estimate, strong damping on the flow velocity, wind integrator held.
@@ -414,7 +429,8 @@ class Pilot:
     def _recovery(self, t):
         rec = self.rec
         s = self.state
-        hold = np.array([self.px, rec["hold_y_m"], rec["hold_z_m"]])
+        xo = self.px + self.x_offset
+        hold = np.array([xo, rec["hold_y_m"], rec["hold_z_m"]])
         if s == "INIT":
             p, _ = self.sim.pose(self.i)
             self.nav.init(p + self.rng.normal(0, 0.1, 3), 0.15)
@@ -434,7 +450,7 @@ class Pilot:
             if t - self.t_state > 1.0:
                 self._goto("DESCEND", t)
         elif s == "DESCEND":
-            tgt = np.array([self.px, rec["approach_y_m"], rec["hold_z_m"]])
+            tgt = np.array([xo, rec["approach_y_m"], rec["hold_z_m"]])
             self.freeze = (1,)                       # keep the hover integrator; do not wind it up on the ramp
             self._ramp_to(tgt, rec["descent_speed_m_s"])
             if self._abort_check(t):
@@ -452,12 +468,12 @@ class Pilot:
                 self.travel0 = self.nav.r[2]
                 self.stop_timer = 0.0
                 self.stop_t = 0.0
-                self.ix_hold = float(self.fc.integ[0])
-                self.freeze = (0,) if self.comply_x else ()
+                self.complying = False
+                self.freeze = ()
                 self._goto("APPROACH", t)
         elif s == "APPROACH":
             sp = rec["approach_speed_m_s"]
-            self.r_ref = np.array([self.px, rec["approach_y_m"], max(self.r_ref[2] - sp * self.dt_nav, self.nav.r[2] - self.leash_m)])
+            self.r_ref = np.array([xo, rec["approach_y_m"], max(self.r_ref[2] - sp * self.dt_nav, self.nav.r[2] - self.leash_m)])
             self.v_ref = np.array([0.0, 0.0, -sp])
             travel = self.travel0 - self.nav.r[2]
             lo, hi = rec["catch_travel_m"]
@@ -467,8 +483,13 @@ class Pilot:
             # keep moving it while the drone is physically blocked.
             flow_ok = self.flow_age < 0.05
             slow = flow_ok and abs(self.v_flow[2]) < rec["stop_speed_m_s"]
+            if flow_ok and -self.v_flow[2] > 0.6 * rec["approach_speed_m_s"]:
+                self.moving_t = t                        # last time the drone was moving at approach speed
             self.stop_t = self.stop_t + self.dt_nav if slow else 0.0
-            stopped = self.stop_t >= self.stop_window_s
+            # a post stop is abrupt: moving at approach speed within the last 0.6 s before stopping. A gust
+            # that stalls the drone slows it gradually and is not taken for the post.
+            abrupt = (t - self.stop_t) - self.moving_t < 0.6
+            stopped = self.stop_t >= self.stop_window_s and (abrupt or not self.abrupt_catch)
             if t - self.t_state > (hi / rec["approach_speed_m_s"]) + 3.0:
                 self._start_abort(t, "no_catch_timeout")
                 return
@@ -506,7 +527,7 @@ class Pilot:
                 self.t_motors_off = t
                 self._goto("MOTORS_OFF", t)
         elif s == "ABORT_OUT":
-            tgt = np.array([self.px, max(self.nav.r[1], rec["approach_y_m"]), rec["hold_z_m"]])
+            tgt = np.array([self.nav.r[0], max(self.nav.r[1], rec["approach_y_m"]), rec["hold_z_m"]])
             self._ramp_to(tgt, 0.2)
             if abs(self.nav.r[2] - tgt[2]) < 0.03:
                 self._goto("ABORT_UP", t)
@@ -549,7 +570,13 @@ class Pilot:
         return False
 
     def _start_abort(self, t, why):
+        self.complying = False
         self.descending = False
+        if why in ("no_catch", "no_catch_timeout") and self.search_x:
+            # a constant UWB bias makes a plain retry miss the same way: search +-0.08 m along x (the
+            # bracket mouth is 0.20 m wide), in the order +, -
+            self.x_offset = (0.08, -0.08, 0.0)[min(self.n_search, 2)]
+            self.n_search += 1
         self.yaw_ok_t = 0.0
         self.aborts += 1
         self.push = False

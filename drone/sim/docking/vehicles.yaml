@@ -547,7 +547,7 @@ bee35:                               # SpeedyBee Bee35 class, 3.5 in (89 mm) duc
     kp_pos_per_s2: 9.0
     kv_per_s: 6.0
     ki_pos_per_s3: 4.0
-    i_max_m_s2: 3.0
+    i_max_m_s2: 6.0                  # [D] must exceed the steady drag accel: 9 m/s on an empty Bee35 is 2.7 m/s^2 before gusts
     a_max_m_s2: 6.0
     max_tilt_deg: 35.0
     att_kp_per_s2: [150.0, 120.0, 150.0]  # about x, y (yaw), z. Yaw is stiff on purpose: the port-side bracket yaws the drone at post contact
@@ -691,3 +691,6 @@ balcony_mission:                     # Phase 4: Bee35 from the dock to a balcony
   energy_reserve_frac: 0.20          # give up when the estimated return would eat into this reserve
   drone_capsule_radius_m: 0.15       # collision shape: Bee35 footprint diagonal
   handover_tol_m: 0.3                # recovery start point reached (dock frame) within this
+  transit_max_tilt_deg: 55.0         # [D] away from the dock. A Bee35 has thrust/weight ~6; at the dock's 35 deg
+                                     #     limit its top airspeed is ~14 m/s, below the gusts above a roof in 10 m/s wind
+  transit_max_accel_m_s2: 10.0

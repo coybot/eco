@@ -203,7 +203,8 @@ def run_mission(cfg, sid, seed, opts=None, verbose=False):
     v = np.zeros(3)
     thrust_vec = np.array([0.0, 0.0, mass * G_M_S2])
     tmax = b["thrust_max_total_n"] * b["controller"]["thrust_usable_frac"]
-    tilt_max = math.radians(b["controller"]["max_tilt_deg"])
+    tilt_max = math.radians(bm["transit_max_tilt_deg"])
+    a_max = bm["transit_max_accel_m_s2"]
     # navigation: the drone knows its D position; the mothership converts to M with its own estimate
     # of the sign position (survey error) and its broadcast pose error
 
@@ -428,11 +429,11 @@ def run_mission(cfg, sid, seed, opts=None, verbose=False):
 
         # position control -> thrust vector command
         e = r_ref - pe
-        integ = np.clip(integ + ki * e * dt_nav, -2.0, 2.0)
+        integ = np.clip(integ + ki * e * dt_nav, -6.0, 6.0)          # must hold the drag of an 11 m/s wind
         a_cmd = kp * e + kv * (vref - nav.x[3:6]) + integ
         n = np.linalg.norm(a_cmd)
-        if n > 6.0:
-            a_cmd *= 6.0 / n
+        if n > a_max:
+            a_cmd *= a_max / n
         F = mass * (a_cmd + np.array([0, 0, G_M_S2]))
         F[2] = max(F[2], 0.2 * mass * G_M_S2)
         h = math.hypot(F[0], F[1])
