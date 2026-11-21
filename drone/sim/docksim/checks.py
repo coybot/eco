@@ -106,7 +106,7 @@ def _hold_one(a):
     return float(np.percentile(E, 95)), float(np.percentile(H, 95))
 
 
-def hover_hold(workers=8):
+def hover_hold(workers=6):
     out = {}
     with get_context("spawn").Pool(workers) as pool:
         for level in ("calm", "moderate"):
