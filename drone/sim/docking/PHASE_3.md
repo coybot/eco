@@ -446,3 +446,73 @@ What the options show:
    and 12 %. Drift and pocket beacons are what move the target cell.
 6. **Gusty hover is now the limit** (87 %). Its failures are prop strikes, final position
    and not seated: the dock moving under the drone during contact.
+
+### 5.7 A mothership built to the spec (2026-11-21)
+
+The rows of the mothership spec (REPORT section 5) that the dock sim can represent, on top of
+drift, pocket beacons and the three useful controller options (soft cutoff, parked bias
+calibration, dock feedforward; no disturbance observer). Experiments `sp_*` in
+`docksim/matrix.py`:
+
+| experiment | change to the mothership |
+|---|---|
+| sp_rotors | lift rotors at z ± 1.00 m (was ± 0.55 m): the strike zone starts 0.51 m outboard of the dock floor (was 0.06 m), and the rotor inflow moves with it |
+| sp_steady | half the hover motion at every level: gusty becomes moderate (0.5 m, 0.2 m, 5°, 2° rms), moderate becomes 0.25 m, 0.1 m, 2.5°, 1° |
+| sp_bcast | motion broadcast at 50 Hz with 10–20 ms delay (was 10 Hz, 50–100 ms); dock acceleration filter 0.1 s (was 0.3 s) |
+| sp_all | all three |
+
+Not represented: the dock on the centre of gravity (the sim already rotates the dock about
+its own centre, so every result assumes it), thrust margin, rotor count and wing area (they
+act through hover steadiness, which the sim prescribes), payload, endurance and fairing
+(sizing).
+
+Each row alone, nominal sensors, 72 cells × 30 trials (2,160 recoveries), against
+`pd_nodob` on the same seeds:
+
+| variant | all | calm | moderate | gusty | 9 m/s | target cell | prop strikes |
+|---|---|---|---|---|---|---|---|
+| pocket_drift | 0.955 | 0.979 | 0.969 | 0.915 | 0.946 | 0.972 | 16 |
+| pd_nodob | 0.967 | 0.994 | 0.988 | 0.918 | 0.956 | 0.978 | 15 |
+| sp_rotors | 0.967 | 0.994 | 0.988 | 0.919 | 0.954 | 0.978 | **2** |
+| **sp_steady** | **0.994** | 0.994 | 0.992 | **0.994** | 0.983 | 0.994 | 2 |
+| sp_bcast | 0.968 | 0.996 | 0.997 | 0.910 | 0.956 | 0.989 | 17 |
+| **sp_all** | **0.995** | 0.999 | 0.996 | **0.990** | 0.991 | **1.000** | 0 |
+
+All three together, full matrix (288 cells × 30 trials, 8,640 recoveries):
+
+| condition | baseline | pocket_drift | pd_nodob | **sp_all** |
+|---|---|---|---|---|
+| all 288 cells | 0.382 | 0.915 | 0.943 | **0.982** |
+| calm / moderate / gusty hover (spec levels) | 0.420 / 0.389 / 0.339 | 0.955 / 0.933 / 0.858 | 0.984 / 0.969 / 0.876 | 0.985 / 0.984 / **0.976** |
+| ranging noise × 2 | 0.282 | 0.887 | 0.935 | 0.977 |
+| one airframe anchor lost | 0.292 | 0.898 | 0.931 | 0.975 |
+| 9 m/s | 0.036 | 0.902 | 0.935 | 0.971 |
+| **target cell, all four sensor conditions** | 0.361 | 0.938 | 0.967 | **0.988** |
+| cells at 95 % or better | 3 of 288 | 122 of 288 | 162 of 288 | **254 of 288** |
+| worst cell | 0.00 | 0.63 | 0.70 | **0.90** |
+
+The hover levels in this table are the levels the airframe meets the spec in. With half the
+motion, the "gusty" row is what a spec mothership does in gusty air.
+
+What it shows:
+
+1. **Steadier hover is the row that matters.** Halving the hover motion takes gusty hover
+   from 92 % to 99 % with nominal sensors, and 9 m/s from 96 % to 98 %. The dock's last
+   failures were the dock moving under the drone during contact; a steadier mothership
+   removes them.
+2. **Rotor clearance removes prop strikes (15 to 2) but not failures.** The drones that
+   would have hit a rotor still miss the pocket and fail another way (final position, not
+   seated). In the air the difference is large: a strike loses the drone and may damage the
+   mothership, while a miss can retry. Keep the row for safety, not for the success rate.
+3. **The 50 Hz broadcast helps at moderate hover** (98.8 % to 99.7 %, target cell 97.8 %
+   to 98.9 %) and not in gusty hover.
+4. **Together they reach 98.2 % over all 288 cells**, 98.8 % at the target cell under all
+   four sensor conditions, and no cell below 90 %. 254 of 288 cells reach 95 %.
+5. **What is left** (155 of 8,640): final position 53, no landing in time 41, touchdown
+   speed 18, not seated 16, post speed 14. Prop strikes: 2.
+6. **Launch** meets every criterion except "does not touch a post" in every trial, as before.
+
+Caveats: the steadier hover is prescribed, not flown. Whether an airframe meets
+"half the Pioneer's assumed hover motion" depends on its size, thrust margin and wing area,
+which this sim does not model. The Pioneer's own hover motion is itself an estimate (spec
+section 8.2). Drift still assumes a perfect wind estimate.

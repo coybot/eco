@@ -23,6 +23,10 @@ Nominal sensors, the 72 cells hover x wind x neighbours x box, seeds 1-60 (spec4
 | pd_dob | pocket_drift + gust observer (0.1 s), free flight only | **0.968** | **0.956** | 0.972 | 0.964 | 0.956 | 0.981 | 0.087 | 1.000 | 0.912 | 1440 |
 | pd_ctl | pocket_drift + all four controller options | **0.964** | **0.983** | 0.967 | 0.963 | 0.965 | 0.961 | 0.092 | 1.000 | 0.908 | 2160 |
 | pd_nodob | pd_ctl without the disturbance observer | **0.967** | **0.978** | 0.969 | 0.965 | 0.978 | 0.956 | 0.092 | 1.000 | 0.908 | 2160 |
+| sp_rotors | spec mothership: lift rotors 0.51 m clear of the dock (with pd_nodob's options) | **0.967** | **0.978** | 0.970 | 0.967 | 0.978 | 0.954 | 0.092 | 1.000 | 0.908 | 2160 |
+| sp_steady | spec mothership: half the hover motion | **0.994** | **0.994** | 0.994 | 1.000 | 0.996 | 0.983 | 0.058 | 1.000 | 0.942 | 2160 |
+| sp_bcast | spec mothership: motion broadcast at 50 Hz, 10-20 ms | **0.968** | **0.989** | 0.974 | 0.970 | 0.970 | 0.956 | 0.083 | 1.000 | 0.917 | 2160 |
+| sp_all | spec mothership: all three | **0.995** | **1.000** | 0.998 | 0.996 | 0.994 | 0.991 | 0.051 | 1.000 | 0.949 | 2160 |
 | base_ctl | spec baseline + all four controller options | **0.670** | **0.672** | 0.944 | 0.947 | 0.672 | 0.117 | 0.111 | 1.000 | 0.889 | 1440 |
 
 Main recovery failures:
@@ -48,4 +52,8 @@ Main recovery failures:
 - pd_dob: {'touchdown_speed': 25, 'prop_strike': 11, 'post_speed': 4, 'over_time': 2, 'touched_parked': 1}
 - pd_ctl: {'prop_strike': 27, 'not_seated': 21, 'final_position': 15, 'timeout_not_landed': 6, 'post_speed': 6}
 - pd_nodob: {'final_position': 22, 'prop_strike': 15, 'not_seated': 15, 'post_speed': 6, 'touchdown_speed': 6}
+- sp_rotors: {'final_position': 21, 'not_seated': 19, 'touchdown_speed': 10, 'timeout_not_landed': 8, 'over_time': 5}
+- sp_steady: {'final_position': 8, 'timeout_not_landed': 3, 'prop_strike': 2, 'not_seated': 1}
+- sp_bcast: {'not_seated': 28, 'prop_strike': 17, 'final_position': 11, 'post_speed': 4, 'touchdown_speed': 4}
+- sp_all: {'not_seated': 6, 'final_position': 4, 'timeout_not_landed': 1}
 - base_ctl: {'prop_strike': 152, 'not_seated': 128, 'touched_parked': 83, 'timeout_not_landed': 40, 'final_position': 26}

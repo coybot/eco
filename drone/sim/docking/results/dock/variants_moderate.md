@@ -23,6 +23,10 @@ Nominal sensors, moderate hover only (24 cells), seeds 1-60 (spec4: 1-50).
 | pd_dob | pocket_drift + gust observer (0.1 s), free flight only | **0.968** | **0.956** | 0.972 | 0.964 | 0.956 | 0.981 | 0.087 | 1.000 | 0.912 | 1440 |
 | pd_ctl | pocket_drift + all four controller options | **0.986** | **0.983** | 0.989 | 0.989 | 0.983 | 0.983 | 0.099 | 1.000 | 0.901 | 720 |
 | pd_nodob | pd_ctl without the disturbance observer | **0.988** | **0.978** | 1.000 | 0.989 | 0.978 | 0.983 | 0.099 | 1.000 | 0.901 | 720 |
+| sp_rotors | spec mothership: lift rotors 0.51 m clear of the dock (with pd_nodob's options) | **0.988** | **0.978** | 1.000 | 0.989 | 0.978 | 0.983 | 0.099 | 1.000 | 0.901 | 720 |
+| sp_steady | spec mothership: half the hover motion | **0.992** | **0.994** | 0.989 | 1.000 | 0.994 | 0.983 | 0.057 | 1.000 | 0.943 | 720 |
+| sp_bcast | spec mothership: motion broadcast at 50 Hz, 10-20 ms | **0.997** | **0.989** | 1.000 | 1.000 | 0.989 | 1.000 | 0.089 | 1.000 | 0.911 | 720 |
+| sp_all | spec mothership: all three | **0.996** | **1.000** | 1.000 | 1.000 | 1.000 | 0.983 | 0.053 | 1.000 | 0.947 | 720 |
 | base_ctl | spec baseline + all four controller options | **0.670** | **0.672** | 0.944 | 0.947 | 0.672 | 0.117 | 0.111 | 1.000 | 0.889 | 1440 |
 
 Main recovery failures:
@@ -48,4 +52,8 @@ Main recovery failures:
 - pd_dob: {'touchdown_speed': 25, 'prop_strike': 11, 'post_speed': 4, 'over_time': 2, 'touched_parked': 1}
 - pd_ctl: {'prop_strike': 6, 'not_seated': 2, 'post_speed': 1, 'final_position': 1}
 - pd_nodob: {'final_position': 4, 'not_seated': 2, 'prop_strike': 1, 'touchdown_speed': 1, 'timeout_not_landed': 1}
+- sp_rotors: {'final_position': 4, 'timeout_not_landed': 2, 'not_seated': 2, 'touchdown_speed': 1}
+- sp_steady: {'final_position': 4, 'timeout_not_landed': 1, 'not_seated': 1}
+- sp_bcast: {'not_seated': 1, 'prop_strike': 1}
+- sp_all: {'final_position': 2, 'timeout_not_landed': 1}
 - base_ctl: {'prop_strike': 152, 'not_seated': 128, 'touched_parked': 83, 'timeout_not_landed': 40, 'final_position': 26}

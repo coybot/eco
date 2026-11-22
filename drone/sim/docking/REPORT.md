@@ -36,7 +36,7 @@ The user's concept of 2026-11-20:
 | Flight time and energy | Bee35 hover 3.7 min loaded and 7.0 min empty (6S 1100 mAh, estimated). A delivery uses about 5.5 Wh of 20.7 usable, 71 s at 20–60 m standoff. Reach is about 450 m slant at a 20 % reserve. |
 | **Does the balcony delivery work?** | **Yes: 97 %** of missions deliver and return to the dock hand-off point. The box lands 6 cm from the mark (median), at 0.6 m sign size. |
 | Does the sign size matter? | **Yes.** A 0.3 m triangle gives 86 % (railing strikes). 0.6 m and 1.0 m perform the same. A sign barometer adds nothing. |
-| **Does the passive dock recovery meet 95 % at moderate hover, 6 m/s?** | **Not as specified: 35 %**; 56 % with nominal sensors; 62 % with the spec's fourth anchor. **With two changes it does: 98 %** with nominal sensors, 93 % over all four sensor conditions. With the four controller options added (section 5), 97 % over all four. |
+| **Does the passive dock recovery meet 95 % at moderate hover, 6 m/s?** | **Not as specified: 35 %**; 56 % with nominal sensors; 62 % with the spec's fourth anchor. **With two changes it does: 98 %** with nominal sensors, 93 % over all four sensor conditions. With the controller options, 97 % over all four; with a mothership built to the section 5 spec, 98.8 %. See section 5. |
 | What gets it there? | The mothership holds position relative to the air (drifts with the mean wind) instead of over the ground: 89 %. Add a short-range UWB beacon at each pocket: **98 %**, and 97 % or better at every wind from 0 to 9 m/s. |
 | Where does the dock work? | As specified: up to 3 m/s with nominal sensors, 78–87 %; no cell reaches 95 %. With drift, pocket beacons and the controller options: 94 % over all 288 cells, 172 of 288 cells at 95 % or better, every wind 93–95 %. Gusty hover is the limit at 87 %. |
 | Does the launch meet the spec? | Every criterion except "does not touch a post", which the slot geometry makes impossible (100 % touch). Without that clause, 99.995 %. |
@@ -132,18 +132,21 @@ combination the observer makes no difference: without it, 0.943 over all cells a
 **Gusty hover is now the limit (87 %).** Its failures are prop strikes, final position and
 not seated: the dock moving under the drone during contact.
 
-**A mothership spec drawn from these results** (2026-11-21). Not simulated as a new airframe.
-"Simulated" means the sim measured the effect on the Pioneer model.
+**A mothership spec drawn from these results** (2026-11-21). The rows marked simulated were
+tested on the Pioneer model (`PHASE_3.md` section 5.7). Together, with drift, pocket beacons
+and the soft cutoff, calibration and feedforward: **98.2 % over all 288 cells, 98.8 % at the
+target cell under all four sensor conditions, no cell below 90 %**. The steadier hover is
+prescribed, not flown: whether an airframe achieves it is not modelled here.
 
 | spec | target | basis |
 |---|---|---|
-| hover steadiness in 6–9 m/s turbulence | sway ≤ 0.5 m, up-down ≤ 0.2 m, yaw ≤ 5°, tilt ≤ 2° rms or better (calm: 99 %, moderate: 97 %, gusty: 87 %) | simulated |
+| hover steadiness in 6–9 m/s turbulence | sway ≤ 0.5 m, up-down ≤ 0.2 m, yaw ≤ 5°, tilt ≤ 2° rms or better | simulated: half the hover motion takes gusty hover from 92 % to 99 % (nominal sensors). **The row that matters** |
 | hover relative to the air | a firmware mode with a hover wind estimate to about ± 0.5 m/s | simulated with a perfect estimate |
-| lift-rotor clearance | rotor tips ≥ 0.5 m outboard of the dock, or well below the deck; dock out of the rotor inflow (on the Pioneer model the strike zone starts 0.06 m outboard of the floor) | inferred: prop strike is the largest remaining failure class |
+| lift-rotor clearance | rotor tips ≥ 0.5 m outboard of the dock, or well below the deck; dock out of the rotor inflow (on the Pioneer model the strike zone starts 0.06 m outboard of the floor) | simulated: prop strikes 15 → 2 of 2,160, but recovery unchanged (those drones miss the pocket anyway). A safety row |
 | dock position | pocket row centred on the CG and the yaw axis | geometry |
 | hover thrust margin | thrust/weight ≥ 1.6 at full weight; 8 rotors | judgement |
 | wing | small area in hover (gust load) | judgement |
-| motion broadcast | acceleration at ≥ 50 Hz, ≤ 20 ms latency | 10 Hz simulated (+2.5 points at 9 m/s); the faster rate is inferred |
+| motion broadcast | acceleration at ≥ 50 Hz, ≤ 20 ms latency | simulated: +1 point at moderate hover, none in gusty |
 | payload | ≥ 6 kg (4.08 kg load + fairing + margin) | sizing |
 | hover endurance at full weight | ≥ 8 min on top of the cruise reserve | rough estimate |
 | drone row | faired or in an internal bay (37 N exposed against about 7 N faired at cruise) | sizing |
