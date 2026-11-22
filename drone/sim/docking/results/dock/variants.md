@@ -27,6 +27,13 @@ Nominal sensors, the 72 cells hover x wind x neighbours x box, seeds 1-60 (spec4
 | sp_steady | spec mothership: half the hover motion | **0.994** | **0.994** | 0.994 | 1.000 | 0.996 | 0.983 | 0.058 | 1.000 | 0.942 | 2160 |
 | sp_bcast | spec mothership: motion broadcast at 50 Hz, 10-20 ms | **0.968** | **0.989** | 0.974 | 0.970 | 0.970 | 0.956 | 0.083 | 1.000 | 0.917 | 2160 |
 | sp_all | spec mothership: all three | **0.995** | **1.000** | 0.998 | 0.996 | 0.994 | 0.991 | 0.051 | 1.000 | 0.949 | 2160 |
+| ch_base | channel dock: one walled lane, 0.50 m funnel mouth at the rear, drones nose to tail | **0.528** | **0.222** | 0.956 | 0.933 | 0.222 | 0.003 | 0.805 | 0.807 | 0.000 | 1440 |
+| ch_ctl | channel + soft cutoff, parked calibration, dock feedforward | **0.528** | **0.203** | 0.961 | 0.939 | 0.203 | 0.011 | 0.806 | 0.808 | 0.000 | 1440 |
+| ch_drift | channel + drifting hover | **0.949** | **0.953** | 0.956 | 0.964 | 0.953 | 0.925 | 0.912 | 0.918 | 0.000 | 1440 |
+| ch_drift_ctl | channel + drift + the three controller options | **0.898** | **0.961** | 0.919 | 0.902 | 0.898 | 0.874 | 0.891 | 0.908 | 0.000 | 2160 |
+| ch_wide_drift | as ch_drift_ctl, 0.80 m mouth | **0.967** | **0.975** | 0.978 | 0.972 | 0.975 | 0.944 | 0.915 | 0.919 | 0.000 | 1440 |
+| ch_narrow_drift | as ch_drift_ctl, 0.35 m mouth | **0.960** | **0.972** | 0.969 | 0.958 | 0.972 | 0.942 | 0.915 | 0.919 | 0.000 | 1440 |
+| ch_pb_drift | as ch_drift_ctl, plus a short-range beacon by each slot | **0.968** | **0.975** | 0.989 | 0.975 | 0.975 | 0.933 | 0.910 | 0.916 | 0.000 | 1440 |
 | base_ctl | spec baseline + all four controller options | **0.670** | **0.672** | 0.944 | 0.947 | 0.672 | 0.117 | 0.111 | 1.000 | 0.889 | 1440 |
 
 Main recovery failures:
@@ -56,4 +63,11 @@ Main recovery failures:
 - sp_steady: {'final_position': 8, 'timeout_not_landed': 3, 'prop_strike': 2, 'not_seated': 1}
 - sp_bcast: {'not_seated': 28, 'prop_strike': 17, 'final_position': 11, 'post_speed': 4, 'touchdown_speed': 4}
 - sp_all: {'not_seated': 6, 'final_position': 4, 'timeout_not_landed': 1}
+- ch_base: {'final_position': 352, 'fallback_after_aborts': 116, 'over_time': 85, 'timeout_not_landed': 54, 'prop_strike': 34}
+- ch_ctl: {'final_position': 353, 'fallback_after_aborts': 111, 'over_time': 106, 'timeout_not_landed': 39, 'prop_strike': 30}
+- ch_drift: {'final_position': 30, 'timeout_not_landed': 17, 'not_seated': 13, 'touchdown_speed': 6, 'over_time': 4}
+- ch_drift_ctl: {'final_position': 90, 'not_seated': 52, 'over_time': 36, 'timeout_not_landed': 16, 'prop_strike': 10}
+- ch_wide_drift: {'final_position': 33, 'not_seated': 8, 'over_time': 4, 'touchdown_speed': 1, 'timeout_not_landed': 1}
+- ch_narrow_drift: {'final_position': 27, 'over_time': 16, 'timeout_not_landed': 6, 'fallback_after_aborts': 4, 'touchdown_speed': 2}
+- ch_pb_drift: {'final_position': 31, 'over_time': 6, 'not_seated': 5, 'timeout_not_landed': 3, 'touchdown_speed': 1}
 - base_ctl: {'prop_strike': 152, 'not_seated': 128, 'touched_parked': 83, 'timeout_not_landed': 40, 'final_position': 26}

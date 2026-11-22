@@ -23,7 +23,7 @@ from .config import G_M_S2, RHO_KG_M3
 from .motion import MothershipMotion, Wind, cross
 from .scene import DroneSpec, build
 
-CAT_FLOOR, CAT_RIDGE, CAT_POST, CAT_FRAME = 1, 2, 3, 4
+CAT_FLOOR, CAT_RIDGE, CAT_POST, CAT_FRAME, CAT_WALL, CAT_STOP = 1, 2, 3, 4, 5, 6
 CAT_D_BODY, CAT_D_PAD, CAT_D_BRACKET, CAT_D_BOX = 10, 11, 12, 13
 GROUP_UWB = np.array([0, 1, 1, 0, 0, 0], np.uint8)        # airframe + drone bodies block UWB
 GROUP_ALL = np.array([1, 1, 1, 1, 1, 0], np.uint8)
@@ -46,6 +46,10 @@ def _cat_of(name: str, drone_names):
         return -1, CAT_RIDGE
     if name.startswith("post"):
         return -1, CAT_POST
+    if name.startswith(("wall", "funnel")):
+        return -1, CAT_WALL
+    if name.startswith("stop"):
+        return -1, CAT_STOP
     return -1, CAT_FRAME
 
 
@@ -112,7 +116,8 @@ class DockSim:
         self.foot_B = np.array([[x, yc, z] for x in gx for z in gx])
         br = b["bracket"]
         pts = [[sx * hx, y, sz * hz] for sx in (1, -1) for sz in (1, -1) for y in (0.0, b["size_m"][1])]
-        pts += [[sx * br["mouth_half_width_m"], br["y_min_m"], br["mouth_z_m"]] for sx in (1, -1)]
+        if not cfg.get("channel_dock", {}).get("enabled", False):
+            pts += [[sx * br["mouth_half_width_m"], br["y_min_m"], br["mouth_z_m"]] for sx in (1, -1)]
         self.part_pts_B = np.array(pts)
         if any(ds.box for ds in drones):
             bx = b["box"]

@@ -94,49 +94,53 @@ def build_xml(cfg, drones: list[DroneSpec]) -> str:
         world.append(f'<geom name="{name}" type="{typ}" group="{group}" priority="{priority}" '
                      f'friction="{mu} 0.005 0.0001" solref="{solref}" {attrs}/>')
 
-    # floor plate with the four box wells
-    fl = d["floor"]
-    t = fl["thickness_m"]
-    zh = fl["z_half_m"]
-    wh = d["well_size_m"] / 2
-    yc = -t / 2
+    chan = cfg.get("channel_dock", {}).get("enabled", False)
+    if chan:
+        _channel_geoms(cfg, dgeom, assets)
+    else:
+        # floor plate with the four box wells
+        fl = d["floor"]
+        t = fl["thickness_m"]
+        zh = fl["z_half_m"]
+        wh = d["well_size_m"] / 2
+        yc = -t / 2
 
-    def fbox(name, x0, x1, z0, z1):
-        dgeom(name, "box", pos=_v([(x0 + x1) / 2, yc, (z0 + z1) / 2]), size=_v([(x1 - x0) / 2, t / 2, (z1 - z0) / 2]))
+        def fbox(name, x0, x1, z0, z1):
+            dgeom(name, "box", pos=_v([(x0 + x1) / 2, yc, (z0 + z1) / 2]), size=_v([(x1 - x0) / 2, t / 2, (z1 - z0) / 2]))
 
-    fbox("floor_stbd", fl["x_min_m"], fl["x_max_m"], wh, zh)
-    fbox("floor_port", fl["x_min_m"], fl["x_max_m"], -zh, -wh)
-    xs = sorted(d["pocket_x_m"])
-    edges = [fl["x_min_m"]] + [v for x in xs for v in (x - wh, x + wh)] + [fl["x_max_m"]]
-    for i in range(0, len(edges), 2):
-        fbox(f"floor_mid{i // 2}", edges[i], edges[i + 1], -wh, wh)
+        fbox("floor_stbd", fl["x_min_m"], fl["x_max_m"], wh, zh)
+        fbox("floor_port", fl["x_min_m"], fl["x_max_m"], -zh, -wh)
+        xs = sorted(d["pocket_x_m"])
+        edges = [fl["x_min_m"]] + [v for x in xs for v in (x - wh, x + wh)] + [fl["x_max_m"]]
+        for i in range(0, len(edges), 2):
+            fbox(f"floor_mid{i // 2}", edges[i], edges[i + 1], -wh, wh)
 
-    # ridges between pockets and end wedges (centre the drone along x)
-    r = d["ridge"]
-    for i, xr in enumerate(r["x_m"]):
-        hb = r["base_m"] / 2
-        assets.append(prism_mesh(f"ridge{i}", [(xr - hb, 0), (xr + hb, 0), (xr, r["height_m"])], -r["z_half_m"], r["z_half_m"]))
-        dgeom(f"ridge{i}", "mesh", mesh=f"ridge{i}", mu=ct["skid_ridge_mu"])
-    ew = d["end_wedge"]
-    for s, nm in [(1, "front"), (-1, "rear")]:
-        pts = [(s * ew["x_inner_m"], 0), (s * ew["x_outer_m"], ew["height_m"]), (s * ew["x_outer_m"], 0)]
-        assets.append(prism_mesh(f"wedge_{nm}", pts, -r["z_half_m"], r["z_half_m"]))
-        dgeom(f"wedge_{nm}", "mesh", mesh=f"wedge_{nm}", mu=ct["skid_ridge_mu"])
-    lp = d["starboard_lip"]
-    assets.append(prism_mesh_zy("lip", [(lp["z_inner_m"], 0), (lp["z_outer_m"], lp["height_m"]), (lp["z_outer_m"], 0)],
-                                -ew["x_outer_m"], ew["x_outer_m"]))
-    dgeom("lip", "mesh", mesh="lip", mu=ct["skid_ridge_mu"])
+        # ridges between pockets and end wedges (centre the drone along x)
+        r = d["ridge"]
+        for i, xr in enumerate(r["x_m"]):
+            hb = r["base_m"] / 2
+            assets.append(prism_mesh(f"ridge{i}", [(xr - hb, 0), (xr + hb, 0), (xr, r["height_m"])], -r["z_half_m"], r["z_half_m"]))
+            dgeom(f"ridge{i}", "mesh", mesh=f"ridge{i}", mu=ct["skid_ridge_mu"])
+        ew = d["end_wedge"]
+        for s, nm in [(1, "front"), (-1, "rear")]:
+            pts = [(s * ew["x_inner_m"], 0), (s * ew["x_outer_m"], ew["height_m"]), (s * ew["x_outer_m"], 0)]
+            assets.append(prism_mesh(f"wedge_{nm}", pts, -r["z_half_m"], r["z_half_m"]))
+            dgeom(f"wedge_{nm}", "mesh", mesh=f"wedge_{nm}", mu=ct["skid_ridge_mu"])
+        lp = d["starboard_lip"]
+        assets.append(prism_mesh_zy("lip", [(lp["z_inner_m"], 0), (lp["z_outer_m"], lp["height_m"]), (lp["z_outer_m"], 0)],
+                                    -ew["x_outer_m"], ew["x_outer_m"]))
+        dgeom("lip", "mesh", mesh="lip", mu=ct["skid_ridge_mu"])
 
-    # guide posts: capsule shaft + soft tip sphere
-    p = d["post"]
-    pr = p["radius_sim_m"]
-    for i, xc in enumerate(d["pocket_x_m"]):
-        for k, dx in enumerate(p.get("x_offsets_m", [0.0])):      # variant: two posts per pocket
-            xp = xc + dx
-            dgeom(f"post{i}_{k}", "capsule", mu=ct["post_bracket_mu"],
-                  fromto=_v([xp, pr, p["z_m"], xp, p["height_m"] - pr, p["z_m"]]), size=f"{pr}")
-            dgeom(f"post_tip{i}_{k}", "sphere", mu=ct["post_bracket_mu"], solref="0.02 1.0",
-                  pos=_v([xp, p["height_m"], p["z_m"]]), size=f'{p["tip_radius_m"]}')
+        # guide posts: capsule shaft + soft tip sphere
+        p = d["post"]
+        pr = p["radius_sim_m"]
+        for i, xc in enumerate(d["pocket_x_m"]):
+            for k, dx in enumerate(p.get("x_offsets_m", [0.0])):      # variant: two posts per pocket
+                xp = xc + dx
+                dgeom(f"post{i}_{k}", "capsule", mu=ct["post_bracket_mu"],
+                      fromto=_v([xp, pr, p["z_m"], xp, p["height_m"] - pr, p["z_m"]]), size=f"{pr}")
+                dgeom(f"post_tip{i}_{k}", "sphere", mu=ct["post_bracket_mu"], solref="0.02 1.0",
+                      pos=_v([xp, p["height_m"], p["z_m"]]), size=f'{p["tip_radius_m"]}')
 
     # support, fairing, airframe shapes
     py = d["pylon"]
@@ -147,8 +151,13 @@ def build_xml(cfg, drones: list[DroneSpec]) -> str:
     assets.append(prism_mesh("fairing", [(fa["x_min_m"], 0), (fa["x_min_m"], fa["top_y_m"]), (fa["x_max_m"], 0)],
                              -fa["z_half_m"], fa["z_half_m"]))
     dgeom("fairing", "mesh", mesh="fairing")
-    for nm in ("fuselage", "wing", "fin"):
-        lo, hi = np.array(ma[f"{nm}_box_m"][0]), np.array(ma[f"{nm}_box_m"][1])
+    shapes = [("fuselage", ma["fuselage_box_m"]), ("wing", ma["wing_box_m"])]
+    if "fin_boxes_m" in ma:                                   # channel variant: twin fins clear of the lane
+        shapes += [(f"fin{k}", bx) for k, bx in enumerate(ma["fin_boxes_m"])]
+    else:
+        shapes.append(("fin", ma["fin_box_m"]))
+    for nm, bx in shapes:
+        lo, hi = np.array(bx[0]), np.array(bx[1])
         dgeom(nm, "box", group=1, pos=_v((lo + hi) / 2), size=_v((hi - lo) / 2))
 
     # drones
@@ -186,7 +195,7 @@ def build_xml(cfg, drones: list[DroneSpec]) -> str:
         # bracket(s): end plate, slot walls, fences (variant: one bracket per post offset)
         ze = br["slot_end_z_m"]
         zm = br["slot_mouth_z_m"]
-        for kb, bx0 in enumerate(br.get("x_offsets_m", [0.0])):
+        for kb, bx0 in enumerate([] if chan else br.get("x_offsets_m", [0.0])):
             bgeom(f"br_end{kb}", "box", 3, ct["post_bracket_mu"], pos=_v([bx0, yb, ze + th / 2]),
                   size=_v([sw + th, hb_y, th / 2]))
             for s, sn in [(1, "p"), (-1, "n")]:
@@ -204,6 +213,16 @@ def build_xml(cfg, drones: list[DroneSpec]) -> str:
                 ang = math.atan2(-u[1], u[0])             # rotation about +y mapping local x onto (u_x, ., u_z)
                 bgeom(f"br_fence{sn}{kb}", "box", 3, ct["post_bracket_mu"], pos=_v([bx0 + mid[0], yb, mid[1]]),
                       size=_v([L / 2, hb_y, th / 2]), euler=f"0 {math.degrees(ang):.4f} 0")
+        if chan:                                   # channel variant: a rear plate up to bumper_top_y_m (a front
+            chd = cfg["channel_dock"]              # plate leans forward when the drone pitches to push and holds
+            ht = (chd["bumper_top_y_m"] - bs[1]) / 2   # the body 5-10 mm short; the body nose meets the plate)
+            rb = chd["nose_bar_radius_m"]
+            bgeom("bumpn", "capsule", 2, ct["body_body_mu"],
+                  fromto=_v([bs[0] / 2 + rb, chd["nose_bar_y_m"], -(bs[2] / 2 - 0.02), bs[0] / 2 + rb, chd["nose_bar_y_m"],
+                             bs[2] / 2 - 0.02]), size=f"{rb}")
+            for sgn, bn in ((-1, "r"),):
+                bgeom(f"bump{bn}", "box", 2, ct["body_body_mu"], pos=_v([sgn * (bs[0] / 2 - 0.0015), bs[1] + ht, 0]),
+                      size=_v([0.0015, ht, bs[2] / 2 - 0.015]))
         if ds.box:
             bx = b["box"]
             bgeom("box", "box", 4, ct["body_body_mu"], pos=_v([0, -bx["rim_drop_m"] - bx["size_m"][1] / 2, 0]),
@@ -233,6 +252,67 @@ def build_xml(cfg, drones: list[DroneSpec]) -> str:
     {''.join(bodies)}
   </worldbody>
 </mujoco>"""
+
+
+def _channel_geoms(cfg, dgeom, assets):
+    """Channel dock variant: floor with box wells at the slots, a funnel apron, straight walls, a front stop."""
+    from .config import channel_geometry
+    d, ch = cfg["dock"], cfg["channel_dock"]
+    g = channel_geometry(cfg)
+    t = d["floor"]["thickness_m"]
+    yc = -t / 2
+    wh = d["well_size_m"] / 2
+    iw, wt, hw = ch["inner_half_width_m"], ch["wall_thickness_m"], ch["wall_height_m"]
+    mw = ch["mouth_half_width_m"]
+    xf, xe, xm = ch["front_stop_x_m"], g["x_entry"], g["x_mouth"]
+    mu_w = ch["wall_mu"]
+
+    def fbox(name, x0, x1, z0, z1):
+        dgeom(name, "box", pos=_v([(x0 + x1) / 2, yc, (z0 + z1) / 2]), size=_v([(x1 - x0) / 2, t / 2, (z1 - z0) / 2]))
+
+    zo = iw + ch["upper_extra_clearance_m"] + wt
+    fbox("floor_stbd", xe, xf, wh, zo)
+    fbox("floor_port", xe, xf, -zo, -wh)
+    xs = sorted(g["slots"])
+    edges = [xe] + [v for x in xs for v in (x - wh, x + wh)] + [xf]
+    for i in range(0, len(edges), 2):
+        fbox(f"floor_mid{i // 2}", edges[i], edges[i + 1], -wh, wh)
+    fbox("floor_apron", xm, xe, -(mw + wt), mw + wt)
+    # straight walls: a low guide rail (inner face at +-iw, up to rail_h) with a 45 deg chamfer, and an upper wall
+    # set back by the extra clearance (a drone banked a few degrees jams across the tight rail width like a
+    # drawer; the rail centres it only as it settles onto the floor), plus the front stop
+    iu = iw + ch["upper_extra_clearance_m"]
+    rh = ch["rail_height_m"]
+    for sgn, nm in ((1, "s"), (-1, "p")):
+        dgeom(f"wall_rail_{nm}", "box", mu=mu_w, pos=_v([(xe + xf) / 2, rh / 2, sgn * (iw + (iu - iw + wt) / 2)]),
+              size=_v([(xf - xe) / 2, rh / 2, (iu - iw + wt) / 2]))
+        assets.append(prism_mesh_zy(f"wall_cham_{nm}", [(sgn * iw, rh), (sgn * iu, rh), (sgn * iu, rh + (iu - iw))],
+                                    xe, xf))
+        dgeom(f"wall_cham_{nm}", "mesh", mu=mu_w, mesh=f"wall_cham_{nm}")
+        dgeom(f"wall_{nm}", "box", mu=mu_w, pos=_v([(xe + xf) / 2, (rh + hw) / 2, sgn * (iu + wt / 2)]),
+              size=_v([(xf - xe) / 2, (hw - rh) / 2, wt / 2]))
+        # rail lead-in: the funnel ends at the upper-wall width; taper the rail in over 5 cm so a drone sliding
+        # on its skids is not stopped by the rail's square end
+        li = 0.05
+        assets.append(prism_mesh(f"wall_lead_{nm}", [(xe - li, 0.0), (xe, 0.0), (xe, rh)], 0.0, 1.0)
+                      if False else f'<mesh name="wall_lead_{nm}" vertex="' + _v([
+                          xe - li, 0.0, sgn * iu, xe, 0.0, sgn * iw, xe, 0.0, sgn * (iu + wt),
+                          xe - li, rh, sgn * iu, xe, rh, sgn * iw, xe, rh, sgn * (iu + wt)]) + '"/>')
+        dgeom(f"wall_lead_{nm}", "mesh", mu=mu_w, mesh=f"wall_lead_{nm}")
+        # funnel wall: inner face from (xe, iu) to (xm, mw)
+        a = np.array([xe, sgn * iu])
+        e = np.array([xm, sgn * mw])
+        dv = e - a
+        L = float(np.linalg.norm(dv))
+        u = dv / L
+        n_out = np.array([-u[1], u[0]])
+        if np.dot(n_out, np.array([0.0, sgn])) < 0:
+            n_out = -n_out
+        mid = (a + e) / 2 + n_out * wt / 2
+        ang = math.atan2(-u[1], u[0])
+        dgeom(f"funnel_{nm}", "box", mu=mu_w, pos=_v([mid[0], hw / 2, mid[1]]), size=_v([L / 2, hw / 2, wt / 2]),
+              euler=f"0 {math.degrees(ang):.4f} 0")
+    dgeom("stop_front", "box", mu=mu_w, pos=_v([xf + 0.005, hw / 2, 0.0]), size=_v([0.005, hw / 2, iu]))
 
 
 def build(cfg, drones: list[DroneSpec]):

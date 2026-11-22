@@ -516,3 +516,76 @@ Caveats: the steadier hover is prescribed, not flown. Whether an airframe meets
 "half the Pioneer's assumed hover motion" depends on its size, thrust margin and wing area,
 which this sim does not model. The Pioneer's own hover motion is itself an estimate (spec
 section 8.2). Drift still assumes a perfect wind estimate.
+
+### 5.8 Channel dock variant (2026-11-22)
+
+The user's alternative to four precise pockets: **one walled lane along the centreline, open at the rear through a
+wide funnel**, with drones flying in nose first and stopping nose to tail. Geometry (`channel_dock` in
+`vehicles.yaml`; drawing: `docking/figures/channel_dock_drawing.png`):
+
+- funnel 0.40 m long from a 0.50 m mouth; lane 0.91 m; slots 0.22 m apart; front stop;
+- walls 0.22 m high, 10 mm clear of the drone, with a 3 mm guide rail (0.03 m high, 45 deg chamfer) at the floor;
+- each drone carries a low round nose bar and a 0.24 m rear plate; no catch bracket;
+- the single fin moves to twin fins at +-0.40 m (A3 on the starboard one), or it blocks the mouth;
+- floor magnets and box wells at the slots, as in the pockets.
+
+The drone descends just inside the mouth to 0.10 m, flies down the lane at 0.20 m/s (0.10 m/s in the last
+0.2 m), stops on the drone ahead (flow speed under 0.02 m/s), confirms the stop, then settles with a forward
+push and spools down. Launch is straight up with the thrust tilted 4 deg back. Fifteen development steps, and why
+each was needed: `DESIGN_LOG.md` section D.
+
+**Moderate hover, nominal sensors** (24 cells; 60 trials each except `ch_drift_ctl`, 30):
+
+| variant | recovery | 0 m/s | 3 m/s | **6 m/s** | 9 m/s | launch |
+|---|---|---|---|---|---|---|
+| baseline (pockets, as specified) | 0.601 | 0.869 | 0.872 | **0.581** | 0.081 | 1.000 * |
+| ch_base: channel, no drift | 0.528 | 0.956 | 0.933 | **0.222** | 0.003 | 0.807 |
+| ch_ctl: + controller options | 0.528 | 0.961 | 0.939 | **0.203** | 0.011 | 0.808 |
+| drift (pockets) | 0.864 | 0.869 | 0.842 | **0.894** | 0.850 | 1.000 * |
+| **ch_drift: channel + drift** | **0.949** | 0.956 | 0.964 | **0.953** | 0.925 | 0.918 |
+| ch_drift_ctl: + controller options | 0.965 | 0.978 | 0.972 | **0.961** | 0.950 | 0.912 |
+| ch_wide_drift: 0.80 m mouth | 0.967 | 0.978 | 0.972 | **0.975** | 0.944 | 0.919 |
+| ch_narrow_drift: 0.35 m mouth | 0.960 | 0.969 | 0.958 | **0.972** | 0.942 | 0.919 |
+| ch_pb_drift: + a beacon by each slot | 0.968 | 0.989 | 0.975 | **0.975** | 0.933 | 0.916 |
+| pocket_drift (pockets + beacons + drift) | 0.974 | 0.972 | 0.978 | **0.981** | 0.967 | 1.000 * |
+| pd_nodob (+ controller options) | 0.988 | 1.000 | 0.989 | **0.978** | 0.983 | 1.000 * |
+
+\* without the "does not touch a post" clause, which the pocket slot always fails.
+
+**Full matrix** (`ch_drift_ctl`, 288 cells x 30 trials, against the pockets on the same seeds):
+
+| condition | baseline | pocket_drift | pd_nodob | **ch_drift_ctl** |
+|---|---|---|---|---|
+| all 288 cells | 0.382 | 0.915 | 0.943 | **0.801** |
+| calm / moderate / gusty hover | 0.420 / 0.389 / 0.339 | 0.955 / 0.933 / 0.858 | 0.984 / 0.969 / 0.876 | 0.901 / 0.870 / **0.633** |
+| nominal sensors: calm / moderate / gusty | - | - | 0.994 / 0.988 / 0.918 | 0.983 / 0.965 / 0.746 |
+| ranging noise x 2 | 0.282 | 0.887 | 0.935 | 0.783 |
+| one anchor lost (A1 / A2 / A3 for the channel: 0.52 / 0.83 / 0.78) | 0.292 | 0.898 | 0.931 | 0.712 |
+| 9 m/s | 0.036 | 0.902 | 0.935 | 0.769 |
+| target cell, all four sensor conditions | 0.361 | 0.938 | 0.967 | 0.875 |
+| target cell, nominal sensors | 0.589 | 0.972 | 0.978 | 0.961 |
+| cells at 95 % or better | 3 | 122 | 162 | 76 |
+| median time to land | | | 21.0 s | 25.2 s |
+
+What the channel shows:
+
+1. **It does remove the need for a precise catch.** With drift and only the three airframe beacons, the
+   channel lands 94.9 % at moderate hover against the pockets' 86.4 %, and 95 % at the target cell. The pockets
+   needed four short-range beacons to get there; the channel gets most of the way without them.
+2. **But its mouth is where the airframe beacons are worst.** The descent point is 0.7 m behind the wing,
+   outside the beacon triangle. With ranging noise x 2 or an anchor lost, the estimate there is off by more than
+   the mouth, the down range finds no deck, and the drone climbs out and retries (2,946 "no deck" aborts in
+   8,640 trials; most "fallback after aborts" and "over time" failures). Losing the starboard wingtip anchor A1
+   halves recovery. The pockets sit inside the triangle.
+3. **Gusty hover is much worse: 63 % (75 % with nominal sensors).** The deck heaving 0.4 m rms moves the lane
+   under a drone flying 0.10 m above its floor; the same "no deck" check and short stops follow.
+4. **Without drift it is worse than the pockets.** In 6-9 m/s head wind the push-only settle either binds on the
+   drone ahead (body-on-body friction) or lands short. The channel needs the drifting hover.
+5. **Mouth width hardly matters** (0.35-0.80 m: 96-97 %). The limit is the descent to the mouth, not the funnel.
+6. **Launch is weaker: 89 %** (80 % with a box, 98 % without): slow climb-outs with a box in the well, magnets
+   not released while the thrust is tilted back, and knocks on the drone ahead.
+7. **Two forms of the idea fail outright:** sliding in on the skids (empty slots' floor magnets catch the
+   skids), and a lane only 3 mm wider than the drone all the way up (a drone banked ~8 deg jams like a drawer).
+
+Not yet run: the channel with beacons by the slots (or at the mouth) over the full matrix. Point 2 above says
+that is where most of the channel's loss is.

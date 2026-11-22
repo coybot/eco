@@ -62,6 +62,14 @@ BCAST50 = {"dock_sensors": {"broadcast": {"rate_hz": 50, "delay_s": [0.01, 0.02]
            "bee35": {"controller": {"dock_accel_lpf_s": 0.1}}}  # 50 Hz, 10-20 ms (was 10 Hz, 50-100 ms)
 CTL_SPEC = dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True)  # controller options used with the spec
 
+# channel dock (user's idea, 2026-11-22): one walled lane, wide funnel mouth at the rear, drones nose to tail
+CHANNEL = {"channel_dock": {"enabled": True}}
+CH_WIDE = _merge(_merge({}, CHANNEL), {"channel_dock": {"mouth_half_width_m": 0.40}})     # 0.80 m mouth
+CH_NARROW = _merge(_merge({}, CHANNEL), {"channel_dock": {"mouth_half_width_m": 0.175}})  # 0.35 m mouth
+CH_SLIDE = _merge(_merge({}, CHANNEL), {"channel_dock": {"approach_mode_label": "slide"}})
+CH_SLIDE_LOOSE = _merge(_merge({}, CH_SLIDE), {"channel_dock": {"inner_half_width_m": 0.115,          # 10 mm rail
+                                                                 "upper_extra_clearance_m": 0.005}})  # clearance
+
 POCKET = {"dock_sensors": {"pocket_beacons": {"enabled": True}}}
 POCKET_SAME = {"dock_sensors": {"pocket_beacons": {"enabled": True, "sigma_m": 0.05, "bias_max_m": 0.05}}}
 STILL = {"mothership_airframe": {"hover_motion_scale": 0.0}}
@@ -108,6 +116,16 @@ EXPS = {
     "sp_steady": dict(cfg=_merge(_merge(_merge({}, POCKET), DRIFT), STEADY), opts=CTL_SPEC),
     "sp_bcast": dict(cfg=_merge(_merge(_merge({}, POCKET), DRIFT), BCAST50), opts=CTL_SPEC),
     "sp_all": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, POCKET), DRIFT), ROTORS_OUT), STEADY), BCAST50), opts=CTL_SPEC),
+    # channel dock variants (PHASE_3 section 5.8). Triangle anchors only: no pocket beacons
+    "ch_base": dict(cfg=CHANNEL),
+    "ch_drift": dict(cfg=_merge(_merge({}, CHANNEL), DRIFT)),
+    "ch_ctl": dict(cfg=CHANNEL, opts=CTL_SPEC),                       # no drift, with the controller options
+    "ch_drift_ctl": dict(cfg=_merge(_merge({}, CHANNEL), DRIFT), opts=CTL_SPEC),
+    "ch_wide_drift": dict(cfg=_merge(_merge({}, CH_WIDE), DRIFT), opts=CTL_SPEC),
+    "ch_narrow_drift": dict(cfg=_merge(_merge({}, CH_NARROW), DRIFT), opts=CTL_SPEC),
+    "ch_slide_drift": dict(cfg=_merge(_merge({}, CH_SLIDE), DRIFT), opts=CTL_SPEC),
+    "ch_slide_loose_drift": dict(cfg=_merge(_merge({}, CH_SLIDE_LOOSE), DRIFT), opts=CTL_SPEC),
+    "ch_pb_drift": dict(cfg=_merge(_merge(_merge({}, CHANNEL), POCKET), DRIFT), opts=CTL_SPEC),  # + a beacon by each slot
     "base_ctl": dict(opts=dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True, dob_tau_s=0.1)),
     "pocket_all_drift_nodual": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, LIP10), WINDWARD), SLOT20), DRIFT),
                                                POCKET), cell=dict(anchor_set="spec4")),

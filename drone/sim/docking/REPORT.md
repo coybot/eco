@@ -152,6 +152,26 @@ prescribed, not flown: whether an airframe achieves it is not modelled here.
 | drone row | faired or in an internal bay (37 N exposed against about 7 N faired at cruise) | sizing |
 | UWB | four pocket beacons; the airframe anchors matter less | simulated |
 
+**A channel dock instead of pockets** (user's idea, 2026-11-22; `PHASE_3.md` section 5.8, drawing
+`docking/figures/channel_dock_drawing.png`). One walled lane with a 0.50 m funnel mouth at the rear; drones fly in
+nose first at 0.10 m and stop nose to tail; twin fins clear the mouth.
+
+| | pockets + beacons + drift + controller | channel + drift + controller (no extra beacons) |
+|---|---|---|
+| moderate hover, nominal sensors | 0.988 | 0.965 |
+| same, without the controller options | 0.974 | 0.949 (pockets without beacons: 0.864) |
+| all 288 cells | **0.943** | 0.801 |
+| gusty hover | 0.876 | 0.633 |
+| one anchor lost / ranging noise x 2 | 0.931 / 0.935 | 0.712 / 0.783 |
+| launch (pockets: excluding the post clause) | 1.000 | 0.889 |
+
+The channel removes the need for a precise catch: without extra beacons it does what the pockets needed four
+short-range beacons for, but only with nominal sensors in calm or moderate hover. Its mouth sits 0.7 m behind the
+wing, outside the airframe beacon triangle, so it is more sensitive to ranging noise and lost anchors, and the
+deck's heave in gusty hover moves the lane under the drone. It also needs the drifting hover, launches less
+reliably, and cannot be slid into with passive floor magnets. Not yet run over the full matrix: the channel
+with beacons by the slots or at the mouth.
+
 To re-run a variant: `just remote-run <name> "python -m docksim.matrix run --exp pocket_drift
 --trials 60"` on the remote box, then `python -m docksim.compare --hover moderate`.
 

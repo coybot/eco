@@ -638,6 +638,53 @@ dock_sensors:                        # spec section 6, drone side
   broadcast: {rate_hz: 10, delay_s: [0.05, 0.10], pos_sigma_m: 0.5, vel_sigma_m_s: 0.1, heading_sigma_deg: 2,
               error_tau_s: 5.0}      # [D] errors are Gauss-Markov with 5 s correlation (GNSS-like)
 
+channel_dock:                        # [D] variant (2026-11-22, user's idea): one walled lane along the centreline,
+  enabled: false                     #     open at the rear through a funnel. Drones fly in nose first at entry_y_m
+                                     #     and stop nose to tail against the drone ahead (or the front stop), then
+                                     #     settle onto the magnets. No posts, ridges, lip or catch brackets.
+                                     #     Launch is straight up, last in first out.
+  front_stop_x_m: 0.555              # rear face of the front stop
+  nose_bar_radius_m: 0.005           # a round bar across each drone's nose at nose_bar_y_m: contact with the drone
+  nose_bar_y_m: 0.015                #     ahead stays low on the body, so pitching to push does not hold the skids
+                                     #     back (with contact at the body's top corner, levelling on the floor
+                                     #     walked the drone back 5-17 mm). Slot pitch = 0.21 + 2 r = 0.22 m
+  inner_half_width_m: 0.108          # guide rail: 3 mm clearance each side of the 0.21 m drone
+  rail_height_m: 0.03                # the tight rail only this high (the drone's body sides reach 0.06 m)
+  upper_extra_clearance_m: 0.010     # above the rail the walls stand 10 mm further out: with 3 mm all the way up,
+                                     #     a drone banked ~8 deg jams across the lane like a drawer
+  wall_height_m: 0.22                # guides a drone flying in at entry_y_m (body 0.10-0.16 m) with +-0.05 m of
+                                     #     height wander (the deck heaves 0.2 m rms at moderate hover)
+  wall_thickness_m: 0.006
+  straight_extra_m: 0.03             # straight wall behind the rear slot before the funnel starts
+  funnel_length_m: 0.40
+  mouth_half_width_m: 0.25           # 0.50 m mouth against the pocket bracket's 0.20 m
+  wall_mu: 0.15
+  entry_y_m: 0.10                    # flight height in the lane. Lower fails: the down range (sigma 0.02 m,
+                                     #     min 0.02 m) cannot hold 0.045 m and the drone sinks onto its skids;
+                                     #     optical flow needs 0.08 m
+  entry_speed_m_s: 0.20
+  final_speed_m_s: 0.10               # in the last 0.2 m before the expected slot
+  hold_inside_mouth_m: 0.06          # descend this far inside the mouth
+  stop_push_n: 0.5                   # forward push against the drone ahead while settling (x has no spring then)
+  descent_push_n: 0.5                # push while descending (0.2 N tested: drift case 17/27 vs 25-27/27; body-on-body
+                                     #     friction from a hard push held the drone up in a head wind
+  final_push_n: 0.3                  # forward push held by tilting the thrust while the motors spool down
+  catch_tol_m: 0.15                  # a stop counts as the slot if the estimate is within this of it
+  bumper_top_y_m: 0.24               # a rear plate on each drone reaches this high, so an arriving drone flying at
+                                     #     entry_y_m meets the one ahead instead of riding over it
+  stop_speed_m_s: 0.02               # stopped: forward flow speed below this for stop_window_s
+  stop_window_s: 0.3
+  stop_contact_speed_m_s: 0.3        # pass criterion: speed when touching the drone ahead or the stop
+  twin_fin_z_m: 0.40                 # the single fin blocks the entry: twin fins at +-0.40 m, A3 on the starboard one
+  launch_tilt_back_deg: 4.0          # launch: thrust tilted back during the ramp, so the drone eases off the one
+                                     #     ahead as the magnets let go (level: 23-54 N knocks in 8 of 24 launches)
+  down_sensor_z_m: -0.0865            # drone range/flow sensor moved inboard (was -0.100): 2 mm from the rail its
+                                     #     beam caught the rail top, read short, and the drone climbed over the drone ahead
+  approach_mode_label: fly           # fly: hold entry_y_m all the way in; slide: settle onto the apron and skid in
+  slide_weight_frac: 0.15            # slide: fraction of the weight left on the skids
+  slide_stop_speed_m_s: 0.04         # slide: stopped when the UWB + IMU speed stays below this ...
+  slide_stop_window_s: 0.6           # ... this long (no flow on the skids)
+
 dock_ops:
   launch_order: [P4, P1, P3, P2]
   recovery_order: [P2, P3, P1, P4]

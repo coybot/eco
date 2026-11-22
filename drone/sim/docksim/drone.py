@@ -20,7 +20,7 @@ from collections import deque
 import numpy as np
 
 from .config import G_M_S2
-from .motion import rot_y
+from .motion import rot_y, rot_z
 from .sensors import UWB, Attitude, Broadcast, DownRange, Flow
 
 
@@ -301,6 +301,15 @@ class Pilot:
         self.yaw_gate_deg = self.opts.get("yaw_gate_deg", 4.0)
         self.yaw_ok_t = 0.0
         self.descending = False
+        # channel dock variant
+        self.channel = cfg.get("channel_dock", {}).get("enabled", False)
+        self.push_acc = np.zeros(3)
+        if self.channel:
+            from .config import channel_geometry
+            self.ch = cfg["channel_dock"]
+            g = channel_geometry(cfg)
+            self.ch_x_entry, self.ch_x_mouth = g["x_entry"], g["x_mouth"]
+            self.iz_hold = 0.0
 
     # ------------------------------------------------------------ helpers
     def _goto(self, s, t):
@@ -316,7 +325,17 @@ class Pilot:
         r, _ = self.sim.ray(s, -self.R_LB[:, 1], self.sim.body_id[self.i])
         return (r - 0.01) if r >= 0 else math.nan
 
+    def _lane_floor(self):
+        """Channel variant: over the apron and the lane the floor is flat at y = 0 (the sensor sits outside the box
+        wells), so the expected range is just the sensor height. Using the full map there fails: with a few cm
+        of x error the map puts the sensor over the drone ahead or the front stop and the height goes wrong."""
+        return self.channel and self.nav.r[0] > self.ch_x_mouth - 0.05 and \
+            abs(self.nav.r[2]) < self.ch["mouth_half_width_m"] - 0.06 and self.nav.r[1] < 0.6
+
     def _map_height_assoc(self, z, d=0.03):
+        if self._lane_floor():
+            s = self.nav.r + self.R_LB @ self.down_B
+            return float(s[1] / max(self.R_LB[1, 1], 0.5))
         """Map range nearest to the measurement among a 3x3 grid within +-d of the estimate: the
         surface below is taken to be whichever nearby dock surface explains the reading best."""
         best, bh = math.inf, math.nan
@@ -436,10 +455,35 @@ class Pilot:
                     # Weak spring to the estimate, strong damping on the flow velocity, wind integrator held.
                     vx = self.v_flow[0] if self.flow_age < 0.05 else self.nav.v[0]
                     a[0] = self.ix_hold + self.kp_comply * (self.r_ref[0] - self.nav.r[0]) - self.kv_comply * vx
+                if self.channel and self.state == "ADVANCE" and self.nav.r[0] > self.ch_x_mouth - 0.02:
+                    if not self.complying:            # inside the funnel: the walls steer z; hold the z integrator
+                        self.complying = True
+                        self.iz_hold = float(self.fc.integ[2])
+                        self.ix_wind = float(self.fc.integ[0])   # the drone's head-wind estimate, kept for pushing
+                        self.freeze = (0, 2)
+                    vz = self.v_flow[2] if self.flow_age < 0.05 else self.nav.v[2]
+                    if self.nav.r[0] > self.ch_x_entry - 0.02:
+                        # in the straight lane: fly level sideways and let the walls take the side load. A banked
+                        # drone (holding its wind correction) jams across the 3 mm clearance like a drawer.
+                        a[2] = -self.kv_comply * vz
+                    else:
+                        a[2] = self.iz_hold + self.kp_comply * (0.0 - self.nav.r[2]) - self.kv_comply * vz
+                    if self.ch.get("approach_mode_label", "fly") == "slide" and self.range_low_count >= 3:
+                        # on the skids: thrust carries all but slide_weight_frac of the weight, and the skid
+                        # friction (mu x that weight) is fed forward so the drone slides instead of creeping
+                        a[1] = -self.ch["slide_weight_frac"] * G_M_S2
+                        a[0] += self.cfg["dock"]["contact"]["skid_seat_mu"] * self.ch["slide_weight_frac"] * G_M_S2
+                if self.channel and self.state == "PUSH_DESCEND":
+                    # the drone ahead only blocks forward motion: no x spring (the estimate walks with anchor
+                    # bias); a constant forward push (below) plus damping. The walls steer z: weak z spring.
+                    fl = self.flow_age < 0.05                # no flow below 0.08 m: no damping (the UWB velocity
+                    a[0] = getattr(self, "ix_wind", 0.0) + (-self.kv_comply * self.v_flow[0] if fl else 0.0)
+                    a[2] = -self.kv_comply * self.v_flow[2] if fl else 0.0
                 if self.push:
                     # spec step 10: a sideways push against the post, on top of holding the post position with
-                    # the wind integrator running (a fixed push alone loses the post in a port-side gust)
-                    a[2] -= self.rec["push_force_n"] / self.fc.m
+                    # the wind integrator running (a fixed push alone loses the post in a port-side gust).
+                    # Channel variant: a forward push against the drone ahead.
+                    a = a + self.push_acc
                 self.fc.set_accel(a, self.psi)
         if self.T_est is None:
             self.T_est = self.fc.T_cmd
@@ -476,6 +520,8 @@ class Pilot:
 
     # ------------------------------------------------------------ recovery (spec 10)
     def _recovery(self, t):
+        if self.channel:
+            return self._recovery_channel(t)
         rec = self.rec
         s = self.state
         xo = self.px + self.x_offset
@@ -547,6 +593,7 @@ class Pilot:
                 self.nav.fix(0, self.px, 0.003)
                 self.nav.fix(2, 0.0, 0.003)
                 self.push = True
+                self.push_acc = np.array([0.0, 0.0, -rec["push_force_n"] / self.fc.m])
                 self.push_iz = self.fc.integ[2]
                 # x stiff again with the slot as the reference: a net x force at the post would yaw the drone
                 # about the post (the gust torque exceeds a small quad's yaw authority)
@@ -603,6 +650,183 @@ class Pilot:
                     self._goto("ALIGN", t)
         elif s in ("MOTORS_OFF", "FALLBACK"):
             pass
+
+    # ------------------------------------------------------------ recovery into the channel dock (variant)
+    def _recovery_channel(self, t):
+        rec, ch = self.rec, self.ch
+        s = self.state
+        xh = self.ch_x_mouth + ch["hold_inside_mouth_m"]
+        yin = ch["entry_y_m"]
+        hold = np.array([xh, rec["hold_y_m"], 0.0])
+        low_hold = np.array([xh, 0.4, 0.0])
+        slide = ch.get("approach_mode_label", "fly") == "slide"
+        if s == "INIT":
+            p, _ = self.sim.pose(self.i)
+            self.nav.init(p + self.rng.normal(0, 0.1, 3), 0.15)
+            self.r_ref = self.nav.r.copy()
+            self._goto("SETTLE", t)
+        elif s == "SETTLE":
+            if t - self.t_state > 1.0:
+                self._goto("GOTO_HOLD", t)
+        elif s == "GOTO_HOLD":
+            self._ramp_to(hold, 1.0)
+            if np.linalg.norm(self.nav.r - hold) < 0.08 and np.linalg.norm(self.nav.v) < 0.15 \
+                    and np.allclose(self.r_ref, hold):
+                self._goto("ALIGN", t)
+        elif s == "ALIGN":
+            if t - self.t_state > 1.0:
+                self._goto("DESCEND", t)
+        elif s == "DESCEND":
+            tgt = np.array([xh, yin, 0.0])
+            self.freeze = (1,)
+            self._ramp_to(tgt, rec["descent_speed_m_s"])
+            if self._ch_abort_check(t):
+                return
+            if np.allclose(self.r_ref, tgt) and abs(self.nav.r[1] - tgt[1]) < 0.03:
+                self.freeze = ()
+                self.settle_timer = 0.0
+                self._goto("HOLD_LOW", t)
+        elif s == "HOLD_LOW":
+            if self._ch_abort_check(t):
+                return
+            ok = abs(self.nav.r[1] - yin) < 0.02 and np.linalg.norm(self.nav.v) < 0.06
+            self.settle_timer = self.settle_timer + self.dt_nav if ok else 0.0
+            if self.settle_timer >= 0.5 or (t - self.t_state > 4.0 and abs(self.nav.r[1] - yin) < 0.05):
+                self.travel0 = self.nav.r[0]
+                self.stop_t = 0.0
+                self.complying = False
+                self.freeze = ()
+                self._goto("ADVANCE", t)
+        elif s == "ADVANCE":
+            xk = self.px
+            sp = ch["entry_speed_m_s"] if self.nav.r[0] < xk - 0.2 else ch["final_speed_m_s"]
+            y_ref = -0.02 if slide else yin               # slide: ask for slightly below the floor; the skids carry it
+            self.r_ref = np.array([min(self.r_ref[0] + sp * self.dt_nav, self.nav.r[0] + 0.03), y_ref, 0.0])
+            self.v_ref = np.array([sp, 0.0, 0.0])
+            # stopped: forward speed over the floor from the optical flow (the UWB estimate keeps moving with
+            # anchor bias while the drone is blocked); the UWB + IMU estimate only if flow is missing
+            if self.flow_age < 0.05:
+                slow = abs(self.v_flow[0]) < ch["stop_speed_m_s"]
+                win = ch["stop_window_s"]
+            else:                                         # no flow (on the skids): the noisier UWB + IMU speed
+                slow = abs(self.nav.v[0]) < ch["slide_stop_speed_m_s"]
+                win = ch["slide_stop_window_s"]
+            self.stop_t = self.stop_t + self.dt_nav if slow else 0.0
+            inside = self.nav.r[0] > self.ch_x_entry - 0.05
+            if self.stop_t >= win and inside:
+                if abs(self.nav.r[0] - xk) < ch["catch_tol_m"]:
+                    self.nav.fix(0, xk, 0.003)            # the drone ahead (or the stop) fixes x; the walls fix z
+                    self.nav.fix(2, 0.0, 0.003)
+                    self.push = True
+                    self.push_acc = np.array([ch["stop_push_n"] / self.fc.m, 0.0, 0.0])
+                    self.fc.integ[2] = self.iz_hold
+                    self.complying = False
+                    self.freeze = (0,)
+                    self.v_ref = np.zeros(3)
+                    self.r_ref = np.array([xk, self.nav.r[1], 0.0])
+                    self.descending = False
+                    self.yaw_ok_t = 0.0
+                    self._goto("PUSH_DESCEND", t)
+                    return
+                self._ch_start_abort(t, "wrong_stop")
+                return
+            if t - self.t_state > (xk - self.travel0) / ch["final_speed_m_s"] + 6.0:
+                self._ch_start_abort(t, "no_stop_timeout")
+                return
+            if not inside and self.nav.r[1] < 0.3 and abs(self.nav.r[2]) > ch["mouth_half_width_m"] - 0.06:
+                self._ch_start_abort(t, "pos_err")
+        elif s == "PUSH_DESCEND":
+            fs = rec["final_descent_speed_m_s"]
+            # first confirm the stop: push forward at height until the flow shows no motion for 0.4 s (a gust
+            # that stalls the drone short of the slot is not the drone ahead), then descend
+            vx = self.v_flow[0] if self.flow_age < 0.05 else self.nav.v[0]
+            if not self.descending:
+                self.yaw_ok_t = self.yaw_ok_t + self.dt_nav if abs(vx) < rec["stop_speed_m_s"] else 0.0
+                self.r_ref = np.array([self.px, self.r_ref[1], 0.0])
+                self.v_ref = np.zeros(3)
+                if self.yaw_ok_t >= 0.4 and t - self.t_state > 0.3:
+                    self.descending = True
+                    # descend with a lighter push on top of the wind estimate: the push presses the nose bar on
+                    # the drone ahead, and that friction holds the drone up (in a 9 m/s head wind it hung there)
+                    self.push_acc = np.array([ch["descent_push_n"] / self.fc.m, 0.0, 0.0])
+            else:
+                self.r_ref = np.array([self.px, max(self.r_ref[1] - fs * self.dt_nav, self.nav.r[1] - 0.03), 0.0])
+                self.v_ref = np.array([0.0, -fs, 0.0])
+            if self.descending and self.range_low_count >= rec["cutoff_samples"]:
+                if self.soft_cutoff_s:
+                    self.T0_spool = self.T_est
+                    self._goto("SPOOL_DOWN", t)
+                else:
+                    self.push = False
+                    self.motors_off = True
+                    self.t_motors_off = t
+                    self._goto("MOTORS_OFF", t)
+        elif s == "SPOOL_DOWN":
+            k = max(0.0, 1.0 - (t - self.t_state) / self.soft_cutoff_s)
+            c = k * self.T0_spool
+            self.fc.set_level(self.psi, c)
+            # keep pressing forward against the drone ahead while the thrust ramps down: tilt the thrust
+            # the push plus the head wind, against a thrust that never counts as less than half the weight (the
+            # skids carry the rest and their friction holds the drone)
+            fx = ch["final_push_n"] + self.fc.m * getattr(self, "ix_wind", 0.0)
+            th = float(np.clip(math.atan2(fx, max(c, 0.5 * self.fc.m * G_M_S2)), -0.35, 0.35))
+            self.fc.R_des = rot_y(self.psi) @ rot_z(-th)
+            if k <= 0.0:
+                self.push = False
+                self.motors_off = True
+                self.t_motors_off = t
+                self._goto("MOTORS_OFF", t)
+        elif s == "CLIMB_OUT":
+            self.freeze = (1,)
+            tgt = np.array([self.r_ref[0], rec["hold_y_m"], self.r_ref[2]])
+            self._ramp_to(tgt, 0.8)
+            if self.nav.r[1] > rec["hold_y_m"] - 0.1:
+                self.freeze = ()
+                self._goto("FALLBACK" if self.aborts >= rec["max_aborts"] else "GOTO_HOLD", t)
+        elif s == "ABORT_BACK":
+            tgt = np.array([xh, max(self.nav.r[1], yin + 0.03), 0.0])
+            self._ramp_to(tgt, 0.25)
+            if self.nav.r[0] < xh + 0.03:
+                self._goto("ABORT_UP", t)
+        elif s == "ABORT_UP":
+            self.freeze = (1,)
+            self._ramp_to(low_hold, 0.6)
+            if np.linalg.norm(self.nav.r - low_hold) < 0.08:
+                self.freeze = ()
+                self._goto("FALLBACK" if self.aborts >= rec["max_aborts"] else "ALIGN", t)
+        elif s in ("MOTORS_OFF", "FALLBACK"):
+            pass
+
+    def _ch_abort_check(self, t):
+        # no deck where the estimate says there is one: the down range sees nothing, or much further down than
+        # the map predicts. The estimate is off by more than the mouth; climb straight out and start over.
+        if self.nav.r[1] < 0.8:
+            hp = self._map_height(self.nav.r)
+            r = self.last_range
+            bad = (not math.isfinite(r)) or (math.isfinite(hp) and r > hp + 0.25)
+            self.nodeck_n = getattr(self, "nodeck_n", 0) + 1 if bad else 0
+            if self.nodeck_n >= 5:
+                self.nodeck_n = 0
+                self.aborts += 1
+                self.freeze = ()
+                self.events.append((round(t, 3), "abort:no_deck"))
+                self._goto("CLIMB_OUT", t)
+                return True
+        if self.nav.r[1] < self.rec["abort_below_y_m"]:
+            e = self.r_ref - self.nav.r
+            if abs(e[2]) > self.ch["mouth_half_width_m"] - 0.105 or abs(e[0]) > 0.2:
+                self._ch_start_abort(t, "pos_err")
+                return True
+        return False
+
+    def _ch_start_abort(self, t, why):
+        self.complying = False
+        self.descending = False
+        self.aborts += 1
+        self.push = False
+        self.freeze = ()
+        self.events.append((round(t, 3), f"abort:{why}"))
+        self._goto("ABORT_BACK", t)
 
     def _yaw_err_deg(self):
         """Heading error relative to the dock as the drone sees it (AHRS yaw minus broadcast heading)."""
@@ -667,6 +891,8 @@ class Pilot:
         elif s == "RAMP":
             self.collective += lau["thrust_ramp_n_s"] * self.dt_nav
             self.fc.set_level(self.psi, self.collective)
+            if self.channel:                         # tilt the thrust back a little: the nose bar touches the drone
+                self.fc.R_des = rot_y(self.psi) @ rot_z(math.radians(self.ch["launch_tilt_back_deg"]))   # ahead
             r = self.last_range
             self.lift_count = self.lift_count + 1 if (math.isfinite(r) and r >= 0.05) else 0
             if self.lift_count < 3:
@@ -687,6 +913,8 @@ class Pilot:
             if self.nav.r[2] > lau["sidestep_z_m"] - 0.01:
                 self._goto("CLIMB", t)
         elif s == "CLIMB":
+            if self.channel:                         # lift straight up, easing 2 cm back off the drone ahead
+                self.r_ref[0] = self.px - 0.02
             tgt = np.array([self.r_ref[0], lau["depart_y_m"], self.r_ref[2]])
             self._ramp_to(tgt, max(lau["climb_speed_m_s"], 1.2))
             if self.nav.r[1] > lau["depart_y_m"] - 0.1:

@@ -69,3 +69,30 @@ committed; this table is the record of why the controller looks as it does.
 What remains is not a tuning problem. See Phase 3: wind above about 6 m/s, the one-sided
 bracket's yaw torque against a small quad's yaw authority, and the UWB bias against the
 ±0.10 m mouth.
+
+## D. Channel dock and its controller (2026-11-22)
+
+The user's alternative: one walled lane along the centreline, open at the rear through a wide funnel, with drones
+sliding in one after another. Development batches of 18–54 recoveries at moderate hover, mostly with drift and
+the soft cutoff, parked calibration and dock feedforward (`ch_drift_ctl`). Only the end state is committed.
+
+| # | change | pass | what the simulator showed | kept? |
+|---|---|---|---|---|
+| D1 | Lane 3 mm wider than the drone, 0.50 m funnel, fly in at 0.03 m, stop on flow | 0/9 | flow needs 0.08 m and the down range ignores readings under 0.025 m: no stop detected, height lost, drone sank onto its skids | changed |
+| D2 | Fly in at 0.045 m, stop on the UWB+IMU speed, end plates so a drone cannot ride over the one ahead | — | the down range (sigma 0.02 m, min 0.02 m) cannot hold 0.045 m | changed |
+| D3 | **Fly in at 0.10 m** (flow valid), walls 0.22 m, plates 0.24 m | 0/12 | reaches the slot; height wanders +-0.05 m with the deck heave | kept |
+| D4 | No x spring while settling: constant forward push only | 8/18 | holding the estimate walked the drone back 3 cm (anchor bias); the drone ahead only blocks forward motion | kept |
+| D5 | Confirm the stop before descending; push through spool-down by tilting the thrust; landing on top, not nose contact, counts as touching | 8/18 | gust stalls no longer taken for the slot | kept |
+| D6 | No-deck check: if the down range sees nothing where the map says deck, climb out | — | behind the wing the triangle fix was 0.4 m off; a drone descended beside the deck and fell into a lift rotor | kept |
+| D7 | Rear plates only (front plates removed) | 8/18 | the drone pitches ~11 deg to push; a front plate's top met the drone ahead first and held the skids 5-10 mm short | kept |
+| D8 | Fly level in the straight lane (no sideways command) | 11/24 | a drone banked ~8 deg jams across a 3 mm-clearance lane like a drawer | kept |
+| D9 | Flat-floor height model in the lane; slower last 0.2 m | 26-29/54 | with a few cm of x error the full map put the sensor over the drone ahead or the front stop; the drone climbed over it | kept |
+| D10 | **Two-level wall**: 3 mm guide rail up to 0.03 m with a 45 deg chamfer, 10 mm clearance above | 30/54 | removes the drawer jam; the rail still centres the drone as it settles | kept |
+| D11 | **Round nose bar** low on each drone (slot pitch 0.22 m), constant push to touchdown | 39/54 | contact low on the body: pitching to push no longer leaves the skids short | kept |
+| D12 | **Down sensor moved inboard** (z -0.0865 m, midway between well and rail) | **54/54** | 2 mm from the rail its beam caught the rail top, read short, and the drone climbed onto the drone ahead | kept |
+| D13 | Launch: thrust tilted 4 deg back during the ramp | launches 16/24 -> 24/24 | level lift-off knocked the drone ahead (23-54 N) as the magnets let go | kept |
+| D14 | Lighter push (0.2 N) while descending | 17/27 (was 25-27) | meant to cut body-on-body friction in a head wind; loses contact instead | dropped |
+| D15 | **Slide-in** (settle on the apron, skid in with 15 % of the weight on the skids, friction fed forward) | 0/27 | the front skid pads pass over an empty slot's floor magnets and are caught there (3 N per pad); a looser rail does not help | does not work with passive floor magnets |
+
+Without drift, in 6-9 m/s head wind, the push-only settle binds (1-1.4 N on the drone ahead holds it up by
+friction) and then lands short. With drift the head wind is gone.

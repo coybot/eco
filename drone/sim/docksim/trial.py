@@ -11,10 +11,11 @@ import time
 
 import numpy as np
 
-from .config import load_cfg
+from .config import channel_geometry, effective_cfg, load_cfg
 from .drone import Pilot
 from .scene import DroneSpec
-from .sim import (CAT_D_BODY, CAT_D_BOX, CAT_D_BRACKET, CAT_D_PAD, CAT_FLOOR, CAT_POST, CAT_RIDGE, DockSim)
+from .sim import (CAT_D_BODY, CAT_D_BOX, CAT_D_BRACKET, CAT_D_PAD, CAT_FLOOR, CAT_POST, CAT_RIDGE, CAT_STOP,
+                  CAT_WALL, DockSim)
 
 
 def choose_pockets(neighbours: int, rng):
@@ -27,6 +28,20 @@ def choose_pockets(neighbours: int, rng):
     p = int(rng.integers(4))
     side = [q for q in (p - 1, p + 1) if 0 <= q <= 3]
     return p, [int(rng.choice(side))]
+
+
+def choose_slots(neighbours: int, rng):
+    """Channel dock: the drone flies to the slot behind the drones already parked (front first)."""
+    k = {0: 0, 1: 1}.get(neighbours, None)
+    if k is None:
+        k = int(rng.choice([2, 3]))
+    return k, list(range(k))
+
+
+def _pick(cfg, cell, rng):
+    if cfg.get("channel_dock", {}).get("enabled", False):
+        return choose_slots(cell.get("parked_neighbours", 0), rng)
+    return choose_pockets(cell.get("parked_neighbours", 0), rng)
 
 
 def anchors_for(cfg, cell, rng):
@@ -62,6 +77,10 @@ class Monitor:
         self.parked_contacts_after = 0
         self.well_contacts_after = 0
         self.after = False                      # launch: contacts counted only after leaving the seat
+        self.stop_speed = None                  # channel: speed at first touch of the drone ahead or the stop
+        self.wall_speed = None
+        self.wall_contacts = 0
+        self.parked_force_peak = 0.0
 
     def step(self):
         sim = self.sim
@@ -86,8 +105,24 @@ class Monitor:
                         self.touch_speed = float(np.linalg.norm(v))
                     if self.after and cat == CAT_RIDGE:
                         self.ridge_contacts_after += 1
+            elif cat == CAT_STOP:
+                if self.stop_speed is None:
+                    self.stop_speed = float(np.linalg.norm(v))
+            elif cat == CAT_WALL:
+                self.wall_contacts += 1
+                if self.wall_speed is None:
+                    self.wall_speed = float(np.linalg.norm(v))
             elif own_oth >= 1:
-                if p[1] > sim.cfg["dock_ops"]["pass"]["parked_touch_above_y_m"]:
+                if self.stop_speed is None and p[1] < 0.06:
+                    self.stop_speed = float(np.linalg.norm(v))
+                if self.after:
+                    self.parked_force_peak = max(self.parked_force_peak, f)
+                if sim.cfg.get("channel_dock", {}).get("enabled", False):
+                    # channel: nose-to-tail contact is the design; landing on top of a parked drone is not
+                    po, _ = sim.pose(own_oth)
+                    if p[1] > 0.045 and abs(p[0] - po[0]) < 0.2:
+                        self.parked_touch_high = True
+                elif p[1] > sim.cfg["dock_ops"]["pass"]["parked_touch_above_y_m"]:
                     self.parked_touch_high = True
                 if self.after:
                     self.parked_contacts_after += 1
@@ -104,12 +139,15 @@ def _yaw_deg(R):
 def run_recovery(cfg, cell, seed, verbose=False, opts=None):
     opts = opts or {}
     rng = np.random.default_rng([seed, 11, cell.get("cell_id", 0)])
-    pocket, occ = choose_pockets(cell.get("parked_neighbours", 0), rng)
+    cfg = effective_cfg(cfg)
+    chan = cfg.get("channel_dock", {}).get("enabled", False)
+    pocket, occ = _pick(cfg, cell, rng)
     use, lost = anchors_for(cfg, cell, rng)
     rec = cfg["dock_ops"]["recovery"]
     px = cfg["dock"]["pocket_x_m"][pocket]
     off = rec["start_offset_m"]
-    start = (px + off[0], off[1], off[2])
+    x0 = channel_geometry(cfg)["x_mouth"] + cfg["channel_dock"]["hold_inside_mouth_m"] if chan else px
+    start = (x0 + off[0], off[1], off[2])
     specs = [DroneSpec("a", pocket, start, active=True)] + _parked_specs(cfg, occ)
     sim = DockSim(cfg, specs, cell.get("hover", "moderate"), cell.get("wind", 6.0), rng,
                   hover_scale=cfg["mothership_airframe"].get("hover_motion_scale", 1.0))
@@ -159,6 +197,8 @@ def run_recovery(cfg, cell, seed, verbose=False, opts=None):
         fails.append("touched_parked")
     if mon.post_speed is not None and mon.post_speed > ps["post_contact_speed_m_s"]:
         fails.append("post_speed")
+    if chan and mon.stop_speed is not None and mon.stop_speed > cfg["channel_dock"]["stop_contact_speed_m_s"]:
+        fails.append("stop_speed")
     if mon.touch_speed is not None and mon.touch_speed > ps["touchdown_speed_m_s"]:
         fails.append("touchdown_speed")
     if pil.state == "FALLBACK":
@@ -192,7 +232,10 @@ def run_recovery(cfg, cell, seed, verbose=False, opts=None):
                approach_nav_x_err_m=" ".join(str(a[2]) for a in diag["appr"]),
                approach_nav_y_err_m=" ".join(str(a[3]) for a in diag["appr"]),
                catch_xz_err_m=" ".join(f"{c[0]}/{c[1]}" for c in diag["catch"]),
-               abort_reasons_label=" ".join(diag["aborts"]), height_resets_count=pil.h_resets)
+               abort_reasons_label=" ".join(diag["aborts"]), height_resets_count=pil.h_resets,
+               stop_contact_speed_m_s=round(mon.stop_speed, 3) if mon.stop_speed is not None else None,
+               wall_contact_speed_m_s=round(mon.wall_speed, 3) if mon.wall_speed is not None else None,
+               events_label=" ".join(e[1] for e in pil.events if e[1].startswith("abort")))
     if verbose:
         print(pil.events)
         print("uwb blocked per anchor", dict(zip(pil.uwb.names, pil.uwb.blocked_by.tolist())), "of", pil.uwb.n_total)
@@ -203,7 +246,9 @@ def run_recovery(cfg, cell, seed, verbose=False, opts=None):
 def run_launch(cfg, cell, seed, verbose=False, opts=None):
     opts = opts or {}
     rng = np.random.default_rng([seed, 12, cell.get("cell_id", 0)])
-    pocket, occ = choose_pockets(cell.get("parked_neighbours", 0), rng)
+    cfg = effective_cfg(cfg)
+    chan = cfg.get("channel_dock", {}).get("enabled", False)
+    pocket, occ = _pick(cfg, cell, rng)
     use, lost = anchors_for(cfg, cell, rng)
     box = bool(cell.get("launch_box", False))
     px = cfg["dock"]["pocket_x_m"][pocket]
@@ -242,7 +287,10 @@ def run_launch(cfg, cell, seed, verbose=False, opts=None):
         fails.append("touched_post")
     if mon.ridge_contacts_after:
         fails.append("touched_ridge")
-    if mon.parked_contacts_after:
+    if chan:
+        if mon.parked_force_peak > 1.0:        # nose-to-tail contact is by design; pushing the neighbour is not
+            fails.append("pushed_parked")
+    elif mon.parked_contacts_after:
         fails.append("touched_parked")
     row = dict(kind="launch", seed=seed, pocket=f"P{pocket + 1}", neighbours_occupied=" ".join(f"P{k + 1}" for k in occ),
                anchor_lost=lost or "", launch_box_bool=box, passed_bool=not fails,
@@ -253,6 +301,7 @@ def run_launch(cfg, cell, seed, verbose=False, opts=None):
                post_contacts_count=mon.post_contacts_after, post_contact_s=round(mon.post_contact_s, 3),
                post_force_peak_n=round(mon.post_force_peak, 2), ridge_contacts_count=mon.ridge_contacts_after,
                parked_contacts_count=mon.parked_contacts_after, box_well_contacts_count=mon.well_contacts_after,
+               wall_contacts_count=mon.wall_contacts, parked_force_peak_n=round(mon.parked_force_peak, 2),
                peak_contact_force_n=round(mon.peak_force, 2), final_state_label=pil.state,
                wall_s=round(time.time() - wall0, 2))
     if verbose:
