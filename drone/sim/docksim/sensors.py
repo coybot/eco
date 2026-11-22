@@ -28,6 +28,7 @@ class UWB:
         pb = cfg["dock_sensors"].get("pocket_beacons", {})
         if pb.get("enabled", False):                    # one short-range beacon per pocket, at the port rail
             P = [[x, pb["y_m"], pb["z_m"]] for x in cfg["dock"]["pocket_x_m"]]
+            P += [list(e) for e in pb.get("extra_m", [])]     # variant: more beacons (channel: at the mouth)
             k = len(P)
             self.names += [f"PB{j + 1}" for j in range(k)]
             self.A = np.vstack([self.A, np.array(P, float)])

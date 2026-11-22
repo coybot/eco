@@ -59,5 +59,10 @@ def effective_cfg(cfg) -> dict:
     ma["anchors_m"]["A3"] = [a3[0], a3[1], zf]
     ds = cfg["bee35"]["down_sensor_pos_m"]                # range/flow sensor midway between the box well (|z| 0.065)
     cfg["bee35"]["down_sensor_pos_m"] = [ds[0], ds[1], ch["down_sensor_z_m"]]   # and the guide rail (|z| 0.108)
+    if ch.get("mouth_beacons", False):                     # two short-range beacons at the funnel mouth corners
+        g = channel_geometry(cfg)
+        y = cfg["dock_sensors"]["pocket_beacons"]["y_m"]
+        zc = ch["mouth_half_width_m"] + ch["wall_thickness_m"] + 0.02
+        cfg["dock_sensors"]["pocket_beacons"]["extra_m"] = [[g["x_mouth"], y, zc], [g["x_mouth"], y, -zc]]
     cfg["_channel_applied"] = True
     return cfg

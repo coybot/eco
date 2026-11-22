@@ -587,5 +587,28 @@ What the channel shows:
 7. **Two forms of the idea fail outright:** sliding in on the skids (empty slots' floor magnets catch the
    skids), and a lane only 3 mm wider than the drone all the way up (a drone banked ~8 deg jams like a drawer).
 
-Not yet run: the channel with beacons by the slots (or at the mouth) over the full matrix. Point 2 above says
-that is where most of the channel's loss is.
+**With beacons** (`ch_pbm_drift`: a short-range beacon by each slot plus two at the funnel mouth corners, same
+model as the pocket beacons; full matrix, 288 cells x 30 trials):
+
+| condition | pocket_drift | pd_nodob | ch_drift_ctl | **ch_pbm_drift** |
+|---|---|---|---|---|
+| all 288 cells | 0.915 | **0.943** | 0.801 | **0.913** |
+| calm / moderate / gusty hover | 0.955 / 0.933 / 0.858 | 0.984 / 0.969 / 0.876 | 0.901 / 0.870 / 0.633 | 0.985 / 0.960 / **0.793** |
+| nominal sensors: calm / moderate / gusty | - | 0.994 / 0.988 / 0.918 | 0.983 / 0.965 / 0.746 | 0.993 / 0.975 / 0.814 |
+| ranging noise x 2 | 0.887 | 0.935 | 0.783 | 0.908 |
+| one anchor lost | 0.898 | 0.931 | 0.712 | 0.900 (A1 / A2 / A3: 0.88 / 0.90 / 0.91) |
+| 9 m/s | 0.902 | 0.935 | 0.769 | 0.885 |
+| target cell, all four sensor conditions | 0.938 | 0.967 | 0.875 | **0.965** |
+| cells at 95 % or better | 122 | 162 | 76 | 156 |
+| "no deck" climb-outs | - | - | 2,946 | 403 |
+| launch | 1.000 * | 1.000 * | 0.889 | 0.894 (with a box 0.81, without 0.98) |
+
+8. **The beacons fix the navigation loss.** "No deck" climb-outs fall from 2,946 to 403; losing any anchor now
+   costs 9-12 points, not 20-48; ranging noise x 2 costs 1 point. The channel then matches the pockets in calm
+   hover (98.5 %) and at the target cell (96.5 % against 96.7 %).
+9. **Gusty hover is what is left: 79 % against the pockets' 88 %.** The failures there are final position and
+   not seated (452 of 595): the heaving deck disturbs the settle onto the floor, where the pockets' post and
+   ridges hold the drone.
+10. **Overall the channel with beacons is level with the pockets with beacons and no controller options
+    (91.3 % against 91.5 %), and 3 points behind the best pockets (94.3 %).** It lands slower (median 25 s against
+    21 s) and launches less reliably (89 %).

@@ -126,6 +126,8 @@ EXPS = {
     "ch_slide_drift": dict(cfg=_merge(_merge({}, CH_SLIDE), DRIFT), opts=CTL_SPEC),
     "ch_slide_loose_drift": dict(cfg=_merge(_merge({}, CH_SLIDE_LOOSE), DRIFT), opts=CTL_SPEC),
     "ch_pb_drift": dict(cfg=_merge(_merge(_merge({}, CHANNEL), POCKET), DRIFT), opts=CTL_SPEC),  # + a beacon by each slot
+    "ch_pbm_drift": dict(cfg=_merge(_merge(_merge(_merge({}, CHANNEL), POCKET), DRIFT),
+                                    {"channel_dock": {"mouth_beacons": True}}), opts=CTL_SPEC),  # + two at the mouth
     "base_ctl": dict(opts=dict(soft_cutoff_s=0.5, bias_cal_frac=0.5, dock_ff=True, dob_tau_s=0.1)),
     "pocket_all_drift_nodual": dict(cfg=_merge(_merge(_merge(_merge(_merge({}, LIP10), WINDWARD), SLOT20), DRIFT),
                                                POCKET), cell=dict(anchor_set="spec4")),

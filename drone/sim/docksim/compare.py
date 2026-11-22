@@ -50,6 +50,7 @@ VARIANTS = [("baseline", "spec as built: 3 anchors, 38 mm lip, 1 post, wind from
             ("ch_wide_drift", "as ch_drift_ctl, 0.80 m mouth"),
             ("ch_narrow_drift", "as ch_drift_ctl, 0.35 m mouth"),
             ("ch_pb_drift", "as ch_drift_ctl, plus a short-range beacon by each slot"),
+            ("ch_pbm_drift", "as ch_pb_drift, plus two beacons at the funnel mouth corners"),
             ("lite_base", "249 g drone (Orin Nano), spec dock"),
             ("lite_pd", "249 g drone, pocket beacons + drift"),
             ("lite_pd_push", "as lite_pd, approach push 0.25 N (was 0.5 N)"),

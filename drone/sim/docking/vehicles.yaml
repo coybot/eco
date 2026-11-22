@@ -676,6 +676,8 @@ channel_dock:                        # [D] variant (2026-11-22, user's idea): on
   stop_window_s: 0.3
   stop_contact_speed_m_s: 0.3        # pass criterion: speed when touching the drone ahead or the stop
   twin_fin_z_m: 0.40                 # the single fin blocks the entry: twin fins at +-0.40 m, A3 on the starboard one
+  mouth_beacons: false               # variant: two short-range UWB beacons at the funnel mouth corners (needs
+                                     #     dock_sensors.pocket_beacons enabled; same model as the slot beacons)
   launch_tilt_back_deg: 4.0          # launch: thrust tilted back during the ramp, so the drone eases off the one
                                      #     ahead as the magnets let go (level: 23-54 N knocks in 8 of 24 launches)
   down_sensor_z_m: -0.0865            # drone range/flow sensor moved inboard (was -0.100): 2 mm from the rail its
