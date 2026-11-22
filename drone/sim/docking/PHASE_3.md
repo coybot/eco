@@ -609,6 +609,10 @@ model as the pocket beacons; full matrix, 288 cells x 30 trials):
 9. **Gusty hover is what is left: 79 % against the pockets' 88 %.** The failures there are final position and
    not seated (452 of 595): the heaving deck disturbs the settle onto the floor, where the pockets' post and
    ridges hold the drone.
+Slot beacons alone (`ch_pb_drift`, four beacons, none at the mouth) give 0.889 over all cells: calm / moderate /
+gusty 0.970 / 0.948 / 0.747, anchor lost 0.867, noise x 2 0.883, target cell 0.947, 775 "no deck" climb-outs.
+The two mouth beacons add 2.4 points overall and halve the climb-outs.
+
 10. **Overall the channel with beacons is level with the pockets with beacons and no controller options
     (91.3 % against 91.5 %), and 3 points behind the best pockets (94.3 %).** It lands slower (median 25 s against
     21 s) and launches less reliably (89 %).

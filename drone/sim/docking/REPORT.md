@@ -171,7 +171,7 @@ short-range beacons for, but only with nominal sensors in calm or moderate hover
 wing, outside the airframe beacon triangle, so it is more sensitive to ranging noise and lost anchors, and the
 deck's heave in gusty hover moves the lane under the drone. It also needs the drifting hover, launches less
 reliably, and cannot be slid into with passive floor magnets. With short-range beacons by the slots and at the
-mouth the navigation loss goes away: 91.3 % over all cells, level with the pockets at the target cell, but still
+mouth the navigation loss goes away (slot beacons alone: 88.9 %): 91.3 % over all cells, level with the pockets at the target cell, but still
 79 % in gusty hover (pockets 88 %), where the heaving deck disturbs the settle onto the floor.
 
 To re-run a variant: `just remote-run <name> "python -m docksim.matrix run --exp pocket_drift

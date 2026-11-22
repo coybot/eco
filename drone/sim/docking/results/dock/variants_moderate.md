@@ -33,7 +33,7 @@ Nominal sensors, moderate hover only (24 cells), seeds 1-60 (spec4: 1-50).
 | ch_drift_ctl | channel + drift + the three controller options | **0.965** | **0.961** | 0.978 | 0.972 | 0.961 | 0.950 | 0.908 | 0.912 | 0.000 | 720 |
 | ch_wide_drift | as ch_drift_ctl, 0.80 m mouth | **0.967** | **0.975** | 0.978 | 0.972 | 0.975 | 0.944 | 0.915 | 0.919 | 0.000 | 1440 |
 | ch_narrow_drift | as ch_drift_ctl, 0.35 m mouth | **0.960** | **0.972** | 0.969 | 0.958 | 0.972 | 0.942 | 0.915 | 0.919 | 0.000 | 1440 |
-| ch_pb_drift | as ch_drift_ctl, plus a short-range beacon by each slot | **0.968** | **0.975** | 0.989 | 0.975 | 0.975 | 0.933 | 0.910 | 0.916 | 0.000 | 1440 |
+| ch_pb_drift | as ch_drift_ctl, plus a short-range beacon by each slot | **0.975** | **0.978** | 0.989 | 0.989 | 0.978 | 0.944 | 0.901 | 0.908 | 0.000 | 720 |
 | ch_pbm_drift | as ch_pb_drift, plus two beacons at the funnel mouth corners | **0.975** | **0.983** | 0.983 | 0.978 | 0.983 | 0.956 | 0.906 | 0.910 | 0.000 | 720 |
 | base_ctl | spec baseline + all four controller options | **0.670** | **0.672** | 0.944 | 0.947 | 0.672 | 0.117 | 0.111 | 1.000 | 0.889 | 1440 |
 
@@ -70,6 +70,6 @@ Main recovery failures:
 - ch_drift_ctl: {'final_position': 14, 'not_seated': 4, 'over_time': 4, 'touchdown_speed': 2, 'timeout_not_landed': 1}
 - ch_wide_drift: {'final_position': 33, 'not_seated': 8, 'over_time': 4, 'touchdown_speed': 1, 'timeout_not_landed': 1}
 - ch_narrow_drift: {'final_position': 27, 'over_time': 16, 'timeout_not_landed': 6, 'fallback_after_aborts': 4, 'touchdown_speed': 2}
-- ch_pb_drift: {'final_position': 31, 'over_time': 6, 'not_seated': 5, 'timeout_not_landed': 3, 'touchdown_speed': 1}
+- ch_pb_drift: {'final_position': 16, 'over_time': 2}
 - ch_pbm_drift: {'final_position': 15, 'timeout_not_landed': 1, 'not_seated': 1, 'over_time': 1}
 - base_ctl: {'prop_strike': 152, 'not_seated': 128, 'touched_parked': 83, 'timeout_not_landed': 40, 'final_position': 26}
