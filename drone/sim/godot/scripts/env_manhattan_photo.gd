@@ -33,6 +33,7 @@ const ORTHO_PATH := "res://assets/manhattan/ortho.jpg"
 const FACADE_DIR := "res://assets/facades/"
 const FacadeKit = preload("res://scripts/facade_kit.gd")
 const LightingKit = preload("res://scripts/lighting_kit.gd")
+const SceneLook = preload("res://scripts/scene_look.gd")
 
 ## Photographs, not a procedural window grid.
 ##
@@ -211,6 +212,22 @@ func water_mask() -> Dictionary:
 		"rect": Rect2(sw, Vector2(_water_b[2] - _water_b[0], _water_b[3] - _water_b[1]))}
 
 
+## The shoreline the ground is drawn with (manhattan_shore.gd: a signed-
+## distance field baked from the mask, piers carved out of the land), loaded
+## on first use, once the slice's offset is known. Null without shore.png.
+var _shore: RefCounted = null
+var _shore_tried := false
+
+
+func shore() -> RefCounted:
+	if not _shore_tried and not _rects.is_empty():
+		_shore_tried = true
+		var s: RefCounted = preload("res://scripts/manhattan_shore.gd").load_for(_offset)
+		if bool(s.get("ok")):
+			_shore = s
+	return _shore
+
+
 ## Central Park's relief, lakes and landmarks (central_park.gd), created on
 ## first use once the slice's offset is known. Null without the baked data.
 var _park: Node3D = null
@@ -232,13 +249,18 @@ func central_park() -> Node3D:
 	return _park
 
 
-## Water or land at sim (e, n), from the mask (nearest pixel). Outside the
-## mask: water, since past the far shores is the open harbour and the sound.
-## Inside Central Park's wall, its own lakes.
+## Water or land at sim (e, n). With the shoreline field: exactly the line the
+## ground is cut at and the bulkheads stand on, and a pier deck is not water.
+## Without it, from the mask (nearest pixel). Outside the mask: water, since
+## past the far shores is the open harbour and the sound. Inside Central
+## Park's wall, its own lakes.
 func is_water(e: float, n: float) -> bool:
 	var cp := central_park()
 	if cp != null and cp.call("covers", e, n):
 		return bool(cp.call("water_at", e, n))
+	var s := shore()
+	if s != null:
+		return bool(s.call("is_water", e, n))
 	if _water_img == null:
 		return false
 	var d := Vector2(e, n) + _offset
@@ -257,11 +279,11 @@ func ground_height(e: float, n: float) -> float:
 	return SEA_Y if is_water(e, n) else LAND_Y
 
 
-## 0 by day .. 1 at night. The moving world's clock replaces this once it runs.
+## 0 by day .. 1 at night: world_clock.gd's (fw_set_time), else day.
 func night_amount() -> float:
-	var wl := get_node_or_null("world_life")
-	if wl != null and wl.has_method("night_amount"):
-		return float(wl.call("night_amount"))
+	var wc := get_node_or_null("world_clock")
+	if wc != null and wc.has_method("night_amount"):
+		return float(wc.call("night_amount"))
 	return 0.0
 
 
@@ -274,7 +296,23 @@ func _ready() -> void:
 	# Manhattan is 21 km end to end; 8 km of shadow reach covers the part of
 	# it any one shot actually contains.
 	LightingKit.for_large_env(self, 8000.0)
+	# Central Park's relief before anything stands on env.ground_height().
 	central_park()
+	# Sky, sun, post and the air (--look=beauty, the default; --look=photo is
+	# the look above unchanged), then the clock that moves them, then the
+	# city's lights, which follow the clock. In that order: the clock's
+	# "photo" sun is the look's.
+	SceneLook.setup(self, region)
+	add_child(preload("res://scripts/world_clock.gd").new())
+	add_child(preload("res://scripts/night_lights.gd").new())
+	# What surrounds the island: the far shores' skylines and the bridges.
+	add_child(preload("res://scripts/far_shore.gd").new())
+	add_child(preload("res://scripts/bridges.gd").new())
+	# The target and decoy as real vehicles (same props, same bodies), and the
+	# moving world: traffic, parked cars, people, ships (off by default).
+	preload("res://scripts/life_props.gd").dress(self)
+	add_child(preload("res://scripts/world_life.gd").new())
+	add_child(preload("res://scripts/nature.gd").new())   # trees, park lamps and benches
 	print("[env_manhattan_photo] facade shader active; ortho %s" %
 		("loaded" if FileAccess.file_exists(ORTHO_PATH) else "absent (flat ground)"))
 
@@ -291,6 +329,14 @@ func _add_park() -> void:
 ## parent bakes its grey tint into per-instance colours, and those would
 ## multiply against the facade shader's output.
 func _render_city() -> void:
+	# The city's own styles, roofs and rooftop kit (scripts/manhattan_buildings.gd),
+	# when its baked window cells are there; else the CC0 photo facades below.
+	var mb: Node3D = preload("res://scripts/manhattan_buildings.gd").new()
+	mb.name = "manhattan_buildings"
+	add_child(mb)
+	if mb.call("build", self):
+		return
+	mb.queue_free()
 	var mat := _facade_material()
 	if mat == null:
 		push_warning("[env_manhattan_photo] no facade textures — run "
@@ -351,6 +397,13 @@ func _facade_material() -> ShaderMaterial:
 ## so the raw ENU bounds recorded by the tool have to have the same offset
 ## applied or the ground sits kilometres from the buildings standing on it.
 func _add_city_ground() -> void:
+	# With the shoreline field, manhattan_ground.gd draws the ground, the
+	# rivers, bulkheads, piers and street markings, and the parent's stacked
+	# water/land/park quads are not built at all (they sat 0.1-1.5 m above
+	# street level and would fight it).
+	if shore() != null:
+		add_child(preload("res://scripts/manhattan_ground.gd").new())
+		return
 	super()   # water plane + correctly-sized land underneath, always
 	# FileAccess, not ResourceLoader: the ortho is read with
 	# Image.load_from_file and may never have been imported as a resource,
