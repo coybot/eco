@@ -426,13 +426,13 @@ func _describe(r: Rect2, h: float, a: PackedInt32Array, rng: RandomNumberGenerat
 	if style in [BROWNSTONE, WALKUP]:
 		roof = R_TAR if y < 0.45 else (R_SILVER if y < 0.78 else (R_WHITE if y < 0.92 else (R_PAVERS if y < 0.97 else R_GREEN)))
 	elif style in [GLASS, MODERN]:
-		roof = R_WHITE if y < 0.35 else (R_GRAVEL if y < 0.65 else (R_TAR if y < 0.78 else (R_PAVERS if y < 0.9 else R_GREEN)))
+		roof = R_WHITE if y < 0.28 else (R_GRAVEL if y < 0.62 else (R_TAR if y < 0.78 else (R_PAVERS if y < 0.9 else R_GREEN)))
 	else:
-		roof = R_TAR if y < 0.35 else (R_WHITE if y < 0.55 else (R_GRAVEL if y < 0.75 else (R_SILVER if y < 0.9 else (R_PAVERS if y < 0.96 else R_GREEN))))
+		roof = R_TAR if y < 0.38 else (R_WHITE if y < 0.52 else (R_GRAVEL if y < 0.72 else (R_SILVER if y < 0.9 else (R_PAVERS if y < 0.96 else R_GREEN))))
 	# Muted: from the air the city's brick and stone are dull and a shade dark
 	# (soot, weather, haze); the first palette read as a toy town in full sun.
 	var lum := wall.get_luminance()
-	wall = wall.lerp(Color(lum, lum, lum), 0.28) * 0.9
+	wall = wall.lerp(Color(lum, lum, lum), 0.28) * 0.84
 	wall.a = 1.0
 	var seed := rng.randf()
 	return {"style": style, "roof": roof, "year": year, "storey": storey, "flags": flags,
