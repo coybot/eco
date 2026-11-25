@@ -399,21 +399,32 @@ func _dispatch(line: String) -> String:
 			return JSON.stringify({"ok": true, "env": FixedWingManager.env_state()})
 
 		"fw_set_world", "fw_set_time", "fw_set_weather", "fw_world_state":
-			# The moving world of the real-city scenes (world_life.gd, a child of
-			# the env): traffic/ships/people on or off, the sun at a local solar
-			# hour and day, the weather (haze, fog, cloud, rain, each 0..1).
+			# The real-city scenes keep two children of the env: world_life.gd,
+			# the moving world (traffic/ships/people, fw_set_world), and
+			# world_clock.gd, the time of day and the weather (fw_set_time,
+			# fw_set_weather). fw_world_state merges both. A scene whose
+			# world_life keeps time itself still gets its time/weather calls.
 			var env_node: Node = FixedWingManager._env
 			var wl: Node = env_node.get_node_or_null("world_life") if env_node != null else null
-			if wl == null:
-				return JSON.stringify({"ok": false, "error": "no moving world in this scene"})
+			var wc: Node = env_node.get_node_or_null("world_clock") if env_node != null else null
 			match op:
 				"fw_set_world":
+					if wl == null:
+						return JSON.stringify({"ok": false, "error": "no moving world in this scene"})
 					return JSON.stringify(wl.set_world(req))
-				"fw_set_time":
-					return JSON.stringify(wl.set_time(req))
-				"fw_set_weather":
-					return JSON.stringify(wl.set_weather(req))
-			return JSON.stringify(wl.world_state())
+				"fw_set_time", "fw_set_weather":
+					var keeper: Node = wc if wc != null else wl
+					if keeper == null or not keeper.has_method("set_time"):
+						return JSON.stringify({"ok": false, "error": "no clock in this scene"})
+					if op == "fw_set_time":
+						return JSON.stringify(keeper.set_time(req))
+					return JSON.stringify(keeper.set_weather(req))
+			if wl == null and wc == null:
+				return JSON.stringify({"ok": false, "error": "no moving world in this scene"})
+			var st: Dictionary = wl.world_state() if wl != null else {"ok": true}
+			if wc != null:
+				st.merge(wc.world_state(), true)
+			return JSON.stringify(st)
 
 		"perf":
 			# The window's frame rate and draw load, for checking what a scene

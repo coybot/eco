@@ -18,8 +18,9 @@
 ## Transparent things (rotor discs, rain, clouds) move to layer 20 only, which
 ## hides them from thermal cameras and from no one else.
 ##
-## Temperatures follow the scene's time of day when it keeps one (a child of
-## the scene with a `_time` {"hour"} and `_sun_angles()`), else photo_hour.
+## Temperatures follow the scene's time of day when it keeps one (its
+## "world_clock" child, or any child with a `_time` {"hour"} and
+## `_sun_angles()`), else photo_hour.
 ## fw_set_thermal sets the climate (air by day and night, the sea) and the hour.
 extends Node
 
@@ -146,12 +147,16 @@ func climate() -> Dictionary:
 			"overlays": _overlays.size(), "hidden": _hidden.size(), "cameras": _users.size()}
 
 
-## The scene's time-of-day keeper, if it has one: a child with `_time` and
-## `_sun_angles()`.
-func _world_life() -> Node:
+## The scene's time-of-day keeper, if it has one: the env's "world_clock"
+## (world_clock.gd), else any child with `_time` and `_sun_angles()` (older
+## scenes kept time in world_life).
+func _world_clock() -> Node:
 	var env: Node = FixedWingManager._env
 	if env == null:
 		return null
+	var wc := env.get_node_or_null("world_clock")
+	if wc != null:
+		return wc
 	for c in env.get_children():
 		if c.has_method("_sun_angles") and c.get("_time") != null:
 			return c
@@ -161,7 +166,7 @@ func _world_life() -> Node:
 ## Hour, sun elevation, cloud: from the scene's time of day when it sets one,
 ## else photo_hour.
 func _sky_now() -> Dictionary:
-	var wl := _world_life()
+	var wl := _world_clock()
 	var hour := photo_hour
 	var el := 45.0
 	var cloud := 0.0

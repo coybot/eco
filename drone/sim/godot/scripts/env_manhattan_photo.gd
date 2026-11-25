@@ -33,6 +33,7 @@ const ORTHO_PATH := "res://assets/manhattan/ortho.jpg"
 const FACADE_DIR := "res://assets/facades/"
 const FacadeKit = preload("res://scripts/facade_kit.gd")
 const LightingKit = preload("res://scripts/lighting_kit.gd")
+const SceneLook = preload("res://scripts/scene_look.gd")
 
 ## Photographs, not a procedural window grid.
 ##
@@ -229,11 +230,11 @@ func ground_height(e: float, n: float) -> float:
 	return SEA_Y if is_water(e, n) else LAND_Y
 
 
-## 0 by day .. 1 at night. The moving world's clock replaces this once it runs.
+## 0 by day .. 1 at night: world_clock.gd's (fw_set_time), else day.
 func night_amount() -> float:
-	var wl := get_node_or_null("world_life")
-	if wl != null and wl.has_method("night_amount"):
-		return float(wl.call("night_amount"))
+	var wc := get_node_or_null("world_clock")
+	if wc != null and wc.has_method("night_amount"):
+		return float(wc.call("night_amount"))
 	return 0.0
 
 
@@ -246,6 +247,12 @@ func _ready() -> void:
 	# Manhattan is 21 km end to end; 8 km of shadow reach covers the part of
 	# it any one shot actually contains.
 	LightingKit.for_large_env(self, 8000.0)
+	# Sky, sun, post and the air (--look=beauty, the default; --look=photo is
+	# the look above unchanged), then the clock that moves them, then the
+	# city's lights, which follow the clock. In that order: the clock's
+	# "photo" sun is the look's.
+	SceneLook.setup(self, region)
+	add_child(preload("res://scripts/world_clock.gd").new())
 	print("[env_manhattan_photo] facade shader active; ortho %s" %
 		("loaded" if FileAccess.file_exists(ORTHO_PATH) else "absent (flat ground)"))
 
