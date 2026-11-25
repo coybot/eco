@@ -319,11 +319,23 @@ func _dispatch(line: String) -> String:
 				"realistic": st["realistic"],
 				"external": st["external"],
 				"gps": st["gps"],
-				"link": st["link"]
+				"link": st["link"],
+				# The cameras' band, "eo" or "thermal" (fw_set_sensor).
+				"band": st["band"]
 			})
 
 		"fw_detect":
-			return JSON.stringify({"ok": true, "objects": FixedWingManager.detect(did)})
+			# {"truth": true} sees every prop in view at its EO
+			# daylight range, whatever the band and the hour (sim truth).
+			FixedWingManager._detect_truth = bool(req.get("truth", false))
+			var objs := FixedWingManager.detect(did)
+			FixedWingManager._detect_truth = false
+			return JSON.stringify({"ok": true, "objects": objs})
+
+		"fw_set_thermal":
+			# The climate the thermal band draws with (thermal_kit.gd):
+			# {air_day_c, air_night_c, sea_c, photo_hour}; any left out keep theirs.
+			return JSON.stringify({"ok": true, "thermal": FixedWingManager.set_thermal_climate(req)})
 
 		"fw_grab_frame":
 			var jpg_b64 = FixedWingManager.grab_frame_jpeg(did)
@@ -362,7 +374,7 @@ func _dispatch(line: String) -> String:
 			# the pointing is left alone.
 			var model_keys: Array = []
 			for k in (req as Dictionary).keys():
-				if k == "realism" or k == "reset_overrides" or k in FixedWingManager.SensorFx.DEFAULTS:
+				if k in ["realism", "reset_overrides", "band", "palette", "halo", "probe"] or k in FixedWingManager.SensorFx.DEFAULTS:
 					model_keys.append(k)
 			if req.has("at"):
 				var at: Array = req.get("at", [0.0, 0.0])

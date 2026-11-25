@@ -75,6 +75,33 @@ const METER_H := 24
 
 var mode := "off"
 var overrides := {}
+## The band. "eo" (everything above) or "thermal": the camera
+## renders apparent temperature (thermal_kit.gd) and this pass is a thermal
+## sensor's: AGC, NETD and fixed-pattern noise, the optics' blur, a palette.
+var band := "eo"
+var palette := "white_hot"
+const BANDS := ["eo", "thermal"]
+const PALETTES := ["white_hot", "black_hot", "ironbow"]
+## The thermal sensor: a 640 x 512-class uncooled microbolometer.
+const TH_RES := Vector2(640.0, 512.0)
+const TH_NETD_C := 0.05        # temporal noise, 1 sigma (C)
+const TH_FPN_C := 0.08         # column/row fixed-pattern noise left after NUC (C)
+const TH_MIN_SPAN_C := 4.0     # AGC never stretches less than this
+const TH_AGC_TAU_S := 0.4
+var halo := 0.15               # edge halo (the sharpening real cores apply)
+var _th_lo := 0.55             # AGC window, encoded (C + 40) / 120
+var _th_hi := 0.70
+var _th_lo_t := 0.55
+var _th_hi_t := 0.70
+var _fpn_seed := 0.0
+var _probe := false
+## Plateau histogram equalisation, as thermal cores do it (a sky in frame would
+## otherwise flatten the ground): the AGC window's CDF at 33 points, eased like
+## the window, and mixed with the linear stretch by TH_EQ_MIX.
+const TH_LUT_N := 33
+const TH_EQ_MIX := 0.6
+var _lut := PackedFloat32Array()
+var _lut_t := PackedFloat32Array()
 
 var _post: SubViewport = null
 var _mat: ShaderMaterial = null
@@ -90,6 +117,10 @@ var _meter_pending := false
 var gain := 1.0
 var _gain_target := 1.0
 var _last_t := -1.0
+## The AGC takes the scene as it is on its next reading, without easing from
+## what it last showed: after the band switches to thermal, or the camera is
+## rebuilt (a respawn), the old window can be a whole day's temperatures off.
+var _th_snap := true
 var _prev_look := Vector2.ZERO        # (yaw incl. sensor offset, elevation) last tick
 var _rate := Vector2.ZERO             # rad/s
 var _jit := Vector3.ZERO              # (yaw, pitch, roll) rad, now
@@ -107,6 +138,10 @@ func _init() -> void:
 	rng.randomize()
 	for i in 9:
 		_phase.append(rng.randf() * TAU)
+	_fpn_seed = float(rng.randi() % 9973)
+	for i in TH_LUT_N:
+		_lut.append(float(i) / float(TH_LUT_N - 1))
+		_lut_t.append(float(i) / float(TH_LUT_N - 1))
 
 
 # ------------------------------------------------------------------ settings
@@ -121,6 +156,15 @@ func configure(req: Dictionary) -> Dictionary:
 			overrides[k] = req[k]
 	if req.has("reset_overrides") and bool(req["reset_overrides"]):
 		overrides.clear()
+	if req.has("band") and str(req["band"]) in BANDS:
+		if str(req["band"]) != band:
+			_restart_agc()
+		band = str(req["band"])
+	if req.has("palette") and str(req["palette"]) in PALETTES:
+		palette = str(req["palette"])
+	if req.has("halo"):
+		halo = clampf(float(req["halo"]), 0.0, 1.0)
+	_probe = bool(req.get("probe", false))
 	return settings()
 
 
@@ -146,18 +190,33 @@ func _zero(name: String):
 
 
 func settings() -> Dictionary:
-	var out := {"realism": mode}
+	var out := {"realism": mode, "band": band}
+	if band == "thermal":
+		if _probe and _src != null and is_instance_valid(_src):
+			var im := _src.get_texture().get_image()
+			var pts := []
+			for q in [Vector2(0.5, 0.15), Vector2(0.5, 0.5), Vector2(0.3, 0.7), Vector2(0.5, 0.9)]:
+				var px := im.get_pixel(int(q.x * (im.get_width() - 1)), int(q.y * (im.get_height() - 1)))
+				pts.append(snappedf(px.r * 120.0 - 40.0, 0.1))
+			out["probe_c"] = pts
+		out["palette"] = palette
+		out["halo"] = halo
+		out["agc_c"] = [_th_lo * 120.0 - 40.0, _th_hi * 120.0 - 40.0]
 	for k in DEFAULTS:
 		out[k] = param(k)
 	return out
 
 
 func active() -> bool:
-	return mode != "off" or not overrides.is_empty()
+	return mode != "off" or not overrides.is_empty() or band == "thermal"
+
+
+func thermal() -> bool:
+	return band == "thermal"
 
 
 func geometric() -> bool:
-	return active() and (float(param("k1")) != 0.0 or float(param("k2")) != 0.0 or float(param("jitter_deg")) > 0.0)
+	return band == "eo" and active() and (float(param("k1")) != 0.0 or float(param("k2")) != 0.0 or float(param("jitter_deg")) > 0.0)
 
 
 # ------------------------------------------------------------------ lens maths
@@ -249,6 +308,7 @@ func bind(src: SubViewport, fov_v_deg: float) -> void:
 		_post = _make_post()
 		_mat = _post.get_meta("mat")
 		get_parent().add_child(_post)
+	_mat.shader = _thermal_shader() if thermal() else _shader()
 	if _src != src:
 		if _src != null and is_instance_valid(_src) and _src.get_parent() == _post:
 			_post.remove_child(_src)
@@ -277,6 +337,9 @@ func bind(src: SubViewport, fov_v_deg: float) -> void:
 		_meter_vp.add_child(rect)
 		_post.add_child(_meter_vp)   # the camera is drawn before it too
 	_meter_mat.set_shader_parameter("src", src.get_texture())
+	if thermal():
+		_restart_agc()
+	_meter_vp.use_hdr_2d = thermal()   # thermal meters temperatures (above 1.0 too)
 	_meter_due = 0.0
 
 
@@ -315,6 +378,9 @@ func _make_post() -> SubViewport:
 ## exposure, jitter, and the shader's uniforms for the frame about to be drawn.
 func tick(look_yaw: float, look_elev: float, sim_time: float) -> void:
 	if not active():
+		return
+	if thermal():
+		_tick_thermal(sim_time)
 		return
 	var dt := 0.0 if _last_t < 0.0 else sim_time - _last_t
 	_last_t = sim_time
@@ -381,6 +447,95 @@ func _apply(mat: ShaderMaterial, aspect: float, fov_v_deg: float, lens: Dictiona
 	mat.set_shader_parameter("seed", float(_frame % 65536))
 
 
+## Thermal: the AGC window from the meter (a 32 x 24 copy of the temperatures,
+## read every quarter second), eased over TH_AGC_TAU_S, and the noise's seed.
+func _tick_thermal(sim_time: float) -> void:
+	var dt := 0.0 if _last_t < 0.0 else sim_time - _last_t
+	_last_t = sim_time
+	if _meter_vp != null and is_instance_valid(_meter_vp):
+		if _meter_pending:
+			_agc_from(_meter_vp.get_texture().get_image())
+			_meter_pending = false
+			if _th_snap:
+				_th_snap = false
+				dt = -1.0          # this reading is taken as it stands
+		elif sim_time >= _meter_due:
+			_meter_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+			_meter_pending = true
+			_meter_due = sim_time + 0.25
+	var k := (1.0 - exp(-dt / TH_AGC_TAU_S)) if dt > 0.0 else 1.0
+	_th_lo = lerpf(_th_lo, _th_lo_t, k)
+	_th_hi = lerpf(_th_hi, _th_hi_t, k)
+	for i in TH_LUT_N:
+		_lut[i] = lerpf(_lut[i], _lut_t[i], k)
+	_frame += 1
+	if _mat != null:
+		_apply_thermal(_mat, Vector2(_src.size) if _src != null and is_instance_valid(_src) else TH_RES)
+
+
+## Histogram AGC: the window spans the 1st to 99th percentile of the scene's
+## temperatures (a little wider), never less than TH_MIN_SPAN_C.
+func _restart_agc() -> void:
+	_th_snap = true
+	_meter_pending = false
+	_meter_due = 0.0
+
+
+func _agc_from(img: Image) -> void:
+	if img == null:
+		return
+	var vals := PackedFloat32Array()
+	for y in img.get_height():
+		for x in img.get_width():
+			vals.append(img.get_pixel(x, y).r)
+	if vals.is_empty():
+		return
+	vals.sort()
+	var lo := vals[int(0.005 * (vals.size() - 1))]
+	var hi := vals[int(0.995 * (vals.size() - 1))]
+	var span := maxf(hi - lo, TH_MIN_SPAN_C / 120.0)
+	var mid := 0.5 * (lo + hi)
+	_th_lo_t = mid - 0.52 * span
+	_th_hi_t = mid + 0.52 * span
+	# The histogram over the window, each bin capped at the plateau, as a CDF.
+	var bins := TH_LUT_N - 1
+	var h := PackedFloat32Array()
+	h.resize(bins)
+	h.fill(0.0)
+	var w := _th_hi_t - _th_lo_t
+	for v in vals:
+		var b := clampi(int((v - _th_lo_t) / w * bins), 0, bins - 1)
+		h[b] += 1.0
+	var plateau := 1.6 * float(vals.size()) / float(bins)
+	var total := 0.0
+	for b in bins:
+		h[b] = minf(h[b], plateau)
+		total += h[b]
+	var acc := 0.0
+	_lut_t[0] = 0.0
+	for b in bins:
+		acc += h[b]
+		_lut_t[b + 1] = acc / maxf(total, 1.0)
+
+
+## `src_px`: the size of the frame being processed; the sensor grid is TH_RES,
+## or proportionally less for a smaller frame.
+func _apply_thermal(mat: ShaderMaterial, src_px: Vector2) -> void:
+	var span := maxf(_th_hi - _th_lo, 1e-4)
+	mat.set_shader_parameter("lo", _th_lo)
+	mat.set_shader_parameter("span", span)
+	mat.set_shader_parameter("netd", TH_NETD_C / 120.0 / span)
+	mat.set_shader_parameter("fpn", TH_FPN_C / 120.0 / span)
+	var k := minf(1.0, src_px.x / TH_RES.x)
+	mat.set_shader_parameter("res", Vector2(TH_RES.x * k, TH_RES.x * k * src_px.y / maxf(src_px.x, 1.0)))
+	mat.set_shader_parameter("halo", halo)
+	mat.set_shader_parameter("palette", PALETTES.find(palette))
+	mat.set_shader_parameter("seed", float(_frame % 65536))
+	mat.set_shader_parameter("fpn_seed", _fpn_seed)
+	mat.set_shader_parameter("lut", _lut)
+	mat.set_shader_parameter("eq_mix", TH_EQ_MIX)
+
+
 ## The forward frame as JPEG bytes: the post pass's last drawn image. Also
 ## meters it for auto-exposure.
 func grab_forward() -> PackedByteArray:
@@ -436,6 +591,31 @@ func process_nadir(src: SubViewport, hfov_deg: float, reply: Dictionary) -> Imag
 		get_parent().add_child(_nadir_post)
 	_nadir_post.size = src.size
 	_nadir_mat.set_shader_parameter("src", src.get_texture())
+	if thermal():
+		# The ground below sets its own AGC window (the forward view has the sky in it).
+		_nadir_mat.shader = _thermal_shader()
+		var keep := [_th_lo, _th_hi, _th_lo_t, _th_hi_t]
+		var keep_lut := _lut.duplicate()
+		_agc_from(_small(src.get_texture().get_image()))
+		_th_lo = _th_lo_t
+		_th_hi = _th_hi_t
+		_lut = _lut_t.duplicate()
+		reply["band"] = "thermal"
+		_apply_thermal(_nadir_mat, Vector2(src.size))
+		_lut = keep_lut
+		_th_lo = keep[0]
+		_th_hi = keep[1]
+		_th_lo_t = keep[2]
+		_th_hi_t = keep[3]
+		_nadir_post.render_target_update_mode = SubViewport.UPDATE_ONCE
+		await RenderingServer.frame_post_draw
+		if not is_instance_valid(_nadir_post):
+			return null
+		var timg := _nadir_post.get_texture().get_image()
+		if timg != null:
+			timg.convert(Image.FORMAT_RGB8)
+		return timg
+	_nadir_mat.shader = _shader()
 	var lens := {}
 	if geometric():
 		var f_h := 0.5 / tan(deg_to_rad(vfov) * 0.5)
@@ -452,6 +632,14 @@ func process_nadir(src: SubViewport, hfov_deg: float, reply: Dictionary) -> Imag
 		img.convert(Image.FORMAT_RGB8)
 		_meter(img)
 	return img
+
+
+static func _small(img: Image) -> Image:
+	if img == null:
+		return null
+	var s := img.duplicate() as Image
+	s.resize(METER_W, METER_H, Image.INTERPOLATE_BILINEAR)
+	return s
 
 
 ## GPU milliseconds of the post passes' last frames, for the perf op. Measuring
@@ -547,4 +735,109 @@ void fragment() {
 }
 """
 	_shader_cache = sh
+	return sh
+
+
+# ------------------------------------------------------------------ thermal shader
+
+static var _thermal_cache: Shader = null
+
+## Temperatures (encoded (C + 40) / 120, linear, from an HDR viewport) -> a
+## thermal sensor's picture. The scene is sampled on the sensor's own pixel
+## grid (`res`) with a small optical blur, so a 1280-wide request still looks
+## like an upscaled 640 x 512 core; then AGC, an edge halo, the temporal NETD
+## and the fixed column/row pattern, a little shading, and the palette.
+static func _thermal_shader() -> Shader:
+	if _thermal_cache != null:
+		return _thermal_cache
+	var sh := Shader.new()
+	sh.code = """
+shader_type canvas_item;
+uniform sampler2D src : filter_linear, repeat_disable;
+uniform float lo = 0.55;
+uniform float span = 0.15;
+uniform float netd = 0.01;
+uniform float fpn = 0.01;
+uniform vec2 res = vec2(640.0, 512.0);
+uniform float halo = 0.15;
+uniform int palette = 0;
+uniform float seed = 0.0;
+uniform float fpn_seed = 0.0;
+uniform float lut[33];
+uniform float eq_mix = 0.6;
+
+uvec3 pcg3d(uvec3 v) {
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    return v;
+}
+float gauss(uvec3 k) {
+    uvec3 h1 = pcg3d(k);
+    uvec3 h2 = pcg3d(h1 ^ uvec3(0x9E3779B9u));
+    float u1 = max(float(h1.x) / 4294967295.0, 1e-7);
+    float u2 = float(h2.x) / 4294967295.0;
+    return sqrt(-2.0 * log(u1)) * cos(6.2831853 * u2);
+}
+float temp_at(vec2 uv) {
+    return texture(src, clamp(uv, vec2(0.0), vec2(1.0))).r;
+}
+// One sensor pixel: the scene averaged over its footprint (a 2 x 2 box plus the
+// optics' spread), sampled at the pixel's centre.
+float sensor_px(vec2 px) {
+    vec2 c = (px + 0.5) / res;
+    vec2 d = 0.35 / res;
+    return 0.25 * (temp_at(c + vec2(-d.x, -d.y)) + temp_at(c + vec2(d.x, -d.y))
+                 + temp_at(c + vec2(-d.x, d.y)) + temp_at(c + vec2(d.x, d.y)));
+}
+vec3 ironbow(float t) {
+    t = clamp(t, 0.0, 1.0);
+    vec3 c0 = vec3(0.0, 0.0, 0.05);
+    vec3 c1 = vec3(0.3, 0.0, 0.55);
+    vec3 c2 = vec3(0.85, 0.1, 0.35);
+    vec3 c3 = vec3(1.0, 0.55, 0.0);
+    vec3 c4 = vec3(1.0, 0.95, 0.6);
+    if (t < 0.25) { return mix(c0, c1, t / 0.25); }
+    if (t < 0.5) { return mix(c1, c2, (t - 0.25) / 0.25); }
+    if (t < 0.8) { return mix(c2, c3, (t - 0.5) / 0.3); }
+    return mix(c3, c4, (t - 0.8) / 0.2);
+}
+void fragment() {
+    // Bilinear between the four sensor pixels round this output pixel.
+    vec2 p = UV * res - 0.5;
+    vec2 i = floor(p);
+    vec2 f = p - i;
+    float v = mix(mix(sensor_px(i), sensor_px(i + vec2(1.0, 0.0)), f.x),
+                  mix(sensor_px(i + vec2(0.0, 1.0)), sensor_px(i + vec2(1.0, 1.0)), f.x), f.y);
+    float n = (v - lo) / span;
+    // Plateau equalisation (the window's CDF), mixed with the linear stretch.
+    float x = clamp(n, 0.0, 1.0) * 32.0;
+    int k0 = int(floor(min(x, 31.999)));
+    float eq = mix(lut[k0], lut[k0 + 1], x - float(k0));
+    float lin_n = n;
+    n = mix(n, eq, eq_mix);
+    // The halo the core's sharpening throws round hot and cold edges.
+    if (halo > 0.0) {
+        float r = 3.0;
+        float ring = 0.125 * (sensor_px(i + vec2(r, 0.0)) + sensor_px(i - vec2(r, 0.0))
+                            + sensor_px(i + vec2(0.0, r)) + sensor_px(i - vec2(0.0, r))
+                            + sensor_px(i + vec2(r, r)) + sensor_px(i - vec2(r, r))
+                            + sensor_px(i + vec2(r, -r)) + sensor_px(i - vec2(r, -r)));
+        n += halo * (lin_n - (ring - lo) / span);
+    }
+    // Temporal noise per sensor pixel per frame; the residual fixed pattern
+    // (columns stronger than rows, as on real cores) stays put frame to frame.
+    uvec2 sp = uvec2(clamp(i + 0.5, vec2(0.0), res - 1.0));
+    n += netd * gauss(uvec3(sp, uint(seed)));
+    n += fpn * gauss(uvec3(sp.x, 7u, uint(fpn_seed))) + 0.5 * fpn * gauss(uvec3(3u, sp.y, uint(fpn_seed) + 1u));
+    // A faint warm centre (lens and housing radiance the NUC leaves).
+    vec2 q = UV - 0.5;
+    n -= 0.12 * dot(q, q);
+    n = clamp(n, 0.0, 1.0);
+    vec3 outc = palette == 2 ? ironbow(n) : vec3(palette == 1 ? 1.0 - n : n);
+    COLOR = vec4(outc, 1.0);
+}
+"""
+	_thermal_cache = sh
 	return sh

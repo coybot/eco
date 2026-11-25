@@ -32,3 +32,35 @@ common/physics_ticks_per_second=60
 
 renderer/rendering_method="forward_plus"
 environment/defaults/default_clear_color=Color(0.1, 0.1, 0.12, 1)
+
+[shader_globals]
+
+; the thermal band (shaders/thermal.gdshaderinc, scripts/thermal_kit.gd).
+thermal_air_c={
+"type": "float",
+"value": 27.0
+}
+thermal_sea_c={
+"type": "float",
+"value": 27.5
+}
+thermal_store={
+"type": "float",
+"value": 0.5
+}
+thermal_cool={
+"type": "float",
+"value": 0.0
+}
+thermal_sun_gain={
+"type": "float",
+"value": 0.0
+}
+thermal_sky_c={
+"type": "float",
+"value": -3.0
+}
+thermal_lamps={
+"type": "float",
+"value": 0.0
+}

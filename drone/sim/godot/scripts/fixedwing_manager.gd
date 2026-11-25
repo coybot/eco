@@ -178,6 +178,8 @@ class FixedWingState:
 	var sensor_yaw_offset := 0.0
 	## The camera model over this aircraft's frames (sensor_fx.gd).
 	var fx = null
+	## The cameras' band, "eo" or "thermal" (set_band; thermal_kit.gd).
+	var band := "eo"
 	var payload_remaining := 1
 	var alive := true
 	## Set by _crash() when the swept path hit structure. A crashed airframe
@@ -416,6 +418,8 @@ func despawn(id: String) -> void:
 	var st: FixedWingState = _fw.get(id)
 	if st == null:
 		return
+	if st.band == "thermal" and thermal_kit != null:
+		thermal_kit.set_camera(st.camera, null, false)
 	if is_instance_valid(st.node):
 		st.node.queue_free()
 	_fw.erase(id)
@@ -1105,6 +1109,8 @@ func get_state(id: String) -> Variant:
 		# The receiver's and the radio's view, when on (flight_env.gd).
 		"gps": st.gps if air.gps_on else null,
 		"link": st.link if air.link_on else null,
+		# The cameras' band (set_band).
+		"band": st.band,
 	}
 
 
@@ -1138,6 +1144,8 @@ func reset_camera(id: String) -> void:
 	var st: FixedWingState = _fw.get(id)
 	if st == null or st.node == null:
 		return
+	if st.band == "thermal" and thermal_kit != null:
+		thermal_kit.set_camera(st.camera, null, false)
 	if st.viewport != null:
 		st.viewport.queue_free()
 	var vp := SubViewport.new()
@@ -1152,6 +1160,8 @@ func reset_camera(id: String) -> void:
 	st.node.add_child(vp)
 	st.viewport = vp
 	st.camera = cam
+	if st.band == "thermal":
+		_thermal().set_camera(cam, vp, true)
 	if st.fx != null:
 		st.fx.bind(vp, CAM_FOV)
 	_sync_camera(st)
@@ -1174,6 +1184,30 @@ func grab_frame_jpeg(id: String) -> Variant:
 	return Marshalls.raw_to_base64(jpg_buf)
 
 
+## Set by fw_detect {"truth": true} for one call: every prop in
+## view at its EO daylight range, whatever the band and the hour.
+var _detect_truth := false
+
+
+## How far (as a factor of the class's EO range) this aircraft's band sees a
+## `label` now.
+func _band_range(st: FixedWingState, label: String, eo_night: float) -> float:
+	if st.band == "thermal" and thermal_kit != null:
+		return 0.45 + 1.0 * float(thermal_kit.contrast(label))
+	return lerpf(1.0, 0.35, eo_night)
+
+
+## 0 by day .. 1 at night, from the scene's time-of-day keeper if it has one (a
+## child with a `_night` value); 0 otherwise.
+func _world_night() -> float:
+	if _env == null:
+		return 0.0
+	for c in _env.get_children():
+		if c.get("_night") != null:
+			return float(c.get("_night"))
+	return 0.0
+
+
 func detect(id: String) -> Array:
 	var st: FixedWingState = _fw.get(id)
 	if st == null or _env == null:
@@ -1184,6 +1218,7 @@ func detect(id: String) -> Array:
 	var forward := Vector2(cos(st.yaw + st.sensor_yaw_offset), sin(st.yaw + st.sensor_yaw_offset))
 	var out: Array = []
 	var candidates: Array = _env.props.duplicate()
+	var eo_night := _world_night() if st.band == "eo" else 0.0
 
 	for node in candidates:
 		if not is_instance_valid(node):
@@ -1194,6 +1229,12 @@ func detect(id: String) -> Array:
 		# Range is per class, so the label has to be read before the cutoff.
 		var node_label: String = node.get_meta("label", "unknown")
 		var max_range: float = DETECT_RANGE_BY_LABEL.get(node_label, DETECT_RANGE)
+		# What the band can see. Thermal: warm, compact things
+		# (people, running vehicles, armour) carry further than the EO range,
+		# cold ones (tents, sheds) much less; EO at night sees about a third as
+		# far (unlit). Sim truth is unchanged: fw_detect {"truth": true}.
+		var band_k := _band_range(st, node_label, eo_night) if not _detect_truth else 1.0
+		max_range *= band_k
 		if dist > max_range or dist < 0.01:
 			continue
 
@@ -1233,6 +1274,8 @@ func detect(id: String) -> Array:
 		# Calculate confidence based on distance
 		var range_penalty: float = clamp((dist - 40.0) / 40.0, 0.0, 1.0) * 0.3
 		var confidence: float = clamp(0.9 - range_penalty, 0.2, 0.9)
+		if st.band == "thermal" and not _detect_truth:
+			confidence = clampf(confidence * (0.55 + 0.5 * thermal_kit.contrast(node_label)), 0.1, 0.95)
 
 		# Calculate normalized coordinates. ny is IMAGE convention (0 = top row),
 		# so it runs opposite to elevation — see unproject() for how getting this
@@ -1252,6 +1295,9 @@ func detect(id: String) -> Array:
 		# decides whether it can be overflown — see the marker note in env_sar.gd.
 		if node.has_meta("top_z"):
 			row["top_z"] = node.get_meta("top_z")
+		if st.band == "thermal":
+			row["band"] = "thermal"
+			row["thermal_contrast"] = snappedf(thermal_kit.contrast(node_label), 0.01)
 		out.append(row)
 
 	# --- structure pass ------------------------------------------------------
@@ -1433,8 +1479,35 @@ func configure_sensor(id: String, req: Dictionary) -> Variant:
 	if st.fx == null:
 		_attach_fx(st)
 	var out: Dictionary = st.fx.configure(req)
+	if req.has("band") and str(req["band"]) in SensorFx.BANDS and str(req["band"]) != st.band:
+		set_band(st, str(req["band"]))
 	st.fx.bind(st.viewport, CAM_FOV)
-	return out
+	return st.fx.settings()
+
+
+## The thermal band's controller (thermal_kit.gd), made on first use.
+var thermal_kit = null
+
+func _thermal() -> Node:
+	if thermal_kit == null:
+		thermal_kit = preload("res://scripts/thermal_kit.gd").new()
+		thermal_kit.name = "thermal_kit"
+		add_child(thermal_kit)
+	return thermal_kit
+
+
+## Put an aircraft's camera in the EO or the thermal band. fw_grab_frame,
+## a video bridge grabbing fw_grab_frame, and fw_detect all follow it.
+func set_band(st: FixedWingState, band: String) -> void:
+	st.band = band
+	var on := band == "thermal"
+	st.fx.configure({"band": band})
+	_thermal().set_camera(st.camera, st.viewport, on)
+
+
+## fw_set_thermal: the climate the thermal band draws with (thermal_kit.gd).
+func set_thermal_climate(req: Dictionary) -> Dictionary:
+	return _thermal().set_climate(req)
 
 
 ## GPU ms the camera-model passes cost in their last frames, all aircraft.
