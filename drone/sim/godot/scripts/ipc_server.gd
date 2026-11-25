@@ -357,11 +357,23 @@ func _dispatch(line: String) -> String:
 		"fw_set_sensor":
 			# Either an explicit offset off the nose, or "aim at this ENU point"
 			# (what an orbit uses to keep its centre in frame).
+			# Or the camera model (sensor_fx.gd): "realism" off |
+			# photometric | on, and per-effect overrides. Given only those keys,
+			# the pointing is left alone.
+			var model_keys: Array = []
+			for k in (req as Dictionary).keys():
+				if k == "realism" or k == "reset_overrides" or k in FixedWingManager.SensorFx.DEFAULTS:
+					model_keys.append(k)
 			if req.has("at"):
 				var at: Array = req.get("at", [0.0, 0.0])
 				FixedWingManager.aim_sensor_at(did, float(at[0]), float(at[1]))
-			else:
+			elif req.has("offset") or model_keys.is_empty():
 				FixedWingManager.set_sensor_yaw_offset(did, float(req.get("offset", 0.0)))
+			if not model_keys.is_empty():
+				var sensor = FixedWingManager.configure_sensor(did, req)
+				if sensor == null:
+					return JSON.stringify({"ok": false, "error": "unknown fw drone " + did})
+				return JSON.stringify({"ok": true, "sensor": sensor})
 			return JSON.stringify({"ok": true})
 
 		"fw_drop":

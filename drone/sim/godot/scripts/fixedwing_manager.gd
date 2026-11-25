@@ -14,6 +14,8 @@
 extends Node
 
 const LAYER_STRUCTURE := 1
+## The realistic EO camera on the aircraft's frames (sensor_fx.gd).
+const SensorFx = preload("res://scripts/sensor_fx.gd")
 const LAYER_PROPS := 2
 const LAYER_FIXEDWING := 4
 
@@ -174,6 +176,8 @@ class FixedWingState:
 	## gimbal, and it must be applied IDENTICALLY in _sync_camera() and
 	## detect(), or the model reasons about a picture it was never shown.
 	var sensor_yaw_offset := 0.0
+	## The camera model over this aircraft's frames (sensor_fx.gd).
+	var fx = null
 	var payload_remaining := 1
 	var alive := true
 	## Set by _crash() when the swept path hit structure. A crashed airframe
@@ -316,6 +320,7 @@ func spawn(id: String, pos: Vector3, yaw: float, ceiling: float = -1.0,
 	st.viewport = vp
 	st.camera = cam
 	_fw[id] = st
+	_attach_fx(st)
 	_apply_pose(st)
 	print("[FixedWingManager] spawned %s (%s) at ENU %v" % [id, st.airframe, st.position])
 
@@ -1026,6 +1031,8 @@ func _sync_camera(st: FixedWingState) -> void:
 	var cam_pos := Vector3(st.position.x, st.position.z, -st.position.y) + forward_godot * NOSE_OFFSET_M
 	st.camera.global_position = cam_pos
 	st.camera.look_at(cam_pos + forward_godot * 50.0, Vector3.UP)
+	if st.fx != null:
+		st.fx.tick(look_yaw, elevation, _sim_time)
 
 
 # ------------------------------------------------------------------
@@ -1136,6 +1143,8 @@ func reset_camera(id: String) -> void:
 	st.node.add_child(vp)
 	st.viewport = vp
 	st.camera = cam
+	if st.fx != null:
+		st.fx.bind(vp, CAM_FOV)
 	_sync_camera(st)
 
 
@@ -1143,6 +1152,9 @@ func grab_frame_jpeg(id: String) -> Variant:
 	var st: FixedWingState = _fw.get(id)
 	if st == null or st.viewport == null:
 		return null
+	if st.fx != null and st.fx.active():
+		var fx_buf: PackedByteArray = st.fx.grab_forward()
+		return null if fx_buf.is_empty() else Marshalls.raw_to_base64(fx_buf)
 	var img := st.viewport.get_texture().get_image()
 	if img == null:
 		return null
@@ -1388,6 +1400,43 @@ func _update_bottles() -> void:
 
 ## Point the sensor `offset_rad` off the nose (see FixedWingState.
 ## sensor_yaw_offset). Passing 0 re-centres it.
+## The camera model for every aircraft spawned from now on
+## (--sensor-realism=off|photometric|on; sensor_fx.gd). Off by default.
+var _default_realism := ""
+
+func _attach_fx(st: FixedWingState) -> void:
+	if _default_realism == "":
+		_default_realism = IpcServer._get_launch_arg("--sensor-realism", "off")
+	var fx := SensorFx.new()
+	fx.name = "sensor_fx_ctl"
+	st.node.add_child(fx)
+	fx.configure({"realism": _default_realism})
+	st.fx = fx
+	fx.bind(st.viewport, CAM_FOV)
+
+
+## fw_set_sensor's camera-model options (sensor_fx.gd): "realism" and any of
+## SensorFx.DEFAULTS' keys as per-effect overrides. Returns the settings in force.
+func configure_sensor(id: String, req: Dictionary) -> Variant:
+	var st: FixedWingState = _fw.get(id)
+	if st == null:
+		return null
+	if st.fx == null:
+		_attach_fx(st)
+	var out: Dictionary = st.fx.configure(req)
+	st.fx.bind(st.viewport, CAM_FOV)
+	return out
+
+
+## GPU ms the camera-model passes cost in their last frames, all aircraft.
+func sensor_fx_gpu_ms() -> float:
+	var t := 0.0
+	for st in _fw.values():
+		if st.fx != null:
+			t += st.fx.gpu_ms()
+	return t
+
+
 func set_sensor_yaw_offset(id: String, offset_rad: float) -> void:
 	var st: FixedWingState = _fw.get(id)
 	if st == null:
