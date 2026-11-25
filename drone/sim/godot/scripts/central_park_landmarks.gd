@@ -46,8 +46,12 @@ func _ready() -> void:
 	off = env.call("data_offset")
 	_lakes()
 	_wall()
-	_drive_lamps()
-	_mall_benches()
+	# Lamp posts and benches along the paths and the Mall are the nature
+	# layer's (nature.gd, from OSM's mapped furniture); _drive_lamps and
+	# _mall_benches below are the fallback when it is absent.
+	if env.get_node_or_null("nature") == null and not FileAccess.file_exists("res://assets/manhattan/trees.json"):
+		_drive_lamps()
+		_mall_benches()
 	_reservoir_fence()
 	_bethesda()
 	_bow_bridge()
@@ -426,13 +430,12 @@ func _lakes() -> void:
 ## those boxes on the ground under it, same height above its own ground.
 ## Only the drawing moves; the analytic occlusion keeps its boxes on 0.
 func _fix_buildings() -> void:
+	var seated: Array = []    # [Rect2 footprint (sim), delta y or NAN when hidden]
 	var moved := 0
-	for c in env.find_children("*", "MultiMeshInstance3D", true, false):
+	for c in env.find_children("city", "MultiMeshInstance3D", true, false):
 		var mmi := c as MultiMeshInstance3D
-		if is_ancestor_of(mmi) or park.is_ancestor_of(mmi) or mmi.multimesh == null:
-			continue
 		var mm := mmi.multimesh
-		if mm.transform_format != MultiMesh.TRANSFORM_3D or mm.instance_count == 0:
+		if mm == null or mm.transform_format != MultiMesh.TRANSFORM_3D:
 			continue
 		var g := mmi.global_transform
 		for i in mm.instance_count:
@@ -440,6 +443,9 @@ func _fix_buildings() -> void:
 			var o := g * t.origin
 			if not bool(park.call("covers", o.x, -o.z)):
 				continue
+			var hx := t.basis.x.length() * 0.5
+			var hz := t.basis.z.length() * 0.5
+			var fp := Rect2(Vector2(o.x - hx, -o.z - hz), Vector2(hx * 2.0, hz * 2.0))
 			var hidden := false
 			for hr in _hide:
 				if hr.has_point(Vector2(o.x, -o.z)):
@@ -447,12 +453,11 @@ func _fix_buildings() -> void:
 			if hidden:
 				# Modelled here instead; zero scale drops it from the draw.
 				mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), t.origin))
+				seated.append([fp, NAN])
 				moved += 1
 				continue
 			# Lowest ground under the footprint (corners and centre), so no
 			# corner hangs in the air on a slope.
-			var hx := t.basis.x.length() * 0.5
-			var hz := t.basis.z.length() * 0.5
 			var lo := INF
 			for d: Vector2 in [Vector2.ZERO, Vector2(hx, hz), Vector2(-hx, hz), Vector2(hx, -hz), Vector2(-hx, -hz)]:
 				lo = minf(lo, _terrain(Vector2(o.x + d.x, -o.z + d.y)))
@@ -460,9 +465,51 @@ func _fix_buildings() -> void:
 				continue
 			t.origin.y += lo
 			mm.set_instance_transform(i, t)
+			seated.append([fp, lo])
 			moved += 1
+	# The same buildings' rooftop kit, parapets and crowns (the building
+	# layer's MultiMeshes) follow their building. Nothing else is touched:
+	# trees, lamps and benches already stand on env.ground_height().
+	var kit := 0
+	for root_name in ["manhattan_buildings", "parapets", "rooftops"]:
+		for root in env.find_children(root_name, "Node", true, false):
+			for c in root.find_children("*", "MultiMeshInstance3D", true, false):
+				if str(c.name) == "city":
+					continue
+				kit += _follow(c as MultiMeshInstance3D, seated)
+	for c in env.find_children("city_crowns", "MultiMeshInstance3D", true, false):
+		kit += _follow(c as MultiMeshInstance3D, seated)
 	if moved > 0:
-		print("[central_park] re-seated %d building instances on the park's relief" % moved)
+		print("[central_park] re-seated %d park buildings (+%d rooftop parts) on the relief" % [moved, kit])
+
+
+func _follow(mmi: MultiMeshInstance3D, seated: Array) -> int:
+	var mm := mmi.multimesh
+	if mm == null or mm.transform_format != MultiMesh.TRANSFORM_3D or seated.is_empty():
+		return 0
+	var g := mmi.global_transform
+	var n := 0
+	for i in mm.instance_count:
+		var t := mm.get_instance_transform(i)
+		var o := g * t.origin
+		var p := Vector2(o.x, -o.z)
+		if not rect_has(park.get("rect"), p):
+			continue
+		for sd: Array in seated:
+			if (sd[0] as Rect2).grow(0.5).has_point(p):
+				if is_nan(float(sd[1])):
+					t = Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), t.origin)
+				else:
+					t.origin.y += float(sd[1])
+				mm.set_instance_transform(i, t)
+				n += 1
+				break
+	return n
+
+
+static func rect_has(r: Rect2, p: Vector2) -> bool:
+	return r.has_point(p)
+
 
 
 
