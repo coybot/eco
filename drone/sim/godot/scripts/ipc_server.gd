@@ -398,6 +398,35 @@ func _dispatch(line: String) -> String:
 		"fw_env_state":
 			return JSON.stringify({"ok": true, "env": FixedWingManager.env_state()})
 
+		"fw_set_world", "fw_set_time", "fw_set_weather", "fw_world_state":
+			# The moving world of the real-city scenes (world_life.gd, a child of
+			# the env): traffic/ships/people on or off, the sun at a local solar
+			# hour and day, the weather (haze, fog, cloud, rain, each 0..1).
+			var env_node: Node = FixedWingManager._env
+			var wl: Node = env_node.get_node_or_null("world_life") if env_node != null else null
+			if wl == null:
+				return JSON.stringify({"ok": false, "error": "no moving world in this scene"})
+			match op:
+				"fw_set_world":
+					return JSON.stringify(wl.set_world(req))
+				"fw_set_time":
+					return JSON.stringify(wl.set_time(req))
+				"fw_set_weather":
+					return JSON.stringify(wl.set_weather(req))
+			return JSON.stringify(wl.world_state())
+
+		"perf":
+			# The window's frame rate and draw load, for checking what a scene
+			# change costs without a restart flag.
+			return JSON.stringify({"ok": true, "fps": Engine.get_frames_per_second(),
+				"frame_ms": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+				"draw_calls": Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+				"primitives": Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+				"objects": Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
+				"video_mem_mb": Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
+				"static_mem_mb": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0})
+
+
 		"fw_events":
 			return JSON.stringify({"ok": true, "events": FixedWingManager.get_events(did)})
 

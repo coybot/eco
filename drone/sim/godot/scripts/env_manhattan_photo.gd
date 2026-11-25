@@ -107,8 +107,141 @@ void fragment() {
 """
 
 
+## ---------------------------------------------------------------- scene API
+## What the scenery scripts (children of this env) may read. Kept in one place
+## so every one of them agrees on the frame and the levels.
+##
+## FRAME. Baked scenery data (assets/manhattan/*.json) is in the DATASET frame
+## of buildings.json: metres east/north of the Battery Park datum, turned
+## GRID_ROTATION_DEG onto the street grid. The loaded slice is re-centred by
+## `_offset` (see env_manhattan._load_city), so a data point p is at
+## `p - data_offset()` in the sim, and Godot (e, up, -n) from there.
+## Use to_sim() / geo_to_sim() rather than doing this by hand.
+##
+## LEVELS. Street level is y = 0 (buildings stand on it, altitudes are above
+## it). The rivers are SEA_Y below: Manhattan's bulkheads stand about that
+## far above the water.
+const region := "manhattan"
+const GEO_DATUM := [40.7005, -74.0170]        # lat, lon of the dataset origin
+const GRID_ROTATION_DEG := 29.0
+const M_PER_DEG_LAT := 111132.0
+const LAND_Y := 0.0
+const SEA_Y := -1.6
+
+## Half the larger side of the loaded slice, for scripts that only need "how
+## big is the scene".
+var _half := 1000.0
+
+
+func data_offset() -> Vector2:
+	return _offset
+
+
+## Dataset-frame (e, n) -> sim (e, n).
+func to_sim(p: Vector2) -> Vector2:
+	return p - _offset
+
+
+## Sim (e, n) -> Godot position at height y above street level.
+func godot_pos(p: Vector2, y: float = 0.0) -> Vector3:
+	return Vector3(p.x, y, -p.y)
+
+
+## lat/lon -> sim (e, n). Same equirectangular projection and rotation as
+## tools/fetch_manhattan.py, so baked footprints and anything placed from
+## lat/lon agree to well under a metre.
+func geo_to_sim(lat: float, lon: float) -> Vector2:
+	var m_lon := 111320.0 * cos(deg_to_rad(float(GEO_DATUM[0])))
+	var x := (lon - float(GEO_DATUM[1])) * m_lon
+	var y := (lat - float(GEO_DATUM[0])) * M_PER_DEG_LAT
+	var t := deg_to_rad(GRID_ROTATION_DEG)
+	return Vector2(x * cos(t) - y * sin(t), x * sin(t) + y * cos(t)) - _offset
+
+
+## Sim (e, n) -> [lat, lon].
+func sim_to_geo(p: Vector2) -> Array:
+	var q := p + _offset
+	var t := deg_to_rad(GRID_ROTATION_DEG)
+	var x := q.x * cos(t) + q.y * sin(t)
+	var y := -q.x * sin(t) + q.y * cos(t)
+	var m_lon := 111320.0 * cos(deg_to_rad(float(GEO_DATUM[0])))
+	return [float(GEO_DATUM[0]) + y / M_PER_DEG_LAT, float(GEO_DATUM[1]) + x / m_lon]
+
+
+## Extent of the loaded slice in sim (e, n).
+func sim_bounds() -> Rect2:
+	return Rect2(_origin, Vector2(_grid_w, _grid_h) * OCC_RES)
+
+
+## Land/water mask (assets/manhattan/water.png, tools/fetch_manhattan_water.py):
+## 255 = water, row 0 the north edge, dataset frame. Null on a checkout
+## without it, and then everything is land, as before.
+const WATER_PATH := "res://assets/manhattan/water.png"
+var _water_img: Image = null
+var _water_b := PackedFloat32Array([0, 0, 1, 1])   # e0, n0, e1, n1 (dataset frame)
+var _water_res := 4.0
+
+
+func _load_water() -> void:
+	if not FileAccess.file_exists(WATER_PATH):
+		return
+	var jf := FileAccess.open("res://assets/manhattan/water.json", FileAccess.READ)
+	if jf == null:
+		return
+	var meta: Dictionary = JSON.parse_string(jf.get_as_text())
+	jf.close()
+	var img := Image.load_from_file(WATER_PATH)
+	if img == null:
+		return
+	img.convert(Image.FORMAT_L8)
+	_water_img = img
+	var b: Array = meta["bounds_enu"]
+	_water_b = PackedFloat32Array([b[0], b[1], b[2], b[3]])
+	_water_res = float(meta["res_m"])
+
+
+## The mask as a texture plus where it lies in the sim, for shaders:
+## {"tex": ImageTexture, "rect": Rect2 (sim e, n of the image's SW corner and
+## size)}. Empty without a mask.
+func water_mask() -> Dictionary:
+	if _water_img == null:
+		return {}
+	var sw := to_sim(Vector2(_water_b[0], _water_b[1]))
+	return {"tex": ImageTexture.create_from_image(_water_img),
+		"rect": Rect2(sw, Vector2(_water_b[2] - _water_b[0], _water_b[3] - _water_b[1]))}
+
+
+## Water or land at sim (e, n), from the mask (nearest pixel). Outside the
+## mask: water, since past the far shores is the open harbour and the sound.
+func is_water(e: float, n: float) -> bool:
+	if _water_img == null:
+		return false
+	var d := Vector2(e, n) + _offset
+	var x := int((d.x - _water_b[0]) / _water_res)
+	var y := int((_water_b[3] - d.y) / _water_res)
+	if x < 0 or y < 0 or x >= _water_img.get_width() or y >= _water_img.get_height():
+		return true
+	return _water_img.get_pixel(x, y).r > 0.5
+
+
+## Surface height at sim (e, n): street level on land, the river on water.
+func ground_height(e: float, n: float) -> float:
+	return SEA_Y if is_water(e, n) else LAND_Y
+
+
+## 0 by day .. 1 at night. The moving world's clock replaces this once it runs.
+func night_amount() -> float:
+	var wl := get_node_or_null("world_life")
+	if wl != null and wl.has_method("night_amount"):
+		return float(wl.call("night_amount"))
+	return 0.0
+
+
 func _ready() -> void:
+	_load_water()
 	super()
+	var b := sim_bounds()
+	_half = maxf(b.size.x, b.size.y) * 0.5
 	# After super(), so SceneKit's sun and WorldEnvironment already exist.
 	# Manhattan is 21 km end to end; 8 km of shadow reach covers the part of
 	# it any one shot actually contains.
