@@ -1,0 +1,1153 @@
+{
+ "source": "bridge alignments: OpenStreetMap via Overpass, (c) OpenStreetMap contributors, ODbL 1.0; dimensions: published bridge data",
+ "frame": "dataset frame of buildings.json; y metres above street level",
+ "sea_y": -1.6,
+ "bridges": [
+  {
+   "id": "gwb",
+   "name": "George Washington Bridge",
+   "kind": "suspension",
+   "spans": [
+    186.0,
+    1067.0,
+    186.0
+   ],
+   "camber": 5.0,
+   "width": 36.0,
+   "lower_deck": 9.0,
+   "tower": "lattice",
+   "cables": 2,
+   "colour": [
+    0.56,
+    0.58,
+    0.59
+   ],
+   "ends": [
+    [
+     "abut",
+     120.0
+    ],
+    [
+     "abut",
+     140.0
+    ]
+   ],
+   "a": [
+    -2699.65,
+    17513.05
+   ],
+   "u": [
+    -0.96786,
+    -0.25149
+   ],
+   "length": 1421.1,
+   "water": [
+    212.0,
+    1286.0
+   ],
+   "deck_y": 68.4,
+   "tower_y": 182.4,
+   "towers": [
+    215.5,
+    1282.5
+   ],
+   "anchors": [
+    29.5,
+    1468.5
+   ]
+  },
+  {
+   "id": "brooklyn",
+   "name": "Brooklyn Bridge",
+   "kind": "suspension",
+   "spans": [
+    283.5,
+    486.3,
+    283.5
+   ],
+   "camber": 5.0,
+   "width": 26.0,
+   "tower": "gothic",
+   "cables": 2,
+   "stays": true,
+   "colour": [
+    0.7,
+    0.63,
+    0.52
+   ],
+   "stone": [
+    0.64,
+    0.59,
+    0.52
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.08
+    ],
+    [
+     "ramp",
+     0.08
+    ]
+   ],
+   "a": [
+    1747.98,
+    1195.82
+   ],
+   "u": [
+    -0.95523,
+    0.29587
+   ],
+   "length": 1053.5,
+   "water": [
+    310.0,
+    868.0
+   ],
+   "deck_y": 39.4,
+   "tower_y": 82.7,
+   "towers": [
+    283.5,
+    769.8
+   ],
+   "anchors": [
+    0.0,
+    1053.3
+   ]
+  },
+  {
+   "id": "manhattan",
+   "name": "Manhattan Bridge",
+   "kind": "suspension",
+   "spans": [
+    221.0,
+    448.0,
+    221.0
+   ],
+   "camber": 3.0,
+   "width": 37.0,
+   "lower_deck": 7.0,
+   "tower": "portal",
+   "cables": 2,
+   "colour": [
+    0.45,
+    0.6,
+    0.74
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.07
+    ],
+    [
+     "ramp",
+     0.07
+    ]
+   ],
+   "a": [
+    862.1,
+    2285.84
+   ],
+   "u": [
+    0.78777,
+    -0.61597
+   ],
+   "length": 1855.3,
+   "water": [
+    628.0,
+    1198.0
+   ],
+   "deck_y": 39.4,
+   "tower_y": 100.4,
+   "towers": [
+    689.0,
+    1137.0
+   ],
+   "anchors": [
+    468.0,
+    1358.0
+   ]
+  },
+  {
+   "id": "williamsburg",
+   "name": "Williamsburg Bridge",
+   "kind": "suspension",
+   "spans": [
+    182.0,
+    488.0,
+    182.0
+   ],
+   "camber": 3.0,
+   "width": 36.0,
+   "lower_deck": 8.0,
+   "tower": "lattice",
+   "cables": 2,
+   "colour": [
+    0.66,
+    0.24,
+    0.21
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.07
+    ],
+    [
+     "ramp",
+     0.07
+    ]
+   ],
+   "a": [
+    3235.13,
+    3200.42
+   ],
+   "u": [
+    -0.99203,
+    -0.12597
+   ],
+   "length": 1225.9,
+   "water": [
+    326.0,
+    916.0
+   ],
+   "deck_y": 39.4,
+   "tower_y": 100.4,
+   "towers": [
+    377.0,
+    865.0
+   ],
+   "anchors": [
+    195.0,
+    1047.0
+   ]
+  },
+  {
+   "id": "queensboro",
+   "name": "Ed Koch Queensboro Bridge",
+   "kind": "cantilever",
+   "piers": [
+    0.0,
+    143.0,
+    503.0,
+    695.0,
+    995.0,
+    1135.0
+   ],
+   "camber": 1.5,
+   "width": 27.0,
+   "truss": 16.0,
+   "colour": [
+    0.66,
+    0.64,
+    0.58
+   ],
+   "stone": [
+    0.64,
+    0.59,
+    0.52
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.07
+    ],
+    [
+     "ramp",
+     0.07
+    ]
+   ],
+   "a": [
+    984.52,
+    8037.12
+   ],
+   "u": [
+    0.99991,
+    -0.0135
+   ],
+   "length": 1133.9,
+   "water": [
+    208.0,
+    492.0
+   ],
+   "deck_y": 39.4,
+   "anchors": [
+    0.0,
+    1135.0
+   ],
+   "pier_top_y": 98.4
+  },
+  {
+   "id": "rfk",
+   "name": "Robert F. Kennedy Bridge (Hell Gate span)",
+   "kind": "suspension",
+   "spans": [
+    215.0,
+    421.0,
+    215.0
+   ],
+   "camber": 3.0,
+   "width": 30.0,
+   "tower": "portal",
+   "cables": 1,
+   "colour": [
+    0.5,
+    0.57,
+    0.54
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.045
+    ],
+    [
+     "ramp",
+     0.045
+    ]
+   ],
+   "a": [
+    2040.06,
+    11597.81
+   ],
+   "u": [
+    0.8577,
+    -0.51414
+   ],
+   "length": 832.3,
+   "water": [
+    246.0,
+    580.0
+   ],
+   "deck_y": 42.4,
+   "tower_y": 94.4,
+   "towers": [
+    202.5,
+    623.5
+   ],
+   "anchors": [
+    -12.5,
+    838.5
+   ]
+  },
+  {
+   "id": "rfk_lift",
+   "name": "Robert F. Kennedy Bridge (Harlem River lift)",
+   "kind": "lift",
+   "span": [
+    67.0,
+    161.0
+   ],
+   "width": 30.0,
+   "colour": [
+    0.5,
+    0.57,
+    0.54
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.05
+    ],
+    [
+     "ramp",
+     0.05
+    ]
+   ],
+   "a": [
+    1078.49,
+    13354.67
+   ],
+   "u": [
+    0.99989,
+    -0.01502
+   ],
+   "length": 222.6,
+   "water": [
+    10.0,
+    218.0
+   ],
+   "deck_y": 15.4,
+   "tower_y": 62.4,
+   "anchors": [
+    -5.0,
+    233.0
+   ]
+  },
+  {
+   "id": "hellgate",
+   "name": "Hell Gate Bridge",
+   "kind": "arch_through",
+   "span": 298.0,
+   "width": 28.0,
+   "colour": [
+    0.55,
+    0.17,
+    0.16
+   ],
+   "stone": [
+    0.64,
+    0.59,
+    0.52
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.03
+    ],
+    [
+     "ramp",
+     0.03
+    ]
+   ],
+   "a": [
+    2724.21,
+    11819.65
+   ],
+   "u": [
+    -0.96318,
+    0.26886
+   ],
+   "length": 271.4,
+   "water": [
+    14.0,
+    272.0
+   ],
+   "deck_y": 39.4,
+   "tower_y": 74.4,
+   "towers": [
+    -6.0,
+    292.0
+   ],
+   "anchors": [
+    -18.0,
+    304.0
+   ],
+   "crown_y": 91.4
+  },
+  {
+   "id": "henryhudson",
+   "name": "Henry Hudson Bridge",
+   "kind": "arch_under",
+   "arches": [
+    [
+     189.0,
+     445.0
+    ]
+   ],
+   "width": 25.0,
+   "colour": [
+    0.46,
+    0.51,
+    0.56
+   ],
+   "ends": [
+    [
+     "abut",
+     80.0
+    ],
+    [
+     "abut",
+     80.0
+    ]
+   ],
+   "a": [
+    -2667.84,
+    20797.98
+   ],
+   "u": [
+    0.35198,
+    0.93601
+   ],
+   "length": 679.5,
+   "water": [
+    238.0,
+    396.0
+   ],
+   "deck_y": 41.4,
+   "anchors": [
+    0.0,
+    679.5
+   ]
+  },
+  {
+   "id": "washington",
+   "name": "Washington Bridge",
+   "kind": "arch_under",
+   "arches": [
+    [
+     107.0,
+     262.0
+    ],
+    [
+     262.0,
+     417.0
+    ]
+   ],
+   "arch_offset": -78.0,
+   "width": 27.0,
+   "colour": [
+    0.42,
+    0.44,
+    0.44
+   ],
+   "stone": [
+    0.64,
+    0.59,
+    0.52
+   ],
+   "ends": [
+    [
+     "abut",
+     60.0
+    ],
+    [
+     "abut",
+     60.0
+    ]
+   ],
+   "a": [
+    -966.01,
+    17856.99
+   ],
+   "u": [
+    -0.99949,
+    0.03198
+   ],
+   "length": 498.0,
+   "water": [
+    280.0,
+    400.0
+   ],
+   "deck_y": 39.4,
+   "anchors": [
+    0.0,
+    498.0
+   ]
+  },
+  {
+   "id": "hamilton",
+   "name": "Alexander Hamilton Bridge",
+   "kind": "arch_under",
+   "arches": [
+    [
+     4.5,
+     173.5
+    ]
+   ],
+   "width": 34.0,
+   "colour": [
+    0.52,
+    0.54,
+    0.54
+   ],
+   "ends": [
+    [
+     "abut",
+     40.0
+    ],
+    [
+     "abut",
+     40.0
+    ]
+   ],
+   "a": [
+    -1213.78,
+    17738.86
+   ],
+   "u": [
+    -0.98074,
+    -0.1953
+   ],
+   "length": 233.6,
+   "water": [
+    28.0,
+    150.0
+   ],
+   "deck_y": 29.4,
+   "anchors": [
+    -5.5,
+    233.6
+   ]
+  },
+  {
+   "id": "highbridge",
+   "name": "High Bridge",
+   "kind": "arch_under",
+   "arches": [
+    [
+     28.5,
+     165.5
+    ]
+   ],
+   "width": 8.0,
+   "colour": [
+    0.33,
+    0.38,
+    0.34
+   ],
+   "stone": [
+    0.64,
+    0.59,
+    0.52
+   ],
+   "arcade": 25.0,
+   "ends": [
+    [
+     "abut",
+     30.0
+    ],
+    [
+     "abut",
+     30.0
+    ]
+   ],
+   "a": [
+    -1331.14,
+    17297.54
+   ],
+   "u": [
+    0.9277,
+    0.37334
+   ],
+   "length": 344.4,
+   "water": [
+    38.0,
+    156.0
+   ],
+   "deck_y": 40.4,
+   "anchors": [
+    0.0,
+    344.4
+   ]
+  },
+  {
+   "id": "macombs",
+   "name": "Macombs Dam Bridge",
+   "kind": "swing",
+   "span": [
+    226.0,
+    352.0
+   ],
+   "truss_h": 18.0,
+   "width": 25.0,
+   "colour": [
+    0.5,
+    0.56,
+    0.62
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.04
+    ],
+    [
+     "ramp",
+     0.04
+    ]
+   ],
+   "a": [
+    -1026.51,
+    15743.1
+   ],
+   "u": [
+    0.94929,
+    0.3144
+   ],
+   "length": 488.5,
+   "water": [
+    220.0,
+    358.0
+   ],
+   "deck_y": 7.4,
+   "anchors": [
+    0.0,
+    488.5
+   ]
+  },
+  {
+   "id": "145st",
+   "name": "145th Street Bridge",
+   "kind": "swing",
+   "span": [
+    -0.5,
+    90.5
+   ],
+   "truss_h": 11.0,
+   "width": 20.0,
+   "colour": [
+    0.38,
+    0.47,
+    0.42
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.04
+    ],
+    [
+     "ramp",
+     0.04
+    ]
+   ],
+   "a": [
+    -176.18,
+    15014.6
+   ],
+   "u": [
+    -0.95576,
+    -0.29414
+   ],
+   "length": 172.4,
+   "water": [
+    -28.0,
+    118.0
+   ],
+   "deck_y": 6.4,
+   "anchors": [
+    -43.0,
+    172.4
+   ]
+  },
+  {
+   "id": "madison",
+   "name": "Madison Avenue Bridge",
+   "kind": "swing",
+   "span": [
+    118.5,
+    209.5
+   ],
+   "truss_h": 12.0,
+   "width": 22.0,
+   "colour": [
+    0.55,
+    0.57,
+    0.57
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.04
+    ],
+    [
+     "ramp",
+     0.04
+    ]
+   ],
+   "a": [
+    -55.74,
+    14375.26
+   ],
+   "u": [
+    0.72388,
+    0.68992
+   ],
+   "length": 204.7,
+   "water": [
+    100.0,
+    228.0
+   ],
+   "deck_y": 6.4,
+   "anchors": [
+    0.0,
+    243.0
+   ]
+  },
+  {
+   "id": "thirdave",
+   "name": "Third Avenue Bridge",
+   "kind": "swing",
+   "span": [
+    143.5,
+    248.5
+   ],
+   "truss_h": 13.0,
+   "width": 24.0,
+   "colour": [
+    0.52,
+    0.55,
+    0.57
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.04
+    ],
+    [
+     "ramp",
+     0.04
+    ]
+   ],
+   "a": [
+    559.66,
+    14031.58
+   ],
+   "u": [
+    -0.45431,
+    -0.89084
+   ],
+   "length": 126.3,
+   "water": [
+    122.0,
+    270.0
+   ],
+   "deck_y": 6.4,
+   "anchors": [
+    0.0,
+    285.0
+   ]
+  },
+  {
+   "id": "willis",
+   "name": "Willis Avenue Bridge",
+   "kind": "swing",
+   "span": [
+    142.5,
+    249.5
+   ],
+   "truss_h": 14.0,
+   "width": 24.0,
+   "colour": [
+    0.58,
+    0.64,
+    0.64
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.04
+    ],
+    [
+     "ramp",
+     0.04
+    ]
+   ],
+   "a": [
+    870.84,
+    13426.2
+   ],
+   "u": [
+    0.34253,
+    0.93951
+   ],
+   "length": 172.6,
+   "water": [
+    100.0,
+    292.0
+   ],
+   "deck_y": 6.4,
+   "anchors": [
+    0.0,
+    307.0
+   ]
+  },
+  {
+   "id": "univheights",
+   "name": "University Heights Bridge",
+   "kind": "swing",
+   "span": [
+    -0.5,
+    80.5
+   ],
+   "truss_h": 11.0,
+   "width": 18.0,
+   "colour": [
+    0.5,
+    0.53,
+    0.55
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.04
+    ],
+    [
+     "ramp",
+     0.04
+    ]
+   ],
+   "a": [
+    -1243.73,
+    19951.32
+   ],
+   "u": [
+    1.0,
+    -0.00129
+   ],
+   "length": 81.4,
+   "water": [
+    -24.0,
+    104.0
+   ],
+   "deck_y": 6.4,
+   "anchors": [
+    -39.0,
+    119.0
+   ]
+  },
+  {
+   "id": "spuyten",
+   "name": "Spuyten Duyvil Bridge",
+   "kind": "swing",
+   "span": [
+    -12.0,
+    76.0
+   ],
+   "truss_h": 10.0,
+   "width": 9.0,
+   "colour": [
+    0.33,
+    0.35,
+    0.36
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.02
+    ],
+    [
+     "ramp",
+     0.02
+    ]
+   ],
+   "a": [
+    -2836.66,
+    20987.15
+   ],
+   "u": [
+    0.18966,
+    0.98185
+   ],
+   "length": 90.0,
+   "water": [
+    -64.0,
+    128.0
+   ],
+   "deck_y": 3.4,
+   "anchors": [
+    -79.0,
+    143.0
+   ]
+  },
+  {
+   "id": "broadway",
+   "name": "Broadway Bridge",
+   "kind": "lift",
+   "span": [
+    4.0,
+    96.0
+   ],
+   "width": 24.0,
+   "colour": [
+    0.42,
+    0.52,
+    0.64
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.04
+    ],
+    [
+     "ramp",
+     0.04
+    ]
+   ],
+   "a": [
+    -1517.8,
+    21110.39
+   ],
+   "u": [
+    0.27253,
+    0.96215
+   ],
+   "length": 90.2,
+   "water": [
+    -6.0,
+    106.0
+   ],
+   "deck_y": 7.4,
+   "tower_y": 44.4,
+   "anchors": [
+    -21.0,
+    121.0
+   ]
+  },
+  {
+   "id": "parkave",
+   "name": "Harlem River Lift Bridge",
+   "kind": "lift",
+   "span": [
+    3.0,
+    107.0
+   ],
+   "width": 26.0,
+   "colour": [
+    0.48,
+    0.5,
+    0.5
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.02
+    ],
+    [
+     "ramp",
+     0.02
+    ]
+   ],
+   "a": [
+    230.76,
+    14225.81
+   ],
+   "u": [
+    -0.55718,
+    -0.83039
+   ],
+   "length": 106.3,
+   "water": [
+    -26.0,
+    136.0
+   ],
+   "deck_y": 7.4,
+   "tower_y": 48.4,
+   "anchors": [
+    -41.0,
+    151.0
+   ]
+  },
+  {
+   "id": "roosevelt",
+   "name": "Roosevelt Island Bridge",
+   "kind": "lift",
+   "span": [
+    31.5,
+    158.5
+   ],
+   "width": 16.0,
+   "colour": [
+    0.52,
+    0.55,
+    0.56
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.05
+    ],
+    [
+     "ramp",
+     0.05
+    ]
+   ],
+   "a": [
+    1792.5,
+    9037.45
+   ],
+   "u": [
+    0.99622,
+    -0.08682
+   ],
+   "length": 244.6,
+   "water": [
+    -8.0,
+    198.0
+   ],
+   "deck_y": 10.4,
+   "tower_y": 34.4,
+   "anchors": [
+    -23.0,
+    244.6
+   ]
+  },
+  {
+   "id": "wards",
+   "name": "Wards Island Bridge",
+   "kind": "lift",
+   "span": [
+    -7.5,
+    87.5
+   ],
+   "width": 6.0,
+   "colour": [
+    0.55,
+    0.62,
+    0.7
+   ],
+   "ends": [
+    [
+     "ramp",
+     0.07
+    ],
+    [
+     "ramp",
+     0.07
+    ]
+   ],
+   "a": [
+    1319.32,
+    11585.76
+   ],
+   "u": [
+    -0.99946,
+    0.03291
+   ],
+   "length": 100.0,
+   "water": [
+    -96.0,
+    176.0
+   ],
+   "deck_y": 15.4,
+   "tower_y": 40.4,
+   "anchors": [
+    -111.0,
+    191.0
+   ]
+  },
+  {
+   "id": "tram",
+   "name": "Roosevelt Island Tramway",
+   "kind": "tram",
+   "towers": [
+    [
+     230.0,
+     43.4
+    ],
+    [
+     520.0,
+     74.4
+    ],
+    [
+     880.0,
+     53.4
+    ]
+   ],
+   "station_h": 18.0,
+   "colour": [
+    0.6,
+    0.62,
+    0.63
+   ],
+   "cabin": [
+    0.8,
+    0.1,
+    0.1
+   ],
+   "a": [
+    634.14,
+    8059.85
+   ],
+   "u": [
+    0.99931,
+    0.03716
+   ],
+   "length": 935.0,
+   "water": [
+    568.0,
+    848.0
+   ],
+   "anchors": [
+    0.0,
+    935.0
+   ]
+  }
+ ]
+}
