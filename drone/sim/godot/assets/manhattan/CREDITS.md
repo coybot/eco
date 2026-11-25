@@ -10,3 +10,5 @@ gitignored (caches and large imagery the tools fetch again).
 | `ortho.jpg`, `ortho.json` | USGS National Map imagery | Public domain | `fetch_manhattan_ortho.py` |
 | `water.png`, `water.json` | OpenStreetMap coastline; USGS National Hydrography Dataset waterbodies | Map data (c) OpenStreetMap contributors, ODbL 1.0 (<https://www.openstreetmap.org/copyright>); NHD public domain | `fetch_manhattan_water.py` |
 | `roads.json` | NYC Open Data, Centerline (CSCL, inkn-q76z) | Public domain (NYC Open Data terms of use) | `fetch_manhattan_roads.py` |
+| `central_park.json`, `central_park_height.zi16`, `central_park_fields.png` | USGS 3DEP 1 m bare-earth DEM (3DEPElevation ImageServer); OpenStreetMap (park outline, paths, lakes, ballfields, bare rock, landmark footprints) | 3DEP public domain; map data (c) OpenStreetMap contributors, ODbL 1.0 (<https://www.openstreetmap.org/copyright>) | `fetch_central_park.py` |
+| `_park/photo.jpg`, `_park/cover.png` (gitignored) | USGS NAIP imagery (USGSNAIPImagery ImageServer), 0.5 m; OpenStreetMap | NAIP public domain; OSM ODbL 1.0 | `fetch_central_park.py` |

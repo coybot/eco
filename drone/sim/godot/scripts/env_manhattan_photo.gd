@@ -211,9 +211,34 @@ func water_mask() -> Dictionary:
 		"rect": Rect2(sw, Vector2(_water_b[2] - _water_b[0], _water_b[3] - _water_b[1]))}
 
 
+## Central Park's relief, lakes and landmarks (central_park.gd), created on
+## first use once the slice's offset is known. Null without the baked data.
+var _park: Node3D = null
+var _park_tried := false
+
+
+func central_park() -> Node3D:
+	if not _park_tried and not _rects.is_empty():
+		_park_tried = true
+		# --central-park=0: the flat photo, for A/B comparisons.
+		if IpcServer._get_launch_arg("--central-park", "1") == "0":
+			return null
+		var p: Node3D = preload("res://scripts/central_park.gd").new()
+		if p.call("load_data", self):
+			_park = p
+			add_child(p)
+		else:
+			p.free()
+	return _park
+
+
 ## Water or land at sim (e, n), from the mask (nearest pixel). Outside the
 ## mask: water, since past the far shores is the open harbour and the sound.
+## Inside Central Park's wall, its own lakes.
 func is_water(e: float, n: float) -> bool:
+	var cp := central_park()
+	if cp != null and cp.call("covers", e, n):
+		return bool(cp.call("water_at", e, n))
 	if _water_img == null:
 		return false
 	var d := Vector2(e, n) + _offset
@@ -226,6 +251,9 @@ func is_water(e: float, n: float) -> bool:
 
 ## Surface height at sim (e, n): street level on land, the river on water.
 func ground_height(e: float, n: float) -> float:
+	var cp := central_park()
+	if cp != null and cp.call("covers", e, n):
+		return float(cp.call("ground_at", e, n))
 	return SEA_Y if is_water(e, n) else LAND_Y
 
 
@@ -246,8 +274,16 @@ func _ready() -> void:
 	# Manhattan is 21 km end to end; 8 km of shadow reach covers the part of
 	# it any one shot actually contains.
 	LightingKit.for_large_env(self, 8000.0)
+	central_park()
 	print("[env_manhattan_photo] facade shader active; ortho %s" %
 		("loaded" if FileAccess.file_exists(ORTHO_PATH) else "absent (flat ground)"))
+
+
+## The parent's flat green slab, unless central_park.gd draws the real park.
+func _add_park() -> void:
+	if not FileAccess.file_exists("res://assets/manhattan/central_park.json") \
+			or IpcServer._get_launch_arg("--central-park", "1") == "0":
+		super()
 
 
 ## Same geometry and same instancing as the parent — only the material differs.
