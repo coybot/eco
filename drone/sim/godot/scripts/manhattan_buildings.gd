@@ -163,11 +163,48 @@ func _process(_delta: float) -> void:
 	if city_mat == null:
 		return
 	var n := _night_force if _night_force >= 0.0 else float(env.call("night_amount"))
-	if absf(n - _night_last) < 0.002:
+	var h := _clock_hour()
+	if absf(n - _night_last) < 0.002 and absf(h - _hour_last) < 0.01:
 		return
 	_night_last = n
+	_hour_last = h
 	city_mat.set_shader_parameter("night", n)
 	kit_mat.set_shader_parameter("night", n)
+	# Who is in: night_amount only says how dark it is, and it goes from 0.2
+	# to 1.0 within half an hour of sunset, so occupancy follows the clock.
+	city_mat.set_shader_parameter("office_occ", _curve(OFFICE_OCC, h))
+	city_mat.set_shader_parameter("home_occ", _curve(HOME_OCC, h))
+
+
+## Share of office floors with someone in, and of homes' usual lit share, by
+## local hour [hour, value]. Offices: full in the working day, half gone by
+## 19:00, cleaning crews and late desks from 21:00. Homes: rising through the
+## evening, a peak 21-23, the night owls after 01:00.
+const OFFICE_OCC := [[0.0, 0.12], [5.0, 0.10], [7.0, 0.5], [9.0, 0.9], [17.0, 0.85], [19.0, 0.55],
+	[20.0, 0.42], [21.0, 0.30], [22.0, 0.24], [24.0, 0.12]]
+const HOME_OCC := [[0.0, 0.75], [1.0, 0.5], [3.0, 0.18], [5.0, 0.15], [6.0, 0.4], [8.0, 0.35],
+	[17.0, 0.6], [19.0, 0.8], [21.0, 1.0], [23.0, 0.95], [24.0, 0.75]]
+var _hour_last := -100.0
+
+
+static func _curve(table: Array, h: float) -> float:
+	for i in range(1, table.size()):
+		var a: Array = table[i - 1]
+		var b: Array = table[i]
+		if h <= float(b[0]):
+			return lerpf(float(a[1]), float(b[1]), (h - float(a[0])) / maxf(float(b[0]) - float(a[0]), 1e-3))
+	return float(table[-1][1])
+
+
+## The local clock hour from world_clock (fw_set_time), or 21:00 when the scene
+## keeps no clock (the night look then is --city-night's).
+func _clock_hour() -> float:
+	var wc := env.get_node_or_null("world_clock")
+	if wc != null:
+		var t: Variant = wc.get("_time")
+		if t is Dictionary and (t as Dictionary).has("hour"):
+			return float((t as Dictionary)["hour"])
+	return 21.0
 
 
 ## For --city-night only: the sun off and a dark sky, so lit windows can be
@@ -954,6 +991,8 @@ render_mode cull_back, diffuse_burley;
 uniform sampler2DArray cells_mask : filter_linear_mipmap_anisotropic, repeat_disable;
 uniform sampler2DArray cells_col : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 uniform float night = 0.0;   // 0 day .. 1 night (env.night_amount); 0 = no emission at all
+uniform float office_occ = 0.3;   // share of office floors in use (by the clock: manhattan_buildings.gd)
+uniform float home_occ = 1.0;     // homes' lit share, relative to the evening peak
 
 varying vec3 v_local;
 varying vec3 v_nl;
@@ -1270,26 +1309,83 @@ void fragment() {
             metal = max(metal, m.g * 0.5);
         }
 
-        // At night some rooms are lit: a share per building, more or fewer per
-        // floor; offices most at dusk and thinning out, homes filling up later;
-        // shops nearly all. Warm bulbs, neutral LED, cool office strip lights.
-        float dusk = 1.0 - smoothstep(0.55, 1.0, night);
-        float share = (office || style == GLASS)
-            ? mix(0.45, 0.85, hs(seed, 61.0)) * mix(0.35, 1.0, dusk)
-            : mix(0.12, 0.45, hs(seed, 61.0)) * mix(0.75, 1.15, smoothstep(0.3, 0.8, night));
+        // NIGHT. What a real night aerial shows, and what the first version got
+        // wrong (flat pure-white office bands, half of every block lit: a
+        // barcode city):
+        //  - Lights come on one by one through dusk: each window has its own
+        //    turn-on point against `come`, so 19:30 is sparse and 21:00 full.
+        //  - Homes: 10-35 % of windows, 2700-3000 K tungsten mostly, some 4000 K
+        //    LED, the odd blue TV.
+        //  - Offices: lit by FLOOR (a floor's lights are one switch), but by
+        //    21:00 most floors are dark and the lit ones are cleaning crews and
+        //    late desks: a run of bays, not the whole floor, and a few dark
+        //    offices inside the run. 4000 K, never pure white.
+        //  - Inside a lit window: brighter toward the ceiling, an office's light
+        //    fittings in a grid, each window its own brightness.
+        //  - Low emission: bloom (world_clock's glow, threshold 1.2 after a
+        //    night exposure of ~1.9) does the glow on the brightest few and on
+        //    the shops and lobbies, which are the brightest things at street
+        //    level.
+        //  - Unlit glass is not black: it reflects the sky's city glow.
+        bool off_b = office || style == GLASS;
+        // How dark it is gates everything (none of this by day); who is in
+        // comes from the clock (office_occ, home_occ).
+        float come = smoothstep(0.02, 0.45, night);
+        float late = smoothstep(0.6, 0.25, office_occ);
         float fl_k = hh(vec4(seed * 1000.0, fi, 3.0, 71.0));
-        float shop_lit = 0.0;
-        if (zone == 0.0 && (shops || style == GLASS)) { share = 0.85; shop_lit = 1.0; }
-        else if (office || style == GLASS) { share *= step(fl_k, share * 1.2) * 1.15; }    // whole floors on or off
-        else { share *= mix(0.55, 1.4, fl_k); }
         float wk = hh(vec4(seed * 1000.0, fi, bi, face + 17.0));
-        float on = mix(step(wk, share), clamp(share, 0.0, 1.0), far);
         float ck = hh(vec4(seed * 1000.0, fi, bi, face + 29.0));
-        vec3 lc = (office || style == GLASS) ? (ck < 0.75 ? vec3(0.82, 0.90, 1.0) : vec3(1.0, 0.88, 0.70))
-                : (ck < 0.6 ? vec3(1.0, 0.70, 0.40) : (ck < 0.88 ? vec3(1.0, 0.86, 0.68) : vec3(0.75, 0.82, 1.0)));
-        if (shop_lit > 0.5) { lc = vec3(1.0, 0.88, 0.70) * 1.4; }
-        lc *= mix(0.5, 1.1, hh(vec4(seed * 1000.0, fi, bi, face + 37.0)));
-        emit = lc * m.b * on * night * 1.6;
+        float wb = hh(vec4(seed * 1000.0, fi, bi, face + 37.0));
+        float on;
+        float far_on;
+        float bright;
+        vec3 lc;
+        float inner = 0.8 + 0.35 * f.y;                                  // nearer the ceiling, brighter
+        bool street = zone == 0.0 && (shops || style == GLASS || layer == L_ENTRANCE || layer == L_LOBBY);
+        if (street) {
+            on = layer == L_SHOP_GATE ? 0.0 : step(wk * 0.6, come);
+            far_on = come * 0.85;
+            bright = mix(1.0, 1.5, wb);
+            lc = ck < 0.7 ? vec3(1.0, 0.85, 0.64) : vec3(0.95, 0.93, 0.88);
+            inner = 1.0;
+        } else if (off_b) {
+            float fl_share = office_occ * mix(0.75, 1.2, hs(seed, 61.0));
+            float fl_on = step(fl_k, fl_share);
+            float run0 = hh(vec4(seed * 1000.0, fi, face, 81.0));
+            float runlen = mix(mix(0.6, 1.0, hs(seed, 63.0)), mix(0.3, 0.85, hh(vec4(seed * 1000.0, fi, face, 82.0))), late);
+            float u01 = (bi + 0.5) / nb;
+            float in_run = step(abs(fract(u01 - run0 + 0.5) - 0.5), runlen * 0.5);
+            float desk = step(wk, mix(0.7, 0.95, hs(seed, 62.0)));
+            on = fl_on * in_run * desk * come;
+            // Far off, keep the floor's own on/off (storeys stay resolved longer
+            // than bays); averaging floors too spread a dim grey wash over
+            // every tower instead of a few lit floors.
+            far_on = fl_on * runlen * 0.82 * come;
+            bright = mix(0.45, 0.85, wb) * mix(0.8, 1.1, hh(vec4(seed * 1000.0, fi, 5.0, 83.0)));
+            lc = ck < 0.65 ? vec3(0.96, 0.88, 0.74) : (ck < 0.9 ? vec3(0.88, 0.89, 0.90) : vec3(1.0, 0.78, 0.52));
+            // Light fittings: a bright row under the ceiling, alternate modules.
+            inner = (0.7 + 0.5 * smoothstep(0.72, 0.9, f.y)) * (mod(bi, 2.0) < 0.5 ? 1.0 : 0.85);
+        } else {
+            float share = mix(0.08, 0.30, hs(seed, 61.0)) * mix(0.6, 1.4, fl_k) * home_occ;
+            on = step(wk, share * come);
+            far_on = share * come;
+            bright = mix(0.3, 0.85, wb);
+            lc = ck < 0.5 ? vec3(1.0, 0.70, 0.42) : (ck < 0.78 ? vec3(1.0, 0.62, 0.34)
+               : (ck < 0.94 ? vec3(1.0, 0.83, 0.64) : vec3(0.55, 0.66, 1.0) * (0.75 + 0.25 * sin(TIME * 7.0 + ck * 60.0))));
+        }
+        on = mix(on, far_on, far);
+        inner = mix(inner, 0.95, far);
+        // A drawn blind or curtain glows evenly and a little dimmer; a bare pane
+        // shows the room's hot spot.
+        float blindk = clamp(dot(own, vec3(0.33)) * 6.0, 0.0, 1.0);
+        emit = lc * m.b * on * bright * inner * mix(0.62, 0.5, blindk);
+        if (street) { emit *= 1.6; }
+        // Unlit glass reflects the night sky's glow, more at a grazing angle.
+        float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 3.0);
+        // Kept faint: at 0.04 every dark pane read as frosted lilac and the
+        // glass towers turned pale grey, brighter than their own lit floors.
+        emit += m.b * (1.0 - on) * smoothstep(0.2, 0.8, night) * vec3(0.008, 0.010, 0.019)
+              * (0.4 + 1.2 * fres) * (style == GLASS ? 1.2 : 0.7);
     }
 
     if (thermal_pass(CAMERA_VISIBLE_LAYERS)) {
