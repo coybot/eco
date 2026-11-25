@@ -158,7 +158,7 @@ Bugs found while checking, and fixed:
   building wakes. Each body samples it at a single point, so there are no span-wise gust
   gradients.
 - **Cross-platform bit-identity is not claimed.** Runs are byte-identical for the same
-  seeds on the same machine. The checks were re-run headless on Linux (hoopoe, kernel
+  seeds on the same machine. The checks were re-run headless on a remote Linux box (kernel
   7.0, Python 3.12, numpy 2.4) and **all pass with the same printed values**. The
   reproducibility CSV there is byte-identical across worker counts, but not identical to
   the macOS one: the largest difference is 7e-15, from last-bit libm differences.
