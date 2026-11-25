@@ -72,7 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     fw, fh = (int(x) for x in a.frame.split("x"))
 
     log = open(out / "godot.log", "w")
-    cmd = [a.godot, "--path", str(PROJECT), "--resolution", a.res, "--",
+    # Always on top: macOS stops redrawing a window other windows cover, and
+    # then every grabbed frame is the same stale one.
+    cmd = [a.godot, "--always-on-top", "--position", "40,600", "--path", str(PROJECT),
+           "--resolution", a.res, "--",
            "--fleet=", f"--env={a.env}", f"--ipc-port={a.port}", "--seed=0"] + a.extra
     proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
     try:
@@ -108,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
             e, n = project(*p)
             return (e - off[0], n - off[1])
 
-        made = False
+        allperf = {}
         for v in views:
             for req in v.get("pre", []):
                 print(v["name"], "pre", rpc(req))
@@ -116,21 +119,24 @@ def main(argv: list[str] | None = None) -> int:
             le, ln = sim(v["look"])
             pos = [pe, pn, v["alt"]]
             look = [le, ln, v.get("look_alt", 0.0)]
-            if not made:
-                rpc({"op": "add_vantage", "name": "shot", "p": pos, "look": look, "w": fw, "h": fh})
-                made = True
-            rpc({"op": "move_vantage", "name": "shot", "p": pos, "look": look})
+            # A fresh vantage per view: a moved one's SubViewport kept
+            # returning its first frame.
+            rpc({"op": "remove_vantage", "name": "shot"})
+            time.sleep(0.5)
+            rpc({"op": "add_vantage", "name": "shot", "p": pos, "look": look, "w": fw, "h": fh})
             time.sleep(float(v.get("wait", 4.0)))
+            allperf[v["name"]] = rpc({"op": "perf"})
             r = rpc({"op": "grab_vantage", "name": "shot"})
             if r.get("jpg"):
                 (out / f"{v['name']}.jpg").write_bytes(base64.b64decode(r["jpg"]))
                 print("shot", v["name"])
             else:
                 print("no frame", v["name"], r)
-        perf = rpc({"op": "perf"})
-        if perf.get("ok"):
-            (out / "perf.json").write_text(json.dumps(perf, indent=1))
-            print("perf", perf)
+        # Main-window numbers (its camera does not follow the vantage); compare
+        # runs, not views.
+        (out / "perf.json").write_text(json.dumps(allperf, indent=1))
+        if allperf:
+            print("perf", next(iter(allperf.values())))
     finally:
         proc.terminate()
         try:
