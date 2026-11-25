@@ -2,7 +2,7 @@
 ## Jersey waterfront, so the island no longer stands alone in an empty sea.
 ##
 ## Data: assets/manhattan/far_nyc.json (NYC Open Data building footprints,
-## boroughs 2-4, public domain) and far_nj.json (OpenStreetMap, ODbL), both
+## boroughs 2-4, public domain) and far_nj.json (Overture Maps, ODbL), both
 ## from tools/fetch_manhattan_far.py, as oriented boxes in the dataset frame.
 ##
 ## VISUAL ONLY. These buildings are outside the sim's occupancy grid (which

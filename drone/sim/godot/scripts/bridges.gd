@@ -83,7 +83,7 @@ func _ready() -> void:
 	_commit_clusters()
 	_build_lights()
 	_add_walls()
-	print("[bridges] %d bridges, %d tower footprints in the structure model, %d lights"
+	print("[bridges] %d bridges, %d tower pieces in the structure model, %d lights"
 		% [n, _walls_added, _lights.size()])
 
 
@@ -264,15 +264,25 @@ func _tower_block(cls: String, s: float, lat: float, y0: float, y1: float,
 	_record_tower(s, lat, along, across, y1)
 
 
+## The box model only holds rects aligned with the sim's axes, and a bridge's
+## axis is not (the Brooklyn Bridge runs 17 deg off them). One bounding rect
+## of a turned 20 x 42 m tower is far bigger than the tower, so an aircraft
+## was "struck" metres short of the stone; pieces of at most PIECE_M a side,
+## each with its own bounding rect, follow the footprint closely.
+const PIECE_M := 8.0
+
+
 func _record_tower(s: float, lat: float, along: float, across: float, top: float) -> void:
-	var pts := []
-	for i in [-1.0, 1.0]:
-		for j in [-1.0, 1.0]:
-			pts.append(_dataset(s + i * along * 0.5, lat + j * across * 0.5))
-	var r := Rect2(pts[0], Vector2.ZERO)
-	for p in pts:
-		r = r.expand(p)
-	_towers.append([r, top])
+	var na := maxi(1, int(ceil(along / PIECE_M)))
+	var nx := maxi(1, int(ceil(across / PIECE_M)))
+	for ia in na:
+		for ix in nx:
+			var sa := s - along * 0.5 + along * ia / na
+			var la := lat - across * 0.5 + across * ix / nx
+			var r := Rect2(_dataset(sa, la), Vector2.ZERO)
+			for k in [[1, 0], [0, 1], [1, 1]]:
+				r = r.expand(_dataset(sa + along / na * k[0], la + across / nx * k[1]))
+			_towers.append([r, top])
 
 
 # ------------------------------------------------------------------ build
