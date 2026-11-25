@@ -255,6 +255,14 @@ func _ready() -> void:
 ## parent bakes its grey tint into per-instance colours, and those would
 ## multiply against the facade shader's output.
 func _render_city() -> void:
+	# The city's own styles, roofs and rooftop kit (scripts/manhattan_buildings.gd),
+	# when its baked window cells are there; else the CC0 photo facades below.
+	var mb: Node3D = preload("res://scripts/manhattan_buildings.gd").new()
+	mb.name = "manhattan_buildings"
+	add_child(mb)
+	if mb.call("build", self):
+		return
+	mb.queue_free()
 	var mat := _facade_material()
 	if mat == null:
 		push_warning("[env_manhattan_photo] no facade textures — run "

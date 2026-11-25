@@ -88,6 +88,7 @@ drone/sim/godot/assets/*
 # commits the files but leaves the next person with the same puzzle.
 !drone/sim/godot/assets/baylands
 !drone/sim/godot/assets/facades
+!drone/sim/godot/assets/facade_cells_nyc
 !drone/sim/godot/assets/manhattan
 # ...but never the fetch caches inside them.
 drone/sim/godot/assets/*/_*

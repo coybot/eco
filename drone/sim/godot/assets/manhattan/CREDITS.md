@@ -10,3 +10,5 @@ gitignored (caches and large imagery the tools fetch again).
 | `ortho.jpg`, `ortho.json` | USGS National Map imagery | Public domain | `fetch_manhattan_ortho.py` |
 | `water.png`, `water.json` | OpenStreetMap coastline; USGS National Hydrography Dataset waterbodies | Map data (c) OpenStreetMap contributors, ODbL 1.0 (<https://www.openstreetmap.org/copyright>); NHD public domain | `fetch_manhattan_water.py` |
 | `roads.json` | NYC Open Data, Centerline (CSCL, inkn-q76z) | Public domain (NYC Open Data terms of use) | `fetch_manhattan_roads.py` |
+| `building_attrs.json` | NYC Open Data: Building Footprints (5zhs-2jue) `construction_year`; PLUTO (64uk-42ks) `bldgclass`, `numfloors`, retail/office/residential area | Public domain (NYC Open Data terms of use) | `fetch_manhattan_building_attrs.py` |
+| `../facade_cells_nyc/*` (window cells for the building shader) | Drawn by the tool, not photographed | No restrictions (original work, Apache-2.0 with the repo) | `bake_manhattan_facade_cells.py` |
