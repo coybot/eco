@@ -19,11 +19,12 @@
 ##     from anywhere on the island;
 ##   * low: 2 km chunks, drawn to LOW_RANGE — the waterfront's
 ##     rowhouses and warehouses, which only matter close to.
-## The facade shader is manhattan_photo's family: the same CC0 photographs on
-## metric UVs (a storey is the same height on every building), a dark roof,
-## and at night a lit-window layer from the same metric grid, faded to its
-## average where a window is under a pixel so the far shore twinkles rather
-## than shimmers.
+## The look is the island's own: manhattan_buildings.gd's material (baked
+## facade cells by style, walls blending to their style's average where a
+## cell is under a pixel, lit windows from night_amount, native thermal),
+## with a style per building guessed from its size (_far_attrs). It is shared,
+## not copied, so the two shores match and drive one night uniform. On a
+## checkout without the cells, a fallback shader with the CC0 photographs.
 extends Node3D
 
 const FILES := ["res://assets/manhattan/far_nyc.json", "res://assets/manhattan/far_nj.json"]
@@ -34,9 +35,6 @@ const TALL_CHUNK := 8000.0
 const LOW_CHUNK := 2000.0
 const LOW_RANGE := 4500.0
 const TALL_RANGE := 30000.0
-## Boxes start this far below the street, so a building on a bank lower than
-## the scene's flat ground does not float.
-const SINK := 2.0
 
 var env: Node3D
 var _mat: ShaderMaterial
@@ -51,8 +49,15 @@ func _ready() -> void:
 	var arg := str(IpcServer._get_launch_arg("--far-night", ""))
 	if arg != "":
 		_night_forced = clampf(float(arg), 0.0, 1.0)
-	_mat = _material()
-	# chunk key -> [transforms...]
+	# The island's own building look when manhattan_buildings.gd built it
+	# (baked facade cells, styles, night windows, thermal): the same material,
+	# fed a style per far building. Without it, the CC0-photo shader below.
+	var mb := env.get_node_or_null("manhattan_buildings")
+	var cells_mat: ShaderMaterial = mb.get("city_mat") if mb != null else null
+	if cells_mat == null:
+		_mat = _material()
+	var rng := RandomNumberGenerator.new()
+	# chunk key -> [[transform, wall colour, custom], ...]
 	var chunks := {}
 	for path in FILES:
 		if not FileAccess.file_exists(path):
@@ -70,15 +75,27 @@ func _ready() -> void:
 			var tall := h >= TALL_M
 			var ch := TALL_CHUNK if tall else LOW_CHUNK
 			var key := Vector3i(int(floor(c.x / ch)), int(floor(c.y / ch)), 1 if tall else 0)
-			var basis := Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(w, h + SINK, d))
-			var xf := Transform3D(basis, Vector3(c.x, (h - SINK) * 0.5, -c.y))
+			# On the ground the scene has there: street level on land, the river
+			# for the few that stand on piers out over it.
+			var base: float = float(env.call("ground_height", c.x, c.y))
+			var basis := Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(w, h, d))
+			var xf := Transform3D(basis, Vector3(c.x, base + h * 0.5, -c.y))
+			var wall := Color.WHITE
+			var cus := Color(0, 0, 0, 0)
+			if cells_mat != null:
+				rng.seed = hash(Vector2i(roundi(c.x * 10.0), roundi(c.y * 10.0)))
+				var info: Dictionary = mb.call("_describe", Rect2(Vector2.ZERO, Vector2(w, d)), h,
+					_far_attrs(w, d, h, rng), rng)
+				wall = info["wall"]
+				cus = info["custom"]
 			if not chunks.has(key):
 				chunks[key] = []
-			chunks[key].append(xf)
+			chunks[key].append([xf, wall, cus])
 			count += 1
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE
-	box.material = _mat
+	if cells_mat == null:
+		box.material = _mat
 	for key: Vector3i in chunks:
 		var list: Array = chunks[key]
 		var tall := key.z == 1
@@ -86,16 +103,24 @@ func _ready() -> void:
 		var centre := Vector3((key.x + 0.5) * ch, 0.0, -(key.y + 0.5) * ch)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		if cells_mat != null:
+			mm.use_colors = true
+			mm.use_custom_data = true
 		mm.mesh = box
 		mm.instance_count = list.size()
 		for i in list.size():
-			var xf: Transform3D = list[i]
+			var xf: Transform3D = list[i][0]
 			xf.origin -= centre
 			mm.set_instance_transform(i, xf)
+			if cells_mat != null:
+				mm.set_instance_color(i, list[i][1])
+				mm.set_instance_custom_data(i, list[i][2])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.name = "far_%s_%d_%d" % ["tall" if tall else "low", key.x, key.y]
 		mmi.multimesh = mm
 		mmi.position = centre
+		if cells_mat != null:
+			mmi.material_override = cells_mat
 		mmi.visibility_range_end = TALL_RANGE if tall else LOW_RANGE
 		mmi.visibility_range_end_margin = 400.0
 		# No shadows: every far chunk was a draw in each shadow cascade too,
@@ -106,10 +131,32 @@ func _ready() -> void:
 
 
 func _process(_dt: float) -> void:
+	if _mat == null:
+		return     # the island's material: manhattan_buildings.gd drives its night
 	var nt := _night_forced if _night_forced >= 0.0 else float(env.call("night_amount"))
 	if absf(nt - _night_last) > 0.01:
 		_night_last = nt
 		_mat.set_shader_parameter("night", nt)
+
+
+## What the far shore is, as an attrs row for manhattan_buildings._describe()
+## ([year, floors, PLUTO class index (A=0), retail, office, residential,
+## party walls]): the footprint data carries no age or use, so it is guessed
+## from size, seeded by position. Rowhouse-sized low buildings are old walk-ups
+## and brownstones (class C), big low footprints are warehouses (E), the
+## middle heights a mix of pre-war, post-war and new, and the towers of Long
+## Island City, Downtown Brooklyn and Jersey City nearly all post-2000 glass.
+func _far_attrs(w: float, d: float, h: float, rng: RandomNumberGenerator) -> PackedInt32Array:
+	var x := rng.randf()
+	var floors := maxi(1, int(h / 3.2))
+	if h < 22.0:
+		if w * d > 2500.0:
+			return PackedInt32Array([1950, floors, 4, 0, 0, 0, 0])
+		return PackedInt32Array([1905 if x < 0.7 else 1995, floors, 2, 1 if x < 0.3 else 0, 0, 1, 0])
+	if h < 70.0:
+		var year := 1925 if x < 0.4 else (1965 if x < 0.7 else 2008)
+		return PackedInt32Array([year, floors, 3, 0, 0, 1, 0])
+	return PackedInt32Array([2012 if x < 0.85 else 1975, floors, -1, 0, 1 if x < 0.3 else 0, 0, 0])
 
 
 ## The facade set the island's own buildings use when it is there (so the
