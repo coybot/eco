@@ -560,7 +560,23 @@ def main(argv: list[str] | None = None) -> int:
     occ = footprints()
     wet = water()
     road, roads = roads_mask()
-    land = ~wet
+    # Manhattan's own land: the land masses that hold Manhattan footprints
+    # (the island, Roosevelt, Randall's and Governors, and the mainland at
+    # Marble Hill), inside the orthophoto. The OSM fetch reaches New Jersey,
+    # Brooklyn and Queens, whose parks drew trees floating over the harbour
+    # where no ground is drawn.
+    lab, _ = ndimage.label(~wet)
+    keep = np.unique(lab[occ & ~wet])
+    keep = keep[keep > 0]
+    land = np.isin(lab, keep)
+    del lab
+    ob = json.loads((ASSETS / "ortho.json").read_text())["bounds_enu"]
+    c0, r0 = (int(v) for v in to_px(ob[0], ob[1]))
+    c1, r1 = (int(v) for v in to_px(ob[2], ob[3]))
+    in_ortho = np.zeros((H, W), bool)
+    in_ortho[max(r0, 0):min(r1, H), max(c0, 0):min(c1, W)] = True
+    land &= in_ortho
+    wet |= ~land
 
     # Green zone: NYC Parks properties plus OSM's parks, gardens and woods.
     # Pitches and playgrounds are cut out after.
