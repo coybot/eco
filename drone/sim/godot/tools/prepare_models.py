@@ -372,6 +372,19 @@ def ship(src, name, length, draft, faces, drop=None, flip=False, tex=1024):
     export(o, name, tex)
 
 
+def palm(src, name, faces):
+    """A palm as ONE mesh (its parts joined, materials kept as surfaces), so
+    Godot can draw hundreds through one MultiMesh. Standing on z = 0, real size."""
+    o = load(src)
+    bpy.ops.object.select_all(action="DESELECT")
+    for x in o:
+        x.select_set(True)
+    bpy.context.view_layer.objects.active = o[0]
+    bpy.ops.object.join()
+    o = [bpy.context.view_layer.objects.active]
+    origin(o, "ground"); decimate(o, faces); export(o, name, 512)
+
+
 JOBS = {
     "tank_m1a2": ("general_dynamics_m1a2_abrams_main_battle_tank.glb", tank),
     "pickup_hilux": ("toyota_hilux_2007.glb", pickup),
@@ -392,6 +405,15 @@ JOBS = {
     "boat_trawler": ("fishing_ship_game-ready_asset.glb", lambda s: ship(s, "boat_trawler", 18.0, 0.16, 16000, tex=512)),
     "boat_rusty": ("low_poly_old_rusty_fishing_boat.glb", lambda s: ship(s, "boat_rusty", 13.0, 0.18, 10000, tex=512)),
     "ship_tug": ("svitzer_gelliswick_-_fishing_boat_3d_scan.glb", lambda s: ship(s, "ship_tug", 30.0, 0.17, 20000)),
+    # 2026-11-25: more hulls, so a harbour of one model each doesn't read as copies.
+    "boat_huri": ("fishingboat.glb", lambda s: ship(
+        s, "boat_huri", 7.5, 0.23, 8000, tex=512, drop=lambda o: o.name.startswith("Pedal"))),   # the oars
+    "boat_work": ("old_boat_game-ready_asset.glb", lambda s: ship(s, "boat_work", 14.0, 0.16, 10000, tex=512)),
+    "boat_pilot": ("pilot_ii.glb", lambda s: ship(s, "boat_pilot", 16.0, 0.17, 20000, tex=512)),
+    "ship_coaster": ("small_cargo_ship.glb", lambda s: ship(s, "ship_coaster", 70.0, 0.14, 24000)),
+    "palm_date": ("date_palm.glb", lambda s: palm(s, "palm_date", 1000)),
+    "palm_coconut": ("coconut_palm.glb", lambda s: palm(s, "palm_coconut", 900)),
+    "palm_fan": ("realistic_hd_california_fan_palm_2225.glb", lambda s: palm(s, "palm_fan", 1200)),
 }
 
 

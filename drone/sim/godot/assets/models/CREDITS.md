@@ -29,5 +29,12 @@ and turned to face +Z, then exported as GLB.
 | ship_tug.glb | Svitzer Gelliswick - Fishing boat 3D Scan | Sircher | https://sketchfab.com/3d-models/172f7b2cddb942c4a6867e55bea4c47a |
 | ship_dhow.glb | Dhow01 | nmoq | https://sketchfab.com/3d-models/44cd10977ae646268d87f850ff321186 |
 | ship_cargo.glb | Cargo ship | hungry_drifter | https://sketchfab.com/3d-models/b7c97df584824ca682d26daabf401f87 |
+| boat_huri.glb | FishingBoat | Godot2000 | https://sketchfab.com/3d-models/cc4200e4018843f28ddca72adc61e887 |
+| boat_work.glb | Old Boat game-ready asset | Dominik Biały | https://sketchfab.com/3d-models/830fa1f44bd74317a7ec2e4e62aceb5d |
+| boat_pilot.glb | Pilot II | gogiart | https://sketchfab.com/3d-models/6ea031237b6b4382ab362790f8af4e66 |
+| ship_coaster.glb | Small Cargo Ship | Styx | https://sketchfab.com/3d-models/6362d3e9b11e4396aaafa854c3aa6f06 |
+| palm_date.glb | Date Palm | evolveduk | https://sketchfab.com/3d-models/11acf710e6c149daa8d6fb8cdc5d087f |
+| palm_coconut.glb | Coconut Palm | evolveduk | https://sketchfab.com/3d-models/26e787f2ff2e4c0fb004c3b0210805a3 |
+| palm_fan.glb | Realistic HD California fan palm (22/25) | PlantCatalog | https://sketchfab.com/3d-models/5492bd27db734608bb41409efeba238c |
 
-Downloaded 2026-11-24. The original downloads are not kept in the repo.
+Downloaded 2026-11-24 (the four extra hulls and the palms 2026-11-25). The original downloads are not kept in the repo.
