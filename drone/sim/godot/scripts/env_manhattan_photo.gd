@@ -282,6 +282,7 @@ func _ready() -> void:
 	# moving world: traffic, parked cars, people, ships (off by default).
 	preload("res://scripts/life_props.gd").dress(self)
 	add_child(preload("res://scripts/world_life.gd").new())
+	add_child(preload("res://scripts/nature.gd").new())   # trees, park lamps and benches
 	print("[env_manhattan_photo] facade shader active; ortho %s" %
 		("loaded" if FileAccess.file_exists(ORTHO_PATH) else "absent (flat ground)"))
 

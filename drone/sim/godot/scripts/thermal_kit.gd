@@ -288,7 +288,10 @@ const PART_CLASS := {"ac_": "machinery", "tank_": "water_tank", "dish": "steel",
 	"pier_poles": "steel",
 	# Parks and palms.
 	"park_lamp_heads": "lamp", "park_lamp_posts": "steel", "park_benches": "default",
-	"park_": "vegetation", "hedges": "vegetation", "palm_": "vegetation", "containers_": "container"}
+	"park_": "vegetation", "hedges": "vegetation", "palm_": "vegetation", "containers_": "container",
+	# Manhattan's trees (nature.gd) draw their own thermal band; this is the
+	# fallback if one of them ever comes through without it.
+	"trees_": "vegetation"}
 
 const LABEL_CLASS := {"pickup truck": "vehicle", "car": "vehicle", "truck": "vehicle", "tank": "tank",
 	"person": "person", "house": "house", "shed": "house", "warehouse": "house", "tent": "tent"}
