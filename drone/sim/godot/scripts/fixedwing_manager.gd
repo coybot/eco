@@ -331,10 +331,19 @@ func _set_airframe(st: FixedWingState, airframe: String) -> void:
 	if st.visuals != null and is_instance_valid(st.visuals):
 		st.visuals.queue_free()
 	var mesh := Node3D.new()
-	mesh.set_script(load("res://scripts/vtol_visuals.gd" if airframe == "vtol"
-		else "res://scripts/fixedwing_visuals.gd"))
+	var look := "vtol" if airframe == "vtol" else "fixedwing"
+	if GLB_VISUALS.available(look):
+		# The downloaded model (glb_aircraft_visuals.gd), where its file is there.
+		mesh.set_script(GLB_VISUALS)
+		mesh.set("kind", look)
+	else:
+		mesh.set_script(load("res://scripts/vtol_visuals.gd" if airframe == "vtol"
+			else "res://scripts/fixedwing_visuals.gd"))
 	st.node.add_child(mesh)
 	st.visuals = mesh
+
+
+const GLB_VISUALS := preload("res://scripts/glb_aircraft_visuals.gd")
 
 
 ## A fixed-wing is born flying at its minimum airspeed; a VTOL is born hovering.
