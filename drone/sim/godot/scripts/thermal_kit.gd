@@ -509,6 +509,9 @@ func _attach() -> void:
 
 ## A thing's length (m), for placing its hot spot.
 func _extent(n: Node3D) -> float:
+	# Things with physics-server bodies (world_life's ships) say their length.
+	if n.has_meta("length_m"):
+		return float(n.get_meta("length_m"))
 	var best := 4.0
 	for c in n.find_children("*", "CollisionShape3D", true, false):
 		var s = (c as CollisionShape3D).shape

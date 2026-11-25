@@ -278,6 +278,10 @@ func _ready() -> void:
 	# What surrounds the island: the far shores' skylines and the bridges.
 	add_child(preload("res://scripts/far_shore.gd").new())
 	add_child(preload("res://scripts/bridges.gd").new())
+	# The target and decoy as real vehicles (same props, same bodies), and the
+	# moving world: traffic, parked cars, people, ships (off by default).
+	preload("res://scripts/life_props.gd").dress(self)
+	add_child(preload("res://scripts/world_life.gd").new())
 	print("[env_manhattan_photo] facade shader active; ortho %s" %
 		("loaded" if FileAccess.file_exists(ORTHO_PATH) else "absent (flat ground)"))
 

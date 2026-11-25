@@ -18,6 +18,7 @@ gitignored (caches and large imagery the tools fetch again).
 | `_hi/streets_*.png` (gitignored) | NYC Open Data, NYC Planimetric Database: Roadbed (i36f-5ih7), Sidewalk (52n9-sdep), Median (ees7-4ufv) | Public domain (NYC Open Data terms of use) | `fetch_manhattan_planimetric.py` |
 | `piers.json` | NYC Open Data, NYC Planimetric Database: Hydrography Structures (6hbv-tek4), feat_code 2800 piers | Public domain (NYC Open Data terms of use) | `fetch_manhattan_planimetric.py` |
 | `shore.png`, `shore_far.png`, `shore.json`, `coast.json` | Derived from `water.png` (OpenStreetMap coastline, ODbL 1.0, (c) OpenStreetMap contributors; USGS NHD, public domain) and `piers.json` | ODbL 1.0 (produced work of the OSM coastline): attribute "(c) OpenStreetMap contributors" | `bake_manhattan_shore.py` |
+| `ships.json` | Derived: ferry lines from `roads.json` (NYC Open Data Centerline); river fairways from `water.png` (OpenStreetMap coastline, USGS NHD); Upper Bay legs, Staten Island ferry and harbour tour as hand waypoints | Public domain (NYC Open Data); map data (c) OpenStreetMap contributors, ODbL 1.0; NHD public domain | `bake_manhattan_ships.py` |
 
 `far_nj.json` and `bridges.json` are derived databases of ODbL data
 (Overture's buildings theme; OpenStreetMap) and stay under the ODbL; they are kept as separate files so that the public
