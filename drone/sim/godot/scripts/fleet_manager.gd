@@ -233,6 +233,30 @@ func _load_environment(env_name: String) -> void:
 	var env_node := env_scene.instantiate()
 	_scene_root.add_child(env_node)
 	_env_node = env_node
+	# Most environments add their own shadow-casting sun. The deferred call
+	# runs after their _ready() has built it.
+	call_deferred("_one_shadow_sun", env_node)
+
+
+## One shadow map is enough. main.tscn's DirectionalLight casts shadows, and
+## so does the sun most environments add (SceneKit, env_city, env_depot, ...):
+## every shadow caster was drawn into two cascaded maps, and the ground showed
+## two shadows from two directions. When the environment brings a shadowed sun
+## of its own, main.tscn's keeps lighting but stops casting shadows.
+func _one_shadow_sun(env_node: Node) -> void:
+	if env_node == null or not is_instance_valid(env_node):
+		return
+	var own := false
+	for n in env_node.find_children("*", "DirectionalLight3D", true, false):
+		if (n as DirectionalLight3D).shadow_enabled:
+			own = true
+			break
+	if not own:
+		return
+	for n in get_tree().root.find_children("*", "DirectionalLight3D", true, false):
+		var l := n as DirectionalLight3D
+		if l.shadow_enabled and not env_node.is_ancestor_of(l):
+			l.shadow_enabled = false
 
 
 func _add_default_ground() -> void:
