@@ -55,6 +55,7 @@ func _ready() -> void:
 	var piles := {}        # 1 km tile -> Array[Transform3D]
 	var tile := float(ground.get("tile_m"))
 	var off: Vector2 = env.call("data_offset")
+	_building_decks(shore)
 	for ring: PackedVector2Array in piers:
 		if not bounds.has_point(ring[0]):
 			continue
@@ -142,6 +143,44 @@ func _ready() -> void:
 		n_piles += list.size()
 	print("[manhattan_piers] %d decks in %d draws, %d piles in %d, %d ms" %
 		[count, decks.size(), n_piles, piles.size(), Time.get_ticks_msec() - t0])
+
+
+## Decks under buildings that stand over the river. buildings.json's boxes
+## are axis-aligned bounding rects, and on the piers (Chelsea Piers, Pier 57,
+## Pier 40) they overhang the mapped deck, so a facade came down into open
+## water. Each building with any of its footprint over water (sampled every
+## ~5 m) gets a deck of its own rect, registered with the shoreline as a
+## pier so is_water() says ground there too. ~80 of Manhattan's 45k.
+func _building_decks(shore: RefCounted) -> void:
+	var rects: Array = env.get("_rects")
+	var added := 0
+	for r: Rect2 in rects:
+		# Most are inland: the field's distance at the centre clears the
+		# whole rect when it exceeds the half-diagonal (it saturates at 32 m).
+		var c := r.get_center()
+		var half := r.size.length() * 0.5
+		var d0 := float(shore.call("distance", c.x, c.y))
+		if d0 < -half or (d0 <= -31.0 and half < 31.0):
+			continue
+		var nx := clampi(int(r.size.x / 5.0) + 2, 2, 20)
+		var ny := clampi(int(r.size.y / 5.0) + 2, 2, 20)
+		var wet := false
+		for ix in nx:
+			for iy in ny:
+				var p := r.position + r.size * Vector2((ix + 0.5) / nx, (iy + 0.5) / ny)
+				if float(shore.call("distance", p.x, p.y)) > 0.0 and int(shore.call("pier_at", p.x, p.y)) < 0:
+					wet = true
+					break
+			if wet:
+				break
+		if not wet:
+			continue
+		var g := r.grow(0.4)
+		shore.call("add_pier", PackedVector2Array([g.position, Vector2(g.end.x, g.position.y), g.end,
+			Vector2(g.position.x, g.end.y)]))
+		added += 1
+	if added > 0:
+		print("[manhattan_piers] %d decks under buildings over the water" % added)
 
 
 static func _area(p: PackedVector2Array) -> float:
@@ -261,7 +300,7 @@ float vn(vec2 p) {
 }
 void vertex() { w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; lk = UV2; }
 void fragment() {
-    vec3 conc = vec3(0.38, 0.37, 0.35) * (0.85 + 0.25 * vn(w.xz * 0.6));
+    vec3 conc = vec3(0.25, 0.245, 0.235) * (0.85 + 0.25 * vn(w.xz * 0.6));
     vec3 c;
     if (lk.y < 0.5) {
         c = conc;
@@ -275,7 +314,7 @@ void fragment() {
             float waterish = smoothstep(0.03, 0.0, ph.r - max(ph.g, ph.b) * 0.92) * smoothstep(0.3, 0.18, lum);
             // NAIP's pier tops are often blown-out white concrete; held to
             // the brightest the ground's own sidewalks reach.
-            c = mix(min(ph * 0.62, vec3(0.3)), conc, waterish);
+            c = mix(min(ph * 0.62, vec3(0.26)), conc, waterish);
         }
     } else if (lk.y < 1.5) {
         c = vec3(0.05, 0.05, 0.045);
@@ -286,6 +325,7 @@ void fragment() {
     }
     ALBEDO = c;
     ROUGHNESS = 0.92;
+    SPECULAR = 0.3;
     if (thermal_pass(CAMERA_VISIBLE_LAYERS)) {
         vec2 th = th_surface(0.5, 18.0, 0.7, 0.0);
         th = th_air(th, length(CAMERA_POSITION_WORLD - w));

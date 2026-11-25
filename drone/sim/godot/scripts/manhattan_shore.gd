@@ -5,6 +5,11 @@
 ## the same line. Plus the pier decks (piers.json), which stand over water
 ## but are ground to anything asking.
 ##
+## Water here is TIDAL water only: the rivers, the harbour and what joins
+## them. Inland lakes and ponds (Central Park's Reservoir, the Lake, Harlem
+## Meer) are land in the field, flat ground at street level; they stand above
+## it and belong to the park's own terrain, which may answer for them itself.
+##
 ## Two fields: 4 m/px over Manhattan and its rivers, 8 m/px over the whole
 ## mask extent. Both encode metres as 128 + 4 * d (+ over water), +-32 m.
 ## Sampled bilinearly on the CPU here exactly as a GPU's linear filter does
@@ -78,18 +83,23 @@ func _load_piers() -> void:
 			ring.remove_at(ring.size() - 1)
 		if ring.size() < 3:
 			continue
-		var box := Rect2(ring[0], Vector2.ZERO)
-		for v in ring:
-			box = box.expand(v)
-		var idx := piers.size()
-		piers.append(ring)
-		pier_boxes.append(box)
-		for cx in range(int(floor(box.position.x / PIER_CELL)), int(floor(box.end.x / PIER_CELL)) + 1):
-			for cy in range(int(floor(box.position.y / PIER_CELL)), int(floor(box.end.y / PIER_CELL)) + 1):
-				var k := Vector2i(cx, cy)
-				if not _pier_hash.has(k):
-					_pier_hash[k] = PackedInt32Array()
-				_pier_hash[k].append(idx)
+		add_pier(ring)
+
+
+## A deck (sim-frame outer ring) that is ground, not water, to is_water().
+func add_pier(ring: PackedVector2Array) -> void:
+	var box := Rect2(ring[0], Vector2.ZERO)
+	for v in ring:
+		box = box.expand(v)
+	var idx := piers.size()
+	piers.append(ring)
+	pier_boxes.append(box)
+	for cx in range(int(floor(box.position.x / PIER_CELL)), int(floor(box.end.x / PIER_CELL)) + 1):
+		for cy in range(int(floor(box.position.y / PIER_CELL)), int(floor(box.end.y / PIER_CELL)) + 1):
+			var k := Vector2i(cx, cy)
+			if not _pier_hash.has(k):
+				_pier_hash[k] = PackedInt32Array()
+			_pier_hash[k].append(idx)
 
 
 ## Index of the pier deck at sim (e, n), or -1.
