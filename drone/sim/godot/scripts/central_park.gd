@@ -162,6 +162,26 @@ func ground_at(e: float, n: float) -> float:
 	return terrain_at(e, n)
 
 
+## Whether a tree may stand at (e, n): not in a lake or fountain, not on
+## the built landmarks' plazas and decks (Bethesda's terrace, the rink, the
+## castle, the bridges). For the nature layer, which plants from the photo's
+## canopy and so also finds "canopy" over a fountain basin.
+func tree_ok(e: float, n: float) -> bool:
+	if not covers(e, n):
+		return true
+	if _field(e, n, 1) * 255.0 > 120.0:     # within 1 m of water, or in it
+		return false
+	var p := Vector2(e, n)
+	for r: Rect2 in clear_zones:
+		if r.has_point(p):
+			return false
+	return true
+
+
+## Set by central_park_landmarks.gd: where it builds on the ground.
+var clear_zones: Array[Rect2] = []
+
+
 func _field(e: float, n: float, ch: int) -> float:
 	var x := clampi(int((e - rect.position.x) / res), 0, W - 1)
 	var y := clampi(int((rect.end.y - n) / res), 0, H - 1)

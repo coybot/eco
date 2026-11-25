@@ -733,6 +733,7 @@ func _bethesda() -> void:
 		u = -u
 	var v := Vector2(u.y, -u.x)
 	var plaza := _terrain(f + v * 16.0)
+	_clear(Rect2(f - Vector2(30, 30), Vector2(60, 52)))
 	var pp := _new_parts()
 	# Basin rim, 14 m radius.
 	var r := 14.0
@@ -831,6 +832,7 @@ func _gapstow() -> void:
 ## railing, open spandrels) or stone (solid parapets and spandrels).
 func _arch_bridge(nm: String, a: Vector2, b: Vector2, ya: float, yb: float, water: float,
 		width: float, camber: float, deck_k: String, rail_k: String, rib_k: String, iron: bool) -> void:
+	_clear(Rect2(a, Vector2.ZERO).expand(b).grow(width * 0.5 + 1.0))
 	var pp := _new_parts()
 	var d := (b - a).normalized()
 	var side := Vector2(-d.y, d.x)
@@ -905,6 +907,7 @@ func _castle() -> void:
 	if pl.size() < 4:
 		return
 	_hide.append(_bbox(pl).grow(2.0))
+	_clear(_bbox(pl).grow(4.0))
 	var y0 := _foot(pl) - 0.5
 	var c := _centroid(pl)
 	var pp := _new_parts()
@@ -939,6 +942,7 @@ func _wollman() -> void:
 	if pl.size() < 4:
 		return
 	var y := _terrain(_centroid(pl)) + 0.15
+	_clear(_bbox(pl).grow(1.0))
 	var pp := _new_parts()
 	var pts := PackedVector2Array()
 	var n := pl.size()
@@ -970,6 +974,7 @@ func _bandshell() -> void:
 	if pl.size() < 4:
 		return
 	_hide.append(_bbox(pl).grow(1.5))
+	_clear(_bbox(pl).grow(3.0))
 	var c := _centroid(pl)
 	var y0 := _foot(pl)
 	# Open toward the Mall's axis.
@@ -1012,6 +1017,7 @@ func _carousel() -> void:
 	if pl.size() < 4:
 		return
 	_hide.append(_bbox(pl).grow(1.5))
+	_clear(_bbox(pl).grow(3.0))
 	var c := _centroid(pl)
 	var r := 0.0
 	for q in pl:
@@ -1037,6 +1043,7 @@ func _dairy() -> void:
 	if pl.size() < 4:
 		return
 	_hide.append(_bbox(pl).grow(1.5))
+	_clear(_bbox(pl).grow(3.0))
 	var c := _centroid(pl)
 	var u := _axis(pl)
 	var v := Vector2(-u.y, u.x)
@@ -1078,6 +1085,7 @@ func _needle() -> void:
 	var c := _centroid(pl)
 	var rot := atan2(_axis(pl).y, _axis(pl).x)
 	var y := _foot(pl)
+	_clear(Rect2(c - Vector2(5, 5), Vector2(10, 10)))
 	var pp := _new_parts()
 	var hs := [3.6, 3.0, 2.4]
 	for k in 3:
@@ -1089,6 +1097,10 @@ func _needle() -> void:
 	pp.cyl("granite", _g(c, y), 1.66, 1.13, 19.6, 4, false, rot + PI / 4.0)
 	pp.cyl("granite", _g(c, y + 19.6), 1.13, 0.0, 1.6, 4, false, rot + PI / 4.0)
 	_commit(pp, "cleopatras_needle", 3000.0)
+
+
+func _clear(r: Rect2) -> void:
+	(park.get("clear_zones") as Array).append(r)
 
 
 static func _bbox(pts: PackedVector2Array) -> Rect2:
@@ -1131,6 +1143,9 @@ void fragment() {
     vec2 en = vec2(w.x, -w.z);
     vec2 fu = (en - rect.xy) / rect.zw;
     float d = (texture(fields, vec2(fu.x, 1.0 - fu.y)).g * 255.0 - 128.0) / 8.0;   // m from shore, + water
+    // The mesh is each lake's outer ring only (no holes): its islands are
+    // cut here, a metre onto land so the bank still meets the water.
+    if (d < -1.0) { discard; }
     float fw = max(length(fwidth(en)), 0.003);
     // Calm water: two slow cat's-paw ripple sets, gone at range.
     float t = TIME;
