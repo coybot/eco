@@ -49,7 +49,9 @@ var ships: Node3D
 var _cams: Array = []
 var _cams_due := 0.0
 var _night_override := -1.0
-var _night := 0.0
+## Not called `_night`: fixedwing_manager._world_night() takes the first env
+## child with a `_night` as the scene's clock, and this is not the clock.
+var _night_now := 0.0
 var _cpu := {}                              # part -> mean ms a frame (EMA)
 
 
@@ -99,11 +101,12 @@ func _roads():
 		roads = LifeRoads.new()
 		if not roads.load_from(env):
 			push_warning("[world_life] no roads.json: no traffic, parked cars or people")
+		roads.block_props(env.get("props") if env.get("props") != null else [])
 		traffic.setup(env, roads)
 		parked.setup(env, roads)
 		people.setup(env, roads)
-		print("[world_life] roads: %d nodes, %d directed edges (%d ms)" % [roads.nodes.size(),
-			roads.edge_count(), Time.get_ticks_msec() - t0])
+		print("[world_life] roads: %d nodes, %d directed edges, %d lanes closed by props (%d ms)" % [
+			roads.nodes.size(), roads.edge_count(), roads.blocked.size(), Time.get_ticks_msec() - t0])
 	return roads
 
 
@@ -137,7 +140,7 @@ func world_state() -> Dictionary:
 		sample["ships"] = ships.samples()
 	return {"ok": true, "traffic": traffic.count() if traffic.on else 0,
 		"parked": parked.count() if parked.on else 0, "people": people.count() if people.on else 0,
-		"ships": ships.count(), "night": _night,
+		"ships": ships.count(), "night": _night_now,
 		"road_nodes": roads.nodes.size() if roads != null else 0,
 		"sample": sample, "traffic_speed": traffic.mean_speed() if traffic.on else {},
 		"cpu_ms": _cpu}
@@ -168,29 +171,35 @@ func _process(dt: float) -> void:
 	if _cams_due <= 0.0:
 		_cams_due = 0.5
 		_cams = _cameras()
-	_night = _night_override if _night_override >= 0.0 else float(env.call("night_amount"))
+	else:
+		# A vantage removed since the last look (a fresh one per still).
+		for c in _cams:
+			if not is_instance_valid(c):
+				_cams = _cameras()
+				break
+	_night_now = _night_override if _night_override >= 0.0 else float(env.call("night_amount"))
 	if traffic.on:
 		var t0 := Time.get_ticks_usec()
 		traffic.step(dt, _cams)
 		_ema("traffic", t0)
 	var mat := LM.material()
 	mat.set_shader_parameter("now", fposmod(traffic._clock, 1000.0))
-	mat.set_shader_parameter("night", _night)
+	mat.set_shader_parameter("night", _night_now)
 	if parked.on:
 		var t1 := Time.get_ticks_usec()
 		parked.update(_cams)
 		_ema("parked", t1)
 		for m: ShaderMaterial in parked.materials():
-			m.set_shader_parameter("night", _night)
+			m.set_shader_parameter("night", _night_now)
 	if people.on:
 		var t2 := Time.get_ticks_usec()
 		people.update(_cams)
 		_ema("people", t2)
-		LM.person_material().set_shader_parameter("crowd", lerpf(1.0, 0.25, _night))
+		LM.person_material().set_shader_parameter("crowd", lerpf(1.0, 0.25, _night_now))
 	if ships.on:
 		var t3 := Time.get_ticks_usec()
 		ships.step(dt)
-		ships.set_night(_night)
+		ships.set_night(_night_now)
 		_ema("ships", t3)
 
 

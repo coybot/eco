@@ -52,6 +52,11 @@ var d_oneway := PackedByteArray()
 var d_flags := PackedInt32Array()
 
 var loaded := false
+## Lanes a prop (the scene's target and decoy) stands in: edge * 8 + lane -> true.
+## Traffic does not use them, so nothing drives through a prop.
+var blocked := {}
+## [centre (sim e, n), radius] of each prop, for keeping parked cars off them.
+var props: Array = []
 
 
 func load_from(env: Node, path: String = "res://assets/manhattan/roads.json") -> bool:
@@ -144,6 +149,46 @@ func load_from(env: Node, path: String = "res://assets/manhattan/roads.json") ->
 func lane_pos(d: int, s: float, off: float) -> Vector2:
 	var dir := d_dir[d]
 	return nodes[d_from[d]] + dir * s + Vector2(dir.y, -dir.x) * off
+
+
+## Take the env's props (env.props: the target and decoy bodies) out of the
+## traffic's way: every lane passing within a car's half-width of one is
+## closed. Parking keeps clear of them too (`props`).
+func block_props(prop_nodes: Array) -> void:
+	for n in prop_nodes:
+		if not (n is Node3D) or not is_instance_valid(n):
+			continue
+		var c := Vector2((n as Node3D).position.x, -(n as Node3D).position.z)
+		var r := 2.0
+		for ch in (n as Node).get_children():
+			if ch is CollisionShape3D and (ch as CollisionShape3D).shape is BoxShape3D:
+				var sz: Vector3 = ((ch as CollisionShape3D).shape as BoxShape3D).size
+				r = Vector2(sz.x, sz.z).length() * 0.5
+		props.append([c, r])
+		for d in d_from.size():
+			if d_to[d] < 0:
+				continue
+			var a := nodes[d_from[d]]
+			if a.distance_to(c) > d_len[d] + 40.0:
+				continue
+			for lane in d_lanes[d]:
+				var off := d_off0[d] + float(lane) * LANE_W
+				var p0 := lane_pos(d, 0.0, off)
+				var p1 := lane_pos(d, d_len[d], off)
+				var q := Geometry2D.get_closest_point_to_segment(c, p0, p1)
+				if q.distance_to(c) < r + 1.4:
+					blocked[d * 8 + lane] = true
+
+
+## The open lane of `d` nearest `want`, or -1 if a prop closes them all.
+func free_lane(d: int, want: int) -> int:
+	if blocked.is_empty():
+		return want
+	var best := -1
+	for lane in d_lanes[d]:
+		if not blocked.has(d * 8 + lane) and (best < 0 or absi(lane - want) < absi(best - want)):
+			best = lane
+	return best
 
 
 func drivable(d: int) -> bool:

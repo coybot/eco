@@ -223,6 +223,7 @@ func _add_ship(kind: String, pos: Vector2, yaw: float, route: int) -> void:
 	node.name = "ship_%s_%d" % [kind, _s_kind.size()]
 	node.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	var dims := _make(kind, node)   # length, beam, freeboard
+	node.set_meta("length_m", dims.x)       # thermal_kit places the engine room by it
 	add_child(node)
 	_s_kind.append(kind)
 	_s_pos.append(pos)

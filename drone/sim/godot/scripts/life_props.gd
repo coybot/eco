@@ -51,6 +51,14 @@ static func dress(env: Node3D) -> void:
 		model.position = Vector3(-ab.get_center().z * k, -size.y * 0.5 - ab.position.y * k, ab.get_center().x * k)
 		model.name = "model"
 		ModelKit.paint(model, paint)
+		# The car pack's paint textures are coloured (the hatchback's is yellow),
+		# and paint multiplies them: the blue decoy came out green. Drop the
+		# texture on the repainted surfaces so the paint is the colour.
+		for mi in ModelKit.meshes(model):
+			for i in mi.mesh.get_surface_count():
+				var m := mi.get_surface_override_material(i)
+				if m is BaseMaterial3D:
+					(m as BaseMaterial3D).albedo_texture = null
 		for mi in ModelKit.meshes(model):
 			mi.visibility_range_end = 0.0
 		body.add_child(model)

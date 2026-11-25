@@ -25,7 +25,7 @@ const LM = preload("res://scripts/life_meshes.gd")
 
 const CHUNK := 250.0
 const BUILD_M := 900.0
-const DRAW_M := 560.0
+const DRAW_M := 460.0
 const CELL := 150.0
 const BASE := {"primary": 0.14, "secondary": 0.09, "street": 0.06, "service": 0.02, "path": 0.04}
 const SHIRTS := [Color(0.9, 0.9, 0.88), Color(0.12, 0.13, 0.16), Color(0.2, 0.25, 0.4), Color(0.55, 0.15, 0.12),

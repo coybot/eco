@@ -25,12 +25,22 @@ extends Node3D
 const LM = preload("res://scripts/life_meshes.gd")
 
 const CHUNK := 300.0
-const BUILD_M := 1900.0
+const BUILD_M := 1500.0
 const NEAR_M := 110.0
 const MID_M := 460.0
-const FAR_M := 1500.0
-const KINDS := [["sedan", 0.3], ["suv", 0.27], ["hatch", 0.1], ["minivan", 0.1], ["wagon", 0.07],
-	["compact", 0.09], ["van", 0.07]]
+const FAR_M := 1100.0
+## Five kinds, not the traffic's twelve: each is a draw per chunk and band,
+## and parked rows read as "cars" long before they read as models.
+const KINDS := [["sedan", 0.34], ["suv", 0.3], ["hatch", 0.12], ["minivan", 0.12], ["van", 0.07]]
+## The full models are drawn per SUB-metre cell, not per chunk: a chunk's
+## visibility range is judged from its centre, so with 300 m chunks every car
+## within ~330 m was sent at full detail (7,000 triangles each) and dropped in
+## the vertex shader. Measured: 21M primitives on a 110 m street view.
+const SUB := 100.0
+## The far boxes are gathered per SUPER-metre cell, each one MultiMesh grown
+## as its chunks are built: per chunk they were ~100 draws (times every
+## camera) for cars a few pixels long.
+const SUPER := 900.0
 const PARK_CLASSES := ["primary", "secondary", "street", "service"]
 
 var env: Node3D
@@ -48,6 +58,8 @@ var _built := {}                            # Vector2i -> Array of RS instance R
 var _rids: Array[RID] = []                  # every RS resource, for freeing
 var _cars := 0
 var _todo: Array[Vector2i] = []
+var _far_buf := {}                          # Vector2i super cell -> PackedFloat32Array
+var _far_mm := {}                           # Vector2i super cell -> [instance RID, multimesh RID]
 
 
 func setup(env_node: Node3D, road_data) -> void:
@@ -159,6 +171,7 @@ func _build_chunk(key: Vector2i) -> void:
 	var per_kind: Array = []
 	for k in _kinds.size():
 		per_kind.append(PackedFloat32Array())
+	var near := {}                           # Vector3i(kind, sub x, sub y) -> buffer
 	var far := PackedFloat32Array()
 	var n := 0
 	for d: int in _chunk_edges[key]:
@@ -182,8 +195,12 @@ func _build_chunk(key: Vector2i) -> void:
 				var pitch := dims.x + rng.randf_range(1.6, 2.8)
 				if s + dims.x > s1:
 					break
-				if rng.randf() < 0.86:
-					var p: Vector2 = roads.nodes[from] + dir * (s + dims.x * 0.5) + right * side * off
+				var p: Vector2 = roads.nodes[from] + dir * (s + dims.x * 0.5) + right * side * off
+				var clear := true
+				for pr: Array in roads.props:
+					if p.distance_to(pr[0]) < float(pr[1]) + 4.0:
+						clear = false     # not on the scene's target or decoy
+				if clear and rng.randf() < 0.86:
 					# Nose with the traffic on its side of the street.
 					var fwd := dir if (side > 0.0 or oneway) else -dir
 					var yaw := atan2(fwd.x, -fwd.y) + rng.randf_range(-0.03, 0.03)
@@ -195,6 +212,12 @@ func _build_chunk(key: Vector2i) -> void:
 					var warm := rng.randf_range(0.6, 1.0) if rng.randf() < 0.08 else rng.randf_range(0.0, 0.15)
 					var cu := [LM.pack_rgb(paint), 0.0, 0.0, warm]
 					_push(per_kind[k], b, o, cu)
+					var sk := Vector3i(k, int(floor(p.x / SUB)), int(floor(p.y / SUB)))
+					if not near.has(sk):
+						near[sk] = PackedFloat32Array()
+					var nb: PackedFloat32Array = near[sk]
+					_push(nb, b, o, cu)
+					near[sk] = nb
 					var bs := b * Basis.from_scale(Vector3(dims.z, dims.y, dims.x))
 					_push(far, bs, o, cu)
 					n += 1
@@ -206,10 +229,24 @@ func _build_chunk(key: Vector2i) -> void:
 		if buf.is_empty():
 			continue
 		var d: Dictionary = LM.kind(_kinds[k])
-		insts.append(_instance(scen, d["lod0"], buf, _near_mat, 0.0, NEAR_M + CHUNK * 0.75))
 		insts.append(_instance(scen, d["lod1"], buf, _mid_mat, maxf(0.0, NEAR_M - CHUNK * 0.75), MID_M + CHUNK * 0.75))
+	for sk: Vector3i in near:
+		var d: Dictionary = LM.kind(_kinds[sk.x])
+		insts.append(_instance(scen, d["lod0"], near[sk], _near_mat, 0.0, NEAR_M + SUB * 0.75))
 	if not far.is_empty():
-		insts.append(_instance(scen, _box, far, _far_mat, maxf(0.0, MID_M - CHUNK * 0.75), FAR_M + CHUNK * 0.75))
+		var c := Vector2((key.x + 0.5) * CHUNK, (key.y + 0.5) * CHUNK)
+		var sk := Vector2i(int(floor(c.x / SUPER)), int(floor(c.y / SUPER)))
+		var fb: PackedFloat32Array = _far_buf.get(sk, PackedFloat32Array())
+		fb.append_array(far)
+		_far_buf[sk] = fb
+		if _far_mm.has(sk):
+			var mm: RID = _far_mm[sk][1]
+			RenderingServer.multimesh_allocate_data(mm, fb.size() / 16, RenderingServer.MULTIMESH_TRANSFORM_3D, false, true)
+			RenderingServer.multimesh_set_buffer(mm, fb)
+		else:
+			var inst := _instance(scen, _box, fb, _far_mat, 0.0, FAR_M + SUPER * 0.75)
+			_far_mm[sk] = [inst, _rids[_rids.size() - 1]]
+			insts.append(inst)
 	_built[key] = insts
 	_cars += n
 

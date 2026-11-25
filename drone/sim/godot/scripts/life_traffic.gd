@@ -42,7 +42,7 @@ const LAYER_STRUCTURE := 1
 const TICK_SPLIT := 6
 const CELL := 200.0
 const MAX_FOCI := 4
-const LOD0_M := 150.0
+const LOD0_M := 100.0
 const LOD1_M := 560.0
 const DRAW_M := 1700.0
 ## m/s by class, before each driver's own factor. Midday Manhattan, not the
@@ -78,6 +78,7 @@ var _k_heavy := PackedByteArray()           # van/truck/bus: no parkways
 var _k_bus := PackedByteArray()
 var _k_shape: Array[RID] = []
 var _mm: Array[MultiMesh] = []              # kind * 3 + lod
+var _mmi: Array[MultiMeshInstance3D] = []
 var _mm_owner := PackedInt32Array()          # (kind * 3 + lod) * cap + slot -> vehicle
 var _mm_n := PackedInt32Array()
 var _mix_cum := PackedFloat32Array()
@@ -138,9 +139,8 @@ func set_on(want: bool, count: int = -1) -> void:
 	if want and _kinds.is_empty():
 		_build()
 	on = want and not _kinds.is_empty()
-	for c in get_children():
-		if c is MultiMeshInstance3D:
-			c.visible = on
+	for j in _mmi.size():
+		_mmi[j].visible = on and _mm_n[j] > 0
 	var space := get_world_3d().space
 	for i in _v_rid.size():
 		PhysicsServer3D.body_set_space(_v_rid[i], space if (on and _v_live[i] == 1) else RID())
@@ -221,6 +221,7 @@ func _build() -> void:
 				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mmi.visible = false
 			add_child(mmi)
+			_mmi.append(mmi)
 	for k in _mix_cum.size():
 		_mix_cum[k] /= acc
 	_mm_owner.resize(_mm.size() * cap)
@@ -325,14 +326,14 @@ func _update_foci(cams: Array) -> void:
 		var c := nadir.lerp(g, 0.6)
 		var r := clampf(350.0 + alt * 1.1 + nadir.distance_to(g) * 0.45, 450.0, 1400.0)
 		var gen := 0
-		if i < old.size() and old[i]["cam"] == cam:
+		if i < old.size() and int(old[i]["cam_id"]) == cam.get_instance_id():
 			gen = int(old[i]["gen"])
 			# A jump (a vantage moved, a new view): refill rather than trickle.
 			if (old[i]["c"] as Vector2).distance_to(c) > float(old[i]["r"]) * 0.6:
 				gen += 1
 		else:
 			gen = _rng.randi()
-		_foci.append({"cam": cam, "c": c, "r": r, "pos": pos, "gen": gen, "target": 0})
+		_foci.append({"cam": cam, "cam_id": cam.get_instance_id(), "c": c, "r": r, "pos": pos, "gen": gen, "target": 0})
 	# Shares of the pool: what each bubble's roads hold, capped at a split
 	# that favours the aircraft and vantage cameras over the window's (which
 	# mostly chases an aircraft, inside that aircraft's own bubble).
@@ -421,8 +422,11 @@ func step(dt: float, cams: Array) -> void:
 	var phase := _frame % TICK_SPLIT
 	for i in range(phase, _v_kind.size(), TICK_SPLIT):
 		_tick(i)
+	# An empty MultiMesh is hidden: it still costs a draw per pass otherwise
+	# (36 of them, times the shadow cascades, times every camera).
 	for j in _mm.size():
 		_mm[j].visible_instance_count = _mm_n[j]
+		_mmi[j].visible = _mm_n[j] > 0
 
 
 func _tick(i: int) -> void:
@@ -465,7 +469,11 @@ func _respawn(i: int, f: Dictionary, r0: float) -> void:
 		_retire(i)
 		_v_gen[i] = int(f["gen"])
 		return
-	var lane := _rng.randi_range(0, roads.d_lanes[d] - 1)
+	var lane: int = roads.free_lane(d, _rng.randi_range(0, roads.d_lanes[d] - 1))
+	if lane < 0:
+		_retire(i)
+		_v_gen[i] = int(f["gen"])
+		return
 	var s := _rng.randf_range(0.0, roads.d_len[d])
 	# Not on top of another vehicle in that lane.
 	var q: Array = _queues.get(d * 8 + lane, [])
@@ -548,6 +556,8 @@ func _pick_next(d: int, k: int) -> int:
 			continue
 		var cls: String = roads.d_class[c]
 		if heavy and cls.begins_with("motorway"):
+			continue
+		if roads.free_lane(c, 0) < 0:
 			continue
 		var straight: float = roads.d_dir[c].dot(roads.d_dir[d])
 		var w := _rng.randf() * (1.6 + straight)
@@ -632,7 +642,11 @@ func _drive(i: int, dt: float) -> void:
 	_leave_queue(i)
 	s -= len_d
 	_v_edge[i] = nx
-	_v_lane[i] = mini(lane, roads.d_lanes[nx] - 1)
+	_v_lane[i] = roads.free_lane(nx, mini(lane, roads.d_lanes[nx] - 1))
+	if _v_lane[i] < 0:
+		_v_lane[i] = 0
+		_retire(i)
+		return
 	_v_s[i] = minf(s, roads.d_len[nx])
 	_v_next[i] = _pick_next(nx, k)
 	_v_wait[i] = 0.0
