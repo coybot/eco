@@ -246,6 +246,7 @@ func _ready() -> void:
 	# Manhattan is 21 km end to end; 8 km of shadow reach covers the part of
 	# it any one shot actually contains.
 	LightingKit.for_large_env(self, 8000.0)
+	add_child(preload("res://scripts/nature.gd").new())   # trees, park lamps and benches
 	print("[env_manhattan_photo] facade shader active; ortho %s" %
 		("loaded" if FileAccess.file_exists(ORTHO_PATH) else "absent (flat ground)"))
 
