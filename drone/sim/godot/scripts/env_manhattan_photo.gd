@@ -253,6 +253,7 @@ func _ready() -> void:
 	# "photo" sun is the look's.
 	SceneLook.setup(self, region)
 	add_child(preload("res://scripts/world_clock.gd").new())
+	add_child(preload("res://scripts/night_lights.gd").new())
 	print("[env_manhattan_photo] facade shader active; ortho %s" %
 		("loaded" if FileAccess.file_exists(ORTHO_PATH) else "absent (flat ground)"))
 
