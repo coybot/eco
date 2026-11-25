@@ -1,0 +1,31 @@
+{
+ "source": "derived from water.png (OSM coastline, ODbL; USGS NHD) and piers.json (NYC Planimetric, public domain)",
+ "note": "signed distance to the shore, + over water; value = 128 + metres * steps_per_m; row 0 north",
+ "steps_per_m": 4.0,
+ "fine": {
+  "bounds_enu": [
+   -4100.0,
+   -1100.0,
+   3800.0,
+   23000.0
+  ],
+  "res_m": 4.0,
+  "size_px": [
+   1975,
+   6025
+  ]
+ },
+ "far": {
+  "bounds_enu": [
+   -8000.0,
+   -5000.0,
+   8000.0,
+   27000.0
+  ],
+  "res_m": 8.0,
+  "size_px": [
+   2000,
+   4000
+  ]
+ }
+}

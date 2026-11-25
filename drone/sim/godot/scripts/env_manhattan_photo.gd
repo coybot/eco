@@ -211,9 +211,30 @@ func water_mask() -> Dictionary:
 		"rect": Rect2(sw, Vector2(_water_b[2] - _water_b[0], _water_b[3] - _water_b[1]))}
 
 
-## Water or land at sim (e, n), from the mask (nearest pixel). Outside the
-## mask: water, since past the far shores is the open harbour and the sound.
+## The shoreline the ground is drawn with (manhattan_shore.gd: a signed-
+## distance field baked from the mask, piers carved out of the land), loaded
+## on first use, once the slice's offset is known. Null without shore.png.
+var _shore: RefCounted = null
+var _shore_tried := false
+
+
+func shore() -> RefCounted:
+	if not _shore_tried and not _rects.is_empty():
+		_shore_tried = true
+		var s: RefCounted = preload("res://scripts/manhattan_shore.gd").load_for(_offset)
+		if bool(s.get("ok")):
+			_shore = s
+	return _shore
+
+
+## Water or land at sim (e, n). With the shoreline field: exactly the line the
+## ground is cut at and the bulkheads stand on, and a pier deck is not water.
+## Without it, from the mask (nearest pixel). Outside the mask: water, since
+## past the far shores is the open harbour and the sound.
 func is_water(e: float, n: float) -> bool:
+	var s := shore()
+	if s != null:
+		return bool(s.call("is_water", e, n))
 	if _water_img == null:
 		return false
 	var d := Vector2(e, n) + _offset
@@ -315,6 +336,13 @@ func _facade_material() -> ShaderMaterial:
 ## so the raw ENU bounds recorded by the tool have to have the same offset
 ## applied or the ground sits kilometres from the buildings standing on it.
 func _add_city_ground() -> void:
+	# With the shoreline field, manhattan_ground.gd draws the ground, the
+	# rivers, bulkheads, piers and street markings, and the parent's stacked
+	# water/land/park quads are not built at all (they sat 0.1-1.5 m above
+	# street level and would fight it).
+	if shore() != null:
+		add_child(preload("res://scripts/manhattan_ground.gd").new())
+		return
 	super()   # water plane + correctly-sized land underneath, always
 	# FileAccess, not ResourceLoader: the ortho is read with
 	# Image.load_from_file and may never have been imported as a resource,
