@@ -172,7 +172,7 @@ def landmarks_payload(memory, datum=None, limit=15):
     return out[:limit]
 
 
-def build_heartbeat(drone_id, armed, state, datum=None):
+def build_heartbeat(drone_id, armed, state, datum=None, report_gps=False):
     """The drone/{id}/status wire shape. `state` is a DepotClient.fw_state()
     result ({'ok':..., 'position':[east,north,alt], 'yaw':..., 'airspeed':...})
     or None if the Godot call failed/wasn't attempted — position/heading/
@@ -197,6 +197,19 @@ def build_heartbeat(drone_id, armed, state, datum=None):
         "capabilities": {"variant": "agx64", "vlm_available": True,
                          "nav2_available": True, "vehicle_type": "fixedwing"},
     }
+    gps = (state or {}).get("gps") if report_gps else None
+    if gps is not None:
+        # --report-gps: the aircraft reports what its receiver says, not the
+        # sim's truth: noise, urban multipath, no fix in a jammer's radius, a
+        # spoofer's offset (fixedwing_manager fw_set_gps).
+        hb["gps"] = {k: gps.get(k) for k in ("fix", "sats", "hdop") if k in gps}
+        if gps.get("fix") != "3d":
+            state = dict(state, position=None)
+        else:
+            state = dict(state, position=[gps["e"], gps["n"], gps["u"]])
+    if state and state.get("ok") and state.get("wind") is not None and any(state["wind"]):
+        hb["wind_enu_mps"] = [round(float(v), 1) for v in state["wind"]]
+        hb["groundspeed_mps"] = round(float(state.get("groundspeed") or 0.0), 1)
     if state and state.get("ok") and state.get("position") is not None:
         east_m, north_m, alt_m = state["position"]
         hb["position_enu"] = {"east_m": east_m, "north_m": north_m, "alt_m": alt_m}
@@ -508,6 +521,12 @@ class FwGcsDaemon:
         self.target_labels = [t.strip() for t in args.target_label.split(",") if t.strip()]
         self.brain = getattr(args, "brain", "vlm")
         self.camera_avoidance = bool(getattr(args, "camera_avoidance", False))
+        # flight_env.gd (off unless the sim has them on): report the receiver's
+        # fix instead of the truth, and lose the radio link when the sim says it
+        # is down (no heartbeats out, commands from the GCS dropped).
+        self.report_gps = bool(getattr(args, "report_gps", False))
+        self.link_loss = bool(getattr(args, "link_loss", False))
+        self._link_up = True
         # None (default) disables photo capture entirely — no config beyond
         # this flag needed to keep the sim's photo shim off in any context
         # that hasn't opted in (e.g. a unit test building a bare daemon).
@@ -566,6 +585,8 @@ class FwGcsDaemon:
             print(f"[{self.id}] subscribed to command topics", flush=True)
 
     def _on_message(self, client, userdata, msg):
+        if self.link_loss and not self._link_up:
+            return   # out of radio contact: the GCS's message never arrives
         try:
             data = json.loads(msg.payload)
         except Exception:
@@ -821,9 +842,17 @@ class FwGcsDaemon:
                     state = self.brain_client.fw_state(self.id)
             except Exception:
                 pass  # heartbeat still goes out; position/heading just omitted
-            self._publish(f"drone/{self.id}/status",
-                          build_heartbeat(self.id, self._armed, state, self.datum),
-                          qos=0)
+            link = (state or {}).get("link") if self.link_loss else None
+            up = True if not link else bool(link.get("up", True))
+            if up != self._link_up:
+                self._link_up = up
+                print(f"[{self.id}] radio link {'back' if up else 'lost'}"
+                      + (f" ({link.get('rssi_dbm')} dBm, line of sight {link.get('los')})" if link else ""), flush=True)
+            if up:
+                self._publish(f"drone/{self.id}/status",
+                              build_heartbeat(self.id, self._armed, state, self.datum,
+                                              report_gps=self.report_gps),
+                              qos=0)
             time.sleep(2)
 
     def _publish(self, topic, payload, qos=1):
@@ -861,6 +890,10 @@ def main():
     ap.add_argument("--brain", default="vlm", choices=["vlm", "oracle"],
                     help="vlm = real on-device Qwen3-VL (needs the model); "
                          "oracle = deterministic sim-truth executor (no VLM)")
+    ap.add_argument("--report-gps", action="store_true",
+                    help="report the sim's GPS receiver (fw_set_gps) instead of the true position")
+    ap.add_argument("--link-loss", action="store_true",
+                    help="go silent and deaf while the sim's radio link (fw_set_link) is down")
     ap.add_argument("--datum-lat", type=float, default=None,
                     help="lat of ENU origin, to report the target in lat/lon too")
     ap.add_argument("--datum-lon", type=float, default=None)

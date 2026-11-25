@@ -253,6 +253,34 @@ func _dispatch(line: String) -> String:
 			FixedWingManager.spawn(did, Vector3(p[0], p[1], p[2]), yaw, ceiling, airframe)
 			return JSON.stringify({"ok": true})
 
+		"fw_set_wind":
+			# {speed, from_deg, gust, gusts_per_min, gust_s, turbulence, z0, seed}.
+			return JSON.stringify({"ok": true, "wind": FixedWingManager.air.set_wind(req)})
+
+		"fw_set_gps":
+			# {on, sigma_m, jammers: [{e, n, radius_m, spoof: [de, dn] | null}]}.
+			return JSON.stringify({"ok": true, "gps": FixedWingManager.air.set_gps(req)})
+
+		"fw_set_link":
+			# {on, station: [e, n, u], tx_dbm, freq_mhz, floor_dbm}.
+			return JSON.stringify({"ok": true, "link": FixedWingManager.air.set_link(req)})
+
+		"fw_set_physics":
+			# {id ("" or "*": every aircraft), realistic: bool}.
+			var n := FixedWingManager.set_physics(str(req.get("id", "")), bool(req.get("realistic", true)))
+			return JSON.stringify({"ok": true, "aircraft": n})
+
+		"fw_pose":
+			# A SITL autopilot's pose. {id, p: [e, n, u], rpy: [roll, pitch, yaw],
+			# v: [ve, vn, vu]} or {id, release: true} (drone/sim/godot/sitl_bridge.py).
+			var pp: Array = req.get("p", [0.0, 0.0, 0.0])
+			var rpy: Array = req.get("rpy", [0.0, 0.0, 0.0])
+			var vv: Array = req.get("v", [0.0, 0.0, 0.0])
+			if not FixedWingManager.set_pose(did, Vector3(pp[0], pp[1], pp[2]), Vector3(rpy[0], rpy[1], rpy[2]),
+					Vector3(vv[0], vv[1], vv[2]), bool(req.get("release", false))):
+				return JSON.stringify({"ok": false, "error": "unknown fw drone " + did})
+			return JSON.stringify({"ok": true})
+
 		"fw_despawn":
 			FixedWingManager.despawn(did)
 			return JSON.stringify({"ok": true})
@@ -283,7 +311,15 @@ func _dispatch(line: String) -> String:
 				"tilt": st["tilt"],
 				"landed": st["landed"],
 				"flight_mode": st["flight_mode"],
-				"sim_time": st["sim_time"]
+				"sim_time": st["sim_time"],
+				# flight_env.gd: ground speed and the wind it flies in,
+				# and the GPS receiver's and radio link's view when they are on.
+				"groundspeed": st["groundspeed"],
+				"wind": st["wind"],
+				"realistic": st["realistic"],
+				"external": st["external"],
+				"gps": st["gps"],
+				"link": st["link"]
 			})
 
 		"fw_detect":

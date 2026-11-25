@@ -119,10 +119,15 @@ const CAM_VIEWPORT_W := 640
 const CAM_VIEWPORT_H := 480
 const CAM_FOV := 70.0
 const CAM_JPEG_QUALITY := 85
+## More than this in one move is a jump, not flight (fw_pose resets interpolation).
+const TELEPORT_M := 20.0
 const NOSE_OFFSET_M := 3.0  # forward of body's own origin — see _sync_camera
 
 var _env: Node3D = null
 var _fw: Dictionary = {}   # id -> FixedWingState
+## Wind, GPS and radio link (flight_env.gd). All off by default.
+const FlightEnv = preload("res://scripts/flight_env.gd")
+var air = FlightEnv.new()
 var _events: Array = []    # [{t, kind, data}]
 var _sim_time: float = 0.0
 var _occ: PackedByteArray = PackedByteArray()
@@ -182,6 +187,16 @@ class FixedWingState:
 	var drain_mult: float = 1.0
 	var viewport: SubViewport = null   # forward-facing camera readback (fw_grab_frame)
 	var camera: Camera3D = null
+	## Wind (flight_env.gd): `velocity` is through the AIR; the ground track
+	## adds the wind. `realistic` turns on bank/stall-limited turns, climb that
+	## trades airspeed and power-based drain; `external` means a SITL autopilot
+	## sets the pose (fw_pose) and the sim only renders and collides.
+	var realistic := false
+	var external := false
+	var wind := Vector3.ZERO
+	var ground_velocity := Vector3.ZERO
+	var gps: Dictionary = {}
+	var link: Dictionary = {}
 
 
 func _ready() -> void:
@@ -390,6 +405,7 @@ func despawn(id: String) -> void:
 	if is_instance_valid(st.node):
 		st.node.queue_free()
 	_fw.erase(id)
+	air.forget(id)
 
 
 # ------------------------------------------------------------------
@@ -443,14 +459,28 @@ func _step(st: FixedWingState, dt: float) -> void:
 		return
 	var prev_pos := st.position
 
-	# Apply flight dynamics
-	if st.airframe == "vtol":
-		_apply_vtol_dynamics(st, dt)
+	if st.external:
+		# A SITL autopilot flies it (fw_pose): no dynamics or wind here; the
+		# pose is already where the autopilot put it. Still swept, rendered.
+		st.ground_velocity = st.velocity
 	else:
-		_apply_flight_dynamics(st, dt)
-	
-	# Update position and velocity
-	st.position += st.velocity * dt
+		# Apply flight dynamics
+		if st.airframe == "vtol":
+			_apply_vtol_dynamics(st, dt)
+		else:
+			_apply_flight_dynamics(st, dt)
+		# The air moves the aircraft (calm air: exactly as before).
+		st.wind = Vector3.ZERO
+		if not air.calm() and not st.landed:
+			var gh := 0.0
+			if _env != null and _env.has_method("ground_height"):
+				gh = _env.ground_height(st.position.x, st.position.y)
+			st.wind = air.air_motion(st.id, st.position.z - gh, st.airspeed, dt)
+			# Turbulence rocks the airframe a little, so the camera feels it too.
+			st.roll += clampf(st.wind.z * 0.02, -0.05, 0.05)
+		st.ground_velocity = st.velocity + st.wind
+		# Update position and velocity
+		st.position += st.ground_velocity * dt
 	# Backstop the envelope in POSITION as well as in rate: zeroing climb_rate
 	# (in _apply_flight_dynamics) only stops further descent, it cannot undo the
 	# fraction of a tick that carried the aircraft past the limit. Without this
@@ -492,11 +522,19 @@ func _step(st: FixedWingState, dt: float) -> void:
 	# Update battery
 	var moved := st.velocity.length() * dt
 	var drain := BASE_DRAIN_IDLE * dt + BASE_DRAIN_PER_M * moved
+	if st.realistic and st.airframe != "vtol":
+		drain = BASE_DRAIN_IDLE * dt + _power_drain(st) * dt
 	if st.airframe == "vtol" and not st.landed:
 		# Rotor-borne flight costs far more than wing-borne cruise.
 		drain += VTOL_HOVER_DRAIN * (1.0 - _vtol_wing_frac(st)) * dt
 	st.battery_level = max(0.0, st.battery_level - drain * st.drain_mult)
 	
+	# What the receiver and the radio report (off: nothing).
+	if air.gps_on:
+		st.gps = air.gps_fix(st.id, st.position, dt, _blocked)
+	if air.link_on:
+		st.link = air.link_state(st.id, st.position, dt, _blocked)
+
 	# Sweep observed grid
 	_sweep_observed(st)
 	
@@ -631,8 +669,18 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	st.airspeed += clamp(airspeed_delta * airspeed_acc * dt, -abs(airspeed_delta), abs(airspeed_delta))
 	st.airspeed = clamp(st.airspeed, MIN_AIRSPEED, MAX_AIRSPEED)
 	
-	# Yaw integration
-	st.yaw = wrapf(st.yaw + st.cmd_yaw_rate * dt, -PI, PI)
+	# Yaw integration. Realistic: the turn a wing can fly at this
+	# speed. Bank is limited by MAX_ROLL and by the stall margin (load factor
+	# n = 1/cos(bank) raises the stall speed by sqrt(n)), and a coordinated turn
+	# at bank phi turns at g tan(phi) / V, so slow and fast both turn less hard
+	# than the flat MAX_YAW_RATE allowed.
+	var yaw_rate := st.cmd_yaw_rate
+	if st.realistic:
+		var vs := MIN_AIRSPEED * 0.85
+		var bank_max := minf(deg_to_rad(MAX_ROLL), acos(clampf(pow(vs / maxf(st.airspeed, vs), 2.0), 0.0, 1.0)))
+		var omega_max := G_ACC * tan(bank_max) / maxf(st.airspeed, 1.0)
+		yaw_rate = clampf(yaw_rate, -omega_max, omega_max)
+	st.yaw = wrapf(st.yaw + yaw_rate * dt, -PI, PI)
 	
 	# Pitch calculation: climb_rate / airspeed with clamping
 	st.pitch = clamp(atan2(st.climb_rate, st.airspeed), deg_to_rad(-30.0), deg_to_rad(20.0))
@@ -653,7 +701,7 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	# about +Z lifts the LEFT wing — a right bank. A positive yaw rate is CCW in
 	# ENU, i.e. a LEFT turn. Taking the bank straight from the yaw rate therefore
 	# banked the aircraft away from its own turn; hence the leading minus.
-	var bank_target: float = -atan(st.cmd_yaw_rate * st.airspeed / 9.81)
+	var bank_target: float = -atan(yaw_rate * st.airspeed / 9.81)
 	bank_target = clamp(bank_target, -deg_to_rad(MAX_ROLL), deg_to_rad(MAX_ROLL))
 	# ~1.0 s to roll in or out, in the range real light aircraft manage.
 	var roll_tc := 1.0
@@ -678,6 +726,14 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	var climb_limit: float = tan(deg_to_rad(20.0)) * st.airspeed
 	st.climb_rate = clamp(st.climb_rate, -climb_limit, climb_limit)
 	st.climb_rate = clamp(st.climb_rate, MIN_CLIMB_RATE, MAX_CLIMB_RATE)
+	if st.realistic:
+		# Energy: the motor covers level flight and a modest climb; past that,
+		# height is paid for in airspeed (and a dive buys it back).
+		var gamma := atan2(st.climb_rate, maxf(st.airspeed, 1.0))
+		var excess := sin(gamma) - CLIMB_THRUST_MARGIN
+		if excess > 0.0 or gamma < 0.0:
+			st.airspeed = clampf(st.airspeed - G_ACC * (excess if gamma > 0.0 else sin(gamma) * 0.5) * dt,
+				MIN_AIRSPEED, MAX_AIRSPEED)
 
 	# Envelope protection: hard altitude floor/ceiling. The demo deliberately
 	# flies low run-ins, so a model that commands an over-aggressive descent must
@@ -711,6 +767,65 @@ func _apply_flight_dynamics(st: FixedWingState, dt: float) -> void:
 	# it. Horizontal velocity is along the nose; vertical is the climb rate.
 	var forward := Vector3(cos(st.yaw), sin(st.yaw), 0.0)
 	st.velocity = forward * st.airspeed + Vector3(0.0, 0.0, st.climb_rate)
+
+
+const G_ACC := 9.81
+## sin of the climb angle the motor sustains without losing airspeed (~6 deg).
+const CLIMB_THRUST_MARGIN := 0.1
+## Realistic cruise power: the drain of level flight at the best-range speed
+## matches the plain model's per-metre drain (BASE_DRAIN_PER_M at 18 m/s), and
+## rises off it both ways (parasite drag ~V^3, induced ~1/V), with load factor
+## in turns and with climb.
+const BEST_RANGE_V := 18.0
+
+func _power_drain(st: FixedWingState) -> float:
+	var v := maxf(st.airspeed, 1.0)
+	var cruise := BASE_DRAIN_PER_M * BEST_RANGE_V
+	var n := 1.0 / maxf(cos(st.roll), 0.3)
+	var p := 0.5 * pow(v / BEST_RANGE_V, 3.0) + 0.5 * (BEST_RANGE_V / v) * n * n
+	return cruise * (p + maxf(st.climb_rate, 0.0) / 1.5)
+
+
+## Whether structure or terrain stands between two ENU points (flight_env.gd's
+## sky and line-of-sight tests).
+func _blocked(a: Vector3, b: Vector3) -> bool:
+	return not _raycast(Vector3(a.x, a.z, -a.y), Vector3(b.x, b.z, -b.y), STRIKE_MASK, []).is_empty()
+
+
+## fw_set_physics: Realistic flight per aircraft (or all).
+func set_physics(id: String, realistic: bool) -> int:
+	var n := 0
+	for st: FixedWingState in _fw.values():
+		if id == "" or id == "*" or st.id == id:
+			st.realistic = realistic
+			n += 1
+	return n
+
+
+## fw_pose: A SITL autopilot's pose for this aircraft (ENU m,
+## radians: roll, pitch, yaw CCW from east; velocity ENU m/s). The first call
+## hands the aircraft to the autopilot; {"release": true} hands it back.
+func set_pose(id: String, p: Vector3, rpy: Vector3, v: Vector3, release: bool = false) -> bool:
+	var st: FixedWingState = _fw.get(id)
+	if st == null:
+		return false
+	if release:
+		st.external = false
+		return true
+	var jumped := st.position.distance_to(p) > TELEPORT_M
+	st.external = true
+	st.position = p
+	st.roll = rpy.x
+	st.pitch = rpy.y
+	st.yaw = rpy.z
+	st.velocity = v
+	st.airspeed = Vector2(v.x, v.y).length()
+	st.climb_rate = v.z
+	st.altitude = p.z
+	_apply_pose(st)
+	if jumped and is_instance_valid(st.node):
+		st.node.reset_physics_interpolation()
+	return true
 
 
 ## 0 when the rotors carry the aircraft, 1 once the wing does.
@@ -945,8 +1060,13 @@ func get_state(id: String) -> Variant:
 		return null
 	return {
 		"position": [st.position.x, st.position.y, st.position.z],
-		"velocity": [st.velocity.x, st.velocity.y, st.velocity.z],
+		# Over the ground (air velocity + wind); identical to air velocity in calm air.
+		"velocity": [st.ground_velocity.x, st.ground_velocity.y, st.ground_velocity.z],
 		"airspeed": st.airspeed,
+		"groundspeed": Vector2(st.ground_velocity.x, st.ground_velocity.y).length(),
+		"wind": [st.wind.x, st.wind.y, st.wind.z],
+		"realistic": st.realistic,
+		"external": st.external,
 		"climb_rate": st.climb_rate,
 		"pitch": st.pitch,
 		"yaw": st.yaw,
@@ -966,6 +1086,9 @@ func get_state(id: String) -> Variant:
 		# what it must do under --write-movie (the engine then runs faster or
 		# slower than the wall clock, never in step with it).
 		"sim_time": _sim_time,
+		# The receiver's and the radio's view, when on (flight_env.gd).
+		"gps": st.gps if air.gps_on else null,
+		"link": st.link if air.link_on else null,
 	}
 
 
