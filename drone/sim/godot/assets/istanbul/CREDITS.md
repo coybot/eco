@@ -12,6 +12,7 @@ gitignored (caches and large downloads the tools fetch again).
 | `landcover.png`, `landcover.json` | OpenStreetMap land use, leisure and natural areas | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
 | `roads.json` | OpenStreetMap highways, railways (T1 tram), ferry routes, piers | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
 | `features.json` | OpenStreetMap city walls, minarets, towers, aqueducts, historic sites, building parts, trees | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
+| Landmark models (`scripts/istanbul_landmarks.gd`, `istanbul_landmark_*.gd`; procedural, no data files) | Positions, footprints, minaret points, wall / aqueduct lines and 3D building parts from `features.json` / `buildings.dat` (above); dimensions (dome diameters and crown heights, minaret heights and serefe counts, tower heights) are published facts from Wikipedia / Wikidata, not copied text | OSM inputs: (c) OpenStreetMap contributors, ODbL 1.0; facts are not copyrightable | — |
 
 The OpenStreetMap-derived files are produced works / derivative databases of
 OpenStreetMap and stay under the ODbL; credit "(c) OpenStreetMap
