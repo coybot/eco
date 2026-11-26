@@ -36,6 +36,10 @@ const MATS := {
 	"boards": [Color(0.84, 0.84, 0.82), 0.4, 0.0, 0.0, 0, [0.3, 12.0, 0.2, 0.0]],
 	"wood": [Color(0.42, 0.31, 0.21), 0.85, 0.0, 0.25, 0, [0.5, 12.0, 0.2, 0.0]],
 	"lamp": [Color(0.95, 0.92, 0.82), 0.3, 0.0, 0.0, 3, [0.3, 6.0, 0.1, 0.0]],
+	"canvas_red": [Color(0.72, 0.16, 0.13), 0.8, 0.0, 0.1, 0, [0.6, 14.0, 0.05, 0.0]],
+	"canvas_yellow": [Color(0.86, 0.70, 0.22), 0.8, 0.0, 0.1, 0, [0.4, 12.0, 0.05, 0.0]],
+	"canvas_blue": [Color(0.18, 0.33, 0.62), 0.8, 0.0, 0.1, 0, [0.6, 14.0, 0.05, 0.0]],
+	"deck": [Color(0.42, 0.50, 0.55), 0.8, 0.0, 0.2, 0, [0.7, 22.0, 0.7, 0.0]],
 }
 
 
@@ -935,35 +939,105 @@ func _castle() -> void:
 
 
 # ------------------------------------------------------------------ rink
-## Wollman Rink. Ice in skating season (the scene's default: November); a
-## season hook can swap in the summer amusement park later.
+## Wollman Rink: ice from late October to early April; the rest of the year
+## the same oval is Victorian Gardens, a small amusement park (striped ride
+## tents, a little wheel, a painted deck). Both are built; the scene's
+## clock (world_clock.gd, day of year) shows one.
+var _rink_ice: MeshInstance3D = null
+var _rink_summer: MeshInstance3D = null
+
+
 func _wollman() -> void:
 	var pl := _poly(_lm("wollman_rink").get("poly", []))
 	if pl.size() < 4:
 		return
 	var y := _terrain(_centroid(pl)) + 0.15
 	_clear(_bbox(pl).grow(1.0))
-	var pp := _new_parts()
 	var pts := PackedVector2Array()
 	var n := pl.size()
 	if pl[0].is_equal_approx(pl[n - 1]):
 		n -= 1
 	for i in n:
 		pts.append(pl[i])
-	var tri := Geometry2D.triangulate_polygon(pts)
-	for i in range(0, tri.size(), 3):
-		var a := _g(pts[tri[i]], y)
-		var b := _g(pts[tri[i + 1]], y)
-		var c := _g(pts[tri[i + 2]], y)
-		if (b - a).cross(c - a).y < 0:
-			pp.tri("ice", a, b, c, Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(c.x, c.z))
-		else:
-			pp.tri("ice", a, c, b, Vector2(a.x, a.z), Vector2(c.x, c.z), Vector2(b.x, b.z))
 	var ring: Array = []
 	for i in n + 1:
 		ring.append(_g(pts[i % n], y - 0.1))
-	pp.strip("boards", ring, 1.2)
-	_commit(pp, "wollman_rink", 2500.0, false)
+	var tri := Geometry2D.triangulate_polygon(pts)
+	var surf := func(pp: Parts, k: String) -> void:
+		for i in range(0, tri.size(), 3):
+			var a := _g(pts[tri[i]], y)
+			var b := _g(pts[tri[i + 1]], y)
+			var c := _g(pts[tri[i + 2]], y)
+			if (b - a).cross(c - a).y < 0:
+				pp.tri(k, a, b, c, Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(c.x, c.z))
+			else:
+				pp.tri(k, a, c, b, Vector2(a.x, a.z), Vector2(c.x, c.z), Vector2(b.x, b.z))
+	var ice := _new_parts()
+	surf.call(ice, "ice")
+	ice.strip("boards", ring, 1.2)
+	var sm := _new_parts()
+	surf.call(sm, "deck")
+	sm.strip("iron_fence", ring, 1.3)
+	var c0 := _centroid(pts)
+	var u := _axis(pts)
+	var v := Vector2(-u.y, u.x)
+	var cols := ["canvas_red", "canvas_yellow", "canvas_blue", "canvas_red", "canvas_blue", "canvas_yellow"]
+	for k in 6:
+		var q := c0 + u * (float(k % 3) - 1.0) * 17.0 + v * (12.0 if k < 3 else -12.0)
+		if not Geometry2D.is_point_in_polygon(q, pts):
+			continue
+		var r := 3.5 + 2.0 * float((k * 7) % 3) / 2.0
+		sm.cyl("boards", _g(q, y), r * 0.9, r * 0.9, 2.6, 10, false)
+		sm.cyl(cols[k], _g(q, y + 2.6), r, 0.2, 2.4, 10, false)
+	# The little wheel, on a frame, across the oval's long axis.
+	var wc := c0 - v * 2.0
+	var R := 6.5
+	for i in 16:
+		var a0 := TAU * i / 16.0
+		var a1 := TAU * (i + 1) / 16.0
+		var p0 := _g(wc + u * cos(a0) * R, y + 8.0 + sin(a0) * R)
+		var p1 := _g(wc + u * cos(a1) * R, y + 8.0 + sin(a1) * R)
+		var mid := (p0 + p1) * 0.5
+		sm.box("canvas_red", Transform3D(Basis.looking_at((p1 - p0).normalized(), Vector3.UP if absf((p1 - p0).normalized().y) < 0.99 else Vector3.RIGHT) * Basis(Vector3.UP, -PI * 0.5), mid),
+			Vector3(p0.distance_to(p1) + 0.05, 0.25, 0.25))
+		sm.box("canvas_yellow", Transform3D(Basis.IDENTITY, p0 - Vector3(0, 0.7, 0)), Vector3(0.9, 1.0, 0.9))
+	for sgn: float in [-1.0, 1.0]:
+		var foot := wc + u * sgn * 3.5
+		var top := _g(wc, y + 8.0)
+		var bot := _g(foot, y)
+		sm.box("iron", Transform3D(Basis.looking_at((top - bot).normalized(), Vector3.RIGHT) * Basis(Vector3.RIGHT, PI * 0.5), (top + bot) * 0.5),
+			Vector3(0.3, top.distance_to(bot), 0.3))
+	_rink_ice = MeshInstance3D.new()
+	_rink_ice.name = "wollman_ice"
+	_rink_ice.mesh = ice.mesh(_material())
+	_rink_ice.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_rink_ice.visibility_range_end = 2500.0
+	add_child(_rink_ice)
+	_rink_summer = MeshInstance3D.new()
+	_rink_summer.name = "wollman_gardens"
+	_rink_summer.mesh = sm.mesh(_material())
+	_rink_summer.visibility_range_end = 2500.0
+	add_child(_rink_summer)
+	_counts["wollman_rink"] = (ice.v.size() + sm.v.size()) / 3
+	_season.call_deferred()
+
+
+func _season() -> void:
+	var wc := env.get_node_or_null("world_clock")
+	if wc != null and wc.has_signal("clock_changed") and not wc.is_connected("clock_changed", _season):
+		wc.connect("clock_changed", _season)
+	var doy := 330    # no clock: late November, the rink's season
+	if wc != null:
+		var t = wc.get("_time")
+		if t is Dictionary and (t as Dictionary).has("day_of_year"):
+			doy = int(t["day_of_year"])
+		else:
+			doy = 196     # the clock's photo default (mid-July)
+	# Open for skating late October (~day 298) to early April (~day 95).
+	var ice := doy >= 298 or doy <= 95
+	if _rink_ice != null:
+		_rink_ice.visible = ice
+		_rink_summer.visible = not ice
 
 
 # ------------------------------------------------------------------ bandshell
