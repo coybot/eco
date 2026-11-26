@@ -74,6 +74,7 @@ static func claim(env) -> bool:
 		var d = JSON.parse_string(f.get_as_text())
 		if d is Dictionary:
 			feats = d
+	var n0: int = env.b_first.size()
 	var p := {"mosques": [], "sites": [], "walls": [], "features": feats}
 	var names: Array = env.building_meta.get("names", [])
 	var sites_sc = _module("istanbul_landmark_sites")
@@ -97,10 +98,33 @@ static func claim(env) -> bool:
 	if walls_sc != null:
 		walls_sc.plan(env, p)
 	p.erase("features")
+	_tallest_first(env, n0)
 	env.set_meta(META, p)
 	print("[istanbul_landmarks] claim: %d mosques, %d sites, %d wall runs in %d ms"
 		% [p["mosques"].size(), p["sites"].size(), p["walls"].size(), Time.get_ticks_msec() - t0])
 	return true
+
+
+## env.collision_height() asks building_at(), which answers with the FIRST
+## footprint containing the point; a dome or minaret solid standing on a
+## claimed footprint would never be seen. Every bin holding one of our solids
+## is ordered tallest-first, so the first footprint found is the highest one
+## there (collision_height becomes the max, as it should be).
+static func _tallest_first(env, n0: int) -> void:
+	var bins: Dictionary = env.get("_bins")
+	var tops: PackedFloat32Array = env.b_top
+	for key in bins:
+		var arr: PackedInt32Array = bins[key]
+		var has := false
+		for i in arr:
+			if i >= n0:
+				has = true
+				break
+		if not has:
+			continue
+		var a := Array(arr)
+		a.sort_custom(func(x: int, y: int) -> bool: return tops[x] > tops[y])
+		bins[key] = PackedInt32Array(a)
 
 
 static func _module(nm: String):
