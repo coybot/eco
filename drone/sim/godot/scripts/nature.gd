@@ -192,6 +192,10 @@ func _build_trees(meta: Dictionary, near_m: float, mid_m: float, far_m: float, s
 	var codes: PackedByteArray = d["code"]
 	var tints: PackedColorArray = d["tint"]
 	var leans: PackedVector2Array = d["lean"]
+	# Central Park's own answer on where a tree may stand: not in its lakes,
+	# the Bethesda fountain basin or on the terrace. The photo's canopy reaches
+	# over those, so trees placed from it stood in the water.
+	var cp: Node = env.call("central_park") if env.has_method("central_park") else null
 	for i in count:
 		var p := pts[i]
 		var a := _hash(p, 1.0) * TAU
@@ -200,6 +204,9 @@ func _build_trees(meta: Dictionary, near_m: float, mid_m: float, far_m: float, s
 		# every crown from above where the photo shows a closed canopy.
 		var w := 2.0 * rs[i] * 1.12
 		var h := hs[i]
+		if cp != null and not bool(cp.call("tree_ok", p.x, p.y)):
+			w = 0.0   # a zero basis draws nothing; the index stays valid
+			h = 0.0
 		var c := cos(a)
 		var s := sin(a)
 		# The crown's centre is ~0.65 of the way up: lean the y axis so it
