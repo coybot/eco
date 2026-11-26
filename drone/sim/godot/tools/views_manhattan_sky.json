@@ -1,5 +1,5 @@
 [
- {"name": "day_midtown_oblique", "at": [40.738, -73.999], "alt": 180, "look": [40.7505, -73.985], "wait": 8},
+ {"name": "day_midtown_oblique", "at": [40.738, -73.999], "alt": 180, "look": [40.7505, -73.985], "wait": 8, "note": "Views run in order and fw_set_time / fw_set_weather persist: each 'pre' changes the scene for every later view. 'day_again' puts the photo sun and clear weather back explicitly."},
  {"name": "day_island_wide", "at": [40.695, -74.045], "alt": 900, "look": [40.76, -73.98], "wait": 8},
  {"name": "day_central_park", "at": [40.76, -73.974], "alt": 250, "look": [40.775, -73.968], "wait": 8},
  {"name": "dusk_midtown_oblique", "at": [40.738, -73.999], "alt": 180, "look": [40.7505, -73.985], "wait": 8, "pre": [{"op": "fw_set_time", "hour": 19.5, "day": "07-15"}]},
@@ -12,5 +12,5 @@
  {"name": "wx_overcast_rain", "at": [40.738, -73.999], "alt": 180, "look": [40.7505, -73.985], "wait": 8, "pre": [{"op": "fw_set_time", "photo": true}, {"op": "fw_set_weather", "cloud": 0.85, "rain": 0.6}]},
  {"name": "wx_fog", "at": [40.738, -73.999], "alt": 300, "look": [40.7505, -73.985], "wait": 8, "pre": [{"op": "fw_set_weather", "cloud": 0.2, "rain": 0.0, "fog": 0.7}]},
  {"name": "wx_haze_wide", "at": [40.695, -74.045], "alt": 900, "look": [40.76, -73.98], "wait": 8, "pre": [{"op": "fw_set_weather", "cloud": 0.3, "fog": 0.0, "haze": 0.7}]},
- {"name": "day_again", "at": [40.738, -73.999], "alt": 180, "look": [40.7505, -73.985], "wait": 8, "pre": [{"op": "fw_set_weather", "cloud": 0, "haze": 0}]}
+ {"name": "day_again", "at": [40.738, -73.999], "alt": 180, "look": [40.7505, -73.985], "wait": 8, "pre": [{"op": "fw_set_time", "photo": true}, {"op": "fw_set_weather", "haze": 0, "fog": 0, "cloud": 0, "rain": 0}]}
 ]

@@ -1071,6 +1071,23 @@ func _commit_clusters() -> void:
 func _build_lights() -> void:
 	if _lights.is_empty():
 		return
+	# Through night_lights.gd's hook when it is there: the same sprites, gain
+	# and range sizing as the street lamps and the towers' obstruction lights,
+	# so a necklace is as bright as the avenue beside it. Its own MultiMesh
+	# below stays for --far-night (forced night) and scenes without it.
+	var nl := env.get_node_or_null("night_lights")
+	if _night_forced < 0.0 and nl != null and nl.has_method("add_lights"):
+		var by_col := {}
+		for l: Array in _lights:
+			var c: Color = l[1]
+			if not by_col.has(c):
+				by_col[c] = PackedVector3Array()
+			(by_col[c] as PackedVector3Array).append(l[0])
+		for c: Color in by_col:
+			var red := c.r > 0.9 and c.g < 0.3
+			nl.call("add_lights", "bridge_obstruction_lights" if red else "bridge_necklace_lights",
+				by_col[c], c, 1.0 if red else 0.9, 0)
+		return
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE
 	var sh := Shader.new()

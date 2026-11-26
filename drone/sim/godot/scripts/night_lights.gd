@@ -16,8 +16,8 @@
 ## roadways (deck height is not in the data; a lamp at street level under the
 ## FDR viaduct would be wrong), and none inside a building footprint.
 ##
-## OBSTRUCTION LIGHTS (FAA AC 70/7460-1, red system): every building >= 60 m
-## (~200 ft) gets L-864 red flashers on its roof corners, 30 flashes a minute,
+## OBSTRUCTION LIGHTS (FAA AC 70/7460-1, red system): buildings >= 60 m
+## (~200 ft), less those shielded by a taller neighbour (_shielded), get L-864 red flashers on its roof corners, 30 flashes a minute,
 ## in step within a building (the AC asks for that) and out of step between
 ## buildings; >= 107 m (350 ft) adds steady L-810s half way up; >= 152 m
 ## (500 ft) adds a flashing level half way up and steady ones at 1/4 and 3/4.
@@ -56,6 +56,9 @@ const LAMP_LIGHTS := 16
 const LIGHT_PICK_S := 0.25
 const LIGHT_RANGE_M := 320.0
 const OBSTRUCTION_MIN_H := 60.0
+const SHIELD_FREE_H := 150.0   # at or above this a tower is always lit
+const SHIELD_M := 150.0
+const SHIELD_DH := 10.0
 ## Colour temperatures as linear RGB (approximate blackbody, white-balanced
 ## to daylight so they read warm against the day-tuned tonemap).
 const LED_4000K := Color(1.0, 0.86, 0.70)
@@ -134,7 +137,7 @@ func add_lights(draw_name: String, points, col: Color, size_m: float = 0.6, blin
 		xfs.append(Transform3D(Basis(), p))
 		cust.append(Color(col.r, col.g, col.b, float(phases[i]) if i < phases.size() else 0.0))
 		i += 1
-	return _draw(draw_name, _quad(), xfs, cust, _glare_material(size_m, 5.0, blink))
+	return _draw(draw_name, _quad(), xfs, cust, _glare_material(size_m, 12.0, blink))
 
 
 func add_pools(draw_name: String, feet, col: Color, radius_m: float = 14.0) -> MultiMeshInstance3D:
@@ -156,35 +159,58 @@ func _glare_material(size_m: float, gain: float, blink: int = 0) -> ShaderMateri
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled, skip_vertex_transform;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 uniform float night = 0.0;
 uniform float gain = 5.0;
 uniform float size_m = 0.6;
-uniform float min_px = 3.2;
+uniform float min_px = 4.0;
 uniform int blink = 0;
 varying vec3 v_col;
 varying float v_k;
 void vertex() {
     v_col = INSTANCE_CUSTOM.rgb;
-    vec4 c = MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0);
-    float px = max(-c.z, 0.1) * 2.0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
+    vec4 c = VIEW_MATRIX * vec4(MODEL_MATRIX[3].xyz, 1.0);
+    // Metres per "pixel" of a 720-line frame at this range, from the plain
+    // distance. An earlier -c.z (view depth) came out non-positive here and
+    // clamped, so every sprite fell to its 1 m floor: sub-pixel past a few
+    // hundred metres, which is why the street grid had no lights from 180 m.
+    // A fixed angular size (not VIEWPORT_SIZE) also means the sprites look the
+    // same to a sensor at any resolution.
+    float px = max(length(c.xyz), 0.1) * 2.0 / (abs(PROJECTION_MATRIX[1][1]) * 720.0);
     float sz = max(size_m, px * min_px);
-    v_k = mix(0.45, 1.0, clamp(size_m / sz, 0.0, 1.0));
+    // Past its true size a sprite dims, toward a floor: at range a street's
+    // lamps are the street and must not vanish, but at full brightness
+    // thousands of overlapping far sprites summed to a white blob over the
+    // far end of the island.
+    // The floor itself fades past a few km, where a sprite is tens of metres
+    // across and covers its neighbours.
+    float dist = length(c.xyz);
+    float floor_k = mix(0.35, 0.015, smoothstep(1200.0, 8000.0, dist));
+    v_k = max(floor_k, pow(clamp(size_m / sz, 0.0, 1.0), 2.0));
     float on = 1.0;
     float f = fract(TIME * 0.5 + INSTANCE_CUSTOM.a);
     // L-864: 30 flashes a minute, about a third of the cycle on.
     if (blink == 1) { on = smoothstep(0.0, 0.04, f) * (1.0 - smoothstep(0.30, 0.38, f)); }
     if (blink == 2) { on = 0.25 + 0.75 * smoothstep(0.0, 0.1, f) * (1.0 - smoothstep(0.4, 0.55, f)); }
     v_k *= on;
-    // Pull the sprite a little toward the camera so it is not swallowed by
-    // the pole or housing it sits in.
-    vec3 toward = -normalize(c.xyz) * min(sz, 2.0);
-    VERTEX = c.xyz + toward + vec3(VERTEX.xy * sz, 0.0);
+    // Pull the sprite toward the camera, by more than the cobra-head housing
+    // is long. It sits under the housing, and from above, where the aircraft
+    // always is, a smaller pull left every street sprite hidden behind its
+    // own lamp head: the street grid had no lights at all.
+    // Billboard: the instance's origin with the camera's axes, in model space
+    // of a matrix built here (as bridges.gd's lights do).
+    vec3 toward = (INV_VIEW_MATRIX * vec4(-normalize(c.xyz) * clamp(sz, 1.5, 3.0), 0.0)).xyz;
+    MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2],
+        vec4(MODEL_MATRIX[3].xyz + toward, 1.0));
+    VERTEX = vec3(VERTEX.xy * sz, 0.0);
 }
 void fragment() {
     float r = length(UV * 2.0 - 1.0);
-    float core = exp(-r * r * 12.0);
-    float halo = exp(-r * r * 3.0) * 0.18;
+    // A broad, flat-topped profile. A narrow gaussian left a 2-3 px core,
+    // which AgX turns to a plain white speck whatever the gain: the lamps
+    // were there and read as noise.
+    float core = exp(-r * r * 4.0);
+    float halo = (1.0 - smoothstep(0.0, 1.0, r)) * 0.35;
     ALBEDO = v_col * gain * night * v_k * (core + halo);
 }
 """
@@ -226,7 +252,13 @@ void fragment() {
     vec3 q = p - v_foot;
     float rr = length(q.xz) / v_r;
     float a = exp(-rr * rr * 3.2) * (1.0 - smoothstep(0.75, 1.0, rr)) * (1.0 - smoothstep(1.5, 5.5, abs(q.y)));
-    ALBEDO = v_col * strength * night * a;
+    // Brighter with range. Near, a pool is a pool; from a few hundred metres
+    // up the eye takes a lit street as one glowing line, which is the lamps'
+    // own glare and bloom summed over pixels too small to draw. Without this
+    // the grid vanished between the lit windows from 180 m.
+    float d = length(p - CAMERA_POSITION_WORLD);
+    float boost = mix(1.0, 8.0, smoothstep(80.0, 700.0, d));
+    ALBEDO = v_col * strength * night * a * boost;
 }
 """
 	var m := ShaderMaterial.new()
@@ -460,8 +492,8 @@ func _build_street_lamps() -> void:
 	var quad := _quad()
 	var pole_mat := _pole_material()
 	var head_mat := _head_material()
-	var pool_mat := _pool_material(float(IpcServer._get_launch_arg("--night-pool-gain", "0.02")))
-	var glare_mat := _glare_material(0.8, 14.0)
+	var pool_mat := _pool_material(float(IpcServer._get_launch_arg("--night-pool-gain", "0.025")))
+	var glare_mat := _glare_material(1.0, float(IpcServer._get_launch_arg("--night-glare-gain", "8")))
 	var half_diag := CHUNK * 0.7071
 	for ck: Vector2i in ch:
 		var c: Array = ch[ck]
@@ -472,7 +504,7 @@ func _build_street_lamps() -> void:
 		var empty: Array = []
 		_draw("lamp_poles", pole, poles, empty, pole_mat, 450.0 + half_diag, holder)
 		_draw("lamp_heads", head, c[1], c[3], head_mat, 900.0 + half_diag, holder)
-		_draw("lamp_pools", box, c[2], c[3], pool_mat, 2200.0 + half_diag, holder)
+		_draw("lamp_pools", box, c[2], c[3], pool_mat, 3500.0 + half_diag, holder)
 	for gk: Vector2i in gch:
 		# No range: 31k sprites are 62k triangles in all, and the lines of lights
 		# to the far end of the island are the point. Chunked for frustum culling.
@@ -510,8 +542,10 @@ func _build_obstruction_lights() -> void:
 		var h: float = heights[i]
 		if h < OBSTRUCTION_MIN_H:
 			continue
-		n_bld += 1
 		var r: Rect2 = rects[i]
+		if h < SHIELD_FREE_H and _shielded(i, r, h, rects, heights):
+			continue
+		n_bld += 1
 		# One phase per building: its flashers fire together.
 		var phase := fposmod(sin(r.position.x * 0.0131 + r.position.y * 0.0071) * 4373.17, 1.0)
 		var corners := _corners(r)
@@ -535,10 +569,29 @@ func _build_obstruction_lights() -> void:
 				steady.append(Transform3D(Basis(), Vector3(q.x, h * fr, -q.y)))
 				steady_c.append(Color(RED.r, RED.g, RED.b, 0.0))
 	var quad := _quad()
-	_draw("obstruction_lights_flash", quad, flash, flash_c, _glare_material(1.1, 7.0, 1))
-	_draw("obstruction_lights_steady", quad, steady, steady_c, _glare_material(0.8, 4.0, 0))
+	_draw("obstruction_lights_flash", quad, flash, flash_c, _glare_material(1.0, 4.0, 1))
+	_draw("obstruction_lights_steady", quad, steady, steady_c, _glare_material(0.7, 2.5, 0))
 	counts["obstruction_buildings"] = n_bld
 	counts["obstruction_lights"] = flash.size() + steady.size()
+
+
+## FAA shielding (AC 70/7460-1, ch. 2): a structure close to a taller lit one
+## need not be lit itself. Without it every block of downtown carried a red
+## cluster and the skyline read pink; real towers there show a scattering.
+## Taller within SHIELD_M, by more than SHIELD_DH.
+func _shielded(i: int, r: Rect2, h: float, rects: Array, heights: PackedFloat32Array) -> bool:
+	var idx: Dictionary = env.get("_index")
+	var tile := float(env.get("TILE"))
+	var c := r.get_center()
+	var k := int(ceil(SHIELD_M / tile))
+	var t0 := Vector2i(int(floor(c.x / tile)), int(floor(c.y / tile)))
+	for dx in range(-k, k + 1):
+		for dy in range(-k, k + 1):
+			for j: int in idx.get(t0 + Vector2i(dx, dy), PackedInt32Array()):
+				if j != i and heights[j] > h + SHIELD_DH \
+						and (rects[j] as Rect2).get_center().distance_to(c) < SHIELD_M:
+					return true
+	return false
 
 
 ## Roof corners, a metre in, for the lights; two opposite ones on a narrow roof.
@@ -611,3 +664,4 @@ func _assign() -> void:
 			l.visible = true
 		else:
 			l.visible = false
+

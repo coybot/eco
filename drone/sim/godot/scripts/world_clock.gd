@@ -305,6 +305,7 @@ func _capture_base() -> void:
 		_base["glow_intensity"] = _we.glow_intensity
 		_base["glow_bloom"] = _we.glow_bloom
 		_base["glow_threshold"] = _we.glow_hdr_threshold
+		_base["glow_mode"] = _we.glow_blend_mode
 		_base["fog_on"] = _we.fog_enabled
 		_base["fog_density"] = _we.fog_density
 		_base["fog_color"] = _we.fog_light_color
@@ -376,13 +377,18 @@ func _apply_light() -> void:
 	_we.tonemap_exposure = float(_base["exposure"]) * (1.0 + 0.9 * _night)
 	_we.glow_enabled = _night > 0.3 or bool(_base["glow"])
 	if _night > 0.3:
-		_we.glow_intensity = 0.8
-		_we.glow_bloom = 0.06
-		_we.glow_hdr_threshold = 1.2
+		# Screen blend at night: soft-light bloom (the day look's) barely
+		# lifts a dark frame, so lamps and windows had no halo at all and the
+		# street grid read as specks.
+		_we.glow_intensity = 0.7
+		_we.glow_bloom = 0.04
+		_we.glow_hdr_threshold = 1.0
+		_we.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	elif _base.has("glow_intensity"):
 		_we.glow_intensity = _base["glow_intensity"]
 		_we.glow_bloom = _base["glow_bloom"]
 		_we.glow_hdr_threshold = _base["glow_threshold"]
+		_we.glow_blend_mode = _base["glow_mode"]
 	if look != "beauty":
 		_photo_atmosphere(day, warm)
 
