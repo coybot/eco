@@ -69,6 +69,17 @@ const LED_WARM := Color(1.0, 0.74, 0.50)     # 3000 K side-street LED
 const FLOOD_GOLD := Color(1.0, 0.62, 0.26)   # the mosques' golden floodlight
 const FLOOD_WHITE := Color(1.0, 0.85, 0.66)  # palaces, towers: warm white
 const BALCONY := Color(1.0, 0.82, 0.55)
+## istanbul_landmarks' floodlit() kinds: [colour, gain, box half-size / its
+## radius]. A mosque's radius is its hall's half-size; the box reaches past
+## the hall's corners to the domes' and the courtyard's edges.
+const FLOOD_KINDS := {
+	"mosque": [FLOOD_GOLD, 1.0, 1.45],
+	"tower": [FLOOD_GOLD, 1.1, 1.0],
+	"column": [FLOOD_WHITE, 0.9, 1.0],
+	"palace": [FLOOD_WHITE, 0.8, 1.05],
+	"wall": [FLOOD_GOLD, 0.55, 0.75],
+	"fountain": [FLOOD_WHITE, 0.6, 1.1],
+}
 const IST_LAMPS := {
 	# class: [spacing m, head height m, colour, both sides, style]
 	"motorway": [44.0, 12.0, HPS, true, "cobra"],
@@ -92,6 +103,11 @@ const OLD_CITY := [
 	 [41.0310, 28.9855], [41.0255, 28.9848]],
 ]
 const OBSTRUCTION_IST_H := 45.0
+## How much of istanbul_landmarks' own floodlit emission to keep (its
+## set_flood, x night_amount) under the flood volumes here; -1 leaves it alone.
+## Both at full turned the domes white; 0.3 keeps its gilding and windows
+## glowing and lets the volumes' directional light model the stone.
+const LM_OWN_FLOOD := 0.3
 const REFLECT_SHORE_M := 70.0
 
 var ist                                  # the env, untyped: its b_* arrays and methods
@@ -101,6 +117,8 @@ var _floods: Array = []                  # [Transform3D box, Color, gain, kind]
 var _beyazit: Dictionary = {}            # weather colour -> MultiMeshInstance3D
 var _weather_key := ""
 var _flood_mat: ShaderMaterial
+var _lm_own := -1.0
+var _lm_last := -2.0
 var _refl_mat: ShaderMaterial
 
 
@@ -393,6 +411,9 @@ func _landmarks_node() -> Node:
 func _build_floodlit() -> void:
 	var lm := _landmarks_node()
 	var n := 0
+	var own := float(IpcServer._get_launch_arg("--night-lm-flood", str(LM_OWN_FLOOD)))
+	if lm != null and lm.has_method("set_flood") and own >= 0.0:
+		_lm_own = own
 	if lm != null and lm.has_method("floodlit"):
 		n = _floods_from(lm.call("floodlit"))
 		counts["floodlit_from_landmarks"] = n
@@ -413,6 +434,21 @@ func _floods_from(items) -> int:
 		if not (it is Dictionary):
 			continue
 		var d: Dictionary = it
+		if d.has("pos") and d.get("pos") is Vector3:
+			# istanbul_landmarks' own form: {"pos": Godot foot, "radius",
+			# "height" above the foot, "kind": mosque|tower|palace|wall|
+			# column|fountain}.
+			var gp: Vector3 = d["pos"]
+			var c0 := Vector2(gp.x, -gp.z)
+			var rad := float(d.get("radius", 6.0))
+			var hgt := float(d.get("height", 30.0))
+			var kd := str(d.get("kind", "mosque"))
+			var spec: Array = FLOOD_KINDS.get(kd, FLOOD_KINDS["mosque"])
+			var hr := rad * float(spec[2]) + 2.5
+			_flood(c0, Vector2(hr, hr), 0.0, gp.y - 1.5, gp.y + hgt + 2.0, spec[0], float(spec[1]),
+				"tower" if kd in ["tower", "column"] else "dome")
+			n += 1
+			continue
 		var col: Color = d.get("colour", d.get("color", FLOOD_GOLD))
 		var gain := float(d.get("gain", 1.0))
 		var kind := str(d.get("kind", "dome"))
@@ -489,10 +525,19 @@ func _floods_fallback() -> int:
 		var kind := int(ist.b_kind[i])
 		if kind == 250 or not kind in [0, 2, 3, 4, 6, 12]:
 			continue
+		var fp: PackedVector2Array
+		var a := 0.0
+		if kind in [2, 3, 12]:
+			fp = ist.footprint(i)
+			a = _area(fp)
+			if a < (150.0 if kind == 2 else (600.0 if kind == 3 else 400.0)):
+				continue
+		elif topkapi.size() < 3 or not Geometry2D.is_point_in_polygon(ist.b_centre[i], topkapi):
+			continue
+		else:
+			fp = ist.footprint(i)
 		if n_given > 0 and _covered(ist.b_centre[i], n_given):
 			continue
-		var fp: PackedVector2Array = ist.footprint(i)
-		var a := _area(fp) if kind in [2, 3, 12] else 0.0
 		if kind == 2:
 			# Mosques: the dome above the data's flat roof.
 			if a >= 150.0:
@@ -647,7 +692,23 @@ func _build_minarets() -> void:
 	var shafts: Array = []         # [Vector2, bottom, top]
 	if lm != null and lm.has_method("minaret_balconies"):
 		var arr = lm.call("minaret_balconies")
-		if arr is Array:
+		if arr is PackedVector3Array:
+			# Godot centres; a minaret is the stack of balconies at one spot,
+			# uplit from the ground to a cone's height over its top balcony.
+			var tops := {}
+			for i in (arr as PackedVector3Array).size():
+				var b3: Vector3 = arr[i]
+				var r3 := float(lm.call("balcony_radius", i)) if lm.has_method("balcony_radius") else 2.2
+				var c2 := Vector2(b3.x, -b3.z)
+				balconies.append([c2, b3.y, r3])
+				var key := Vector2i(roundi(c2.x), roundi(c2.y))
+				if not tops.has(key) or float(tops[key][1]) < b3.y:
+					tops[key] = [c2, b3.y, r3]
+			for key: Vector2i in tops:
+				var t: Array = tops[key]
+				var c2: Vector2 = t[0]
+				shafts.append([c2, env.ground_height(c2.x, c2.y), float(t[1]) + 12.0])
+		elif arr is Array:
 			for it in arr:
 				if it is Dictionary:
 					balconies.append([_v2(it.get("p", it.get("centre", Vector2.ZERO))),
@@ -1160,6 +1221,13 @@ void fragment() {
 # ------------------------------------------------------------------ per frame
 func _process(delta: float) -> void:
 	super._process(delta)
+	if _lm_own >= 0.0:
+		var k := _lm_own * clampf(_night_amount(), 0.0, 1.0)
+		if absf(k - _lm_last) > 0.002:
+			_lm_last = k
+			var lm := _landmarks_node()
+			if lm != null:
+				lm.call("set_flood", k)
 	if _night > 0.05 and not _beyazit.is_empty():
 		var wk := _weather_now()
 		if wk != _weather_key:

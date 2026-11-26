@@ -83,11 +83,11 @@ const TUNE := {
 	"istanbul": {
 		"sun_az": 128.0, "sun_el": 56.0,           # ~11:15 local on 15 July
 		"sun_energy": 2.35, "sun_color": Color(1.0, 0.92, 0.80),
-		"exposure": 0.86, "agx_contrast": 1.7,
+		"exposure": 0.78, "agx_contrast": 1.7,
 		# Shade is sky blue AND the warm bounce off sunlit stone and paving:
 		# all sky made every shadow side a saturated blue.
 		"ambient_color": Color(0.30, 0.27, 0.23), "ambient_sky": 0.55, "ambient_energy": 0.45,
-		"contrast": 1.1, "saturation": 1.18, "brightness": 1.0,
+		"contrast": 1.1, "saturation": 1.1, "brightness": 1.0,
 		"beta0": 0.000045, "scale_h": 900.0, "beta_hi": 0.0000025,
 		"sea_beta": 0.00012, "sea_h": 160.0,
 		"cloud_base": 0.07,
