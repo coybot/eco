@@ -1,0 +1,25 @@
+{
+ "kinds": [
+  "residential",
+  "commercial",
+  "mosque",
+  "church",
+  "historic",
+  "industrial",
+  "public",
+  "wooden",
+  "tower",
+  "small",
+  "ruin",
+  "bazaar",
+  "palace",
+  "station"
+ ],
+ "record": "<hhHHHHB: e*2, n*2 (0.5 m), w*10, d*10 (dm), yaw*100 (centideg, 0..180), h*10 (dm), kind",
+ "frame": "ENU metres, datum Hagia Sophia; boxes: w along yaw (deg from east, ccw), d across",
+ "source": "OpenStreetMap buildings (ODbL 1.0) outside the detailed scene; heights from OSM, else JRC GHSL GHS-BUILT-H R2023A (CC BY 4.0)",
+ "tall_ge_40m": 1012,
+ "count_all": 235548,
+ "count_lean": 80908,
+ "files": "far.dat (committed): footprint box >= 220 m2 or >= 18 m tall; _ground/far_all.dat: every one"
+}
