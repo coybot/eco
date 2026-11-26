@@ -1,0 +1,15 @@
+{
+ "bounds_enu": [
+  -11000.0,
+  -9000.0,
+  11000.0,
+  11000.0
+ ],
+ "res_m": 4.0,
+ "size_px": [
+  5500,
+  5000
+ ],
+ "note": "255 = water, row 0 = north edge",
+ "source": "OpenStreetMap coastline and water areas, (c) OpenStreetMap contributors, ODbL 1.0"
+}

@@ -90,6 +90,7 @@ drone/sim/godot/assets/*
 !drone/sim/godot/assets/facades
 !drone/sim/godot/assets/facade_cells_nyc
 !drone/sim/godot/assets/manhattan
+!drone/sim/godot/assets/istanbul
 # ...but never the fetch caches inside them.
 drone/sim/godot/assets/*/_*
 

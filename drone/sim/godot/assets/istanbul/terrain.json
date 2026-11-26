@@ -1,0 +1,17 @@
+{
+ "bounds_enu": [
+  -11000.0,
+  -9000.0,
+  11000.0,
+  11000.0
+ ],
+ "res_m": 10.0,
+ "size_px": [
+  2200,
+  2000
+ ],
+ "min_m": 0.0,
+ "max_m": 252.32216186523436,
+ "encoding": "zlib int16 decimetres, row 0 = north edge",
+ "source": "NASA SRTM 1 arc-second (public domain), opened 120 m to strip buildings"
+}

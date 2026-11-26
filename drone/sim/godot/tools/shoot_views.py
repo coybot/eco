@@ -9,7 +9,8 @@ and saves each frame.
     python3 tools/shoot_views.py --out /tmp/shots --env manhattan --views my.json
     python3 tools/shoot_views.py --out /tmp/shots -- --world-life  # extra sim args
 
-Views file: a JSON list of {"name", "at", "look", "alt", "look_alt"?, "wait"?,
+Views file: a JSON list (or {"datum": [lat, lon, rot_deg], "views": [...]}
+for another scene, e.g. views_istanbul.json) of {"name", "at", "look", "alt", "look_alt"?, "wait"?,
 "pre"?}. `at`/`look` are [lat, lon] (Manhattan's projection, see
 fetch_manhattan.py) or {"enu": [e, n]} in sim metres. `alt`/`look_alt` are
 metres above street level. `pre` is a list of IPC requests sent before the
@@ -40,12 +41,15 @@ DATUM_LON = -74.0170
 GRID_ROTATION_DEG = 29.0
 
 
-def project(lat: float, lon: float) -> tuple[float, float]:
+def project(lat: float, lon: float, datum=None) -> tuple[float, float]:
+    """[lat, lon] -> sim ENU. datum: [lat, lon, grid_rotation_deg] from a views
+    file's {"datum": ...}; Manhattan's when absent."""
+    d_lat, d_lon, rot = datum or (DATUM_LAT, DATUM_LON, GRID_ROTATION_DEG)
     m_lat = 111132.0
-    m_lon = 111320.0 * math.cos(math.radians(DATUM_LAT))
-    x = (lon - DATUM_LON) * m_lon
-    y = (lat - DATUM_LAT) * m_lat
-    t = math.radians(GRID_ROTATION_DEG)
+    m_lon = 111320.0 * math.cos(math.radians(d_lat))
+    x = (lon - d_lon) * m_lon
+    y = (lat - d_lat) * m_lat
+    t = math.radians(rot)
     return (x * math.cos(t) - y * math.sin(t), x * math.sin(t) + y * math.cos(t))
 
 
@@ -66,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     views = json.loads(Path(a.views).read_text())
+    # {"datum": [lat, lon, rot], "views": [...]} for a scene other than Manhattan.
+    datum = None
+    if isinstance(views, dict):
+        datum = views.get("datum")
+        views = views["views"]
     if a.only:
         keep = set(a.only.split(","))
         views = [v for v in views if v["name"] in keep]
@@ -108,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         def sim(p) -> tuple[float, float]:
             if isinstance(p, dict):
                 return tuple(p["enu"])
-            e, n = project(*p)
+            e, n = project(p[0], p[1], datum)
             return (e - off[0], n - off[1])
 
         allperf = {}

@@ -182,8 +182,8 @@ repo does.
 godot --path drone/sim/godot -- --fleet= --env=baylands --ipc-port=9978 --seed=0
 ```
 
-Sixteen environments are registered (see `env_map` in
-`drone/sim/godot/scripts/fleet_manager.gd`). Three of them are real places,
+Seventeen environments are registered (see `env_map` in
+`drone/sim/godot/scripts/fleet_manager.gd`). Four of them are real places,
 built from public-domain data committed to this repo — clone and run, there is
 no fetch step:
 
@@ -192,6 +192,7 @@ no fetch step:
 | `manhattan` | ~45,000 real building footprints from NYC Open Data, real roof heights |
 | `manhattan_photo` | the same city with photographic facades and a USGS orthophoto ground |
 | `baylands` | Baylands Park, Sunnyvale — USGS LIDAR terrain, NAIP orthophoto, ~11,000 trees |
+| `istanbul` | historic Istanbul — the walled peninsula, Galata and Beyoglu, the Bosphorus shore at Uskudar; OSM footprints on SRTM hills |
 
 The rest are hand-built scenes: `office`, `plaza`, `city`, `depot`,
 `flightline`, `countdemo`, `gate`, `sar`, `surveil_truck` and a few aliases.

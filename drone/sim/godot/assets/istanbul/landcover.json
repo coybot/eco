@@ -1,0 +1,44 @@
+{
+ "bounds_enu": [
+  -6000.0,
+  -3200.0,
+  5000.0,
+  4800.0
+ ],
+ "res_m": 2.0,
+ "size_px": [
+  5500,
+  4000
+ ],
+ "classes": [
+  "urban",
+  "park",
+  "wood",
+  "cemetery",
+  "plaza",
+  "parking",
+  "pitch",
+  "beach",
+  "courtyard",
+  "railway",
+  "construction",
+  "garden",
+  "playground"
+ ],
+ "note": "row 0 = north edge",
+ "counts": {
+  "railway": 20,
+  "construction": 139,
+  "wood": 103,
+  "park": 1323,
+  "garden": 119,
+  "cemetery": 96,
+  "courtyard": 935,
+  "parking": 473,
+  "plaza": 113,
+  "beach": 2,
+  "pitch": 285,
+  "playground": 103
+ },
+ "source": "OpenStreetMap land use, leisure and natural areas, ODbL 1.0"
+}

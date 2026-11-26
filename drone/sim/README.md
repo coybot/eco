@@ -7,7 +7,7 @@ the only other sim code left is the headless kinematic model CI runs.
 
 `drone/sim/godot/` is a self-contained Godot 4 project with sixteen
 environments, including three built from real-world public-domain data
-(`manhattan`, `manhattan_photo`, `baylands`). It needs no AWS account, no
+(`manhattan`, `manhattan_photo`, `baylands`, `istanbul`). It needs no AWS account, no
 drone and no network, and every asset is committed, so a plain clone runs:
 
 ```bash

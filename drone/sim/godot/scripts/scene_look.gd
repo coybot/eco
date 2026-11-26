@@ -52,7 +52,7 @@ extends Node
 
 signal light_changed(night: float, sun_dir: Vector3, moon_dir: Vector3)
 
-const LOOKS := {"manhattan": "beauty"}
+const LOOKS := {"manhattan": "beauty", "istanbul": "beauty"}
 const INC := "res://shaders/thermal.gdshaderinc"
 
 ## The air (see WHY NOT FOG). Extinction per metre at street level, its scale

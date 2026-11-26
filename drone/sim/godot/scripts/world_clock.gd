@@ -44,6 +44,11 @@ const NEW_MOON_UNIX := 947182440.0
 ## less than that across it, so one point is enough.
 const LAT := 40.758
 const LON := -73.985
+## Where the sun is computed for. Manhattan's LAT/LON unless the env declares
+## SUN_LATLON = [lat, lon] (and UTC_OFFSET, hours, for a zone without DST).
+var _lat := LAT
+var _lon := LON
+var _fixed_utc = null
 const DEFAULT_DAY := 196       # 15 July: a summer day, like the orthophoto's
 const DEFAULT_YEAR := 2026
 
@@ -78,6 +83,11 @@ func _ready() -> void:
 	var gr = env.get("GRID_ROTATION_DEG")
 	if gr != null:
 		_grid_rot = float(gr)
+	var ll = env.get("SUN_LATLON")
+	if ll != null:
+		_lat = float(ll[0])
+		_lon = float(ll[1])
+	_fixed_utc = env.get("UTC_OFFSET")
 	var sl := env.get_node_or_null("scene_look")
 	if sl != null:
 		look = str(sl.get("look"))
@@ -99,7 +109,7 @@ func set_time(req: Dictionary) -> Dictionary:
 		return world_state()
 	var d := _parse_day(req)
 	var hour := fposmod(float(req["hour"]), 24.0)
-	var off := _utc_offset(int(d["year"]), int(d["doy"]))
+	var off: float = float(_fixed_utc) if _fixed_utc != null else _utc_offset(int(d["year"]), int(d["doy"]))
 	var t := {"hour": hour, "day_of_year": int(d["doy"]), "year": int(d["year"]), "utc_offset": off}
 	if req.get("solar", false):
 		t["solar_hour"] = hour
@@ -172,7 +182,7 @@ func _sun_angles() -> Vector2:
 		+ 0.000907 * sin(2 * g) - 0.002697 * cos(3 * g) + 0.00148 * sin(3 * g)
 	var solar := float(_time["solar_hour"])
 	var ha := deg_to_rad(15.0 * (solar - 12.0))
-	var lat := deg_to_rad(LAT)
+	var lat := deg_to_rad(_lat)
 	var el := asin(sin(lat) * sin(decl) + cos(lat) * cos(decl) * cos(ha))
 	var az := atan2(sin(ha), cos(ha) * sin(lat) - tan(decl) * cos(lat)) + PI
 	return Vector2(fposmod(rad_to_deg(az), 360.0), rad_to_deg(el))
@@ -184,7 +194,7 @@ func _solar_shift_h(doy: int, utc_h: float, off: float) -> float:
 	var g := TAU / 365.0 * (doy - 1 + (utc_h - 12.0) / 24.0)
 	var eot := 229.18 * (0.000075 + 0.001868 * cos(g) - 0.032077 * sin(g)
 		- 0.014615 * cos(2 * g) - 0.040849 * sin(2 * g))
-	return (eot + 4.0 * LON - 60.0 * off) / 60.0
+	return (eot + 4.0 * _lon - 60.0 * off) / 60.0
 
 
 ## New York's offset from UTC (h): -4 from the second Sunday of March to the
@@ -264,7 +274,7 @@ func moon_dir() -> Vector3:
 	var sun_lon := TAU / 365.2422 * (doy - 80.0)
 	var decl := asin(sin(deg_to_rad(23.44)) * sin(sun_lon + elong))
 	var ha := deg_to_rad(15.0 * (float(_time["solar_hour"]) - 12.0)) - elong
-	var lat := deg_to_rad(LAT)
+	var lat := deg_to_rad(_lat)
 	var el := asin(sin(lat) * sin(decl) + cos(lat) * cos(decl) * cos(ha))
 	var az := atan2(sin(ha), cos(ha) * sin(lat) - tan(decl) * cos(lat)) + PI
 	return to_godot(rad_to_deg(az), rad_to_deg(el))
