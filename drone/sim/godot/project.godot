@@ -64,3 +64,14 @@ thermal_lamps={
 "type": "float",
 "value": 0.0
 }
+; Central Park's cut in the city ground (scripts/central_park.gd): the park
+; outline mask and its sim rect (e0, n0, width, height). Parked far away
+; until the park sets them.
+park_hole_mask={
+"type": "sampler2D",
+"value": ""
+}
+park_hole_rect={
+"type": "vec4",
+"value": Vector4(10000000, 10000000, 1, 1)
+}
