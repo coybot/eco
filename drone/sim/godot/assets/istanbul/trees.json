@@ -1,0 +1,63 @@
+{
+ "source": "Contains modified Copernicus Sentinel data 2025 (Sentinel-2 L2A NDVI); OpenStreetMap (c) OpenStreetMap contributors, ODbL 1.0",
+ "scenes": {
+  "summer": [
+   "S2A_35TPF_20250722_0_L2A",
+   "S2A_35TPF_20250821_1_L2A",
+   "S2B_35TPF_20250705_0_L2A"
+  ],
+  "winter": [
+   "S2A_35TPF_20250101_0_L2A"
+  ]
+ },
+ "frame": "ENU metres, datum Hagia Sophia 41.0086 N 28.9802 E, no rotation",
+ "count": 115383,
+ "origin": [
+  -6000.0,
+  -3200.0
+ ],
+ "quant_m": 0.4,
+ "kinds": {
+  "mapped": 1029,
+  "canopy": 112368,
+  "row": 217,
+  "courtyard": 1591,
+  "palm": 178
+ },
+ "species": [
+  "plane",
+  "linden",
+  "chestnut",
+  "judas",
+  "acacia",
+  "oak",
+  "maple",
+  "magnolia",
+  "cypress",
+  "stone_pine",
+  "pine",
+  "cedar",
+  "palm_date",
+  "palm_fan",
+  "laurel",
+  "olive"
+ ],
+ "per_species": {
+  "plane": 6068,
+  "linden": 7990,
+  "chestnut": 5548,
+  "judas": 13315,
+  "acacia": 6671,
+  "oak": 1775,
+  "maple": 4295,
+  "magnolia": 3528,
+  "cypress": 46569,
+  "stone_pine": 4306,
+  "pine": 6691,
+  "cedar": 1620,
+  "palm_date": 101,
+  "palm_fan": 78,
+  "laurel": 5421,
+  "olive": 1407
+ }
+}

@@ -138,6 +138,9 @@ func _ready() -> void:
 			var node = load(path).new()
 			if node is Node:
 				add_child(node)
+	# The fixed-wing manager takes collision, raycasts and the router's grid
+	# from here; without this every fw_* op refuses ("no environment").
+	FixedWingManager.register_env(self)
 	print("[env_istanbul] ready in %d ms: %d buildings, %d occupancy strips, terrain %.0f-%.0f m"
 		% [Time.get_ticks_msec() - t0, b_first.size(), WALLS.size(), _tmin, _tmax])
 
