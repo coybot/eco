@@ -12,6 +12,7 @@ gitignored (caches and large downloads the tools fetch again).
 | `landcover.png`, `landcover.json` | OpenStreetMap land use, leisure and natural areas | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
 | `roads.json` | OpenStreetMap highways, railways (T1 tram), ferry routes, piers | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
 | `features.json` | OpenStreetMap city walls, minarets, towers, aqueducts, historic sites, building parts, trees | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
+| `life.json` | OpenStreetMap access restrictions (`motor_vehicle`/`access` = no), `highway=traffic_signals` nodes and tram stops, for the moving world (`scripts/istanbul_life*.gd`) | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul_life.py` |
 
 The OpenStreetMap-derived files are produced works / derivative databases of
 OpenStreetMap and stay under the ODbL; credit "(c) OpenStreetMap
