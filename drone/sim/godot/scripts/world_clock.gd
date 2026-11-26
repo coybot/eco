@@ -49,6 +49,18 @@ const LON := -73.985
 var _lat := LAT
 var _lon := LON
 var _fixed_utc = null
+## Per-region light (env.region). A region with no entry (manhattan) gets the
+## shared values, each lookup falling back to the number in the code below.
+## istanbul: a longer, deeper golden hour. Under New York's numbers the gold
+## only arrived in the last few degrees, when the sun was already too dim to
+## light the domes: here the warmth starts at ~28 deg, is deeper (sodium-
+## gold rather than peach), the sun keeps more of its strength down to the
+## horizon, and the exposure opens a little as it warms, so the stone of the
+## peninsula glows at sunset instead of going grey.
+const TUNE := {
+	"istanbul": {"warm_lo": 4.0, "warm_hi": 28.0, "warm_color": Color(1.0, 0.60, 0.32),
+		"sun_lo": -1.5, "sun_hi": 7.0, "gold_exposure": 0.18},
+}
 const DEFAULT_DAY := 196       # 15 July: a summer day, like the orthophoto's
 const DEFAULT_YEAR := 2026
 
@@ -72,6 +84,12 @@ var _cloud_shadow_mat: ShaderMaterial
 var _clouds: MeshInstance3D        # photo look only; beauty's sky draws its own
 var _cloud_mat: ShaderMaterial
 var _rain: GPUParticles3D          # photo look only; beauty's haze pass draws streaks
+var _tune := {}
+
+
+## A TUNE value for this env's region, or the shared default.
+func _tv(key: String, default_value: Variant) -> Variant:
+	return _tune.get(key, default_value)
 
 
 func _init() -> void:
@@ -88,6 +106,9 @@ func _ready() -> void:
 		_lat = float(ll[0])
 		_lon = float(ll[1])
 	_fixed_utc = env.get("UTC_OFFSET")
+	var rg = env.get("region")
+	if rg != null:
+		_tune = TUNE.get(str(rg), {})
 	var sl := env.get_node_or_null("scene_look")
 	if sl != null:
 		look = str(sl.get("look"))
@@ -355,14 +376,14 @@ func _apply_light() -> void:
 		var to_sun := to_godot(ang.x, maxf(el_deg, 0.5))
 		_sun.global_transform = Transform3D(Basis.looking_at(-to_sun, Vector3.UP), _sun.global_transform.origin)
 		day = smoothstep(-6.0, 8.0, el_deg)
-		warm = (1.0 - smoothstep(3.0, 20.0, el_deg)) * smoothstep(-6.0, 2.0, el_deg)
+		warm = (1.0 - smoothstep(_tv("warm_lo", 3.0), _tv("warm_hi", 20.0), el_deg)) * smoothstep(-6.0, 2.0, el_deg)
 		# One sun: it takes over the other suns' light (--look=photo has two).
 		var extra := 0.0
 		for e in _base["other_suns"]:
 			extra += float(e)
-		_sun.light_energy = (float(_base["sun_energy"]) + 0.6 * extra) * smoothstep(-1.0, 10.0, el_deg)
+		_sun.light_energy = (float(_base["sun_energy"]) + 0.6 * extra) * smoothstep(_tv("sun_lo", -1.0), _tv("sun_hi", 10.0), el_deg)
 		# Low sun through 10-30 km of air: gold, then orange-red.
-		_sun.light_color = (_base["sun_color"] as Color).lerp(Color(1.0, 0.68, 0.42), warm)
+		_sun.light_color = (_base["sun_color"] as Color).lerp(_tv("warm_color", Color(1.0, 0.68, 0.42)), warm)
 		_sun.shadow_enabled = el_deg > -1.0
 		_night = 1.0 - smoothstep(-4.0, 3.0, el_deg)
 	# The moon: faint, blue, and only up when it is.
@@ -385,6 +406,8 @@ func _apply_light() -> void:
 	# Overcast light is soft: less sun, more sky.
 	_we.ambient_light_energy = float(_base["ambient"]) * (0.18 + 0.82 * day) * (1.0 + 0.45 * w["cloud"])
 	_we.tonemap_exposure = float(_base["exposure"]) * (1.0 + 0.9 * _night)
+	if _tune.has("gold_exposure"):
+		_we.tonemap_exposure *= 1.0 + float(_tune["gold_exposure"]) * warm
 	_we.glow_enabled = _night > 0.3 or bool(_base["glow"])
 	if _night > 0.3:
 		# Screen blend at night: soft-light bloom (the day look's) barely

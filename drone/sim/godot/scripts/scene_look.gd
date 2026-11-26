@@ -62,7 +62,73 @@ const BETA0 := 0.00009
 const SCALE_H := 1100.0
 const BETA_HI := 0.0000035
 
+## Per-region tuning. A region with no entry (manhattan) gets exactly the
+## values above and below: every lookup falls back to the Manhattan constant
+## and its shaders are the shared source unchanged (REGION_GLSL is applied
+## only to a region listed there).
+##
+## istanbul: a clear Mediterranean summer day. The base look (New York's wet
+## harbour air) washed the city out to a milky pastel: a pale grey-blue sky
+## whose horizon colour is also the haze colour, haze thick enough to veil a
+## city seen across 2 km, and a full sky-ambient term lifting every shadow.
+## Here: a deeper, drier blue overhead, a cleaner horizon, about half New
+## York's land haze, a warmer and stronger sun against less sky fill (crisp
+## shadows), exposure and contrast set for the limestone, lead domes and
+## terracotta. The depth comes from a separate SEA layer instead (sea_beta):
+## a low, sunlit marine haze that only builds over the Marmara, the
+## Bosphorus and the Golden Horn (the air pass weights it by how much of each
+## ray's path lies over water, from the env's water_mask()), so the far
+## shores and the open sea soften while a city seen over land stays crisp.
+const TUNE := {
+	"istanbul": {
+		"sun_az": 128.0, "sun_el": 56.0,           # ~11:15 local on 15 July
+		"sun_energy": 2.35, "sun_color": Color(1.0, 0.92, 0.80),
+		"exposure": 0.78, "agx_contrast": 1.7,
+		# Shade is sky blue AND the warm bounce off sunlit stone and paving:
+		# all sky made every shadow side a saturated blue.
+		"ambient_color": Color(0.30, 0.27, 0.23), "ambient_sky": 0.55, "ambient_energy": 0.45,
+		"contrast": 1.1, "saturation": 1.1, "brightness": 1.0,
+		"beta0": 0.000045, "scale_h": 900.0, "beta_hi": 0.0000025,
+		"sea_beta": 0.00012, "sea_h": 160.0,
+		"cloud_base": 0.07,
+	},
+}
+
+## GLSL lines swapped per region: [shared line, region line]. Each shared line
+## must be found verbatim (a warning names any that is not).
+const REGION_GLSL := {
+	"istanbul": [
+		# A drier, deeper blue overhead; a clean pale horizon that turns blue
+		# faster with height (less of the sky is milk).
+		["    vec3 zen = vec3(0.045, 0.165, 0.47);", "    vec3 zen = vec3(0.030, 0.135, 0.50);"],
+		["    vec3 hor = vec3(0.55, 0.66, 0.80);", "    vec3 hor = vec3(0.56, 0.68, 0.84);"],
+		["    vec3 c_day = mix(hor, zen, pow(h, 0.45));", "    vec3 c_day = mix(hor, zen, pow(h, 0.36));"],
+		# Sunset over the Marmara: a broader, richer gold-orange on the sun's
+		# side, rose then violet away from it.
+		["    hor = mix(hor, mix(vec3(0.44, 0.34, 0.50), vec3(1.20, 0.56, 0.26), pow(toward, 3.0)), dusk);",
+		 "    hor = mix(hor, mix(vec3(0.50, 0.36, 0.48), vec3(1.40, 0.62, 0.24), pow(max(toward, 0.0), 2.2)), dusk);"],
+		["    zen = mix(zen, vec3(0.08, 0.10, 0.30), dusk);", "    zen = mix(zen, vec3(0.09, 0.10, 0.32), dusk);"],
+		# The sea layer (TUNE sea_beta), in the air pass only.
+		["uniform float fog_h = 140.0;", """uniform float fog_h = 140.0;
+uniform sampler2D sea_mask : filter_linear, repeat_disable;   // 1 = water, row 0 north
+uniform vec4 sea_rect = vec4(-1.0, -1.0, 2.0, 2.0);            // e0, n0, width, height (m)
+uniform float sea_beta = 0.0;
+uniform float sea_h = 160.0;
+float sea_frac(vec3 p) {
+    vec2 uv = vec2((p.x - sea_rect.x) / sea_rect.z, 1.0 - (-p.z - sea_rect.y) / sea_rect.w);
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) { return 1.0; }
+    return texture(sea_mask, uv).r;
+}"""],
+		["        float tau = layer(beta0, scale_h, cam.y, wp.y, L) + layer(fog_beta, fog_h, cam.y, wp.y, L)",
+		 """        float over_sea = 0.25 * (sea_frac(mix(cam, wp, 0.25)) + sea_frac(mix(cam, wp, 0.5))
+                                + sea_frac(mix(cam, wp, 0.75)) + sea_frac(wp));
+        float tau = layer(beta0, scale_h, cam.y, wp.y, L) + layer(fog_beta, fog_h, cam.y, wp.y, L)
+                  + over_sea * layer(sea_beta, sea_h, cam.y, wp.y, L)"""],
+	],
+}
+
 var look := "photo"
+var region := ""
 var night := 0.0
 var sun_dir := Vector3.UP
 var moon_dir := Vector3.DOWN
@@ -85,12 +151,41 @@ static func setup(env: Node3D, region: String) -> Node:
 	var node: Node = load("res://scripts/scene_look.gd").new()
 	node.name = "scene_look"
 	node._env_node = env
+	node.region = region
+	node._parse_tune_args()
 	node.look = IpcServer._get_launch_arg("--look", str(LOOKS.get(region, "photo")))
 	env.add_child(node)
 	if node.look == "beauty":
 		node._apply_beauty()
 	print("[scene_look] %s" % node.look)
 	return node
+
+
+## A tuning value for this region, or the shared (Manhattan) default.
+## --look-tune=key=value,... overrides a number for a tuning session.
+func _tv(key: String, default_value: Variant) -> Variant:
+	if _tune_args.has(key):
+		return _tune_args[key]
+	return (TUNE.get(region, {}) as Dictionary).get(key, default_value)
+
+
+var _tune_args := {}
+
+func _parse_tune_args() -> void:
+	for kv in IpcServer._get_launch_arg("--look-tune", "").split(",", false):
+		var p := kv.split("=")
+		if p.size() == 2:
+			_tune_args[p[0]] = float(p[1])
+
+
+## Shader source with this region's REGION_GLSL swaps; unchanged otherwise.
+func _region_code(code: String) -> String:
+	for pair: Array in REGION_GLSL.get(region, []):
+		if code.contains(str(pair[0])):
+			code = code.replace(str(pair[0]), str(pair[1]))
+		elif not str(pair[0]).begins_with("uniform float fog_h") and not str(pair[0]).contains("float tau"):
+			push_warning("[scene_look] %s: GLSL line not found: %s" % [region, pair[0]])
+	return code
 
 
 func light_state() -> Dictionary:
@@ -112,14 +207,14 @@ func _apply_beauty() -> void:
 	_build_sky()
 	var e := _we
 	e.tonemap_mode = Environment.TONE_MAPPER_AGX
-	e.tonemap_exposure = 1.0
-	e.tonemap_agx_contrast = 1.35
+	e.tonemap_exposure = _tv("exposure", 1.0)
+	e.tonemap_agx_contrast = _tv("agx_contrast", 1.35)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	e.ambient_light_color = Color(0.10, 0.13, 0.22)
-	e.ambient_light_sky_contribution = 0.85
+	e.ambient_light_color = _tv("ambient_color", Color(0.10, 0.13, 0.22))
+	e.ambient_light_sky_contribution = _tv("ambient_sky", 0.85)
 	# Lower than SceneKit's 1.0 for the reason LightingKit gives: a full sky
 	# term fills the shadows in, and the shadows are what make it read aerial.
-	e.ambient_light_energy = 0.6
+	e.ambient_light_energy = _tv("ambient_energy", 0.6)
 	e.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	e.glow_enabled = IpcServer._get_launch_arg("--look-glow", "1") == "1"
 	e.glow_intensity = 0.4
@@ -143,9 +238,9 @@ func _apply_beauty() -> void:
 	# Summer aerial photographs of the city: mid contrast, colour a touch up
 	# from AgX's neutral (it desaturates highlights by design).
 	e.adjustment_enabled = true
-	e.adjustment_brightness = 1.0
-	e.adjustment_contrast = 1.05
-	e.adjustment_saturation = 1.1
+	e.adjustment_brightness = _tv("brightness", 1.0)
+	e.adjustment_contrast = _tv("contrast", 1.05)
+	e.adjustment_saturation = _tv("saturation", 1.1)
 	# Screen-space reflections at night only (--look-ssr=auto|on|off): what
 	# puts the skyline's lit windows and lamps on the rivers. By day the
 	# water's sky reflection is most of what the river shows and SSR's cost
@@ -164,8 +259,8 @@ func _apply_beauty() -> void:
 ## One shadowed sun. The others (main.tscn has one) give their light up to it
 ## and stop drawing shadow maps, which a dark light still does every frame.
 func _place_sun() -> void:
-	var az := float(IpcServer._get_launch_arg("--look-sun-az", "138"))
-	var el := float(IpcServer._get_launch_arg("--look-sun-el", "48"))
+	var az := float(IpcServer._get_launch_arg("--look-sun-az", str(_tv("sun_az", 138))))
+	var el := float(IpcServer._get_launch_arg("--look-sun-el", str(_tv("sun_el", 48))))
 	var rot := float(_env_node.get("GRID_ROTATION_DEG")) if _env_node.get("GRID_ROTATION_DEG") != null else 0.0
 	var b := deg_to_rad(az - rot)
 	var er := deg_to_rad(el)
@@ -178,8 +273,8 @@ func _place_sun() -> void:
 			l.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 			l.shadow_enabled = false
 			l.visible = false
-	_sun.light_energy = 2.1
-	_sun.light_color = Color(1.0, 0.93, 0.83)
+	_sun.light_energy = _tv("sun_energy", 2.1)
+	_sun.light_color = _tv("sun_color", Color(1.0, 0.93, 0.83))
 	_sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	_sun.light_angular_distance = 0.5
 	_sun.shadow_enabled = true
@@ -200,7 +295,7 @@ func _build_sky() -> void:
 	nt.generate_mipmaps = true
 	nt.noise = noise
 	var sh := Shader.new()
-	sh.code = SKY_SHADER.replace("//AIR", AIR_GLSL)
+	sh.code = _region_code(SKY_SHADER.replace("//AIR", AIR_GLSL))
 	_sky_mat = ShaderMaterial.new()
 	_sky_mat.shader = sh
 	_sky_mat.set_shader_parameter("clouds", nt)
@@ -219,9 +314,11 @@ func _build_sky() -> void:
 ## per pixel. Thermal cameras discard it (they have their own air model).
 func _build_air() -> void:
 	var sh := Shader.new()
-	sh.code = AIR_SHADER.replace("//AIR", AIR_GLSL).replace("//INC", "#include \"%s\"" % INC)
+	sh.code = _region_code(AIR_SHADER.replace("//AIR", AIR_GLSL).replace("//INC", "#include \"%s\"" % INC))
 	_air_mat = ShaderMaterial.new()
 	_air_mat.shader = sh
+	if float(_tv("sea_beta", 0.0)) > 0.0:
+		_bind_sea_mask()
 	_air_mat.render_priority = Material.RENDER_PRIORITY_MAX
 	var q := QuadMesh.new()
 	q.size = Vector2(2.0, 2.0)
@@ -236,6 +333,22 @@ func _build_air() -> void:
 	_air.extra_cull_margin = 16384.0
 	_air.ignore_occlusion_culling = true
 	_env_node.add_child.call_deferred(_air)
+
+
+## The sea layer's mask: the env's water_mask() boxed down to ~64 m, so each
+## ray's over-water fraction is smooth (no shimmer along the coasts).
+func _bind_sea_mask() -> void:
+	if not _env_node.has_method("water_mask"):
+		return
+	var wm: Dictionary = _env_node.call("water_mask")
+	var tex: Texture2D = wm.get("tex")
+	if tex == null:
+		return
+	var img := tex.get_image()
+	img.resize(maxi(8, img.get_width() / 16), maxi(8, img.get_height() / 16), Image.INTERPOLATE_BILINEAR)
+	var b: Rect2 = wm["bounds"]
+	_air_mat.set_shader_parameter("sea_mask", ImageTexture.create_from_image(img))
+	_air_mat.set_shader_parameter("sea_rect", Vector4(b.position.x, b.position.y, b.size.x, b.size.y))
 
 
 # ------------------------------------------------------------------ per frame
@@ -292,14 +405,18 @@ func _update(force: bool) -> void:
 			_sky_mat.set_shader_parameter("moon_dir", moon_dir)
 			_sky_mat.set_shader_parameter("moon_lit", moon_lit)
 			_sky_mat.set_shader_parameter("moon_age", moon_age)
-			_sky_mat.set_shader_parameter("cloud_cover", 0.16 + 0.8 * w["cloud"])
+			_sky_mat.set_shader_parameter("cloud_cover", _tv("cloud_base", 0.16) + 0.8 * w["cloud"])
 		if _air_mat:
 			# Haze: more and lower aerosol; rain: washes contrast out, greys
 			# it; fog: a dense layer a tower's height deep, so the tops of
 			# the tall ones stand out of it as they do on real fog mornings.
-			_air_mat.set_shader_parameter("beta0", BETA0 * (1.0 + 3.5 * w["haze"] + 3.0 * w["rain"]))
-			_air_mat.set_shader_parameter("scale_h", SCALE_H * (1.0 - 0.3 * w["haze"]))
-			_air_mat.set_shader_parameter("beta_hi", BETA_HI)
+			_air_mat.set_shader_parameter("beta0", _tv("beta0", BETA0) * (1.0 + 3.5 * w["haze"] + 3.0 * w["rain"]))
+			_air_mat.set_shader_parameter("scale_h", _tv("scale_h", SCALE_H) * (1.0 - 0.3 * w["haze"]))
+			_air_mat.set_shader_parameter("beta_hi", _tv("beta_hi", BETA_HI))
+			if float(_tv("sea_beta", 0.0)) > 0.0:
+				# The marine layer thickens with haze and rain like the rest.
+				_air_mat.set_shader_parameter("sea_beta", float(_tv("sea_beta", 0.0)) * (1.0 + 2.0 * w["haze"] + 1.5 * w["rain"]))
+				_air_mat.set_shader_parameter("sea_h", float(_tv("sea_h", 160.0)))
 			_air_mat.set_shader_parameter("fog_beta", 0.008 * pow(w["fog"], 1.5))
 			_air_mat.set_shader_parameter("fog_h", 90.0)
 	light_changed.emit(night, sun_dir, moon_dir)
