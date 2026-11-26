@@ -52,6 +52,7 @@ const CHUNK := 500.0
 const KIT_CHUNK := 1000.0
 const KIT_RANGE := 650.0
 const SHADOW_M := 350.0
+const SHADOW_FAR := 3500.0
 
 enum { S_APT, S_M19, S_WOOD, S_HAN, S_MOD, S_PUB, S_IND, S_SMALL, S_RUIN }
 enum { SF_WALL, SF_PARTY, SF_TILE, SF_FLAT, SF_LEAD, SF_PARAPET, SF_GABLE, SF_CUMBA, SF_FLOOR, SF_METAL }
@@ -196,6 +197,7 @@ func _build(e: Node3D) -> bool:
 	var t2 := Time.get_ticks_msec()
 	var kits := {}          # part -> {Vector2i: [xforms, colours, customs]}
 	var nverts := 0
+	var nstris := 0
 	var ntris := 0
 	for k in _keys.size():
 		var r: Array = _results[k]
@@ -211,7 +213,25 @@ func _build(e: Node3D) -> bool:
 			mi.name = "b_%d_%d" % [key.x, key.y]
 			mi.mesh = m
 			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mi)
+			var sp: PackedVector3Array = r[3]
+			if sp.size() > 0:
+				var sa := []
+				sa.resize(Mesh.ARRAY_MAX)
+				sa[Mesh.ARRAY_VERTEX] = sp
+				var sm := ArrayMesh.new()
+				sm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, sa)
+				var si := MeshInstance3D.new()
+				si.name = mi.name + "_shadow"
+				si.mesh = sm
+				si.material_override = _shadow_mat()
+				si.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+				# Past ~3.5 km a roof's shadow is a pixel or two in the last split.
+				si.visibility_range_end = SHADOW_FAR
+				si.visibility_range_end_margin = 300.0
+				add_child(si)
+				nstris += sp.size() / 3
 			nverts += (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
 			ntris += (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
 		var kit: Dictionary = r[1]
@@ -233,8 +253,8 @@ func _build(e: Node3D) -> bool:
 	_build_kit(kits)
 	_results.clear()
 	_chunks.clear()
-	print("[istanbul_buildings] %d chunks, %d verts, %d tris; %s; threads %d ms, total %d ms" %
-		[_keys.size(), nverts, ntris, counts, t2 - t1, Time.get_ticks_msec() - t0])
+	print("[istanbul_buildings] %d chunks, %d verts, %d tris, %d shadow tris; %s; threads %d ms, total %d ms" %
+		[_keys.size(), nverts, ntris, nstris, counts, t2 - t1, Time.get_ticks_msec() - t0])
 	return true
 
 
@@ -316,6 +336,19 @@ func _load_cells() -> Dictionary:
 	return out
 
 
+var _smat: ShaderMaterial
+
+
+## Shadow casters are closed only from outside: draw both sides.
+func _shadow_mat() -> ShaderMaterial:
+	if _smat == null:
+		var sh := Shader.new()
+		sh.code = "shader_type spatial;\nrender_mode cull_disabled;\nvoid fragment() { ALBEDO = vec3(0.5); }\n"
+		_smat = ShaderMaterial.new()
+		_smat.shader = sh
+	return _smat
+
+
 func _make_material(code: String) -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = "shader_type spatial;\n#include \"%s\"\n" % INC + code
@@ -336,6 +369,16 @@ class Acc:
 	var idx := PackedInt32Array()
 	var c := Color.WHITE
 	var seed := 0.0
+	## The shadow caster: walls to the eaves, the roof without its overhang,
+	## parapet, kit, bays or domes; positions only.
+	var spos := PackedVector3Array()
+
+	func sq(a: Vector3, b: Vector3, c2: Vector3, d: Vector3) -> void:
+		spos.append_array(PackedVector3Array([a, b, c2, a, c2, d]))
+
+	func st(a: Vector3, b: Vector3, c2: Vector3) -> void:
+		spos.append_array(PackedVector3Array([a, b, c2]))
+
 	var style := 0
 	var storey := 3.0
 	var flags := 0
@@ -404,7 +447,7 @@ func _chunk_job(k: int) -> void:
 	for i in ids:
 		rng.seed = hash(i * 7919 + 1013)
 		_building(i, acc, kit, cnt, rng)
-	var res := [acc.arrays(), kit, cnt]
+	var res := [acc.arrays(), kit, cnt, acc.spos]
 	_mutex.lock()
 	_results[k] = res
 	_mutex.unlock()
@@ -691,6 +734,7 @@ func _building(i: int, acc: Acc, kit: Dictionary, cnt: Dictionary, rng: RandomNu
 	# ---- walls
 	acc.surf(SF_WALL, wall)
 	var eave_ref := wall_top
+	var s_top := wall_top if str(info["type"]) in ["hip", "gable", "none"] else float(info["y"])
 	for k in n:
 		var p := fp[k]
 		var q := fp[(k + 1) % n]
@@ -709,6 +753,7 @@ func _building(i: int, acc: Acc, kit: Dictionary, cnt: Dictionary, rng: RandomNu
 			sf = SF_PARTY
 		acc.surf(sf, wall)
 		var nn := Vector3(e.y, 0.0, e.x) / L
+		acc.sq(Vector3(p.x, bot, -p.y), Vector3(q.x, bot, -q.y), Vector3(q.x, s_top, -q.y), Vector3(p.x, s_top, -p.y))
 		acc.quad(Vector3(p.x, bot, -p.y), Vector3(q.x, bot, -q.y), Vector3(q.x, wall_top, -q.y), Vector3(p.x, wall_top, -p.y), nn,
 			Vector2(0.0, L), Vector2(L, L), Vector2(L, L), Vector2(0.0, L),
 			Vector2(eave_ref, gl[k]), Vector2(eave_ref, gl[(k + 1) % n]), Vector2(eave_ref, gl[(k + 1) % n]), Vector2(eave_ref, gl[k]))
@@ -963,10 +1008,17 @@ func _hip_roof(fp: PackedVector2Array, inner: PackedVector2Array, eave: float, t
 		var i0 := _g(inner[k], top)
 		var nn := _up(o0, o1, i1) if o0.distance_to(o1) > 0.01 else _up(o0, i1, i0)
 		acc.quad(o0, o1, i1, i0, nn, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, b, b, b, b)
+	# A wide flat top (a big footprint hipped round its edge) is a concrete
+	# terrace, not a field of tiles.
+	if absf(_signed_area(inner)) > 30.0:
+		acc.surf(SF_FLAT, Color(0.62, 0.61, 0.58))
 	var tri := Geometry2D.triangulate_polygon(inner)
 	for k in range(0, tri.size(), 3):
 		acc.tri(_g(inner[tri[k]], top), _g(inner[tri[k + 1]], top), _g(inner[tri[k + 2]], top), Vector3.UP,
 			Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, b)
+		acc.st(_g(inner[tri[k]], top), _g(inner[tri[k + 1]], top), _g(inner[tri[k + 2]], top))
+	for k in n:
+		acc.sq(_g(fp[k], eave), _g(fp[(k + 1) % n], eave), _g(inner[(k + 1) % n], top), _g(inner[k], top))
 
 
 ## A gable roof on a near-rectangle: the ridge down the long axis, gable walls
@@ -995,6 +1047,10 @@ func _gable(fp: PackedVector2Array, eave: float, top: float, tanp: float, ov: fl
 	var c1 := _g(C + inn * ov + ax * og, y_o)
 	var d1 := _g(D + inn * ov - ax * og, y_o)
 	acc.quad(c1, d1, r1, r2, _up(c1, d1, r1), Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, b, b, b, b)
+	acc.sq(_g(A, eave), _g(B, eave), _g(R2, top), _g(R1, top))
+	acc.sq(_g(C, eave), _g(D, eave), _g(R1, top), _g(R2, top))
+	acc.st(_g(D, eave), _g(A, eave), _g(R1, top))
+	acc.st(_g(B, eave), _g(C, eave), _g(R2, top))
 	# Gable walls, in the wall's colour, on the short edges (D->A and B->C).
 	acc.surf(SF_GABLE, wall)
 	for pr: Array in [[D, A, R1, (k0 + 3) % 4], [B, C, R2, (k0 + 1) % 4]]:
@@ -1045,6 +1101,7 @@ func _flat_roof(fp: PackedVector2Array, top: float, h: float, acc: Acc, rc: Colo
 	for k in range(0, tri.size(), 3):
 		acc.tri(_g(ring[tri[k]], y), _g(ring[tri[k + 1]], y), _g(ring[tri[k + 2]], y), Vector3.UP,
 			Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, b2)
+		acc.st(_g(ring[tri[k]], y), _g(ring[tri[k + 1]], y), _g(ring[tri[k + 2]], y))
 	return {"type": "flat", "y": y, "ring": ring}
 
 
