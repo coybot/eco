@@ -40,9 +40,8 @@ var _t := 0.0
 static func build(env_node: Node3D) -> bool:
 	# The bridges' claim on OSM footprints they draw themselves: here, the
 	# last hook before the buildings are drawn.
-	var br = load("res://scripts/istanbul_bridges.gd")
-	if br != null:
-		br.call("claim", env_node)
+	if ResourceLoader.exists("res://scripts/istanbul_bridges.gd"):
+		load("res://scripts/istanbul_bridges.gd").call("claim", env_node)
 	var sea = load("res://scripts/istanbul_sea.gd").new()
 	sea.env = env_node
 	env_node.add_child(sea)
