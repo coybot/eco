@@ -30,11 +30,14 @@
 ##     else features.json's minarets with heights and balcony counts by the
 ##     size of the mosque they stand by (66 m and three balconies beside an
 ##     imperial mosque, 30 m and one beside a neighbourhood mosque).
-##   BRIDGES: istanbul_bridges.lights() if present (the necklaces).
-##   SHIPS: istanbul_ships.lights() if present; else, when there is no
-##     istanbul_ships node at all, the Ahirkapi anchorage off the peninsula:
-##     a score of ships at anchor south of Sultanahmet with anchor, masthead
-##     and deck lights (lights only: no hull is drawn, nothing is solid).
+##   BRIDGES: istanbul_bridges draws its own lights (the 15 July bridge's
+##     necklace cycles colour there); its lights() only add reflections here,
+##     unless it has handed drawing over (set_own_lights(false)).
+##   SHIPS: istanbul_ships draws hulls and lit windows; while they stand
+##     still (no --world-life) they get navigation lights here from its
+##     arrays: anchor lights fore and aft and a sodium-lit deck at anchor,
+##     masthead, red/green sidelights and stern light mid-crossing. Without
+##     an istanbul_ships node, a lights-only anchorage off Ahirkapi stands in.
 ##     Ferry piers (roads.json piers) carry lamps along their edges.
 ##   RED OBSTRUCTION LIGHTS: buildings 45 m and taller that are not mosques,
 ##     churches or monuments (with Manhattan's shielding: a taller one within
