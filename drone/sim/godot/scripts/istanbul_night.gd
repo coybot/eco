@@ -765,16 +765,95 @@ func _lights_from(node: Node, draw_prefix: String) -> int:
 	return n
 
 
+## The bridges draw their own lights (the 15 July bridge's necklace cycles
+## its colours there); here they only get their reflections on the water.
+## A bridges node that has handed its drawing over (set_own_lights(false)
+## called elsewhere) is drawn here instead.
 func _build_bridges() -> void:
-	counts["bridge_lights"] = _lights_from(env.get_node_or_null("istanbul_bridges"), "bridge")
+	var br := env.get_node_or_null("istanbul_bridges")
+	if br == null or not br.has_method("lights"):
+		return
+	if br.get("_own_lights") == false:
+		counts["bridge_lights"] = _lights_from(br, "bridge")
+		return
+	var n := 0
+	for it in br.call("lights"):
+		if it is Array and (it as Array).size() >= 2 and it[0] is Vector3:
+			var p: Vector3 = it[0]
+			var c: Color = it[1]
+			if c.r > 0.9 and c.g < 0.3:
+				continue        # the beacons: too small to matter on the water
+			_sky_reflect(p, c, 0.45, 1.0)
+			n += 1
+	counts["bridge_reflections"] = n
 
 
 func _build_ships() -> void:
 	var ships := env.get_node_or_null("istanbul_ships")
-	if ships != null:
-		counts["ship_lights"] = _lights_from(ships, "ship")
+	if ships == null:
+		_build_anchorage()
 		return
-	_build_anchorage()
+	if ships.has_method("lights"):
+		counts["ship_lights"] = _lights_from(ships, "ship")
+	elif ships.get("_s_pos") != null and ships.get("moving") == false:
+		_ship_nav_lights(ships)
+
+
+## istanbul_ships draws hulls and lit windows but no navigation lights. While
+## the craft stand still (no --world-life) they get them here from its
+## arrays: at anchor or moored, white anchor lights fore and aft and a big
+## ship's deck lit in sodium; mid-crossing, a masthead light, red to port,
+## green to starboard, a stern light. Each also lays its reflection.
+func _ship_nav_lights(ships) -> void:
+	var white := PackedVector3Array()
+	var deck := PackedVector3Array()
+	var red := PackedVector3Array()
+	var green := PackedVector3Array()
+	var kinds: Dictionary = ships.get("_kinds")
+	var kind_of: Array = Array(ships.get("_s_kind"))
+	var pos: Array = Array(ships.get("_s_pos"))
+	var yaw: Array = Array(ships.get("_s_yaw"))
+	var under: Array = Array(ships.get("_s_under"))
+	var sea := float(env.get("SEA_Y"))
+	for i in kind_of.size():
+		if not kinds.has(kind_of[i]):
+			continue
+		var dims: Vector3 = kinds[kind_of[i]].get("dims", Vector3(20, 5, 2))
+		var L := dims.x
+		var B := dims.y
+		var fb := maxf(dims.z, 1.0)
+		var p: Vector2 = pos[i]
+		var xf := Transform3D(Basis(Vector3.UP, float(yaw[i])), Vector3(p.x, sea, -p.y))
+		var refl: Array = []
+		if L < 25.0:
+			var q := xf * Vector3(0, fb + 2.0, 0)
+			white.append(q)
+			refl.append(q)
+		elif int(under[i]) != 0:
+			var mast := xf * Vector3(0, fb + maxf(6.0, L * 0.12), L * 0.25)
+			white.append(mast)
+			white.append(xf * Vector3(0, fb + 1.0, -L * 0.5))
+			red.append(xf * Vector3(B * 0.5, fb + 2.5, L * 0.05))
+			green.append(xf * Vector3(-B * 0.5, fb + 2.5, L * 0.05))
+			refl.append(mast)
+		else:
+			var bow := xf * Vector3(0, fb + 3.0, L * 0.48)
+			var stern := xf * Vector3(0, fb + 1.5, -L * 0.48)
+			white.append(bow)
+			white.append(stern)
+			refl.append(bow)
+			if L > 90.0:
+				for k in 6:
+					var d := xf * Vector3(0, fb + 5.0, L * (0.38 - 0.14 * k))
+					deck.append(d)
+				refl.append(deck[deck.size() - 3])
+		for q: Vector3 in refl:
+			_sky_reflect(q, Color(1.0, 0.85, 0.6), 0.7, 2.0)
+	add_lights("ship_anchor_lights", white, Color(1.0, 0.95, 0.85), 0.6, 0)
+	add_lights("ship_deck_lights", deck, HPS, 1.0, 0)
+	add_lights("ship_port_lights", red, Color(1.0, 0.1, 0.05), 0.5, 0)
+	add_lights("ship_starboard_lights", green, Color(0.1, 1.0, 0.3), 0.5, 0)
+	counts["ship_nav_lights"] = white.size() + deck.size() + red.size() + green.size()
 
 
 ## Ships at anchor off Ahirkapi and Kumkapi (a real anchorage: the night view
