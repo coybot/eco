@@ -1,0 +1,79 @@
+{
+ "source": "Poly Haven (polyhaven.com), CC0 1.0",
+ "size_px": 512,
+ "textures": {
+  "asphalt": {
+   "asset": "asphalt_02",
+   "size_m": 3.0,
+   "url": "https://polyhaven.com/a/asphalt_02",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  },
+  "setts": {
+   "asset": "cobblestone_floor_08",
+   "size_m": 2.0,
+   "url": "https://polyhaven.com/a/cobblestone_floor_08",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  },
+  "pavers": {
+   "asset": "patterned_concrete_pavers",
+   "size_m": 1.8,
+   "url": "https://polyhaven.com/a/patterned_concrete_pavers",
+   "authors": [
+    "Amal Kumar"
+   ]
+  },
+  "slabs": {
+   "asset": "concrete_pavers_02",
+   "size_m": 2.0,
+   "url": "https://polyhaven.com/a/concrete_pavers_02",
+   "authors": [
+    "Amal Kumar"
+   ]
+  },
+  "grass": {
+   "asset": "leafy_grass",
+   "size_m": 2.0,
+   "url": "https://polyhaven.com/a/leafy_grass",
+   "authors": [
+    "Charlotte Baglioni"
+   ]
+  },
+  "gravel": {
+   "asset": "gravel_floor",
+   "size_m": 2.25,
+   "url": "https://polyhaven.com/a/gravel_floor",
+   "authors": [
+    "Jenelle van Heerden",
+    "Matterfield"
+   ]
+  },
+  "dry": {
+   "asset": "dry_ground_01",
+   "size_m": 4.0,
+   "url": "https://polyhaven.com/a/dry_ground_01",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  },
+  "sand": {
+   "asset": "coast_sand_01",
+   "size_m": 15.0,
+   "url": "https://polyhaven.com/a/coast_sand_01",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  },
+  "leaves": {
+   "asset": "forest_leaves_02",
+   "size_m": 3.001,
+   "url": "https://polyhaven.com/a/forest_leaves_02",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  }
+ }
+}
