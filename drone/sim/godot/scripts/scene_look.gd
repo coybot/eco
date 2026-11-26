@@ -19,6 +19,7 @@
 ## Launch args: --look=photo|beauty, --look-sun-az=<true deg, default 138>,
 ## --look-sun-el=<deg, default 48>, --look-ssao=0|1 (1), --look-glow=0|1 (1),
 ## --look-ssil=0|1 (0: costly at 4K), --look-haze=0|1 (1, the air pass),
+## --look-ssr=auto|on|off (auto: screen-space reflections at night only),
 ## --moon-age=<days since new moon> (default: from fw_set_time's date).
 ##
 ## WHY NOT FOG. env_manhattan.gd records that exponential fog was tried here
@@ -74,6 +75,7 @@ var _sky_mat: ShaderMaterial
 var _air_mat: ShaderMaterial
 var _air: MeshInstance3D
 var _last := PackedFloat32Array()
+var _ssr_mode := "auto"
 
 
 ## Build the look for `env` and add it as its child "scene_look". Call after
@@ -144,6 +146,16 @@ func _apply_beauty() -> void:
 	e.adjustment_brightness = 1.0
 	e.adjustment_contrast = 1.05
 	e.adjustment_saturation = 1.1
+	# Screen-space reflections at night only (--look-ssr=auto|on|off): what
+	# puts the skyline's lit windows and lamps on the rivers. By day the
+	# water's sky reflection is most of what the river shows and SSR's cost
+	# buys little; at night without it the Hudson is a black slab.
+	_ssr_mode = IpcServer._get_launch_arg("--look-ssr", "auto")
+	e.ssr_max_steps = 96
+	e.ssr_fade_in = 0.08
+	e.ssr_fade_out = 1.2
+	e.ssr_depth_tolerance = 2.0
+	e.ssr_enabled = _ssr_mode == "on"
 	if IpcServer._get_launch_arg("--look-haze", "1") == "1":
 		_build_air()
 	_update(true)
@@ -261,6 +273,8 @@ func _update(force: bool) -> void:
 		return
 	_last = key
 	if look == "beauty":
+		if _we != null:
+			_we.ssr_enabled = _ssr_mode == "on" or (_ssr_mode == "auto" and night > 0.2)
 		var moon_age: float = float(wc.call("moon_age")) / 29.530589 if wc != null else 0.34
 		# Light pollution: more of the city's light comes back off a low,
 		# thick sky. Overcast nights over New York are orange-grey, not black.

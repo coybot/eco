@@ -84,15 +84,23 @@ void fragment() {
     vec3 alb; vec3 wn; float wr; float ws; float rip;
     sea_surface(w.xz, shore, edge, dist, TIME, alb, wn, wr, ws, rip);
     ALBEDO = alb * mix(1.0, 0.45, night);
-    ROUGHNESS = wr;
-    SPECULAR = ws;
-    NORMAL = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
+    // At night the river is a mirror for the skyline (scene_look.gd turns on
+    // screen-space reflections at night): smoother and more reflective, and
+    // the chop's normals stretch each lit window into a broken vertical
+    // streak. By day the same values made the river a mirror of a bright
+    // sky (see sea_surface), so it is night only.
+    ROUGHNESS = mix(wr, min(wr, 0.035), night);
+    SPECULAR = mix(ws, 0.5, night);
+    vec3 wn_n = normalize(vec3(wn.x * 1.6, 1.0, wn.z * 0.6));   // toward/away tilts dominate: vertical streaks
+    NORMAL = normalize((VIEW_MATRIX * vec4(mix(wn, wn_n, night), 0.0)).xyz);
     if (night > 0.01) {
         float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
         float graze = pow(1.0 - ndv, 3.0);
         float g = texture(sea_foam, w.xz / 23.0 + vec2(TIME * 0.01, 0.0)).r;
         float lit = smoothstep(0.7, 0.95, g + 0.25 * wn.x * 4.0);
         EMISSION = vec3(1.0, 0.72, 0.42) * night * graze * lit * 0.35;
+        // The city's sky glow on the water, strongest at grazing angles.
+        EMISSION += vec3(0.050, 0.038, 0.034) * night * graze;
     }
     if (thermal_pass(CAMERA_VISIBLE_LAYERS)) {
         vec2 th = th_water(rip, dot(NORMAL, VIEW));
