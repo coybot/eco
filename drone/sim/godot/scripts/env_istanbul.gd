@@ -241,12 +241,21 @@ func ground_height(e: float, n: float) -> float:
 		lerpf(_t[y1 * _tw + x0], _t[y1 * _tw + x1], tx), ty)
 
 
-## What an aircraft hits standing still: the ground, or a roof.
+## What an aircraft hits standing still: the ground, or the highest solid
+## over the point (footprints overlap: a minaret stands inside its mosque).
 func collision_height(e: float, n: float) -> float:
 	var h := ground_height(e, n)
-	var i := building_at(e, n)
-	if i >= 0:
-		h = maxf(h, b_top[i])
+	var key := Vector2i(floori(e / BIN), floori(n / BIN))
+	if not _bins.has(key):
+		return h
+	for i in (_bins[key] as PackedInt32Array):
+		if b_top[i] <= h:
+			continue
+		var k := i * 4
+		if e < b_aabb[k] or e > b_aabb[k + 2] or n < b_aabb[k + 1] or n > b_aabb[k + 3]:
+			continue
+		if _inside(i, e, n):
+			h = b_top[i]
 	return h
 
 
