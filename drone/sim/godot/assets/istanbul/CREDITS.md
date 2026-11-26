@@ -12,6 +12,9 @@ gitignored (caches and large downloads the tools fetch again).
 | `landcover.png`, `landcover.json` | OpenStreetMap land use, leisure and natural areas | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
 | `roads.json` | OpenStreetMap highways, railways (T1 tram), ferry routes, piers | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
 | `features.json` | OpenStreetMap city walls, minarets, towers, aqueducts, historic sites, building parts, trees | (c) OpenStreetMap contributors, ODbL 1.0 | `fetch_istanbul.py` |
+| `sea_shore.png`, `sea_flow.png`, `sea.json` | Derived from `water.png` (OpenStreetMap coastline): the shoreline's signed distance, and the surface current's strength and direction (direction from the channel's own axis; strengths drawn by hand) | (c) OpenStreetMap contributors, ODbL 1.0 | `bake_istanbul_sea.py` |
+| (code) `scripts/istanbul_bridges.gd` | Bridge alignments from OpenStreetMap ways in `roads.json` (the Golden Horn Metro Bridge's pylons as OSM maps them); spans, heights and widths are published facts (Wikipedia) | alignments ODbL 1.0 | none (procedural) |
+| (code) `scripts/istanbul_ships.gd` | Berths and ferry lines from OpenStreetMap ferry routes in `roads.json`; craft models from `../models/` | ODbL 1.0; models CC BY 4.0 (see `../models/CREDITS.md`) | none (procedural) |
 
 The OpenStreetMap-derived files are produced works / derivative databases of
 OpenStreetMap and stay under the ODbL; credit "(c) OpenStreetMap

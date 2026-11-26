@@ -1,0 +1,31 @@
+{
+ "source": "Derived from water.png (OpenStreetMap coastline, ODbL 1.0) by tools/bake_istanbul_sea.py",
+ "shore": {
+  "bounds_enu": [
+   -11000.0,
+   -9000.0,
+   11000.0,
+   11000.0
+  ],
+  "res_m": 4.0,
+  "size_px": [
+   5500,
+   5000
+  ],
+  "encoding": "d_m = sign(s) * s^2, s = (v - 128) / 12; + over water"
+ },
+ "flow": {
+  "bounds_enu": [
+   -11000.0,
+   -9000.0,
+   10984.0,
+   11000.0
+  ],
+  "res_m": 32.0,
+  "size_px": [
+   687,
+   625
+  ],
+  "encoding": "R strength 0..1, G/B dir (east, north) * 0.5 + 0.5, A shore distance / 1500 m"
+ }
+}
