@@ -1,0 +1,19 @@
+{
+ "bounds_enu": [
+  -11000.0,
+  -9000.0,
+  11000.0,
+  11000.0
+ ],
+ "res_m": 10.0,
+ "size_px": [
+  2200,
+  2000
+ ],
+ "note": "row 0 = north edge",
+ "colour": "Sentinel-2 TCI (B04, B03, B02): 0..255 = reflectance 0..0.2, linear",
+ "veg": "clamp((NDVI - 0.18) / 0.42) from B08, B04",
+ "item": "S2B_35TPF_20250605_0_L2A",
+ "datetime": "2025-06-05T09:08:55.682000Z",
+ "source": "Contains modified Copernicus Sentinel data 2025 (Element84 earth-search, sentinel-2-l2a)"
+}
