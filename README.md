@@ -191,7 +191,7 @@ no fetch step:
 |---|---|
 | `manhattan` | ~45,000 real building footprints from NYC Open Data, real roof heights |
 | `manhattan_photo` | the same city with photographic facades and a USGS orthophoto ground |
-| `baylands` | Baylands Park, Sunnyvale — USGS LIDAR terrain, NAIP orthophoto, ~11,000 trees |
+| `baylands` | Baylands Park, Sunnyvale, and 5 x 4.8 km around it — built to train aircraft that then fly the real field: 2020 USGS lidar ground, 12,800 buildings with measured roofs, 40,000 measured trees, power lines, 2024 NAIP imagery, real horizon, weather/tide/wind randomisation, airspace and park data (`site.json`) |
 | `istanbul` | historic Istanbul — the walled peninsula, Galata and Beyoglu, the Bosphorus shore at Uskudar; OSM footprints on SRTM hills |
 
 The rest are hand-built scenes: `office`, `plaza`, `city`, `depot`,
@@ -204,8 +204,17 @@ and a single instanced draw call. That is why a 45,000-building city costs
 about what a courtyard costs. `manhattan` and `manhattan_photo` are the *same
 world* to routing and collision — only the pixels differ.
 
-`baylands` adds terrain: a heightfield an aircraft can actually fly into, and
-tree crowns that count as obstacles.
+`baylands` is the exception: footprints are real polygons, heights are
+metres above NAVD88, and the ground is lidar terrain an aircraft can fly into.
+Everything an aircraft could hit — roofs and rooftop units, trees, poles,
+towers, wires (as line obstacles), bridge decks — is solid for fixed wings,
+VTOLs and the fleet's quadcopters alike (`drone/sim/godot/tools/strike_test.py`
+checks it). It also takes `env_op` requests: `randomize` (a realistic day:
+season, sun, weather, tide and wind from Moffett Field records), `weather`,
+`look`, `site`/`check`/`check_path` (airspace, park rules, launch pads,
+clearances; see `drone/sim/baylands_site.py` — reference data, not a legal
+determination), `wires`, `life`. Moving people, cars and birds are off unless
+you pass `--world-life`.
 
 ### Driving it
 
@@ -244,15 +253,19 @@ so `engine_client.py` and `sim_drone_daemon.py` drive it either way.
 no API key, nothing to sign.
 
 ```bash
-python3 drone/sim/tools/fetch_baylands.py --out drone/sim/godot/assets/baylands
 python3 drone/sim/tools/fetch_facades.py  --out drone/sim/godot/assets/facades
 ```
 
+Baylands' builders (`fetch_baylands.py`, then `bake_baylands_*.py`) download
+~5 GB of lidar and want a machine with RAM to spare; the committed data runs
+as-is, and their gitignored `assets/baylands/_*` outputs only add detail.
+
 A new scene is a `.gd` script in `godot/scripts`, a one-node `.tscn` in
 `godot/scenes/environments`, and a line in `fleet_manager.gd`'s `env_map`.
-`env_baylands.gd` is the worked example — it loads a heightmap, an orthophoto
-and a vector dataset, and exposes `ground_height()` and `collision_height()`
-so the flight code can hit the terrain. Note that `drone/sim/godot/assets/*`
+`env_baylands.gd` and `env_istanbul.gd` are the worked examples — they load a
+heightmap, an orthophoto and vector datasets, and expose `ground_height()`,
+`collision_height()` and `raycast_structures()` so the flight code can hit
+the terrain and everything on it. Note that `drone/sim/godot/assets/*`
 is gitignored by default; un-ignore your scene's directory by name in
 `.gitignore` (there are examples there) so a plain clone still runs it.
 
