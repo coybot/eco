@@ -1,392 +1,587 @@
 #!/usr/bin/env python3
-"""Fetch Baylands Park, Sunnyvale and emit the sim's photoreal baylands dataset.
+"""Build Baylands Park, Sunnyvale for the Godot sim, from measured public data.
 
-Three public-domain sources, all baked to files at fetch time so the sim needs
-no network at run time. Baking rather than streaming is deliberate: a demo
-should not depend on a remote service answering while someone is watching, and
-a committed asset is deterministic and has no per-run latency.
+The scene exists to train autopilots that then fly the real field, so the
+rule here is MEASURED over invented: ground, roofs, trees, poles and wires
+come from the 2020 county lidar; footprints, paths and fences from
+OpenStreetMap; the ground's colour from the USDA NAIP orthophoto.
 
-  * TERRAIN  — USGS 3DEP elevation (1 m LIDAR-derived), exported as a float32
-    raster and written here as a 16-bit PNG heightmap plus the metre range
-    needed to decode it. This is the part manhattan does not have: that env
-    assumes flat ground, which is fine for an island of boxes and wrong here,
-    where the levees and the rising ground toward the business park are the
-    only relief a low-flying aircraft can hit.
-  * IMAGERY  — USDA NAIP orthophotography (~0.6 m/px native), public domain.
-    From a drone at altitude looking down at a marsh, a real orthophoto on real
-    terrain *is* photorealism; there are almost no facades here to get wrong.
-  * VECTORS  — OpenStreetMap (ODbL) for water bodies, levee trails and the few
-    buildings. Buildings become axis-aligned rects exactly like manhattan's, so
-    they drop straight into the existing occupancy grid and slab-test occlusion.
+Steps (each skips its output if present; --force redoes it):
+  lidar     download the lidar tiles covering REGION (NOAA Digital Coast's
+            COPC mirror of USGS 3DEP CA_SantaClaraCounty_2020; ~3.5 GB)
+  rasters   bake_baylands_lidar.py: 0.5 m grids into WORK/rasters
+  water     water.png (2 m mask) + flat water surfaces in the ground model
+  terrain   terrain.zi16 (2 m, committed) + _hi/*.z* (0.5 m grids, gitignored)
+  osm       OSM extract -> WORK/osm.json
+  buildings buildings.dat/.json: OSM footprints + lidar-only footprints,
+            heights from the lidar
+  features  features.json (paths, fences, power, parking, amenities, park)
+  ortho     ortho.jpg (1 m, committed) + _hi/ortho.jpg (native, gitignored)
 
-UNITS: metres throughout, as everywhere else in the sim. 3DEP is requested in
-metres; nothing downstream re-converts.
+    uv run --no-project --with "laspy[lazrs]" --with numpy --with scipy \\
+        --with pyproj --with pillow --with shapely --with rasterio \\
+        python fetch_baylands.py --work ~/bay/data --out ../godot/assets/baylands
 
-Output is a local ENU frame (x=east, y=north) with its origin at the region's
-south-west corner, so every coordinate is positive — same convention as
-fetch_manhattan.py, whose datum choice puts Manhattan in positive north.
+UNITS: metres. The NOAA mirror is UTM 10N metres + NAVD88 metres; the USGS
+rockyweb copy of the same survey is in US survey feet, so do not swap the
+source without converting (bake_baylands_lidar.py refuses feet).
 
-Usage:
-    python3 fetch_baylands.py --out ../godot/assets/baylands
-    python3 fetch_baylands.py --out /tmp/baylands --terrain-size 512
+FRAME: ENU metres around DATUM (the middle of Baylands Park), flat-earth
+formula identical to env_baylands.gd's geo_to_sim(); Godot = (e, y, -n).
 """
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import re
+import struct
+import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
+import zlib
 from pathlib import Path
 
-# Region: Baylands Park and the salt-pond levees north of it, which is where
-# people actually fly. West edge takes in the park proper and its car park,
-# east edge the water-treatment ponds, north the open bay margin, south the
-# Caribbean Dr business park where the ground starts to rise.
-LAT_S, LAT_N = 37.4100, 37.4400
-LON_W, LON_E = -122.0300, -121.9950
+import numpy as np
 
-# Datum at the south-west corner so the whole region is positive east/north.
-DATUM_LAT, DATUM_LON = LAT_S, LON_W
-
-ELEVATION = ("https://elevation.nationalmap.gov/arcgis/rest/services/"
-             "3DEPElevation/ImageServer/exportImage")
-NAIP = ("https://imagery.nationalmap.gov/arcgis/rest/services/"
-        "USGSNAIPPlus/ImageServer/exportImage")
-OVERPASS = "https://overpass-api.de/api/interpreter"
-OVERPASS_MIRROR = "https://overpass.kumi.systems/api/interpreter"
+HERE = Path(__file__).resolve().parent
+DATUM_LAT, DATUM_LON = 37.4125, -121.9970
+REGION = (-2500.0, -2400.0, 2500.0, 2400.0)        # e0, n0, e1, n1
+M_PER_DEG_LAT = 111132.0
+M_PER_DEG_LON = 111320.0 * math.cos(math.radians(DATUM_LAT))
+CELL = 0.5                                          # rasters
+TERRAIN_RES = 2.0                                   # committed terrain
 UA = "eco-sim/1.0 (drone simulator; baylands dataset builder)"
 
-
-def enu(lat: float, lon: float) -> tuple[float, float]:
-    """Local tangent plane, metres east/north of the datum.
-
-    Same flat-earth approximation as fetch_manhattan.py. Over a 3 km region the
-    error against a proper projection is centimetres — far below the terrain
-    raster's own 3 m post spacing.
-    """
-    m_per_deg_lat = 111132.0
-    m_per_deg_lon = 111320.0 * math.cos(math.radians(DATUM_LAT))
-    return ((lon - DATUM_LON) * m_per_deg_lon, (lat - DATUM_LAT) * m_per_deg_lat)
+NOAA = "https://noaa-nos-coastal-lidar-pds.s3.amazonaws.com/laz/geoid18/9329/"
+OVERPASS = "https://overpass-api.de/api/interpreter"
 
 
-def _get(url: str, params: dict, timeout: int = 120, tries: int = 4) -> bytes:
-    """GET with retries, and treat an ArcGIS JSON error body as a failure.
+def enu(lat, lon):
+    return ((np.asarray(lon) - DATUM_LON) * M_PER_DEG_LON, (np.asarray(lat) - DATUM_LAT) * M_PER_DEG_LAT)
 
-    Both USGS services answer a rejected request with HTTP 200 and a JSON
-    error payload, so a naive fetch happily writes 156 bytes of JSON into a
-    .jpg and everything downstream fails somewhere far less obvious.
-    """
-    full = url + "?" + urllib.parse.urlencode(params)
+
+def geo(e, n):
+    return (DATUM_LAT + np.asarray(n) / M_PER_DEG_LAT, DATUM_LON + np.asarray(e) / M_PER_DEG_LON)
+
+
+def bbox_ll(pad: float = 0.0):
+    e0, n0, e1, n1 = REGION
+    s, w = geo(e0 - pad, n0 - pad)
+    n, e = geo(e1 + pad, n1 + pad)
+    return float(s), float(w), float(n), float(e)
+
+
+def _get(url: str, data: bytes | None = None, timeout: int = 180, tries: int = 5) -> bytes:
     last = ""
-    for attempt in range(tries):
+    for k in range(tries):
         try:
-            req = urllib.request.Request(full, headers={"User-Agent": UA})
+            req = urllib.request.Request(url, data=data, headers={"User-Agent": UA})
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                body = r.read()
-            if body[:1] == b"{":
-                raise RuntimeError(json.loads(body).get("error", {}).get(
-                    "details", ["service returned an error"])[0])
-            return body
-        except Exception as exc:                      # noqa: BLE001 - retry anything
+                return r.read()
+        except Exception as exc:                    # noqa: BLE001 - retry anything
             last = str(exc)
-            if attempt < tries - 1:
-                time.sleep(2 ** attempt)
+            print(f"  {url[:60]}... attempt {k}: {last}", flush=True)
+            time.sleep(min(60, 4 * 2 ** k))
     raise RuntimeError(f"{url}: {last}")
 
 
-def fetch_terrain(out_dir: Path, size: int) -> dict:
-    """3DEP float32 raster -> 16-bit PNG heightmap + the range to decode it.
+# --------------------------------------------------------------- rasters
 
-    A 16-bit PNG holds 65536 levels; across this region's ~35 m of relief that
-    is sub-millimetre, so quantisation is irrelevant and the file is a tenth
-    the size of the float raster.
-    """
-    from PIL import Image
-    import numpy as np
+class Grids:
+    """The 0.5 m lidar grids (bake_baylands_lidar.py), row 0 = north."""
 
-    raw = _get(ELEVATION, {
-        "bbox": f"{LON_W},{LAT_S},{LON_E},{LAT_N}", "bboxSR": 4326,
-        "size": f"{size},{size}", "format": "tiff", "pixelType": "F32", "f": "image",
-    })
-    tif = out_dir / "_terrain_f32.tif"
-    tif.write_bytes(raw)
-    arr = np.array(Image.open(tif)).astype("float32")
+    def __init__(self, d: Path):
+        self.d = d
+        self.meta = json.loads((d / "grid.json").read_text())
+        self.rows, self.cols = self.meta["rows"], self.meta["cols"]
 
-    # 3DEP returns very negative sentinels for no-data over open water. Clamp to
-    # sea level rather than letting them blow out the range the PNG encodes.
-    arr[~np.isfinite(arr)] = 0.0
-    arr[arr < -100.0] = 0.0
+    def f32(self, name):
+        return np.fromfile(self.d / f"{name}.f32", np.float32).reshape(self.rows, self.cols)
 
-    lo, hi = float(arr.min()), float(arr.max())
-    span = max(hi - lo, 1e-6)
-    # PNG rows run north->south; the sim's north is +y, so flip once here and
-    # the env can index the image directly without thinking about it again.
-    norm = np.flipud((arr - lo) / span)
-    Image.fromarray((norm * 65535.0).astype("uint16"), mode="I;16").save(out_dir / "terrain.png")
-    tif.unlink()
-
-    print(f"  terrain: {size}x{size}  {lo:.2f}..{hi:.2f} m")
-    return {"file": "terrain.png", "size": size, "min_m": round(lo, 3), "max_m": round(hi, 3)}
+    def u8(self, name):
+        return np.fromfile(self.d / f"{name}.u8", np.uint8).reshape(self.rows, self.cols)
 
 
-def fetch_ortho(out_dir: Path, size: int, tile_px: int = 3600) -> dict:
-    """NAIP orthophoto for the same bbox — the ground albedo.
-
-    Fetched in ONE request wherever it fits. The ImageServer rejects exports
-    at 4096 px but serves 3600, which over this 3.1 km region is ~0.86 m/px —
-    near NAIP's ~0.6 m native and plenty for ground texture.
-
-    Tiling is kept for regions too big for one export, but avoid it when you
-    can: the server picks source scenes per request extent, so adjacent tiles
-    come back with different radiometry and the join is a visible brightness
-    step. A 2x2 stitch here put a seam at x=2047 eight times larger than any
-    natural gradient in the scene.
-    """
-    from PIL import Image
-    import io
-
-    n = max(1, math.ceil(size / tile_px))
-    step = size // n
-    canvas = Image.new("RGB", (step * n, step * n))
-    for iy in range(n):
-        for ix in range(n):
-            # Tile bbox in lon/lat. Image row 0 is the NORTH edge, so y runs
-            # down from LAT_N while the canvas pastes top-down to match.
-            lon0 = LON_W + (LON_E - LON_W) * ix / n
-            lon1 = LON_W + (LON_E - LON_W) * (ix + 1) / n
-            lat1 = LAT_N - (LAT_N - LAT_S) * iy / n
-            lat0 = LAT_N - (LAT_N - LAT_S) * (iy + 1) / n
-            raw = _get(NAIP, {
-                "bbox": f"{lon0},{lat0},{lon1},{lat1}", "bboxSR": 4326,
-                "size": f"{step},{step}", "format": "jpg", "f": "image",
-            })
-            canvas.paste(Image.open(io.BytesIO(raw)), (ix * step, iy * step))
-    canvas.save(out_dir / "ortho.jpg", quality=88)
-    got = (out_dir / "ortho.jpg").stat().st_size
-    print(f"  ortho:   {canvas.width}x{canvas.height} ({n}x{n} tiles)  {got/1e6:.1f} MB")
-    return {"file": "ortho.jpg", "size": canvas.width}
+def step_lidar(work: Path, force: bool) -> None:
+    tiles = work / "copc"
+    tiles.mkdir(parents=True, exist_ok=True)
+    mm = work / "minmax_ca2020_santa_clara_m9329.csv"
+    if not mm.exists():
+        mm.write_bytes(_get(NOAA + "minmax_ca2020_santa_clara_m9329.csv"))
+    from pyproj import Transformer
+    t = Transformer.from_crs(4326, 26910, always_xy=True)
+    s, w, n, e = bbox_ll(pad=100.0)
+    xs, ys = t.transform([w, e, w, e], [s, s, n, n])
+    X0, X1, Y0, Y1 = min(xs), max(xs), min(ys), max(ys)
+    names = []
+    for line in mm.read_text().splitlines()[1:]:
+        name = line.split(",")[0].strip()
+        # The mirror's CSV writes numpy reprs into its last columns: take numbers.
+        nums = [float(v) for v in re.findall(r"-?\d+\.\d+|-?\d+", line[len(name):].replace("float64", ""))]
+        x0, x1, y0, y1 = nums[:4]
+        if x1 > X0 and x0 < X1 and y1 > Y0 and y0 < Y1:
+            names.append(name)
+    todo = [nm for nm in names if force or not (tiles / nm).exists()]
+    print(f"lidar: {len(names)} tiles cover the region, {len(todo)} to download")
+    if todo:
+        (work / "copc_urls.txt").write_text("".join(NOAA + nm + "\n" for nm in todo))
+        subprocess.run(f"cd {tiles} && xargs -P 8 -n 1 curl -s -S -O -C - --retry 5 < {work / 'copc_urls.txt'}",
+                       shell=True, check=True)
 
 
-def fetch_features(e_max: float, n_max: float, cache: Path | None = None) -> dict:
-    """Water, trails and buildings from OSM, as ENU geometry.
-
-    Buildings are emitted as axis-aligned rects (the polygon's bounding box),
-    matching fetch_manhattan.py: the rect never under-approximates the
-    footprint, so routing stays conservative.
-    """
-    query = f"""
-    [out:json][timeout:60];
-    (
-      way["natural"="water"]({LAT_S},{LON_W},{LAT_N},{LON_E});
-      way["landuse"="basin"]({LAT_S},{LON_W},{LAT_N},{LON_E});
-      way["highway"~"path|footway|cycleway|track"]({LAT_S},{LON_W},{LAT_N},{LON_E});
-      way["building"]({LAT_S},{LON_W},{LAT_N},{LON_E});
-    );
-    out geom;
-    """
-    # Overpass 504s under load often enough that a single attempt is not
-    # reliable; kumi is a mirror of the same data.
-    # Overpass is the flakiest of the three sources and the only one whose
-    # failure would otherwise throw away a completed terrain+ortho fetch, so
-    # its raw response is cached next to the output. Delete the cache file to
-    # force a refresh.
-    data = None
-    if cache and cache.exists():
-        data = json.loads(cache.read_text())
-        print("  vectors: using cached overpass response")
-    last = ""
-    for endpoint in ((OVERPASS, OVERPASS_MIRROR) if data is None else ()):
-        for attempt in range(3):
-            try:
-                req = urllib.request.Request(
-                    endpoint, data=urllib.parse.urlencode({"data": query}).encode(),
-                    headers={"User-Agent": UA})
-                with urllib.request.urlopen(req, timeout=180) as r:
-                    data = json.load(r)
-                if cache:
-                    cache.write_text(json.dumps(data))
-                break
-            except Exception as exc:                  # noqa: BLE001 - retry anything
-                last = str(exc)
-                time.sleep(2 ** attempt)
-        if data is not None:
-            break
-    if data is None:
-        raise RuntimeError(f"overpass unavailable: {last}")
-
-    water: list = []
-    trails: list = []
-    buildings: list = []
-    for el in data.get("elements", []):
-        # Overpass `out geom` emits this as "geometry", not "geom" — reading the
-        # wrong key silently yields zero features rather than an error.
-        geom = el.get("geometry") or []
-        if len(geom) < 2:
-            continue
-        pts = [enu(p["lat"], p["lon"]) for p in geom]
-        tags = el.get("tags", {})
-        if tags.get("building"):
-            xs = [p[0] for p in pts]
-            ys = [p[1] for p in pts]
-            # Overpass returns any way that *intersects* the bbox, with its full
-            # geometry, so campus buildings on the edge otherwise land partly
-            # outside the region and break the all-positive ENU invariant.
-            x0, y0 = max(min(xs), 0.0), max(min(ys), 0.0)
-            x1, y1 = min(max(xs), e_max), min(max(ys), n_max)
-            if x1 - x0 < 1.0 or y1 - y0 < 1.0:
-                continue
-
-            # Height, best source first. Only 21 of 182 buildings here carry any
-            # height data at all, so the fallback decides almost every box — and
-            # the error directions are not symmetric. A box that is too SHORT is
-            # unsafe: routing and collision both let an aircraft through a
-            # building that is really there. Too tall only costs some airspace.
-            # So the fallback leans tall, split by footprint: the park's
-            # restrooms and pump sheds are single-storey, while everything of
-            # office size on Caribbean Dr is 3-4 storeys.
-            if tags.get("height"):
-                h, src = float(tags["height"]), "osm_height"
-            elif tags.get("building:levels"):
-                h, src = float(tags["building:levels"]) * 3.5, "osm_levels"
-            else:
-                h, src = (4.0, "default_small") if (x1 - x0) * (y1 - y0) < 200.0 \
-                    else (12.0, "default_office")
-            buildings.append({
-                "r": [round(x0, 1), round(y0, 1), round(x1 - x0, 1), round(y1 - y0, 1)],
-                "h": round(max(h, 3.0), 1),
-                "hs": src,
-                "n": tags.get("name", ""),
-            })
-        else:
-            ring = [[round(min(max(x, 0.0), e_max), 1),
-                     round(min(max(y, 0.0), n_max), 1)] for x, y in pts]
-            if tags.get("natural") == "water" or tags.get("landuse") == "basin":
-                water.append(ring)
-            else:
-                trails.append(ring)
-
-    print(f"  vectors: {len(water)} water, {len(trails)} trails, {len(buildings)} buildings")
-    return {"water": water, "trails": trails, "buildings": buildings}
+def step_rasters(work: Path, force: bool) -> None:
+    out = work / "rasters"
+    if (out / "grid.json").exists() and not force:
+        return
+    subprocess.run([sys.executable, str(HERE / "bake_baylands_lidar.py"), "--tiles", str(work / "copc"),
+                    "--out", str(out)], check=True)
 
 
+def _zi16(path: Path, arr: np.ndarray, scale: float) -> None:
+    q = np.clip(np.round(arr / scale), -32768, 32767).astype("<i2")
+    path.write_bytes(zlib.compress(q.tobytes(), 9))
 
-def fetch_trees(e_max: float, n_max: float, px: int = 1600) -> list:
-    """Find tree canopy from the imagery itself and emit discrete trees.
 
-    OSM is not usable for this: it has 32 individual trees mapped across the
-    whole region, against the hundreds actually there. The imagery does have
-    them, and NAIP Plus is FOUR band — the near-infrared makes vegetation
-    separable from everything else by NDVI.
+def step_terrain(g: Grids, out: Path, force: bool) -> None:
+    if (out / "terrain.json").exists() and not force:
+        return
+    wpath = g.d / "dtm_w.f32"
+    dtm = np.fromfile(wpath, np.float32).reshape(g.rows, g.cols) if wpath.exists() else g.f32("dtm")
+    k = int(TERRAIN_RES / CELL)
+    # Block MEAN (not a point sample) so a 2 m post is the ground it stands for.
+    coarse = dtm[: dtm.shape[0] // k * k, : dtm.shape[1] // k * k]
+    coarse = coarse.reshape(coarse.shape[0] // k, k, coarse.shape[1] // k, k).mean(axis=(1, 3))
+    _zi16(out / "terrain.zi16", coarse, 0.01)
+    e0, n0, e1, n1 = REGION
+    (out / "terrain.json").write_text(json.dumps({
+        "bounds_enu": [e0, n0, e1, n1], "res_m": TERRAIN_RES,
+        "size_px": [coarse.shape[1], coarse.shape[0]], "scale_m": 0.01,
+        "min_m": round(float(coarse.min()), 2), "max_m": round(float(coarse.max()), 2),
+        "encoding": "zlib int16 centimetres above NAVD88, row 0 = north edge, posts at cell centres",
+        "hi": "_hi/<name>.zf32 / .zu8: zlib float32 / uint8, 0.5 m, row 0 north (gitignored; "
+              "this tool writes them): dtm dsm bld veg wire tower other inten water",
+        "source": "USGS 3DEP CA_SantaClaraCounty_2020 lidar, ground class (public domain)",
+    }, indent=1))
+    hi = out / "_hi"
+    hi.mkdir(exist_ok=True)
+    (hi / "dtm.zf32").write_bytes(zlib.compress(dtm.astype("<f4").tobytes(), 6))
+    for name in ("dsm", "bld", "veg", "wire", "tower", "other"):
+        (hi / f"{name}.zf32").write_bytes(zlib.compress(g.f32(name).astype("<f4").tobytes(), 6))
+    (hi / "inten.zu8").write_bytes(zlib.compress(g.u8("inten").tobytes(), 6))
+    wf = g.d / "water_full.u8"
+    (hi / "water.zu8").write_bytes(zlib.compress((np.fromfile(wf, np.uint8) if wf.exists() else g.u8("water")).tobytes(), 6))
+    (hi / "grid.json").write_text(json.dumps(g.meta, indent=1))
+    print(f"terrain: {coarse.shape[1]}x{coarse.shape[0]} @ {TERRAIN_RES} m, "
+          f"{coarse.min():.2f}..{coarse.max():.2f} m; {(out / 'terrain.zi16').stat().st_size / 1e6:.1f} MB")
 
-    NDVI alone is not enough here, because marsh and mown grass score as high
-    as tree crowns. What separates them is TEXTURE: a canopy is individual
-    crowns and the shadows between them, so its local standard deviation is
-    high, while grass and open water are smooth at this resolution. NDVI picks
-    vegetation, local std picks the woody part of it.
 
-    HEIGHTS ARE INFERRED, not measured. 3DEP is a bare-earth DEM, so there is
-    no canopy height model to difference against it; height is estimated from
-    crown radius and recorded as such. Treat a tree's height as approximate
-    when deciding whether something cleared one.
-    """
-    import numpy as np
-    from PIL import Image
+# ------------------------------------------------------------------- OSM
+
+OSM_QUERY = """[out:json][timeout:180];
+(
+  way["building"]({b});
+  way["building:part"]({b});
+  way["highway"]({b});
+  way["barrier"]({b}); node["barrier"]({b});
+  way["power"]({b}); node["power"]({b});
+  way["landuse"]({b}); relation["landuse"]({b});
+  way["natural"]({b}); relation["natural"]({b});
+  way["leisure"]({b}); relation["leisure"]({b});
+  way["amenity"]({b}); node["amenity"]({b});
+  way["waterway"]({b}); way["water"]({b}); relation["water"]({b});
+  way["man_made"]({b}); node["man_made"]({b});
+  node["highway"]({b});
+  node["natural"]({b});
+  way["railway"]({b});
+  node["tourism"]({b}); way["tourism"]({b});
+  node["leisure"]({b});
+  way["aeroway"]({b}); node["aeroway"]({b});
+);
+out body geom;"""
+
+
+def step_osm(work: Path, force: bool) -> dict:
+    p = work / "osm.json"
+    if not p.exists() or force:
+        s, w, n, e = bbox_ll(pad=50.0)
+        q = OSM_QUERY.replace("{b}", f"{s:.5f},{w:.5f},{n:.5f},{e:.5f}")
+        p.write_bytes(_get(OVERPASS, urllib.parse.urlencode({"data": q}).encode(), timeout=300))
+    d = json.loads(p.read_text())
+    print(f"osm: {len(d['elements'])} elements")
+    return d
+
+
+def _ring_from(geom) -> list[tuple[float, float]] | None:
+    if not geom or len(geom) < 4:
+        return None
+    e, n = enu([p["lat"] for p in geom], [p["lon"] for p in geom])
+    pts = list(zip(map(float, e), map(float, n)))
+    if pts[0] == pts[-1]:
+        pts = pts[:-1]
+    return pts if len(pts) >= 3 else None
+
+
+def _ccw(pts):
+    a = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]))
+    return pts if a > 0 else pts[::-1]
+
+
+# -------------------------------------------------------------- buildings
+
+KINDS = ["commercial", "industrial", "warehouse", "residential", "public", "shelter",
+         "restroom", "utility", "tank", "roof", "other"]
+
+
+def _kind(tags: dict) -> int:
+    b = tags.get("building", "yes")
+    m = {"commercial": 0, "office": 0, "retail": 0, "industrial": 1, "warehouse": 2,
+         "house": 3, "residential": 3, "apartments": 3, "public": 4, "civic": 4, "school": 4,
+         "government": 4, "shelter": 5, "pavilion": 5, "toilets": 6, "service": 7,
+         "transformer_tower": 7, "storage_tank": 8, "roof": 9, "carport": 9}
+    if tags.get("amenity") == "toilets":
+        return 6
+    if tags.get("man_made") == "storage_tank":
+        return 8
+    return m.get(b, 10)
+
+
+def _num(v) -> float | None:
+    try:
+        return float(str(v).split()[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def step_buildings(g: Grids, osm: dict, out: Path, force: bool) -> None:
+    if (out / "buildings.json").exists() and not force:
+        return
+    from shapely.geometry import Polygon, shape
+    from rasterio import features
+    from rasterio.transform import Affine
     from scipy import ndimage
+    dtm = g.f32("dtm"); bld = g.f32("bld"); dsm = g.f32("dsm")
+    e0, n0, e1, n1 = REGION
+    tf = Affine(CELL, 0, e0, 0, -CELL, n1)          # pixel -> ENU
+    recs = []                                        # (ring, h, kind, flags, levels, name)
+    names: list[str] = []
+    polys = []
 
-    raw = _get(NAIP, {
-        "bbox": f"{LON_W},{LAT_S},{LON_E},{LAT_N}", "bboxSR": 4326,
-        "size": f"{px},{px}", "format": "tiff", "f": "image",
-    })
-    tmp = Path("/tmp/_naip4.tif")
-    tmp.write_bytes(raw)
-    a = np.array(Image.open(tmp))
-    tmp.unlink()
-    if a.ndim != 3 or a.shape[2] < 4:
-        print("  trees:   NAIP returned no NIR band — skipped")
-        return []
+    def heights(poly):
+        r0 = max(0, int((n1 - poly.bounds[3]) / CELL) - 2); r1 = min(g.rows, int((n1 - poly.bounds[1]) / CELL) + 3)
+        c0 = max(0, int((poly.bounds[0] - e0) / CELL) - 2); c1 = min(g.cols, int((poly.bounds[2] - e0) / CELL) + 3)
+        if r1 <= r0 or c1 <= c0:
+            return float("nan"), float("nan")
+        sub = tf * Affine.translation(c0, r0)
+        m = features.geometry_mask([poly], (r1 - r0, c1 - c0), sub, invert=True)
+        if m.sum() < 2:
+            m = features.geometry_mask([poly], (r1 - r0, c1 - c0), sub, invert=True, all_touched=True)
+        roof = bld[r0:r1, c0:c1][m]
+        roof = roof[np.isfinite(roof)]
+        ground = dtm[r0:r1, c0:c1][m]
+        gnd = float(np.percentile(ground, 10)) if ground.size else 0.0
+        if roof.size >= 3:
+            return float(np.percentile(roof, 98)) - gnd, float(np.percentile(roof, 20)) - gnd
+        surf = dsm[r0:r1, c0:c1][m]
+        surf = surf[np.isfinite(surf)]
+        if surf.size >= 3 and np.percentile(surf, 90) - gnd > 2.0:
+            return float(np.percentile(surf, 95)) - gnd, float(np.percentile(surf, 30)) - gnd
+        return float("nan"), float("nan")
 
-    red = a[:, :, 0].astype("f4")
-    nir = a[:, :, 3].astype("f4")
-    ndvi = (nir - red) / np.maximum(nir + red, 1)
-    vis = a[:, :, :3].astype("f4").mean(axis=2)
-    mean = ndimage.uniform_filter(vis, 7)
-    sq = ndimage.uniform_filter(vis * vis, 7)
-    std = np.sqrt(np.maximum(sq - mean * mean, 0))
+    for el in osm["elements"]:
+        t = el.get("tags", {})
+        if "building" not in t or el["type"] != "way":
+            continue
+        ring = _ring_from(el.get("geometry"))
+        if ring is None:
+            continue
+        poly = Polygon(ring)
+        if not poly.is_valid or poly.area < 4:
+            continue
+        c = poly.centroid
+        if not (e0 < c.x < e1 and n0 < c.y < n1):
+            continue
+        h, h_low = heights(poly)
+        flags = 0
+        if math.isfinite(h) and h > 1.5:
+            flags |= 1
+        else:
+            lv = _num(t.get("building:levels"))
+            h = _num(t.get("height")) or (3.5 * lv if lv else 4.0)
+            h_low = h
+            flags |= 2
+        if h - h_low > 1.8:
+            flags |= 8                                 # pitched / stepped roof
+        nm = t.get("name")
+        ni = -1
+        if nm:
+            ni = len(names)
+            names.append(nm)
+        recs.append((_ccw(ring), h, _kind(t), flags, int(_num(t.get("building:levels")) or 0), ni))
+        polys.append(poly)
+    n_osm = len(recs)
 
-    canopy = (ndvi > 0.20) & (std > 12.0)
-    canopy = ndimage.binary_opening(canopy, np.ones((3, 3)))
+    # Lidar-only buildings: class-6 blobs OSM does not cover (sheds, newer
+    # buildings, utility huts), traced at 0.5 m and simplified to ~0.5 m.
+    covered = features.geometry_mask(polys, (g.rows, g.cols), tf, invert=True, all_touched=True) if polys \
+        else np.zeros((g.rows, g.cols), bool)
+    m = np.isfinite(bld) & (np.nan_to_num(bld, nan=-1e9) - dtm > 2.0)
+    m = ndimage.binary_opening(m, iterations=1)
+    m &= ~ndimage.binary_dilation(covered, iterations=2)
+    for geom, _ in features.shapes(m.astype(np.uint8), mask=m, transform=tf):
+        poly = shape(geom).simplify(0.5)
+        if poly.geom_type != "Polygon" or poly.area < 12:
+            continue
+        ring = list(poly.exterior.coords)[:-1]
+        if len(ring) < 3 or len(ring) > 400:
+            continue
+        h, h_low = heights(poly)
+        if not math.isfinite(h) or h < 2.0:
+            continue
+        recs.append((_ccw([(float(x), float(y)) for x, y in ring]), h, 10,
+                     1 | 4 | (8 if h - h_low > 1.8 else 0), 0, -1))
 
-    m_per_px_e = e_max / px
-    m_per_px_n = n_max / px
-    # One tree every ~7 m of canopy: closer than that and a row of street
-    # trees becomes a solid green wall of overlapping spheres.
-    step = max(2, int(round(7.0 / max(m_per_px_e, 0.1))))
+    Q = 0.2
+    body = bytearray()
+    verts = bytearray()
+    nv = 0
+    for ring, h, kind, flags, levels, ni in recs:
+        body += struct.pack("<IHHHBBBBH", nv, len(ring), int(min(h, 6000) * 10), 0, kind, flags,
+                            min(levels, 255), 0, 65535 if ni < 0 else ni)
+        for x, y in ring:
+            verts += struct.pack("<hh", int(round(x / Q)), int(round(y / Q)))
+        nv += len(ring)
+    head = b"IST1" + struct.pack("<IIf", len(recs), nv, Q)
+    (out / "buildings.dat").write_bytes(head + bytes(body) + bytes(verts))
+    (out / "buildings.json").write_text(json.dumps({
+        "count": len(recs), "from_osm": n_osm, "lidar_only": len(recs) - n_osm, "vertices": nv, "q_m": Q,
+        "kinds": KINDS, "colours": [], "names": names,
+        "flags": {"1": "height from lidar", "2": "height from OSM tags/levels (no lidar roof)",
+                  "4": "footprint traced from lidar (not in OSM)", "8": "pitched or stepped roof"},
+        "format": "IST1 (env_baylands._load_buildings): h = roof (98th pct of lidar building "
+                  "returns) above the footprint's ground (10th pct)",
+    }, ensure_ascii=False))
+    print(f"buildings: {n_osm} OSM + {len(recs) - n_osm} lidar-only, {nv} vertices")
 
-    trees = []
-    lbl, n_lbl = ndimage.label(canopy)
-    for sl in ndimage.find_objects(lbl):
+
+# --------------------------------------------------------------- features
+
+def _water_polys(osm: dict):
+    from shapely.geometry import Polygon
+    polys = []
+    for el in osm["elements"]:
+        t = el.get("tags", {})
+        is_w = t.get("natural") == "water" or "water" in t or t.get("waterway") == "riverbank"
+        if not is_w:
+            continue
+        rings = [el.get("geometry")] if el["type"] == "way" else \
+            [m.get("geometry") for m in el.get("members", []) if m.get("role") == "outer"]
+        for geom in rings:
+            ring = _ring_from(geom)
+            if ring:
+                p = Polygon(ring)
+                if p.is_valid and p.area > 50:
+                    polys.append(p)
+    return polys
+
+
+def step_water(g: Grids, osm: dict, out: Path, force: bool) -> None:
+    """Water: lidar water returns, OSM water areas, and the large holes in the
+    point cloud (still water absorbs the laser, so the salt ponds and sloughs
+    came back with no points at all). Each water body gets a FLAT surface at
+    its shoreline's level (10th percentile of the ground in a 2-4 m ring
+    around it), written into rasters/dtm_w.f32, which the terrain step uses."""
+    if (out / "water.json").exists() and (g.d / "dtm_w.f32").exists() and not force:
+        return
+    from PIL import Image
+    from rasterio import features
+    from rasterio.transform import Affine
+    from scipy import ndimage
+    e0, n0, e1, n1 = REGION
+    count = np.fromfile(g.d / "count.u16", np.uint16).reshape(g.rows, g.cols)
+    w = g.u8("water").astype(bool)
+    polys = _water_polys(osm)
+    tf = Affine(CELL, 0, e0, 0, -CELL, n1)
+    if polys:
+        w |= features.geometry_mask(polys, (g.rows, g.cols), tf, invert=True)
+    # Holes of >= 400 m2 (1600 cells) with no returns at all are water.
+    holes = ndimage.binary_closing(count == 0, iterations=2)
+    lab, nl = ndimage.label(holes)
+    sizes = ndimage.sum(np.ones_like(lab), lab, index=np.arange(1, nl + 1))
+    big = np.zeros(nl + 1, bool)
+    big[1:] = sizes >= 1600
+    w |= big[lab]
+    w = ndimage.binary_opening(w, iterations=1)
+    dtm = g.f32("dtm").copy()
+    lab, nl = ndimage.label(w)
+    ring = ndimage.binary_dilation(w, iterations=8) & ~ndimage.binary_dilation(w, iterations=4)
+    rlab = ndimage.grey_dilation(lab, size=(17, 17)) * ring
+    levels = {}
+    for i, sl in enumerate(ndimage.find_objects(rlab), start=1):
         if sl is None:
             continue
-        sub = canopy[sl]
-        if sub.sum() < 6:
-            continue
-        ys, xs = np.nonzero(sub)
-        y0, x0 = sl[0].start, sl[1].start
-        taken = set()
-        for yy, xx in zip(ys, xs):
-            key = ((yy + y0) // step, (xx + x0) // step)
-            if key in taken:
+        v = dtm[sl][rlab[sl] == i]
+        if v.size:
+            levels[i] = float(np.percentile(v, 10))
+    lev = np.zeros(nl + 1, np.float32)
+    for i, v in levels.items():
+        lev[i] = v
+    # A body with no ring (touching the region edge only) keeps its mean.
+    for i, sl in enumerate(ndimage.find_objects(lab), start=1):
+        if i not in levels and sl is not None:
+            lev[i] = float(np.median(dtm[sl][lab[sl] == i]))
+    dtm[w] = lev[lab[w]]
+    dtm.tofile(g.d / "dtm_w.f32")
+    w.astype(np.uint8).tofile(g.d / "water_full.u8")
+    k = int(2.0 / CELL)
+    c = w[: w.shape[0] // k * k, : w.shape[1] // k * k].reshape(w.shape[0] // k, k, w.shape[1] // k, k).mean(axis=(1, 3))
+    Image.fromarray((c * 255).astype(np.uint8)).save(out / "water.png", optimize=True)
+    (out / "water.json").write_text(json.dumps({"bounds_enu": [e0, n0, e1, n1], "res_m": 2.0,
+        "encoding": "8-bit share of water, row 0 = north", "outside_is_water": False,
+        "bodies": nl, "levels_m": sorted({round(float(v), 2) for v in lev[1:]})[:40],
+        "source": "lidar water returns (class 9), lidar no-return holes >= 400 m2, OSM water areas; "
+                  "each body flat at its shore's 10th-percentile ground (NAVD88 m)"}, indent=1))
+    print(f"water: {c.mean() * 100:.1f}% of the region, {nl} bodies ({len(polys)} OSM water areas)")
+
+
+def step_features(osm: dict, out: Path, force: bool) -> None:
+    if (out / "features.json").exists() and not force:
+        return
+    e0, n0, e1, n1 = REGION
+    keep = {"paths": [], "roads": [], "fences": [], "power_lines": [], "power_points": [],
+            "areas": [], "points": [], "rail": [], "waterways": []}
+
+    def line(geom):
+        e, n = enu([p["lat"] for p in geom], [p["lon"] for p in geom])
+        return [[round(float(a), 2), round(float(b), 2)] for a, b in zip(e, n)]
+
+    for el in osm["elements"]:
+        t = el.get("tags", {})
+        if el["type"] == "node":
+            e, n = enu(el["lat"], el["lon"])
+            if not (e0 - 50 < e < e1 + 50 and n0 - 50 < n < n1 + 50):
                 continue
-            taken.add(key)
-            gx, gy = xx + x0, yy + y0
-            # Image row 0 is NORTH; ENU north grows the other way.
-            e = (gx + 0.5) * m_per_px_e
-            n = n_max - (gy + 0.5) * m_per_px_n
-            # Crown radius from how much canopy is around this point.
-            r = float(np.clip(2.0 + 0.6 * math.sqrt(sub.sum()), 2.0, 7.0))
-            h = float(np.clip(r * 2.4, 4.0, 18.0))
-            trees.append({"p": [round(e, 1), round(n, 1)],
-                          "r": round(r, 1), "h": round(h, 1)})
-    print(f"  trees:   {len(trees)} from NDVI+texture (heights inferred)")
-    return trees
+            rec = {"p": [round(float(e), 2), round(float(n), 2)], "tags": t}
+            (keep["power_points"] if "power" in t else keep["points"]).append(rec)
+            continue
+        if "building" in t:
+            continue
+        geoms = [el.get("geometry")] if el["type"] == "way" else \
+            [m.get("geometry") for m in el.get("members", []) if m.get("role") in ("outer", "")]
+        for geom in geoms:
+            if not geom or len(geom) < 2:
+                continue
+            rec = {"id": el["id"], "pts": line(geom), "tags": t}
+            hw = t.get("highway")
+            if hw in ("footway", "path", "cycleway", "track", "pedestrian", "steps", "bridleway"):
+                keep["paths"].append(rec)
+            elif hw:
+                keep["roads"].append(rec)
+            elif "barrier" in t:
+                keep["fences"].append(rec)
+            elif t.get("power") in ("line", "minor_line", "cable"):
+                keep["power_lines"].append(rec)
+            elif "railway" in t:
+                keep["rail"].append(rec)
+            elif "waterway" in t and t["waterway"] != "riverbank":
+                keep["waterways"].append(rec)
+            elif any(k in t for k in ("landuse", "natural", "leisure", "amenity", "man_made", "water",
+                                      "power", "tourism", "aeroway")):
+                keep["areas"].append(rec)
+    (out / "features.json").write_text(json.dumps(keep, ensure_ascii=False, separators=(",", ":")))
+    print("features: " + ", ".join(f"{k} {len(v)}" for k, v in keep.items()))
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", required=True, help="output directory")
-    ap.add_argument("--terrain-size", type=int, default=1024)
-    ap.add_argument("--ortho-size", type=int, default=3600)
-    args = ap.parse_args(argv)
+# ------------------------------------------------------------------ ortho
 
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+def naip_urls(year: str = "2024") -> list[str]:
+    """Signed COG URLs of the NAIP quarter-quads covering the region, from the
+    Microsoft Planetary Computer STAC (anonymous SAS token, no account)."""
+    s, w, n, e = bbox_ll(pad=30.0)
+    body = json.dumps({"collections": ["naip"], "bbox": [w, s, e, n], "datetime": f"{year}-01-01/{year}-12-31",
+                       "limit": 50}).encode()
+    req = urllib.request.Request("https://planetarycomputer.microsoft.com/api/stac/v1/search", data=body,
+                                 headers={"User-Agent": UA, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        items = json.loads(r.read())["features"]
+    tok = json.loads(_get("https://planetarycomputer.microsoft.com/api/sas/v1/token/naip"))["token"]
+    urls = [it["assets"]["image"]["href"] + "?" + tok for it in items]
+    print(f"naip {year}: {len(urls)} quarter-quads: " + ", ".join(it["id"] for it in items))
+    return urls
 
-    e1, n1 = enu(LAT_N, LON_E)
-    print(f"Baylands Park, Sunnyvale — {e1:.0f} x {n1:.0f} m")
 
-    terrain = fetch_terrain(out_dir, args.terrain_size)
-    ortho = fetch_ortho(out_dir, args.ortho_size)
-    features = fetch_features(e1, n1, out_dir / "_overpass_cache.json")
-    trees = fetch_trees(e1, n1)
+def step_ortho(out: Path, force: bool, src: str | None) -> None:
+    """NAIP for the region, warped into the scene's grid. `src`: a text file of
+    GeoTIFF/COG URLs (one per line); default: the 2024 NAIP from the Planetary
+    Computer."""
+    if (out / "ortho.json").exists() and not force:
+        return
+    urls = [u.strip() for u in Path(src).read_text().splitlines() if u.strip()] if src else naip_urls()
+    import rasterio
+    from rasterio.crs import CRS
+    from rasterio.transform import Affine
+    from rasterio.warp import Resampling, reproject
+    from PIL import Image
+    e0, n0, e1, n1 = REGION
+    res = 0.6
+    W, H = int((e1 - e0) / res), int((n1 - n0) / res)
+    # The scene's frame is linear in lat/lon (fixed metres per degree), so a
+    # regular lat/lon grid IS a regular ENU grid: warp to EPSG:4326 with the
+    # pixel size of `res` metres east and north. Exact, no projection guess.
+    crs = CRS.from_epsg(4326)
+    lat_n, lon_w = geo(e0, n1)
+    dst = np.zeros((4, H, W), np.uint8)
+    tf = Affine(res / M_PER_DEG_LON, 0, float(lon_w), 0, -res / M_PER_DEG_LAT, float(lat_n))
+    files = []
+    for url in urls:
+        with rasterio.open(url) as s:
+            files.append(url.split("?")[0].split("/")[-1])
+            for b in range(min(4, s.count)):
+                tmp = np.zeros((H, W), np.uint8)
+                reproject(rasterio.band(s, b + 1), tmp, dst_transform=tf, dst_crs=crs,
+                          resampling=Resampling.lanczos, src_nodata=0, dst_nodata=0)
+                dst[b] = np.where(tmp > 0, tmp, dst[b])
+    hi = out / "_hi"
+    hi.mkdir(exist_ok=True)
+    rgb = np.moveaxis(dst[:3], 0, -1)
+    Image.fromarray(rgb).save(hi / "ortho.jpg", quality=92)
+    Image.fromarray(dst[3]).save(hi / "nir.jpg", quality=92)
+    Image.fromarray(rgb).resize((int(e1 - e0), int(n1 - n0)), Image.LANCZOS).save(out / "ortho.jpg", quality=86)
+    (out / "ortho.json").write_text(json.dumps({"bounds_enu": [e0, n0, e1, n1], "res_m": 1.0,
+        "hi": {"file": "_hi/ortho.jpg", "res_m": res, "nir": "_hi/nir.jpg"}, "files": files,
+        "source": "USDA NAIP (public domain)"}, indent=1))
+    print(f"ortho: {W}x{H} @ {res} m; committed 1 m: {(out / 'ortho.jpg').stat().st_size / 1e6:.1f} MB")
 
-    manifest = {
-        "source": "USGS 3DEP (public domain), USDA NAIP (public domain), OpenStreetMap (ODbL)",
-        "units": "metres; ENU x=east y=north, origin at region SW corner",
-        "datum": {"lat": DATUM_LAT, "lon": DATUM_LON},
-        "region": "baylands_sunnyvale",
-        "bounds_enu": [0.0, 0.0, round(e1, 1), round(n1, 1)],
-        "terrain": terrain,
-        "ortho": ortho,
-        "trees": trees,
-        "trees_note": "positions from NAIP NDVI+texture; heights INFERRED from crown radius, not measured",
-        **features,
-    }
-    (out_dir / "baylands.json").write_text(json.dumps(manifest, indent=1))
-    print(f"wrote {out_dir}/baylands.json")
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--work", required=True, help="work folder (several GB): tiles, rasters, OSM")
+    ap.add_argument("--out", required=True, help="assets/baylands")
+    ap.add_argument("--steps", default="lidar,rasters,terrain,osm,water,buildings,features,ortho")
+    ap.add_argument("--naip", help="text file of NAIP GeoTIFF/COG URLs covering the region")
+    ap.add_argument("--force", action="store_true")
+    a = ap.parse_args(argv)
+    work, out = Path(a.work).expanduser(), Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    steps = a.steps.split(",")
+    if "lidar" in steps:
+        step_lidar(work, a.force)
+    if "rasters" in steps:
+        step_rasters(work, a.force)
+    g = Grids(work / "rasters") if (work / "rasters" / "grid.json").exists() else None
+    osm = step_osm(work, a.force) if any(s in steps for s in ("osm", "water", "buildings", "features")) else None
+    if g and "water" in steps:
+        step_water(g, osm, out, a.force)
+    if g and "terrain" in steps:
+        step_terrain(g, out, a.force)
+    if g and "buildings" in steps:
+        step_buildings(g, osm, out, a.force)
+    if "features" in steps:
+        step_features(osm, out, a.force)
+    if "ortho" in steps:
+        step_ortho(out, a.force, a.naip)
     return 0
 
 

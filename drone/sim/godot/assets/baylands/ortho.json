@@ -1,0 +1,19 @@
+{
+ "bounds_enu": [
+  -2500.0,
+  -2400.0,
+  2500.0,
+  2400.0
+ ],
+ "res_m": 1.0,
+ "hi": {
+  "file": "_hi/ortho.jpg",
+  "res_m": 0.6,
+  "nir": "_hi/nir.jpg"
+ },
+ "files": [
+  "m_3712240_se_10_060_20240520.tif",
+  "m_3712133_sw_10_060_20240520.tif"
+ ],
+ "source": "USDA NAIP (public domain)"
+}

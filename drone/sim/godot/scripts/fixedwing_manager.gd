@@ -579,11 +579,10 @@ func _sweep_structure(from_enu: Vector3, to_enu: Vector3) -> Dictionary:
 	# buildings, baylands) answer rays analytically instead; without this a
 	# strike there would pass straight through, exactly as before.
 	#
-	# The two envs that implement raycast_structures disagree on its contract:
-	# env_manhattan takes ENU and returns -1 on a miss; env_baylands takes
-	# Godot-frame vectors and returns max_dist on a miss. An env declares the
-	# Godot frame with `var RAYCAST_FRAME := "godot"`; a hit is only a distance
-	# strictly inside this tick's segment, which covers both miss conventions.
+	# raycast_structures takes ENU and returns -1 on a miss (manhattan,
+	# istanbul, baylands). An env that takes Godot-frame vectors instead
+	# declares `var RAYCAST_FRAME := "godot"`; a hit is only a distance
+	# strictly inside this tick's segment, which covers either miss convention.
 	if _env.has_method("raycast_structures"):
 		var seg := to_enu - from_enu
 		var length := seg.length()

@@ -1,0 +1,19 @@
+{
+ "bounds_enu": [
+  -2500.0,
+  -2400.0,
+  2500.0,
+  2400.0
+ ],
+ "res_m": 2.0,
+ "size_px": [
+  2500,
+  2400
+ ],
+ "scale_m": 0.01,
+ "min_m": -4.02,
+ "max_m": 40.54,
+ "encoding": "zlib int16 centimetres above NAVD88, row 0 = north edge, posts at cell centres",
+ "hi": "_hi/<name>.zf32 / .zu8: zlib float32 / uint8, 0.5 m, row 0 north (gitignored; this tool writes them): dtm dsm bld veg wire tower other inten water",
+ "source": "USGS 3DEP CA_SantaClaraCounty_2020 lidar, ground class (public domain)"
+}
