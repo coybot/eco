@@ -113,7 +113,8 @@ func _ready() -> void:
 	# 1. Built structures claim the footprints they replace (b_skip) and add
 	#    their own solids (add_obstacle: towers, poles, shelters) BEFORE
 	#    anything is drawn or the router's occupancy is cut.
-	_phase("baylands_built", "claim")
+	for c in CLAIMS:
+		_phase(c, "claim")
 	_build_walls()
 	# 2. Ground, sea, buildings: a scenery script replaces each base version
 	#    when it exists (static build(env) -> bool, true = handled).
@@ -144,6 +145,44 @@ func _ready() -> void:
 	FixedWingManager.register_env(self)
 	print("[env_baylands] ready in %d ms: %d buildings, %d occupancy strips, terrain %.0f-%.0f m"
 		% [Time.get_ticks_msec() - t0, b_first.size(), WALLS.size(), _tmin, _tmax])
+
+
+## Scripts whose static claim(env) runs before the router's occupancy is cut:
+## they add their solids (add_obstacle, add_line_obstacle) and mark the
+## footprints they redraw (b_skip).
+const CLAIMS := ["baylands_built", "baylands_wires", "baylands_nature"]
+
+## Shared look state. baylands_weather sets it (and randomises it for
+## training); ground, water and vegetation follow it via look_changed.
+##   season   0 = wet-season green (Jan-Apr) .. 1 = dry-season gold (Jul-Oct)
+##   wetness  0 = dry ground .. 1 = just rained (puddles, dark soil)
+##   tide     metres above NAVD88 of the open bay and tidal sloughs
+signal look_changed
+var look := {"season": 0.8, "wetness": 0.0, "tide": 1.0}
+
+
+func set_look(changes: Dictionary) -> void:
+	for k in changes:
+		look[k] = changes[k]
+	look_changed.emit()
+
+
+## Generic IPC entry (ipc_server's env_op): scenery nodes register handlers
+## with register_op(name, callable(args: Dictionary) -> Dictionary).
+var _ops: Dictionary = {}
+
+
+func register_op(name: String, fn: Callable) -> void:
+	_ops[name] = fn
+
+
+func env_op(name: String, args: Dictionary) -> Dictionary:
+	if name == "look":
+		set_look(args)
+		return {"ok": true, "look": look}
+	if not _ops.has(name):
+		return {"ok": false, "error": "unknown env op %s; have %s" % [name, str(_ops.keys())]}
+	return (_ops[name] as Callable).call(args)
 
 
 ## Scenery nodes added after the look and clock, in this order, when their

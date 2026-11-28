@@ -253,6 +253,15 @@ func _dispatch(line: String) -> String:
 			FixedWingManager.spawn(did, Vector3(p[0], p[1], p[2]), yaw, ceiling, airframe)
 			return JSON.stringify({"ok": true})
 
+		"env_op":
+			# {name, args}: an op the loaded env provides (env.env_op), e.g.
+			# baylands' look / randomize / site. Envs without it refuse.
+			var en = FixedWingManager._env
+			if en == null or not en.has_method("env_op"):
+				return JSON.stringify({"ok": false, "error": "this env has no env ops"})
+			var args = req.get("args", {})
+			return JSON.stringify(en.env_op(str(req.get("name", "")), args if args is Dictionary else {}))
+
 		"fw_set_wind":
 			# {speed, from_deg, gust, gusts_per_min, gust_s, turbulence, z0, seed}.
 			return JSON.stringify({"ok": true, "wind": FixedWingManager.air.set_wind(req)})
