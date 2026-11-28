@@ -1,0 +1,826 @@
+{
+ "cell_m": 2.0,
+ "bounds_enu": [
+  -2500.0,
+  -2400.0,
+  2500.0,
+  2400.0
+ ],
+ "row0": "north",
+ "format": "BWQ1, u32 quads, u32 bodies, then per quad u16 col, row (2 m cells from the NW corner), u16 size (cells), u16 body",
+ "tide_max_m": 2.7,
+ "tidal_png": "tidal.png: 2 m, the tide (m NAVD88) at which the cell joins the bay = v / 60 - 1; 255 = never (behind levees higher than tide_max)",
+ "tide_datums_navd88_m": {
+  "MLLW": -0.08,
+  "MSL": 1.4,
+  "MHHW": 2.62,
+  "HAT": 3.06,
+  "station": "NOAA 9414575 Coyote Creek, Alviso Slough (station datum taken as NAVD88)"
+ },
+ "bodies": [
+  {
+   "id": 0,
+   "tidal": true,
+   "level": null,
+   "name": "tidal sloughs and channels",
+   "colour": [
+    116,
+    121,
+    109
+   ],
+   "area_m2": 313435.75
+  },
+  {
+   "id": 1,
+   "tidal": false,
+   "level": 0.449,
+   "colour": [
+    81,
+    92,
+    81
+   ],
+   "area_m2": 2729474.8
+  },
+  {
+   "id": 2,
+   "tidal": false,
+   "level": 0.601,
+   "colour": [
+    113,
+    116,
+    77
+   ],
+   "area_m2": 1047824.5
+  },
+  {
+   "id": 3,
+   "tidal": false,
+   "level": 1.941,
+   "colour": [
+    72,
+    105,
+    71
+   ],
+   "area_m2": 698219.2
+  },
+  {
+   "id": 4,
+   "tidal": false,
+   "level": 1.786,
+   "colour": [
+    86,
+    119,
+    78
+   ],
+   "area_m2": 374900.0
+  },
+  {
+   "id": 5,
+   "tidal": false,
+   "level": 0.922,
+   "colour": [
+    195,
+    134,
+    90
+   ],
+   "area_m2": 308327.0
+  },
+  {
+   "id": 6,
+   "tidal": false,
+   "level": 0.073,
+   "colour": [
+    148,
+    142,
+    64
+   ],
+   "area_m2": 143080.0
+  },
+  {
+   "id": 7,
+   "tidal": false,
+   "level": 1.91,
+   "colour": [
+    99,
+    110,
+    76
+   ],
+   "area_m2": 84036.2
+  },
+  {
+   "id": 8,
+   "tidal": false,
+   "level": 0.8,
+   "colour": [
+    101,
+    103,
+    95
+   ],
+   "area_m2": 64481.2
+  },
+  {
+   "id": 9,
+   "tidal": false,
+   "level": 0.919,
+   "colour": [
+    122,
+    120,
+    80
+   ],
+   "area_m2": 57203.0
+  },
+  {
+   "id": 10,
+   "tidal": false,
+   "level": 1.27,
+   "colour": [
+    85,
+    115,
+    81
+   ],
+   "area_m2": 36631.0
+  },
+  {
+   "id": 11,
+   "tidal": false,
+   "level": 1.826,
+   "colour": [
+    105,
+    110,
+    95
+   ],
+   "area_m2": 36579.2
+  },
+  {
+   "id": 12,
+   "tidal": false,
+   "level": 1.125,
+   "colour": [
+    76,
+    106,
+    73
+   ],
+   "area_m2": 26745.8
+  },
+  {
+   "id": 13,
+   "tidal": false,
+   "level": 3.376,
+   "colour": [
+    94,
+    107,
+    88
+   ],
+   "area_m2": 26362.8
+  },
+  {
+   "id": 14,
+   "tidal": false,
+   "level": 1.316,
+   "colour": [
+    101,
+    135,
+    86
+   ],
+   "area_m2": 25860.5
+  },
+  {
+   "id": 15,
+   "tidal": false,
+   "level": 0.251,
+   "colour": [
+    95,
+    101,
+    87
+   ],
+   "area_m2": 24126.0
+  },
+  {
+   "id": 16,
+   "tidal": false,
+   "level": 0.216,
+   "colour": [
+    157,
+    152,
+    71
+   ],
+   "area_m2": 23105.0
+  },
+  {
+   "id": 17,
+   "tidal": false,
+   "level": -0.034,
+   "colour": [
+    83,
+    87,
+    84
+   ],
+   "area_m2": 20826.0
+  },
+  {
+   "id": 18,
+   "tidal": false,
+   "level": -0.067,
+   "colour": [
+    112,
+    108,
+    93
+   ],
+   "area_m2": 18773.5
+  },
+  {
+   "id": 19,
+   "tidal": false,
+   "level": 0.105,
+   "colour": [
+    158,
+    152,
+    73
+   ],
+   "area_m2": 14719.0
+  },
+  {
+   "id": 20,
+   "tidal": false,
+   "level": 2.262,
+   "colour": [
+    113,
+    118,
+    109
+   ],
+   "area_m2": 11898.0
+  },
+  {
+   "id": 21,
+   "tidal": false,
+   "level": 2.771,
+   "colour": [
+    77,
+    87,
+    86
+   ],
+   "area_m2": 11339.8
+  },
+  {
+   "id": 22,
+   "tidal": false,
+   "level": 1.792,
+   "colour": [
+    78,
+    86,
+    77
+   ],
+   "area_m2": 10678.2
+  },
+  {
+   "id": 23,
+   "tidal": false,
+   "level": 0.235,
+   "colour": [
+    87,
+    89,
+    85
+   ],
+   "area_m2": 9917.2
+  },
+  {
+   "id": 24,
+   "tidal": false,
+   "level": 1.065,
+   "colour": [
+    123,
+    120,
+    99
+   ],
+   "area_m2": 9676.8
+  },
+  {
+   "id": 25,
+   "tidal": false,
+   "level": -0.041,
+   "colour": [
+    92,
+    95,
+    80
+   ],
+   "area_m2": 8612.2
+  },
+  {
+   "id": 26,
+   "tidal": false,
+   "level": -0.337,
+   "colour": [
+    101,
+    105,
+    97
+   ],
+   "area_m2": 8133.8
+  },
+  {
+   "id": 27,
+   "tidal": false,
+   "level": 0.215,
+   "colour": [
+    77,
+    81,
+    80
+   ],
+   "area_m2": 6381.5
+  },
+  {
+   "id": 28,
+   "tidal": false,
+   "level": 3.596,
+   "colour": [
+    68,
+    74,
+    81
+   ],
+   "area_m2": 5789.5
+  },
+  {
+   "id": 29,
+   "tidal": false,
+   "level": -0.233,
+   "colour": [
+    100,
+    87,
+    72
+   ],
+   "area_m2": 5100.5
+  },
+  {
+   "id": 30,
+   "tidal": false,
+   "level": 1.648,
+   "colour": [
+    129,
+    133,
+    125
+   ],
+   "area_m2": 5068.2
+  },
+  {
+   "id": 31,
+   "tidal": false,
+   "level": 4.29,
+   "colour": [
+    95,
+    100,
+    87
+   ],
+   "area_m2": 5021.5
+  },
+  {
+   "id": 32,
+   "tidal": false,
+   "level": 0.042,
+   "colour": [
+    132,
+    116,
+    83
+   ],
+   "area_m2": 4696.8
+  },
+  {
+   "id": 33,
+   "tidal": false,
+   "level": 0.292,
+   "colour": [
+    104,
+    103,
+    91
+   ],
+   "area_m2": 3864.5
+  },
+  {
+   "id": 34,
+   "tidal": false,
+   "level": 2.14,
+   "colour": [
+    137,
+    135,
+    127
+   ],
+   "area_m2": 3839.8
+  },
+  {
+   "id": 35,
+   "tidal": false,
+   "level": 0.873,
+   "colour": [
+    62,
+    72,
+    80
+   ],
+   "area_m2": 3651.8
+  },
+  {
+   "id": 36,
+   "tidal": false,
+   "level": -0.041,
+   "colour": [
+    153,
+    139,
+    129
+   ],
+   "area_m2": 3526.2
+  },
+  {
+   "id": 37,
+   "tidal": false,
+   "level": -0.082,
+   "colour": [
+    189,
+    184,
+    175
+   ],
+   "area_m2": 2906.8
+  },
+  {
+   "id": 38,
+   "tidal": false,
+   "level": 4.852,
+   "colour": [
+    130,
+    122,
+    99
+   ],
+   "area_m2": 2423.2
+  },
+  {
+   "id": 39,
+   "tidal": false,
+   "level": 1.925,
+   "colour": [
+    122,
+    122,
+    117
+   ],
+   "area_m2": 1915.8
+  },
+  {
+   "id": 40,
+   "tidal": false,
+   "level": 4.337,
+   "colour": [
+    81,
+    90,
+    90
+   ],
+   "area_m2": 1662.2
+  },
+  {
+   "id": 41,
+   "tidal": false,
+   "level": 0.449,
+   "colour": [
+    102,
+    113,
+    96
+   ],
+   "area_m2": 1606.0
+  },
+  {
+   "id": 42,
+   "tidal": false,
+   "level": 4.357,
+   "colour": [
+    89,
+    92,
+    81
+   ],
+   "area_m2": 1536.0
+  },
+  {
+   "id": 43,
+   "tidal": false,
+   "level": -0.462,
+   "colour": [
+    98,
+    36,
+    32
+   ],
+   "area_m2": 1507.2
+  },
+  {
+   "id": 44,
+   "tidal": false,
+   "level": 0.706,
+   "colour": [
+    124,
+    137,
+    119
+   ],
+   "area_m2": 1390.8
+  },
+  {
+   "id": 45,
+   "tidal": false,
+   "level": 1.224,
+   "colour": [
+    67,
+    68,
+    73
+   ],
+   "area_m2": 1377.8
+  },
+  {
+   "id": 46,
+   "tidal": false,
+   "level": 1.691,
+   "colour": [
+    48,
+    56,
+    71
+   ],
+   "area_m2": 1367.5
+  },
+  {
+   "id": 47,
+   "tidal": false,
+   "level": -0.356,
+   "colour": [
+    118,
+    100,
+    74
+   ],
+   "area_m2": 1252.2
+  },
+  {
+   "id": 48,
+   "tidal": false,
+   "level": 2.366,
+   "colour": [
+    130,
+    140,
+    124
+   ],
+   "area_m2": 1232.0
+  },
+  {
+   "id": 49,
+   "tidal": false,
+   "level": 0.449,
+   "colour": [
+    103,
+    36,
+    32
+   ],
+   "area_m2": 1105.8
+  },
+  {
+   "id": 50,
+   "tidal": false,
+   "level": 5.258,
+   "colour": [
+    194,
+    36,
+    32
+   ],
+   "area_m2": 1029.2
+  },
+  {
+   "id": 51,
+   "tidal": false,
+   "level": 5.119,
+   "colour": [
+    216,
+    255,
+    255
+   ],
+   "area_m2": 920.0
+  },
+  {
+   "id": 52,
+   "tidal": false,
+   "level": 0.0,
+   "colour": [
+    84,
+    85,
+    79
+   ],
+   "area_m2": 816.2
+  },
+  {
+   "id": 53,
+   "tidal": false,
+   "level": 1.677,
+   "colour": [
+    104,
+    36,
+    32
+   ],
+   "area_m2": 756.8
+  },
+  {
+   "id": 54,
+   "tidal": false,
+   "level": 0.099,
+   "colour": [
+    189,
+    186,
+    170
+   ],
+   "area_m2": 731.5
+  },
+  {
+   "id": 55,
+   "tidal": false,
+   "level": 4.058,
+   "colour": [
+    84,
+    88,
+    82
+   ],
+   "area_m2": 637.5
+  },
+  {
+   "id": 56,
+   "tidal": false,
+   "level": 1.748,
+   "colour": [
+    78,
+    36,
+    32
+   ],
+   "area_m2": 591.5
+  },
+  {
+   "id": 57,
+   "tidal": false,
+   "level": 5.076,
+   "colour": [
+    139,
+    121,
+    108
+   ],
+   "area_m2": 583.0
+  },
+  {
+   "id": 58,
+   "tidal": false,
+   "level": 0.068,
+   "colour": [
+    159,
+    152,
+    71
+   ],
+   "area_m2": 459.0
+  },
+  {
+   "id": 59,
+   "tidal": false,
+   "level": 4.148,
+   "colour": [
+    196,
+    208,
+    211
+   ],
+   "area_m2": 450.8
+  },
+  {
+   "id": 60,
+   "tidal": false,
+   "level": 1.959,
+   "colour": [
+    73,
+    84,
+    94
+   ],
+   "area_m2": 442.5
+  },
+  {
+   "id": 61,
+   "tidal": false,
+   "level": 4.98,
+   "colour": [
+    105,
+    112,
+    116
+   ],
+   "area_m2": 431.2
+  },
+  {
+   "id": 62,
+   "tidal": false,
+   "level": 7.223,
+   "colour": [
+    189,
+    186,
+    169
+   ],
+   "area_m2": 411.2
+  },
+  {
+   "id": 63,
+   "tidal": false,
+   "level": 1.127,
+   "colour": [
+    97,
+    133,
+    82
+   ],
+   "area_m2": 400.5
+  },
+  {
+   "id": 64,
+   "tidal": false,
+   "level": 4.577,
+   "colour": [
+    91,
+    36,
+    32
+   ],
+   "area_m2": 387.8
+  },
+  {
+   "id": 65,
+   "tidal": false,
+   "level": 0.931,
+   "colour": [
+    133,
+    131,
+    83
+   ],
+   "area_m2": 373.0
+  },
+  {
+   "id": 66,
+   "tidal": false,
+   "level": 0.059,
+   "colour": [
+    155,
+    148,
+    67
+   ],
+   "area_m2": 349.2
+  },
+  {
+   "id": 67,
+   "tidal": false,
+   "level": 1.632,
+   "colour": [
+    126,
+    125,
+    106
+   ],
+   "area_m2": 215.5
+  },
+  {
+   "id": 68,
+   "tidal": false,
+   "level": 0.87,
+   "colour": [
+    95,
+    36,
+    32
+   ],
+   "area_m2": 190.2
+  },
+  {
+   "id": 69,
+   "tidal": false,
+   "level": 4.24,
+   "colour": [
+    160,
+    36,
+    32
+   ],
+   "area_m2": 140.8
+  },
+  {
+   "id": 70,
+   "tidal": false,
+   "level": 0.069,
+   "colour": [
+    155,
+    36,
+    32
+   ],
+   "area_m2": 109.8
+  },
+  {
+   "id": 71,
+   "tidal": false,
+   "level": 0.099,
+   "colour": [
+    160,
+    148,
+    72
+   ],
+   "area_m2": 108.0
+  },
+  {
+   "id": 72,
+   "tidal": false,
+   "level": 1.158,
+   "colour": [
+    85,
+    36,
+    32
+   ],
+   "area_m2": 107.8
+  }
+ ]
+}

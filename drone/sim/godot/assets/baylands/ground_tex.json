@@ -1,0 +1,96 @@
+{
+ "source": "Poly Haven (polyhaven.com), CC0 1.0",
+ "size_px": 512,
+ "textures": {
+  "asphalt": {
+   "asset": "asphalt_02",
+   "size_m": 3.0,
+   "url": "https://polyhaven.com/a/asphalt_02",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  },
+  "concrete": {
+   "asset": "concrete_pavement",
+   "size_m": 1.8,
+   "url": "https://polyhaven.com/a/concrete_pavement",
+   "authors": [
+    "Charlotte Baglioni"
+   ]
+  },
+  "dg": {
+   "asset": "gravel_floor",
+   "size_m": 2.25,
+   "url": "https://polyhaven.com/a/gravel_floor",
+   "authors": [
+    "Jenelle van Heerden",
+    "Matterfield"
+   ]
+  },
+  "gravel": {
+   "asset": "rocky_trail",
+   "size_m": 2.0,
+   "url": "https://polyhaven.com/a/rocky_trail",
+   "authors": [
+    "Amal Kumar"
+   ]
+  },
+  "lawn": {
+   "asset": "leafy_grass",
+   "size_m": 2.0,
+   "url": "https://polyhaven.com/a/leafy_grass",
+   "authors": [
+    "Charlotte Baglioni"
+   ]
+  },
+  "drygrass": {
+   "asset": "sparse_grass",
+   "size_m": 2.0,
+   "url": "https://polyhaven.com/a/sparse_grass",
+   "authors": [
+    "Amal Kumar"
+   ]
+  },
+  "soil": {
+   "asset": "brown_mud_dry",
+   "size_m": 1.3,
+   "url": "https://polyhaven.com/a/brown_mud_dry",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  },
+  "mud": {
+   "asset": "brown_mud_02",
+   "size_m": 1.3,
+   "url": "https://polyhaven.com/a/brown_mud_02",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  },
+  "cracked": {
+   "asset": "mud_cracked_dry_03",
+   "size_m": 1.5,
+   "url": "https://polyhaven.com/a/mud_cracked_dry_03",
+   "authors": [
+    "Dario Barresi",
+    "Dimitrios Savva"
+   ]
+  },
+  "riprap": {
+   "asset": "gray_rocks",
+   "size_m": 4.5,
+   "url": "https://polyhaven.com/a/gray_rocks",
+   "authors": [
+    "Dimitrios Savva"
+   ]
+  },
+  "litter": {
+   "asset": "forest_leaves_02",
+   "size_m": 3.001,
+   "url": "https://polyhaven.com/a/forest_leaves_02",
+   "authors": [
+    "Rob Tuytel"
+   ]
+  }
+ }
+}
