@@ -1107,7 +1107,7 @@ void vertex() {
     NORMAL = normalize(mix(NORMAL, sn, 0.7));
     float depth = length(CUSTOM0.xyz);
     float t = clamp(CUSTOM0.y * 0.5 + 0.5, 0.0, 1.0);
-    v_ao = mix(0.55, 1.0, smoothstep(0.2, 1.0, depth)) * mix(0.72, 1.08, t);
+    v_ao = mix(0.7, 1.0, smoothstep(0.2, 1.0, depth)) * mix(0.8, 1.08, t);
     vec3 p = t_wind(anchor + VERTEX, base, TIME);
     p += NORMAL * sin(TIME * 5.0 + dot(p, vec3(31.0, 17.0, 23.0))) * 0.004 * (1.0 - v_shell);
     VERTEX = p;
@@ -1146,7 +1146,7 @@ void fragment() {
     float solid = v_shell * smoothstep(0.2, 0.55, ndv) * full * (1.0 - 0.9 * max(front ? 0.0 : 1.0, v_under));
     ALPHA = max(tx.a * (v_shell > 0.5 ? mix(0.45, 1.0, v_leaf) : 1.0), solid);
     ALPHA_SCISSOR_THRESHOLD = 0.5;
-    ALBEDO = v_tint * tx.rgb * 1.25 * v_ao * (v_shell > 0.5 ? 0.85 : 1.0) * mix(1.0, 1.3, v_under);
+    ALBEDO = v_tint * tx.rgb * 1.5 * v_ao * (v_shell > 0.5 ? 0.85 : 1.0) * mix(1.0, 1.3, v_under);
     ROUGHNESS = 0.8;
     SPECULAR = 0.15;
     BACKLIGHT = v_tint * 0.6 * v_leaf;
@@ -1220,7 +1220,7 @@ void vertex() {
         NORMAL = normalize(mix(NORMAL, sn, 0.5));
     }
     float t = clamp(CUSTOM0.y * 0.5 + 0.5, 0.0, 1.0);
-    v_ao = mix(0.62, 1.05, t);
+    v_ao = mix(0.75, 1.05, t);
     v_obj = (anchor + VERTEX) * vec3(6.0, 5.0, 6.0) + base * 0.05;
     VERTEX = t_wind(anchor + VERTEX, base, TIME);
     if (lod_out(base, CAMERA_POSITION_WORLD, PROJECTION_MATRIX)) { VERTEX = vec3(0.0); }
