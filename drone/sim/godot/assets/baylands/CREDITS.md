@@ -16,6 +16,7 @@ are gitignored; the tools regenerate them.
 | site.json (airspace, UAS facility map, 14 CFR 99.7 areas, stadiums, obstacles) | FAA public ArcGIS services (Class_Airspace, FAA_UAS_FacilityMap_Data, DoD_Mar_13, Stadiums, Digital_Obstacle_File) and FDC NOTAM 0/0367 (tfr.faa.gov) | Public domain (US Government) |
 | site.json (wind_climatology) | NUQ ASOS routine METARs 2021-2025, Iowa Environmental Mesonet archive | Public observations (NWS/FAA ASOS); archive by Iowa State University |
 | site.json (pads) | Chosen from the USGS 3DEP 2020 lidar grids above + USDA NAIP 2024 (NDVI) + OpenStreetMap paths/power | Public domain + ODbL |
+| wires.json | Power-line routes and tower/pole nodes from OpenStreetMap (power=line / minor_line, ODbL); every structure's position, height and arm rows measured in the USGS 3DEP 2020 lidar (public domain); conductors inferred (catenaries, see drone/sim/tools/bake_baylands_wires.py) | ODbL (© OpenStreetMap contributors) + public domain |
 
 OpenStreetMap data is © OpenStreetMap contributors, available under the Open
 Database License (https://opendatacommons.org/licenses/odbl/). The files

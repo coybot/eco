@@ -199,7 +199,8 @@ func _phase(script: String, fn: String) -> bool:
 	var sc: Script = load(path)
 	for m in sc.get_script_method_list():
 		if m["name"] == fn:
-			return bool(sc.call(fn, self))
+			# A void claim() returns null: treat anything but true as false.
+			return sc.call(fn, self) == true
 	return false
 
 
