@@ -1,0 +1,69 @@
+{
+ "species": [
+  "eucalyptus",
+  "live_oak",
+  "monterey_pine",
+  "monterey_cypress",
+  "redwood",
+  "fan_palm",
+  "date_palm",
+  "london_plane",
+  "pistache",
+  "raywood_ash",
+  "willow",
+  "evergreen",
+  "deciduous",
+  "sycamore"
+ ],
+ "shrubs": [
+  "coyote_brush",
+  "oleander",
+  "landscape",
+  "tule"
+ ],
+ "origin": [
+  -2500.0,
+  -2400.0
+ ],
+ "quant_m": 0.1,
+ "counts": {
+  "eucalyptus": 1851,
+  "live_oak": 1546,
+  "monterey_pine": 4401,
+  "monterey_cypress": 937,
+  "redwood": 1117,
+  "fan_palm": 360,
+  "date_palm": 959,
+  "london_plane": 1271,
+  "pistache": 1704,
+  "raywood_ash": 2561,
+  "willow": 413,
+  "evergreen": 13025,
+  "deciduous": 9831,
+  "sycamore": 187
+ },
+ "shrub_counts": {
+  "coyote_brush": 3946,
+  "oleander": 693,
+  "landscape": 3304,
+  "tule": 2496
+ },
+ "trees": 40163,
+ "shrub_n": 10439,
+ "rush_n": 9159,
+ "height_m": {
+  "p50": 7.923333168029785,
+  "p99": 25.23402591705322,
+  "max": 36.875
+ },
+ "osm_trees_matched": [
+  681,
+  843
+ ],
+ "dropped": {
+  "inside_buildings": 1122,
+  "not_green_2024": 1222
+ },
+ "source": "USGS 3DEP CA_SantaClaraCounty_2020 lidar (public domain), USDA NAIP 2024 (public domain), OpenStreetMap (ODbL)",
+ "tool": "drone/sim/tools/bake_baylands_trees.py"
+}

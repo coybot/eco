@@ -11,6 +11,8 @@ are gitignored; the tools regenerate them.
 | buildings.dat/.json | OpenStreetMap building footprints (ODbL) + footprints traced from the lidar; heights from the lidar | ODbL (© OpenStreetMap contributors) |
 | features.json | OpenStreetMap (paths, roads, fences, power lines, areas, points) | ODbL (© OpenStreetMap contributors) |
 | ortho.jpg/.json, _hi/ortho.jpg, _hi/nir.jpg | USDA NAIP 2024 California, 0.6 m, 20 May 2024 (quarter-quads m_3712240_se, m_3712133_sw), via the Microsoft Planetary Computer | Public domain (USDA Farm Service Agency) |
+| trees.dat/.json (baked by `drone/sim/tools/bake_baylands_trees.py`) | Every tree, shrub and rush stand measured from the same 2020 lidar (canopy height model + class 3-5 points: position, height, 8-sector crown outline, crown base); species classified from crown shape, NAIP 2024 colour and near-infrared and OpenStreetMap context (land use, roads, water, tagged trees, current building footprints) | Public domain (lidar, NAIP) + ODbL (© OpenStreetMap contributors) |
+| (drawn by baylands_nature.gd) palm models `assets/models/palm_fan.glb`, `palm_date.glb` | Sketchfab: "Realistic HD California fan palm (22/25)" by PlantCatalog; "Date Palm" by evolveduk (see assets/models/CREDITS.md) | CC BY 4.0 (credit the authors) |
 
 OpenStreetMap data is © OpenStreetMap contributors, available under the Open
 Database License (https://opendatacommons.org/licenses/odbl/). The files
