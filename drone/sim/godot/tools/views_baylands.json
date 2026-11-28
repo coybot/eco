@@ -1,9 +1,179 @@
-{"datum": [37.4125, -121.9970, 0], "views": [
- {"name": "overview", "at": {"enu": [-1600, -1700]}, "look": {"enu": [0, 200]}, "alt": 500, "look_alt": 0},
- {"name": "park_high", "at": {"enu": [0, -650]}, "look": {"enu": [0, 150]}, "alt": 120, "look_alt": 0},
- {"name": "meadow_low", "at": {"enu": [60, -260]}, "look": {"enu": [180, 120]}, "alt": 12, "look_alt": 4},
- {"name": "lagoon", "at": {"enu": [-260, -20]}, "look": {"enu": [60, 260]}, "alt": 35, "look_alt": 2},
- {"name": "power_line", "at": {"enu": [-880, 60]}, "look": {"enu": [-620, 420]}, "alt": 25, "look_alt": 15},
- {"name": "ponds_north", "at": {"enu": [0, 550]}, "look": {"enu": [0, 2200]}, "alt": 60, "look_alt": 0},
- {"name": "business", "at": {"enu": [-1600, -700]}, "look": {"enu": [-900, -1000]}, "alt": 70, "look_alt": 10}
-]}
+{
+ "datum": [
+  37.4125,
+  -121.997,
+  0
+ ],
+ "views": [
+  {
+   "name": "overview",
+   "at": {
+    "enu": [
+     -1600,
+     -1700
+    ]
+   },
+   "look": {
+    "enu": [
+     0,
+     200
+    ]
+   },
+   "alt": 500,
+   "look_alt": 0
+  },
+  {
+   "name": "park_high",
+   "at": {
+    "enu": [
+     0,
+     -650
+    ]
+   },
+   "look": {
+    "enu": [
+     0,
+     150
+    ]
+   },
+   "alt": 120,
+   "look_alt": 0
+  },
+  {
+   "name": "meadow_low",
+   "at": {
+    "enu": [
+     140,
+     -60
+    ]
+   },
+   "look": {
+    "enu": [
+     200,
+     200
+    ]
+   },
+   "alt": 10,
+   "look_alt": 3
+  },
+  {
+   "name": "lagoon",
+   "at": {
+    "enu": [
+     -260,
+     -20
+    ]
+   },
+   "look": {
+    "enu": [
+     60,
+     260
+    ]
+   },
+   "alt": 35,
+   "look_alt": 2
+  },
+  {
+   "name": "power_line",
+   "at": {
+    "enu": [
+     -880,
+     60
+    ]
+   },
+   "look": {
+    "enu": [
+     -620,
+     420
+    ]
+   },
+   "alt": 25,
+   "look_alt": 15
+  },
+  {
+   "name": "ponds_north",
+   "at": {
+    "enu": [
+     0,
+     550
+    ]
+   },
+   "look": {
+    "enu": [
+     0,
+     2200
+    ]
+   },
+   "alt": 60,
+   "look_alt": 0
+  },
+  {
+   "name": "business",
+   "at": {
+    "enu": [
+     -1600,
+     -700
+    ]
+   },
+   "look": {
+    "enu": [
+     -900,
+     -1000
+    ]
+   },
+   "alt": 70,
+   "look_alt": 10
+  },
+  {
+   "name": "pad_takeoff_3m",
+   "at": {
+    "enu": [
+     167,
+     -49
+    ]
+   },
+   "look": {
+    "enu": [
+     167,
+     150
+    ]
+   },
+   "alt": 3,
+   "look_alt": 2
+  },
+  {
+   "name": "nadir_pads_60m",
+   "at": {
+    "enu": [
+     130,
+     -10
+    ]
+   },
+   "look": {
+    "enu": [
+     130.5,
+     -9.5
+    ]
+   },
+   "alt": 60,
+   "look_alt": 0
+  },
+  {
+   "name": "fw_oblique_100m",
+   "at": {
+    "enu": [
+     -500,
+     -600
+    ]
+   },
+   "look": {
+    "enu": [
+     150,
+     0
+    ]
+   },
+   "alt": 100,
+   "look_alt": 0
+  }
+ ]
+}
