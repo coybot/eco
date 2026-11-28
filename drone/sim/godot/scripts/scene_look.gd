@@ -52,7 +52,7 @@ extends Node
 
 signal light_changed(night: float, sun_dir: Vector3, moon_dir: Vector3)
 
-const LOOKS := {"manhattan": "beauty", "istanbul": "beauty"}
+const LOOKS := {"manhattan": "beauty", "istanbul": "beauty", "baylands": "beauty"}
 const INC := "res://shaders/thermal.gdshaderinc"
 
 ## The air (see WHY NOT FOG). Extinction per metre at street level, its scale
@@ -92,6 +92,26 @@ const TUNE := {
 		"sea_beta": 0.00012, "sea_h": 160.0,
 		"cloud_base": 0.07,
 	},
+	# baylands: the South Bay shore, California. A drier, deeper blue than New
+	# York's harbour sky; a pale warm-grey band low down (the valley's
+	# inversion haze); clean sea-breeze air (~45 km visibility at the ground,
+	# baylands_weather scales it per preset); a slightly thinner marine haze
+	# over the bay and the salt ponds. The sun's colour, strength and the
+	# exposure are set per time and weather by baylands_weather.gd (a clear-
+	# sky irradiance model), so the values here are the 11:00 mid-May noon-ish
+	# start it replaces. Washed-out was the base's fault: Filmic at a fixed
+	# exposure under a full sky-ambient term; here AgX with a lower exposure
+	# and a sky fill that leaves the shade side darker than the sun side.
+	"baylands": {
+		"sun_az": 150.0, "sun_el": 66.0,
+		"sun_energy": 2.2, "sun_color": Color(1.0, 0.95, 0.88),
+		"exposure": 0.72, "agx_contrast": 1.5,
+		"ambient_color": Color(0.26, 0.27, 0.27), "ambient_sky": 0.7, "ambient_energy": 0.5,
+		"contrast": 1.08, "saturation": 1.15, "brightness": 1.0,
+		"beta0": 0.000085, "scale_h": 900.0, "beta_hi": 0.000003,
+		"sea_beta": 0.00004, "sea_h": 150.0,
+		"cloud_base": 0.10,
+	},
 }
 
 ## GLSL lines swapped per region: [shared line, region line]. Each shared line
@@ -109,6 +129,54 @@ const REGION_GLSL := {
 		 "    hor = mix(hor, mix(vec3(0.50, 0.36, 0.48), vec3(1.40, 0.62, 0.24), pow(max(toward, 0.0), 2.2)), dusk);"],
 		["    zen = mix(zen, vec3(0.08, 0.10, 0.30), dusk);", "    zen = mix(zen, vec3(0.09, 0.10, 0.32), dusk);"],
 		# The sea layer (TUNE sea_beta), in the air pass only.
+		["uniform float fog_h = 140.0;", """uniform float fog_h = 140.0;
+uniform sampler2D sea_mask : filter_linear, repeat_disable;   // 1 = water, row 0 north
+uniform vec4 sea_rect = vec4(-1.0, -1.0, 2.0, 2.0);            // e0, n0, width, height (m)
+uniform float sea_beta = 0.0;
+uniform float sea_h = 160.0;
+float sea_frac(vec3 p) {
+    vec2 uv = vec2((p.x - sea_rect.x) / sea_rect.z, 1.0 - (-p.z - sea_rect.y) / sea_rect.w);
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) { return 1.0; }
+    return texture(sea_mask, uv).r;
+}"""],
+		["        float tau = layer(beta0, scale_h, cam.y, wp.y, L) + layer(fog_beta, fog_h, cam.y, wp.y, L)",
+		 """        float over_sea = 0.25 * (sea_frac(mix(cam, wp, 0.25)) + sea_frac(mix(cam, wp, 0.5))
+                                + sea_frac(mix(cam, wp, 0.75)) + sea_frac(wp));
+        float tau = layer(beta0, scale_h, cam.y, wp.y, L) + layer(fog_beta, fog_h, cam.y, wp.y, L)
+                  + over_sea * layer(sea_beta, sea_h, cam.y, wp.y, L)"""],
+	],
+	# A third element (true) marks a line only one of the two shaders has.
+	"baylands": [
+		# California: a deeper, drier blue overhead; low down, the pale warm
+		# grey of the valley's inversion haze rather than New York's milk.
+		["    vec3 zen = vec3(0.045, 0.165, 0.47);", "    vec3 zen = vec3(0.018, 0.105, 0.52);"],
+		["    vec3 hor = vec3(0.55, 0.66, 0.80);", "    vec3 hor = vec3(0.60, 0.68, 0.80);"],
+		["    vec3 c_day = mix(hor, zen, pow(h, 0.45));", "    vec3 c_day = mix(hor, zen, pow(h, 0.38));"],
+		# baylands_weather's cloud kinds: cirrus (0..1), and how big the
+		# cumulus cells are (1 = the shared look's fair-weather cells).
+		["uniform float city_glow = 1.0;", """uniform float city_glow = 1.0;
+uniform float w_cirrus = 0.0;
+uniform float cu_scale = 1.0;
+uniform vec2 cirrus_wind = vec2(0.8, 0.3);"""],
+		["        vec2 uv = d.xz / (up + 0.06) * 0.55;", "        vec2 uv = d.xz / (up + 0.06) * 0.55 / cu_scale;", true],
+		# Cirrus ~8 km up: thin bright streaks drawn out along the upper wind,
+		# a halo of milk around the sun when it thickens to cirrostratus.
+		["        col = mix(col, cloud, dens * 0.9);", """        col = mix(col, cloud, dens * 0.9);
+        if (w_cirrus > 0.01) {
+            vec2 cu = d.xz / (up + 0.12) * 0.16;
+            vec2 ax = normalize(cirrus_wind);
+            vec2 q = vec2(dot(cu, ax), dot(cu, vec2(-ax.y, ax.x)));
+            // Patches (where the moist layer is) of fibres drawn out along
+            // the wind, mildly stretched: wisps, not ruled lines.
+            float patch = smoothstep(0.42, 0.75, texture(clouds, cu * 0.35 + 0.71).r + 0.25 * w_cirrus);
+            float ci = texture(clouds, vec2(q.x * 0.45, q.y * 1.4) + 0.13).r * 0.6
+                     + texture(clouds, vec2(q.x * 1.3, q.y * 4.2) + 0.57).r * 0.4;
+            float cden = smoothstep(0.45, 0.85, ci) * patch * smoothstep(0.03, 0.25, up);
+            vec3 cc = mix(sc * 0.95, vec3(0.80, 0.84, 0.90), 0.35) * (0.25 + 0.75 * day);
+            col = mix(col, cc, cden * 0.5 * w_cirrus * (1.0 - 0.5 * dens));
+            col += sc * 0.06 * w_cirrus * pow(cs, 24.0) * day;
+        }""", true],
+		# The sea layer (TUNE sea_beta) over the bay and the ponds, as istanbul's.
 		["uniform float fog_h = 140.0;", """uniform float fog_h = 140.0;
 uniform sampler2D sea_mask : filter_linear, repeat_disable;   // 1 = water, row 0 north
 uniform vec4 sea_rect = vec4(-1.0, -1.0, 2.0, 2.0);            // e0, n0, width, height (m)
@@ -183,7 +251,8 @@ func _region_code(code: String) -> String:
 	for pair: Array in REGION_GLSL.get(region, []):
 		if code.contains(str(pair[0])):
 			code = code.replace(str(pair[0]), str(pair[1]))
-		elif not str(pair[0]).begins_with("uniform float fog_h") and not str(pair[0]).contains("float tau"):
+		elif not str(pair[0]).begins_with("uniform float fog_h") and not str(pair[0]).contains("float tau") \
+				and pair.size() < 3:
 			push_warning("[scene_look] %s: GLSL line not found: %s" % [region, pair[0]])
 	return code
 
