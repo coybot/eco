@@ -580,6 +580,9 @@ func _post_light() -> void:
 	sun.light_energy = energy
 	sun.light_color = col
 	sun.shadow_enabled = energy > 0.12
+	# The near cascades only take casters within the pancake distance toward
+	# the sun; the cloud-shadow planes sit up to ~70 m over a low camera.
+	sun.directional_shadow_pancake_size = 3000.0
 	# Sky fill: brighter as the sky turns to cloud (an overcast is brighter
 	# than blue sky and is the only light), and with the sun higher.
 	var overcast := clampf(maxf(cover, float(w.get("fog", 0.0))), 0.0, 1.0)

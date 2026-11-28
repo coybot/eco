@@ -1,0 +1,69 @@
+{
+ "frame": "+proj=aeqd +lat_0=37.4125 +lon_0=-121.997 +datum=WGS84 +units=m +no_defs",
+ "datum": [
+  37.4125,
+  -121.997
+ ],
+ "region_enu": [
+  -2500.0,
+  -2400.0,
+  2500.0,
+  2400.0
+ ],
+ "grids": {
+  "near": {
+   "half_m": 16000.0,
+   "posts": 1000,
+   "res_m": 32.0,
+   "file": "far_near.zi16",
+   "encoding": "zlib int16 decimetres above NAVD88, row 0 north, posts at cell centres",
+   "dry": "far_near_dry.jpg",
+   "green": "far_near_green.jpg",
+   "water": "far_near_water.png"
+  },
+  "wide": {
+   "half_m": 64000.0,
+   "posts": 1000,
+   "res_m": 128.0,
+   "file": "far_wide.zi16",
+   "encoding": "zlib int16 decimetres above NAVD88, row 0 north, posts at cell centres",
+   "dry": "far_wide_dry.jpg",
+   "green": "far_wide_green.jpg",
+   "water": "far_wide_water.png"
+  }
+ },
+ "heights_m": {
+  "near": {
+   "min": -8.574915885925293,
+   "max": 857.1282348632812
+  },
+  "wide": {
+   "min": -83.84916687011719,
+   "max": 1305.7142333984375
+  }
+ },
+ "naip_fit": [
+  [
+   0.5282142213934774,
+   77.29263456944972
+  ],
+  [
+   0.5180716884345186,
+   80.88397421850607
+  ],
+  [
+   0.5847384195978725,
+   71.54469173924184
+  ]
+ ],
+ "sources": [
+  "USGS 3DEP 1 arc-second DEM (public domain)",
+  "Contains modified Copernicus Sentinel data 2023-2025 (Sentinel-2 L2A via Earth Search)",
+  "OpenStreetMap buildings (ODbL)"
+ ],
+ "city": {
+  "lean": "far_city.zbin",
+  "all": "_sky/far_city_all.zbin",
+  "encoding": "zlib; 'BFC1', u32 count, then records <i4 e dm, <i4 n dm, <u2 w dm, <u2 d dm, <u2 yaw 0.01 deg (of w side from east, CCW), <u2 h dm, <i2 base dm NAVD88, u1 kind"
+ }
+}
