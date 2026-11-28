@@ -374,7 +374,10 @@ func daylight(doy: int) -> Vector2:
 	var last := 12.0
 	var h := 3.0
 	while h < 21.0:
-		if sun_elevation(doy, h) >= 3.0:
+		# 7 degrees: below it the scene's exposure no longer matches what a
+		# camera shows (the ground goes near-black), so training days start
+		# and end there. Set "hour" explicitly to fly lower suns.
+		if sun_elevation(doy, h) >= 7.0:
 			if first >= 12.0:
 				first = h
 			last = h

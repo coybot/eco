@@ -56,9 +56,10 @@ vec3 photo_albedo(vec3 ph) {
 // against red, on the palette's scale), shifted by the season, the ratio of
 // the two palette colours applied to the photo so its own detail stays.
 vec3 season_ratio(int k, vec3 c) {
-    vec3 g_col = vec3(0.065, 0.100, 0.035);
+    // Wet-season annual grass (Jan-Apr) is a saturated green, not olive.
+    vec3 g_col = vec3(0.070, 0.135, 0.038);
     vec3 y_col = vec3(0.26, 0.21, 0.105);
-    float gain = 1.7;
+    float gain = 2.3;
     if (k == 6) { gain = 0.45; y_col = vec3(0.17, 0.15, 0.075); }
     float hue = (c.g - c.r) / max(c.g + c.r, 1e-4);
     float c0 = clamp((0.2 - hue) / 0.31, 0.0, 1.0);
