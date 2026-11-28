@@ -1,0 +1,412 @@
+{
+"datum": [
+37.4125,
+-121.997,
+0
+],
+"views": [
+{
+"name": "park_high",
+"at": {
+"enu": [
+0,
+-650
+]
+},
+"look": {
+"enu": [
+0,
+150
+]
+},
+"alt": 120,
+"look_alt": 0,
+"wait": 6,
+"pre": [
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"measure": true
+}
+}
+]
+},
+{
+"name": "trail_levee",
+"at": {
+"enu": [
+300,
+470
+]
+},
+"look": {
+"enu": [
+600,
+505
+]
+},
+"alt": 15,
+"look_alt": 2
+},
+{
+"name": "park_paths",
+"at": {
+"enu": [
+-60,
+-120
+]
+},
+"look": {
+"enu": [
+120,
+40
+]
+},
+"alt": 22,
+"look_alt": 0
+},
+{
+"name": "picnic",
+"at": {
+"enu": [
+-30,
+-215
+]
+},
+"look": {
+"enu": [
+40,
+-150
+]
+},
+"alt": 12,
+"look_alt": 0
+},
+{
+"name": "soccer",
+"at": {
+"enu": [
+-300,
+300
+]
+},
+"look": {
+"enu": [
+-300,
+430
+]
+},
+"alt": 28,
+"look_alt": 0
+},
+{
+"name": "slough_egrets",
+"at": {
+"enu": [
+200,
+20
+]
+},
+"look": {
+"enu": [
+270,
+70
+]
+},
+"alt": 12,
+"look_alt": 0,
+"pre": [
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"rest": {
+"species": "egret",
+"at": [
+270,
+70
+]
+}
+}
+},
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"rest": {
+"species": "heron",
+"at": [
+222,
+94
+]
+}
+}
+}
+]
+},
+{
+"name": "hwy237",
+"at": {
+"enu": [
+560,
+-290
+]
+},
+"look": {
+"enu": [
+480,
+-170
+]
+},
+"alt": 25,
+"look_alt": 0
+},
+{
+"name": "geese_v",
+"at": {
+"enu": [
+55,
+175
+]
+},
+"look": {
+"enu": [
+100,
+200
+]
+},
+"alt": 42,
+"look_alt": 30,
+"pre": [
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"flight": {
+"species": "goose",
+"at": [
+120,
+165
+],
+"bearing_deg": 330,
+"alt": 30
+}
+}
+}
+],
+"wait": 2
+},
+{
+"name": "geese_v_top",
+"at": {
+"enu": [
+97,
+205
+]
+},
+"look": {
+"enu": [
+97,
+206
+]
+},
+"alt": 90,
+"look_alt": 0,
+"wait": 2,
+"pre": [
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"flight": {
+"species": "goose",
+"at": [
+120,
+165
+],
+"bearing_deg": 330,
+"alt": 30
+}
+}
+}
+]
+},
+{
+"name": "geese_field",
+"at": {
+"enu": [
+0,
+-40
+]
+},
+"look": {
+"enu": [
+40,
+0
+]
+},
+"alt": 15,
+"look_alt": 0,
+"pre": [
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"rest": {
+"species": "goose",
+"at": [
+40,
+0
+]
+}
+}
+}
+]
+},
+{
+"name": "ponds",
+"at": {
+"enu": [
+0,
+550
+]
+},
+"look": {
+"enu": [
+0,
+1200
+]
+},
+"alt": 40,
+"look_alt": 0
+},
+{
+"name": "pelicans",
+"at": {
+"enu": [
+-780,
+990
+]
+},
+"look": {
+"enu": [
+-826,
+1045
+]
+},
+"alt": 14,
+"look_alt": 0,
+"pre": [
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"rest": {
+"species": "pelican",
+"at": [
+-826,
+1045
+]
+}
+}
+}
+]
+},
+{
+"name": "goose_close",
+"at": {
+"enu": [
+10,
+-20
+]
+},
+"look": {
+"enu": [
+40,
+0
+]
+},
+"alt": 6,
+"look_alt": 0
+},
+{
+"name": "geese_flush",
+"at": {
+"enu": [
+-30,
+-70
+]
+},
+"look": {
+"enu": [
+40,
+0
+]
+},
+"alt": 22,
+"look_alt": 5,
+"wait": 6,
+"pre": [
+{
+"op": "fw_spawn",
+"id": "vt1",
+"p": [
+40,
+-40,
+14
+],
+"yaw": 1.57,
+"airframe": "vtol"
+}
+]
+},
+{
+"name": "events",
+"at": {
+"enu": [
+-30,
+-70
+]
+},
+"look": {
+"enu": [
+40,
+0
+]
+},
+"alt": 22,
+"look_alt": 5,
+"wait": 1,
+"pre": [
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"measure": true
+}
+},
+{
+"op": "env_op",
+"name": "life",
+"args": {}
+},
+{
+"op": "env_op",
+"name": "life",
+"args": {
+"near": [
+40,
+0
+],
+"radius": 60,
+"classes": [
+"bird",
+"person"
+]
+}
+}
+]
+}
+]
+}
