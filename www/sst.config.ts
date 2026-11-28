@@ -21,10 +21,12 @@ export default $config({
   async run() {
     const { storage } = await import("./infra/storage");
     const { web } = await import("./infra/web");
+    const { astralRedirect } = await import("./infra/redirect");
 
     return {
       websiteUrl: web.url,
       bucketName: storage.bucket.name,
+      ...(astralRedirect ? { astralRedirectUrl: astralRedirect.url } : {}),
     };
   },
 });

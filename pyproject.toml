@@ -60,7 +60,7 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.4",
     "Pillow>=10.0",  # drone/sim/tests/test_pixel_axis.py, drone/sim/tools/fetch_*.py
-    "scipy>=1.11",   # drone/sim/tools/fetch_baylands.py tree detection
+    "scipy>=1.11",   # delivery and docking sims, shore and sea bakes
 ]
 
 [project.urls]

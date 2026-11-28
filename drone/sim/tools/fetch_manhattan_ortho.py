@@ -19,7 +19,7 @@ TWO THINGS MAKE THIS MORE THAN A bbox FETCH:
 2. It mosaics from the XYZ TILE service, not exportImage. exportImage picks
    source scenes per request extent, so two adjacent requests come back with
    different radiometry and the join is a visible brightness step (a 2x2
-   stitch for the baylands ortho put a seam eight times larger than any
+   stitch for an earlier ortho put a seam eight times larger than any
    natural gradient in the scene). The tile service is one pre-built global
    mosaic, so tiles are radiometrically consistent and can be stitched freely.
 

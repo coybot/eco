@@ -576,8 +576,8 @@ func _sweep_structure(from_enu: Vector3, to_enu: Vector3) -> Dictionary:
 	if not hit.is_empty():
 		return hit
 	# Envs with too much structure for physics bodies (manhattan's ~45k
-	# buildings, baylands) answer rays analytically instead; without this a
-	# strike there would pass straight through, exactly as before.
+	# buildings) answer rays analytically instead; without this a strike there
+	# would pass straight through, exactly as before.
 	#
 	# raycast_structures takes ENU and returns -1 on a miss (manhattan,
 	# istanbul, baylands). An env that takes Godot-frame vectors instead

@@ -19,6 +19,10 @@ const footerLinks: Record<string, { name: string; href: string; external?: boole
     { name: "Blog", href: "/blog" },
     { name: "GitHub", href: SITE.githubOrg, external: true },
   ],
+  Company: [
+    { name: "About", href: "/about" },
+    { name: "Contact", href: "/contact" },
+  ],
   Legal: [
     { name: "Privacy Policy", href: "/privacy" },
     { name: "Terms of Service", href: "/terms" },

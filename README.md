@@ -179,20 +179,19 @@ AWS account, no drone and no network. It is the fastest way to see what this
 repo does.
 
 ```bash
-godot --path drone/sim/godot -- --fleet= --env=baylands --ipc-port=9978 --seed=0
+godot --path drone/sim/godot -- --fleet= --env=manhattan --ipc-port=9978 --seed=0
 ```
 
-Seventeen environments are registered (see `env_map` in
-`drone/sim/godot/scripts/fleet_manager.gd`). Four of them are real places,
+The environments are registered in `ENV_MAP` in
+`drone/sim/godot/scripts/fleet_manager.gd`. Three of them are real places,
 built from public-domain data committed to this repo — clone and run, there is
 no fetch step:
 
 | Env | What it is |
 |---|---|
-| `manhattan` | ~45,000 real building footprints from NYC Open Data, real roof heights |
-| `manhattan_photo` | the same city with photographic facades and a USGS orthophoto ground |
+| `manhattan` | ~45,000 real building footprints from NYC Open Data and real roof heights, with photographic facades, a USGS orthophoto ground, Central Park, trees, traffic and night lights (`manhattan_photo` is an alias) |
 | `baylands` | Baylands Park, Sunnyvale, and 5 x 4.8 km around it — built to train aircraft that then fly the real field: 2020 USGS lidar ground, 12,800 buildings with measured roofs, 40,000 measured trees, power lines, 2024 NAIP imagery, real horizon, weather/tide/wind randomisation, airspace and park data (`site.json`) |
-| `istanbul` | historic Istanbul — the walled peninsula, Galata and Beyoglu, the Bosphorus shore at Uskudar; OSM footprints on SRTM hills |
+| `istanbul` | historic Istanbul — the walled peninsula, Galata and Beyoglu, the Bosphorus shore at Uskudar; OSM footprints on SRTM hills, landmarks, the sea and its bridges |
 
 The rest are hand-built scenes: `office`, `plaza`, `city`, `depot`,
 `flightline`, `countdemo`, `gate`, `sar`, `surveil_truck` and a few aliases.
@@ -201,8 +200,9 @@ The rest are hand-built scenes: `office`, `plaza`, `city`, `depot`,
 box, and that one representation feeds three things at once: the occupancy
 grid the router plans against, an analytic ray-vs-prism test for occlusion,
 and a single instanced draw call. That is why a 45,000-building city costs
-about what a courtyard costs. `manhattan` and `manhattan_photo` are the *same
-world* to routing and collision — only the pixels differ.
+about what a courtyard costs. The facades are drawn on top of that box world,
+so routing and collision never see the pixels (and if the photo assets are
+missing, the boxes are what you get).
 
 `baylands` is the exception: footprints are real polygons, heights are
 metres above NAVD88, and the ground is lidar terrain an aircraft can fly into.
@@ -261,7 +261,7 @@ Baylands' builders (`fetch_baylands.py`, then `bake_baylands_*.py`) download
 as-is, and their gitignored `assets/baylands/_*` outputs only add detail.
 
 A new scene is a `.gd` script in `godot/scripts`, a one-node `.tscn` in
-`godot/scenes/environments`, and a line in `fleet_manager.gd`'s `env_map`.
+`godot/scenes/environments`, and a line in `fleet_manager.gd`'s `ENV_MAP`.
 `env_baylands.gd` and `env_istanbul.gd` are the worked examples — they load a
 heightmap, an orthophoto and vector datasets, and expose `ground_height()`,
 `collision_height()` and `raycast_structures()` so the flight code can hit

@@ -18,6 +18,7 @@ const navLinks = [
   { title: "Research", href: "/research" },
   { title: "Pricing", href: "/pricing" },
   { title: "Enterprise", href: "/enterprise" },
+  { title: "Contact", href: "/contact" },
 ];
 
 export function Header() {
