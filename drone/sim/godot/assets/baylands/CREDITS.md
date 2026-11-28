@@ -22,6 +22,9 @@ are gitignored; the tools regenerate them.
 | far_near.zi16, far_wide.zi16, far.json | USGS 3DEP 1 arc-second DEM, tiles n38w122 n38w123 n37w122 n37w123; `drone/sim/tools/fetch_baylands_far.py` | Public domain (US Government work) |
 | far_*_dry.jpg, far_*_green.jpg, far_*_water.png | Copernicus Sentinel-2 L2A (Collection 1) via Earth Search on AWS: medians of the clearest Jul-Sep and Feb-Mar scenes 2023-2025, TCI and SCL. "Contains modified Copernicus Sentinel data 2023-2025" | Copernicus Sentinel data licence (free, full and open; attribution as quoted) |
 | far_city.zbin, _sky/far_city_all.zbin, far_bridges.json | OpenStreetMap buildings and bridges (Geofabrik norcal extract) | ODbL (© OpenStreetMap contributors) |
+| built_roofs.dat | Roof shapes (flat levels, parapets, rooftop units, hip/gable fits, measured surfaces) from the USGS 3DEP 2020 lidar inside each footprint; roof colour from USDA NAIP 2024; footprints from OpenStreetMap. Baked by `drone/sim/tools/bake_baylands_built.py` | Public domain (USGS, USDA) + ODbL (© OpenStreetMap contributors) |
+| built_things.json | Poles, light standards, measured structures (rides, play frames, backstops), bridge decks and fence heights from the USGS 3DEP 2020 lidar; furniture, fences, playgrounds, pitches and car parks from OpenStreetMap; parked cars are a generated layout in the OSM car parks. Baked by `bake_baylands_built.py` | Public domain (USGS, USDA) + ODbL (© OpenStreetMap contributors) |
+| built_detail.png | Greyscale detail of ambientCG RoofingTiles003, RoofingTiles014A, Plaster001, Concrete034 (https://ambientcg.com) | CC0 1.0 |
 
 OpenStreetMap data is © OpenStreetMap contributors, available under the Open
 Database License (https://opendatacommons.org/licenses/odbl/). The files
