@@ -179,20 +179,18 @@ AWS account, no drone and no network. It is the fastest way to see what this
 repo does.
 
 ```bash
-godot --path drone/sim/godot -- --fleet= --env=baylands --ipc-port=9978 --seed=0
+godot --path drone/sim/godot -- --fleet= --env=manhattan --ipc-port=9978 --seed=0
 ```
 
-Seventeen environments are registered (see `env_map` in
-`drone/sim/godot/scripts/fleet_manager.gd`). Four of them are real places,
+The environments are registered in `env_map` in
+`drone/sim/godot/scripts/fleet_manager.gd`. Two of them are real places,
 built from public-domain data committed to this repo — clone and run, there is
 no fetch step:
 
 | Env | What it is |
 |---|---|
-| `manhattan` | ~45,000 real building footprints from NYC Open Data, real roof heights |
-| `manhattan_photo` | the same city with photographic facades and a USGS orthophoto ground |
-| `baylands` | Baylands Park, Sunnyvale — USGS LIDAR terrain, NAIP orthophoto, ~11,000 trees |
-| `istanbul` | historic Istanbul — the walled peninsula, Galata and Beyoglu, the Bosphorus shore at Uskudar; OSM footprints on SRTM hills |
+| `manhattan` | ~45,000 real building footprints from NYC Open Data and real roof heights, with photographic facades, a USGS orthophoto ground, Central Park, trees, traffic and night lights (`manhattan_photo` is an alias) |
+| `istanbul` | historic Istanbul — the walled peninsula, Galata and Beyoglu, the Bosphorus shore at Uskudar; OSM footprints on SRTM hills, landmarks, the sea and its bridges |
 
 The rest are hand-built scenes: `office`, `plaza`, `city`, `depot`,
 `flightline`, `countdemo`, `gate`, `sar`, `surveil_truck` and a few aliases.
@@ -201,11 +199,9 @@ The rest are hand-built scenes: `office`, `plaza`, `city`, `depot`,
 box, and that one representation feeds three things at once: the occupancy
 grid the router plans against, an analytic ray-vs-prism test for occlusion,
 and a single instanced draw call. That is why a 45,000-building city costs
-about what a courtyard costs. `manhattan` and `manhattan_photo` are the *same
-world* to routing and collision — only the pixels differ.
-
-`baylands` adds terrain: a heightfield an aircraft can actually fly into, and
-tree crowns that count as obstacles.
+about what a courtyard costs. The facades are drawn on top of that box world,
+so routing and collision never see the pixels (and if the photo assets are
+missing, the boxes are what you get).
 
 ### Driving it
 
@@ -244,15 +240,14 @@ so `engine_client.py` and `sim_drone_daemon.py` drive it either way.
 no API key, nothing to sign.
 
 ```bash
-python3 drone/sim/tools/fetch_baylands.py --out drone/sim/godot/assets/baylands
 python3 drone/sim/tools/fetch_facades.py  --out drone/sim/godot/assets/facades
 ```
 
 A new scene is a `.gd` script in `godot/scripts`, a one-node `.tscn` in
 `godot/scenes/environments`, and a line in `fleet_manager.gd`'s `env_map`.
-`env_baylands.gd` is the worked example — it loads a heightmap, an orthophoto
-and a vector dataset, and exposes `ground_height()` and `collision_height()`
-so the flight code can hit the terrain. Note that `drone/sim/godot/assets/*`
+`env_istanbul.gd` is the worked example — it loads a heightmap, footprints and
+a vector dataset, and exposes `ground_height()` and `collision_height()` so the
+flight code can hit the terrain. Note that `drone/sim/godot/assets/*`
 is gitignored by default; un-ignore your scene's directory by name in
 `.gitignore` (there are examples there) so a plain clone still runs it.
 

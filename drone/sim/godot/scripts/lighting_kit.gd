@@ -1,4 +1,4 @@
-## Lighting adjustments for the kilometre-scale envs (baylands, manhattan_photo).
+## Lighting adjustments for the kilometre-scale envs (manhattan, istanbul).
 ##
 ## DELIBERATELY NOT IN scene_kit.gd. That file's header is explicit that its
 ## Filmic/0.85 block is load-bearing rather than taste, and that env_gate (the

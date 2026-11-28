@@ -205,26 +205,40 @@ func _add_main_vantage() -> void:
 # ------------------------------------------------------------------
 # Environment loading
 # ------------------------------------------------------------------
+## Environment name -> scene. Plain box Manhattan and Baylands were retired
+## (2026-11-27); asking for an unknown name over IPC is an error, not a
+## silent fallback.
+const ENV_MAP := {
+	"office":        "res://scenes/environments/office.tscn",
+	"plaza":         "res://scenes/environments/plaza.tscn",
+	"city":          "res://scenes/environments/city.tscn",
+	"outdoor":       "res://scenes/environments/city.tscn",
+	"neighbourhood": "res://scenes/environments/city.tscn",
+	"warehouse":     "res://scenes/environments/city.tscn",
+	"hospital":      "res://scenes/environments/office.tscn",
+	"depot":         "res://scenes/environments/depot.tscn",
+	"flightline":    "res://scenes/environments/flightline.tscn",
+	"countdemo":     "res://scenes/environments/countdemo.tscn",
+	"gate":          "res://scenes/environments/gate.tscn",
+	"sar":           "res://scenes/environments/sar.tscn",
+	"surveil_truck": "res://scenes/environments/surveil_truck.tscn",
+	# Manhattan is the realistic city (textured facades, orthophoto ground);
+	# the plain box rendering survives only as its fallback when the photo
+	# assets are missing. "manhattan_photo" is kept as an alias.
+	"manhattan":     "res://scenes/environments/manhattan_photo.tscn",
+	"manhattan_photo": "res://scenes/environments/manhattan_photo.tscn",
+	"istanbul":      "res://scenes/environments/istanbul.tscn",
+}
+
+
+func has_env(env_name: String) -> bool:
+	return ENV_MAP.has(env_name)
+
+
 func _load_environment(env_name: String) -> void:
-	var env_map := {
-		"office":        "res://scenes/environments/office.tscn",
-		"plaza":         "res://scenes/environments/plaza.tscn",
-		"city":          "res://scenes/environments/city.tscn",
-		"outdoor":       "res://scenes/environments/city.tscn",
-		"neighbourhood": "res://scenes/environments/city.tscn",
-		"warehouse":     "res://scenes/environments/city.tscn",
-		"hospital":      "res://scenes/environments/office.tscn",
-		"depot":         "res://scenes/environments/depot.tscn",
-		"flightline":    "res://scenes/environments/flightline.tscn",
-		"countdemo":     "res://scenes/environments/countdemo.tscn",
-		"gate":          "res://scenes/environments/gate.tscn",
-		"sar":           "res://scenes/environments/sar.tscn",
-		"surveil_truck": "res://scenes/environments/surveil_truck.tscn",
-		"manhattan":     "res://scenes/environments/manhattan.tscn",
-		"baylands":      "res://scenes/environments/baylands.tscn",
-		"manhattan_photo": "res://scenes/environments/manhattan_photo.tscn",
-		"istanbul":      "res://scenes/environments/istanbul.tscn",
-	}
+	var env_map := ENV_MAP
+	if not env_map.has(env_name):
+		push_warning("[FleetManager] unknown env '%s' — using office" % env_name)
 	var path: String = env_map.get(env_name, "res://scenes/environments/office.tscn")
 	if not ResourceLoader.exists(path):
 		push_warning("[FleetManager] env scene not found: " + path + " — using default ground")

@@ -86,7 +86,6 @@ drone/sim/godot/assets/*
 # If you add a scene and its assets seem to vanish from `git status`, this is
 # why — add the directory below rather than reaching for `git add -f`, which
 # commits the files but leaves the next person with the same puzzle.
-!drone/sim/godot/assets/baylands
 !drone/sim/godot/assets/facades
 !drone/sim/godot/assets/facade_cells_nyc
 !drone/sim/godot/assets/manhattan

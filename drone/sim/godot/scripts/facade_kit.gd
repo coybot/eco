@@ -1,8 +1,8 @@
 ## Shared loader for the CC0 photographic facade set.
 ##
-## Both photoreal envs want the same Texture2DArray — manhattan_photo for whole
-## buildings, baylands for walls only (its roofs come from the orthophoto, which
-## is better than any generic roof texture because it is the ACTUAL roof). The
+## Photoreal envs want the same Texture2DArray — manhattan for whole buildings
+## (roofs can also come from the orthophoto, which is better than any generic
+## roof texture because it is the ACTUAL roof). The
 ## loading is fiddly enough to be worth having in one place: Texture2DArray
 ## demands every layer share a size and format, and the source photographs do
 ## not, so a missed convert/resize makes create_from_images fail outright and

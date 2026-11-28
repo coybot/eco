@@ -159,6 +159,8 @@ func _dispatch(line: String) -> String:
 
 		"load_env":
 			var env_name: String = req.get("env", "office")
+			if not fm.has_env(env_name):
+				return JSON.stringify({"ok": false, "error": "unknown env '%s' (have: %s)" % [env_name, ", ".join(fm.ENV_MAP.keys())]})
 			fm.load_env(env_name)
 			return JSON.stringify({"ok": true, "env": env_name})
 
