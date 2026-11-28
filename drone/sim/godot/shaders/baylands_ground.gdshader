@@ -122,19 +122,27 @@ void vertex() {
     morphv = m;
 }
 
-vec3 nmap(int k, vec2 p) {
-    vec3 n = texture(mats_n, vec3(p / mat_size[k], float(k))).xyz * 2.0 - 1.0;
-    return vec3(n.x, n.z, n.y);     // tangent (east, image-up = south, out) -> world (x, y up, z = south)
+// Two samples of every CC0 texture, the second 1.73 x larger and turned 37
+// degrees, always blended (40-60 % by a slow noise): one alone repeats every
+// 2-3 m, a lattice from 60 m straight down.
+const mat2 ROT = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
+
+vec3 nmap(int k, vec2 p, float m) {
+    float s = mat_size[k];
+    vec3 a = texture(mats_n, vec3(p / s, float(k))).xyz * 2.0 - 1.0;
+    vec3 b = texture(mats_n, vec3(ROT * p / (s * 1.73), float(k))).xyz * 2.0 - 1.0;
+    b.xy = transpose(ROT) * b.xy;          // back into the world's axes
+    vec3 n = mix(a, b, m);
+    return normalize(vec3(n.x, max(n.z, 0.2), n.y));   // tangent (east, image-up = south, out) -> world
 }
 
 // A CC0 texture's grain at p, as a multiplier around 1 (the texture over its
-// own mean); a second, larger, turned sample breaks the tiling up.
-vec3 grain(int k, vec2 p) {
+// own mean).
+vec3 grain(int k, vec2 p, float m) {
     float s = mat_size[k];
     vec3 a = texture(mats, vec3(p / s, float(k))).rgb;
-    vec2 q = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * p / (s * 2.7);
-    vec3 b = texture(mats, vec3(q, float(k))).rgb;
-    return mix(a, b, smoothstep(0.35, 0.65, vn(p / (s * 3.1)))) / max(mat_mean[k], vec3(0.01));
+    vec3 b = texture(mats, vec3(ROT * p / (s * 1.73), float(k))).rgb;
+    return mix(a, b, m) / max(mat_mean[k], vec3(0.01));
 }
 
 // Class -> material layer (ground_tex order) and how strongly its grain shows.
@@ -219,12 +227,14 @@ void fragment() {
         int L = LAYER[k];
         float near = 1.0 - smoothstep(0.25 * mat_size[L], 0.9 * mat_size[L], fw);
         if (near > 0.01) {
-            vec3 gr = grain(L, en);
+            float mm = 0.4 + 0.2 * vn(en / (mat_size[L] * 3.1));
+            vec3 gr = grain(L, en, mm);
             // A little extra contrast in the grain close to, where the photo
-            // is only a smooth 0.6 m colour.
-            gr = mix(vec3(1.0), gr, 1.0 + 0.35 * (1.0 - smoothstep(0.02, 0.12, fw)));
+            // is only a smooth 0.6 m colour (two blended samples are flatter
+            // than one).
+            gr = mix(vec3(1.0), gr, 1.0 + 0.3 * (1.0 - smoothstep(0.02, 0.12, fw)));
             c *= max(mix(vec3(1.0), gr, AMT[k] * near), vec3(0.0));
-            vec3 t = nmap(L, en);
+            vec3 t = nmap(L, en, mm);
             nd = normalize(mix(vec3(0.0, 1.0, 0.0), t, AMT[k] * near * 0.8));
         }
     }
