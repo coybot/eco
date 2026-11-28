@@ -806,6 +806,14 @@ void fragment() {
 }
 """
 
+## Shows or hides the static parked cars. baylands_life hides them while its
+## own parked-car layer (stall-aligned, occupancy by hour) is on, so the two
+## never stack.
+func set_cars_visible(on: bool) -> void:
+	for n in find_children("cars_*", "MultiMeshInstance3D", true, false):
+		(n as MultiMeshInstance3D).visible = on
+
+
 ## Parked cars: one topology, four bodies (VERTEX sedan, CUSTOM0..2 SUV,
 ## pickup, van) chosen by INSTANCE_CUSTOM.r; paint colour INSTANCE_CUSTOM.gba.
 const CAR_SHADER := """

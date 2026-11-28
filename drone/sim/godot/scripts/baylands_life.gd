@@ -220,6 +220,10 @@ func set_world(req: Dictionary) -> Dictionary:
 		traffic.set_on(bool(v), int(v) if (v is int or v is float) and int(v) > 1 else -1)
 	if req.has("parked"):
 		parked.set_on(bool(req["parked"]))
+		# The static cars baylands_built draws would stack under these.
+		var built := get_parent().get_node_or_null("baylands_built") if get_parent() else null
+		if built != null and built.has_method("set_cars_visible"):
+			built.set_cars_visible(not bool(req["parked"]))
 	if req.has("people"):
 		people.set_on(bool(req["people"]))
 		birds.set_blocked_fields(people.active_rects)

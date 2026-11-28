@@ -52,6 +52,9 @@ const BIN := 50.0
 const CHUNK := 500.0
 ## b_kind of add_obstacle() solids (past the OSM kinds in buildings.json).
 const KIND_SOLID := 250
+## FleetManager's kinematic aircraft (quads) strike this env's solids too
+## (fleet_manager._sweep_kinematic); without it they fly through everything.
+const KINEMATIC_STRIKES := true
 
 var WALLS: Array = []
 var doors: Dictionary = {}

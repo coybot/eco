@@ -81,7 +81,8 @@ func _dispatch(line: String) -> String:
 			return JSON.stringify({
 				"ok": true,
 				"position": [st.position.x, st.position.y, st.position.z],
-				"yaw": st.yaw
+				"yaw": st.yaw,
+				"crash": st.get("crash", {})
 			})
 
 		"fleet_detect":

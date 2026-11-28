@@ -70,6 +70,9 @@ class VehicleState:
 	var max_yaw: float
 	var viewport: SubViewport
 	var camera: Camera3D
+	## Set when an env with KINEMATIC_STRIKES swept this vehicle into a solid:
+	## {"t", "position" (ENU), "what"}. A crashed vehicle stops moving.
+	var crash: Dictionary = {}
 
 	func _init(did: String, vt: String, spawn: Vector3, n: Node3D,
 			   vp: SubViewport, cam: Camera3D) -> void:
@@ -366,6 +369,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _integrate(st: VehicleState, dt: float) -> void:
+	if not st.crash.is_empty():
+		return
+	var prev := st.position
 	# Linear movement.
 	if st.velocity_active:
 		var dpos := st.velocity_cmd * dt
@@ -383,6 +389,8 @@ func _integrate(st: VehicleState, dt: float) -> void:
 
 	if st.vtype == "rover":
 		st.position.z = 0.0
+	elif prev != st.position and _strikes_on():
+		_sweep_kinematic(st, prev)
 
 	# Yaw integration.
 	if not is_nan(st.goal_yaw):
@@ -401,6 +409,38 @@ func _integrate(st: VehicleState, dt: float) -> void:
 	st.camera.position = godot_pos + params[0]
 	var yaw_deg: float = -rad_to_deg(st.yaw)
 	st.camera.rotation_degrees = Vector3(params[1], yaw_deg + 180.0, 0.0)
+
+
+## Envs that declare `const KINEMATIC_STRIKES := true` (baylands) make this
+## kinematic fleet's aircraft strike what the env says is solid: the segment
+## each tick moved is swept with the env's analytic raycast_structures (ENU,
+## -1 on a miss: buildings, trees, poles, wires) and checked against its
+## collision_height. Every other env keeps the old pass-through behaviour.
+func _strikes_on() -> bool:
+	return _env_node != null and bool(_env_node.get("KINEMATIC_STRIKES")) \
+		and _env_node.has_method("raycast_structures")
+
+
+func _sweep_kinematic(st: VehicleState, prev: Vector3) -> void:
+	var seg := st.position - prev
+	var length := seg.length()
+	var d: float = _env_node.raycast_structures(prev, seg / length, length)
+	var hit := Vector3.INF
+	if d >= 0.0 and d < length - 1e-3:
+		hit = prev + seg / length * d
+	elif _env_node.has_method("collision_height") \
+			and st.position.z < float(_env_node.collision_height(st.position.x, st.position.y)):
+		hit = st.position
+	if hit == Vector3.INF:
+		return
+	# Rest just short of the surface, and stop.
+	st.position = hit - seg / length * minf(0.3, d if d > 0.0 else 0.0)
+	st.velocity_active = false
+	st.velocity_cmd = Vector3.ZERO
+	st.goal = Vector3.INF
+	st.crash = {"t": Time.get_ticks_msec() / 1000.0, "position": [hit.x, hit.y, hit.z],
+		"what": "structure" if d >= 0.0 else "ground"}
+	print("[FleetManager] %s struck %s at (%.1f, %.1f, %.1f)" % [st.drone_id, st.crash["what"], hit.x, hit.y, hit.z])
 
 
 # Returns [offset: Vector3 (Godot), tilt_degrees: float] for a vehicle's POV camera.
@@ -534,7 +574,7 @@ func get_state(drone_id: String):
 	var st: VehicleState = _vehicles.get(drone_id)
 	if st == null:
 		return null
-	return {"position": st.position, "yaw": st.yaw}
+	return {"position": st.position, "yaw": st.yaw, "crash": st.crash}
 
 
 func set_goal(drone_id: String, pos_enu: Vector3) -> void:

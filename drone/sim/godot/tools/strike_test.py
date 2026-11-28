@@ -9,7 +9,7 @@ and where it struck (fw_state / fw_events), against an expectation.
     python3 tools/strike_test.py --env baylands --cases cases.json [--godot BIN]
 
 cases.json: [{"name", "from": [e, n, z], "to": [e, n], "airspeed": 15,
-"airframe": "fixedwing"|"vtol", "expect": "hit"|"clear", "seconds": 30}]
+"airframe": "fixedwing"|"vtol"|"quad" (FleetManager quadcopter), "expect": "hit"|"clear", "seconds": 30}]
 Needs a display (Godot draws nothing headless) only because the sim's
 cameras run; no frames are saved.
 """
@@ -26,6 +26,33 @@ import time
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent.parent
+
+
+def _quad_case(rpc, did: str, c: dict) -> int:
+    """A FleetManager (kinematic) quadcopter flown level along the line; it
+    strikes only in envs with KINEMATIC_STRIKES. Returns 1 on a mismatch."""
+    (e0, n0, z), (e1, n1) = c["from"], c["to"][:2]
+    v = min(float(c.get("airspeed", 3.0)), 3.0)          # the fleet caps quads at 3 m/s
+    rpc({"op": "despawn", "id": did})
+    rpc({"op": "spawn", "id": did, "vtype": "quadcopter", "p": [e0, n0, z]})
+    dist = math.hypot(e1 - e0, n1 - n0)
+    rpc({"op": "set_velocity", "id": did, "v": [(e1 - e0) / dist * v, (n1 - n0) / dist * v, 0.0]})
+    t_end = time.time() + float(c.get("seconds", dist / v + 4.0))
+    st = {}
+    while time.time() < t_end:
+        st = rpc({"op": "get_state", "id": did})
+        if st.get("crash"):
+            break
+        p = st.get("position", [e0, n0, z])
+        if math.hypot(p[0] - e0, p[1] - n0) > dist:
+            break
+        time.sleep(0.1)
+    got = "hit" if st.get("crash") else "clear"
+    ok = got == c.get("expect", got)
+    print(f"{'PASS' if ok else 'FAIL'} {c['name']}: {got} (expected {c.get('expect')}) "
+          f"pos={[round(x, 1) for x in st.get('position', [])]} {json.dumps(st.get('crash', {}))}", flush=True)
+    rpc({"op": "despawn", "id": did})
+    return 0 if ok else 1
 
 
 def main(argv=None) -> int:
@@ -64,6 +91,9 @@ def main(argv=None) -> int:
         for i, c in enumerate(cases):
             did = f"strike{i}"
             (e0, n0, z), (e1, n1) = c["from"], c["to"][:2]
+            if c.get("airframe") == "quad":
+                fails += _quad_case(rpc, did, c)
+                continue
             yaw = math.atan2(n1 - n0, e1 - e0)            # rad CCW from +x (east)
             rpc({"op": "fw_spawn", "id": did, "p": [e0, n0, z], "yaw": yaw, "ceiling": 400,
                  "airframe": c.get("airframe", "fixedwing")})
