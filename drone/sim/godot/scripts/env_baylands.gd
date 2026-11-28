@@ -269,6 +269,39 @@ func is_water(e: float, n: float) -> bool:
 	return _water[y * _ww + x] > 127
 
 
+## The water surface at (e, n), metres above NAVD88, or NAN where there is
+## none. Ponds behind the levees stand at their own (lidar) level; the tidal
+## sloughs, channels and the marsh plain the tide can reach stand at
+## look.tide once it is above the cell's flood level (tidal.png, baked by
+## bake_baylands_ground.py: v / 60 - 1 m, 255 = never).
+var _tidal := PackedByteArray()
+var _tidal_w := 0
+var _tidal_h := 0
+
+
+func water_level(e: float, n: float) -> float:
+	if _tidal_w == 0 and FileAccess.file_exists(DIR + "tidal.png"):
+		var img := Image.new()
+		if img.load_png_from_buffer(FileAccess.get_file_as_bytes(DIR + "tidal.png")) == OK:
+			img.convert(Image.FORMAT_R8)
+			_tidal = img.get_data()
+			_tidal_w = img.get_width()
+			_tidal_h = img.get_height()
+		else:
+			_tidal_w = -1
+	if _tidal_w > 0:
+		var x := int((e - BOUNDS.position.x) / 2.0)
+		var y := int((BOUNDS.end.y - n) / 2.0)
+		if x >= 0 and y >= 0 and x < _tidal_w and y < _tidal_h:
+			var v := int(_tidal[y * _tidal_w + x])
+			var tide := float(look.get("tide", SEA_Y))
+			if v < 255 and tide >= float(v) / 60.0 - 1.0:
+				return maxf(tide, ground_height(e, n) if not is_water(e, n) else -INF)
+	if is_water(e, n):
+		return ground_height(e, n)
+	return NAN
+
+
 ## Bare ground, metres above NAVD88, bilinear on the terrain grid; over
 ## water, the water surface the lidar saw.
 func ground_height(e: float, n: float) -> float:
