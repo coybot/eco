@@ -11,6 +11,11 @@ are gitignored; the tools regenerate them.
 | buildings.dat/.json | OpenStreetMap building footprints (ODbL) + footprints traced from the lidar; heights from the lidar | ODbL (© OpenStreetMap contributors) |
 | features.json | OpenStreetMap (paths, roads, fences, power lines, areas, points) | ODbL (© OpenStreetMap contributors) |
 | ortho.jpg/.json, _hi/ortho.jpg, _hi/nir.jpg | USDA NAIP 2024 California, 0.6 m, 20 May 2024 (quarter-quads m_3712240_se, m_3712133_sw), via the Microsoft Planetary Computer | Public domain (USDA Farm Service Agency) |
+| site.json (park, preserve) | OpenStreetMap ways 28640922 (park) and 28640930 (seasonal wetlands), via Overpass | ODbL (© OpenStreetMap contributors) |
+| site.json (hours, rules) | City of Sunnyvale Baylands Park page, Park Use Rules and park site map (facts only, via the Internet Archive) | Facts; no text reproduced beyond short rule quotes |
+| site.json (airspace, UAS facility map, 14 CFR 99.7 areas, stadiums, obstacles) | FAA public ArcGIS services (Class_Airspace, FAA_UAS_FacilityMap_Data, DoD_Mar_13, Stadiums, Digital_Obstacle_File) and FDC NOTAM 0/0367 (tfr.faa.gov) | Public domain (US Government) |
+| site.json (wind_climatology) | NUQ ASOS routine METARs 2021-2025, Iowa Environmental Mesonet archive | Public observations (NWS/FAA ASOS); archive by Iowa State University |
+| site.json (pads) | Chosen from the USGS 3DEP 2020 lidar grids above + USDA NAIP 2024 (NDVI) + OpenStreetMap paths/power | Public domain + ODbL |
 
 OpenStreetMap data is © OpenStreetMap contributors, available under the Open
 Database License (https://opendatacommons.org/licenses/odbl/). The files
