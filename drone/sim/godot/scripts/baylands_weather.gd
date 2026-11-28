@@ -655,8 +655,10 @@ uniform vec3 horizon = vec3(0.7, 0.72, 0.75);
 uniform vec2 drift = vec2(0.0009, 0.0004);
 varying vec3 v_world;
 void vertex() { v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+// One fetch of the 5-octave noise: the shadow caster below uses the same,
+// so the holes in the deck and the sun patches on the ground match.
 float dens(vec2 p) {
-    float n = texture(noise, p).r * 0.55 + texture(noise, p * 2.9 + 0.31).r * 0.3 + texture(noise, p * 8.1 + 0.67).r * 0.15;
+    float n = texture(noise, p).r;
     return clamp(smoothstep(1.0 - cover, 1.0 - cover + 0.16, n) + step(0.985, cover), 0.0, 1.0);
 }
 void fragment() {
@@ -687,7 +689,7 @@ varying vec3 v_world;
 void vertex() { v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
     vec2 p = (v_world.xz + shift) / 7000.0 + TIME * drift;
-    float n = texture(noise, p).r * 0.55 + texture(noise, p * 2.9 + 0.31).r * 0.3 + texture(noise, p * 8.1 + 0.67).r * 0.15;
+    float n = texture(noise, p).r;
     ALBEDO = vec3(1.0);
     ALPHA = clamp(smoothstep(1.0 - cover, 1.0 - cover + 0.16, n) + step(0.985, cover), 0.0, 1.0);
     ALPHA_SCISSOR_THRESHOLD = 0.5;
